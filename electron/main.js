@@ -1,0 +1,577 @@
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { initialLiveState, liveReducer, OUTPUTS } from '../shared/live.js';
+import { setupAnnouncements } from './announcements.js';
+import { setupLyrics } from './lyrics.js';
+import { setupNotes } from './notes.js';
+import { setupWhiteboard } from './whiteboard.js';
+import { setupLectionary } from './lectionary.js';
+import { setupMedia } from './media.js';
+import { setupMassPlans } from './mass-plans.js';
+import { seedBible } from './bible-seed.js';
+import { setupBible } from './bible.js';
+import { seedRosary, setupRosary } from './rosary.js';
+import { queueFromPlanItems, readQueueState, writeQueueState } from './queue-state.js';
+import { defaultDatabasePath, PREVIEW_MIN, readConfig, resolveDatabasePath, writeConfig } from './config.js';
+import { setupSettings } from './settings.js';
+import { sanitizeProjectorSettings } from '../shared/projector-settings.js';
+import { sanitizeWelcomeSettings } from '../shared/welcome-settings.js';
+import { sanitizeLowerThirdStyle } from '../shared/lower-third-style.js';
+import { createLowerThirdServer, LOWER_THIRD_PORT, lanAddress } from './lower-third-server.js';
+// Default import, then destructure: electron-updater defines autoUpdater as a getter, which ESM named imports cannot see.
+import electronUpdater from 'electron-updater';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DEV_URL = process.env.VITE_DEV_SERVER_URL;
+
+// The parish logo. Windows uses the .ico (taskbar and window frame); elsewhere the .png.
+// Missing files fall back to Electron's default icon rather than failing to start.
+const ICON_PATH = path.join(__dirname, '..', 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+const APP_ICON = fs.existsSync(ICON_PATH) ? ICON_PATH : undefined;
+
+// The main process owns the authoritative live state. Every window is a view of it.
+let state = initialLiveState();
+let announcements = null;
+let media = null;
+let settings = null;
+// What the Settings page and the sidebar badge report about the database.
+let dbStatus = { connected: false, path: null, fallback: false, error: null };
+const windows = { operator: null, projector: null, lowerThird: null, preview: null };
+
+const ROUTES = { projector: 'projector', lowerThird: 'lower-third', preview: 'preview' };
+
+const webPreferences = {
+  preload: path.join(__dirname, 'preload.cjs'),
+  contextIsolation: true,
+  sandbox: true,
+};
+
+function load(win, route) {
+  // A window that fails to load says so in the console, so a blank screen can be traced to its cause.
+  win.webContents.on('did-fail-load', (_event, code, description, url) => {
+    console.error(`[window ${route}] failed to load ${url}: ${description} (${code})`);
+  });
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`[window ${route}] its renderer stopped: ${details.reason}`);
+  });
+  if (DEV_URL) win.loadURL(`${DEV_URL}#/${route}`);
+  else win.loadFile(path.join(__dirname, '../dist/index.html'), { hash: `/${route}` });
+}
+
+/** The display the projector opens on: the one chosen in Settings if still connected, else the first external one, else the primary. */
+function targetDisplay() {
+  const chosen = screen.getAllDisplays().find((d) => d.id === state.settings.displayId);
+  if (state.settings.displayId != null && !chosen) {
+    console.warn(`[projector] display ${state.settings.displayId} is not connected. Using the default display instead.`);
+  }
+  return chosen ?? externalDisplay() ?? screen.getPrimaryDisplay();
+}
+
+function externalDisplay() {
+  const primary = screen.getPrimaryDisplay();
+  return screen.getAllDisplays().find((d) => d.id !== primary.id) ?? null;
+}
+
+/** How long the preview window must stay still before its position is saved. */
+const PREVIEW_BOUNDS_DELAY_MS = 400;
+/** The projector layout is designed for a 1920x1080 page. The mirror is zoomed to that page width. */
+const PREVIEW_STAGE_WIDTH = 1920;
+/** A session of its own for the mirror, so its zoom never applies to the console or the projector. */
+const MIRROR_PARTITION = 'mirror';
+let previewBoundsTimer = null;
+
+/**
+ * The preview's saved rectangle, if any part of it still lands on a connected screen. A saved position
+ * from a monitor that has since been unplugged would open off-screen, so it is ignored and the default is used.
+ */
+function savedPreviewBounds() {
+  const saved = readConfig(app.getPath('userData')).preview_window_bounds;
+  if (!saved) return null;
+  const overlaps = (area) =>
+    saved.x < area.x + area.width && saved.x + saved.width > area.x && saved.y < area.y + area.height && saved.y + saved.height > area.y;
+  return screen.getAllDisplays().some((d) => overlaps(d.workArea)) ? saved : null;
+}
+
+/** Writes the preview's rectangle to config.json. Minimised, maximised and full-screen states are not saved. */
+function persistPreviewBounds(win) {
+  if (win.isDestroyed() || win.isMinimized() || win.isMaximized() || win.isFullScreen()) return;
+  try {
+    writeConfig(app.getPath('userData'), { preview_window_bounds: win.getBounds() });
+  } catch (err) {
+    console.error('Could not save the preview window position:', err);
+  }
+}
+
+/** Debounced: a drag fires many move events, and only the resting position is written. */
+function schedulePreviewBoundsSave(win) {
+  clearTimeout(previewBoundsTimer);
+  previewBoundsTimer = setTimeout(() => persistPreviewBounds(win), PREVIEW_BOUNDS_DELAY_MS);
+}
+
+/**
+ * The operator mirror. It is pinned above the operator console and never steals focus on open, so
+ * clicking around the console leaves it where it is. It stays until the PREVIEW button closes it.
+ */
+function openPreviewWindow() {
+  const saved = savedPreviewBounds();
+  const win = new BrowserWindow({
+    ...(saved ?? { width: 640, height: 360 }),
+    minWidth: PREVIEW_MIN.width,
+    minHeight: PREVIEW_MIN.height,
+    show: false,
+    backgroundColor: '#000000',
+    title: 'APCCMMA — Operator Mirror',
+    autoHideMenuBar: true,
+    icon: APP_ICON,
+    webPreferences: { ...webPreferences, partition: MIRROR_PARTITION },
+  });
+  win.setAlwaysOnTop(true, 'screen-saver');
+  // The mirror shows the projector layout at window scale: the window stays 16:9 and its page is zoomed
+  // so that 1 vw and 1 vh match the projector's. Text then wraps and fits exactly as it does on screen.
+  win.setAspectRatio(16 / 9);
+  const fitStage = () => {
+    if (!win.isDestroyed()) win.webContents.setZoomFactor(win.getContentSize()[0] / PREVIEW_STAGE_WIDTH);
+  };
+  win.on('resize', fitStage);
+  win.webContents.on('did-finish-load', fitStage);
+  // Shown without activating, so opening the mirror does not pull focus away from the console.
+  win.once('ready-to-show', () => win.showInactive());
+  win.on('move', () => schedulePreviewBoundsSave(win));
+  win.on('resize', () => schedulePreviewBoundsSave(win));
+  // Closing saves at once, so a move made just before closing is not lost to the debounce.
+  win.on('close', () => {
+    clearTimeout(previewBoundsTimer);
+    persistPreviewBounds(win);
+  });
+  return win;
+}
+
+/** Shows the chosen startup screen when the projector window opens. "Last content" keeps whatever was live. */
+function applyStartupScreen() {
+  const mode = state.settings.startupScreen;
+  if (mode === 'welcome') {
+    apply({ type: 'projector/show', frame: { kind: 'welcome', lang: readConfig(app.getPath('userData')).default_language } });
+  } else if (mode === 'black') {
+    apply({ type: 'projector/show', frame: { kind: 'blackout' } });
+  }
+}
+
+const createOutput = {
+  // Congregation screen. It opens on the display chosen in Settings (or the first external one). It is
+  // fullscreen only on an external projector, and only when the setting asks for it; otherwise a windowed preview.
+  projector: () => {
+    const target = targetDisplay();
+    const b = target.bounds;
+    const fullscreen = state.settings.fullscreen && target.id !== screen.getPrimaryDisplay().id;
+    const win = new BrowserWindow({
+      x: b.x + (fullscreen ? 0 : 80),
+      y: b.y + (fullscreen ? 0 : 80),
+      width: fullscreen ? b.width : 1280,
+      height: fullscreen ? b.height : 720,
+      fullscreen,
+      frame: false,
+      backgroundColor: '#000000',
+      title: 'APCCMMA — Projector',
+      icon: APP_ICON,
+      webPreferences,
+    });
+    // A projector window must be seen the moment it opens: show it, bring it forward, and keep it above other windows.
+    win.once('ready-to-show', () => {
+      win.show();
+      win.focus();
+    });
+    win.setAlwaysOnTop(true, 'screen-saver');
+    console.log(`[projector] opened on display ${target.id}, ${fullscreen ? 'fullscreen' : 'windowed'}`);
+    // Set once the window is registered, so the window step does not open a second one.
+    setImmediate(applyStartupScreen);
+    return win;
+  },
+  // The lower third on its own screen, for a second projector or a stream. Transparent, so only the bar shows.
+  lowerThird: () => {
+    const target = state.lowerStyle.target;
+    const display = (target != null && screen.getAllDisplays().find((d) => d.id === target)) || screen.getPrimaryDisplay();
+    const win = new BrowserWindow({
+      x: display.bounds.x,
+      y: display.bounds.y,
+      width: display.bounds.width,
+      height: display.bounds.height,
+      frame: false,
+      transparent: true,
+      backgroundColor: '#00000000',
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      focusable: false,
+      title: 'APCCMMA — Lower third',
+      icon: APP_ICON,
+      webPreferences,
+    });
+    win.setIgnoreMouseEvents(true);
+    return win;
+  },
+  // Confidence monitor for the booth / stage.
+  preview: () => openPreviewWindow(),
+};
+
+function reconcileWindows() {
+  for (const key of OUTPUTS) {
+    const win = windows[key];
+    const wanted = state.outputs[key];
+    // Outputs without a window creator (the lower third now draws on the projector) never open a window.
+    if (wanted && !win && createOutput[key]) {
+      const created = createOutput[key]();
+      windows[key] = created;
+      created.on('closed', () => {
+        windows[key] = null;
+        if (state.outputs[key]) apply({ type: 'output/set', output: key, on: false });
+      });
+      load(created, ROUTES[key]);
+    } else if (!wanted && win) {
+      win.close();
+    }
+  }
+}
+
+// The browser source's server, started once the app is ready.
+let lowerThirdServer = null;
+
+/**
+ * Makes the lower-third window match the chosen display. A window already open moves to that display. Choosing
+ * a display with no window opens one; choosing no display closes it.
+ */
+function placeLowerThirdWindow() {
+  const target = state.lowerStyle.target;
+  if (target == null) {
+    apply({ type: 'output/set', output: 'lowerThird', on: false });
+    return;
+  }
+  const display = screen.getAllDisplays().find((d) => d.id === target) ?? screen.getPrimaryDisplay();
+  const win = windows.lowerThird;
+  if (win && !win.isDestroyed()) {
+    win.setBounds(display.bounds);
+    return;
+  }
+  apply({ type: 'output/set', output: 'lowerThird', on: true });
+}
+
+function broadcast() {
+  lowerThirdServer?.push({ lowerThird: state.lowerThird.live, lowerStyle: state.lowerStyle });
+  for (const win of Object.values(windows)) {
+    if (win && !win.isDestroyed()) win.webContents.send('live:state', state);
+  }
+}
+
+/** Saves which plan is loaded and where the operator is in it. A failed write is logged, not fatal. */
+function saveQueueState() {
+  try {
+    writeQueueState(app.getPath('userData'), {
+      active_mass_plan_id: state.queuePlanId,
+      current_queue_index: state.queueCursor,
+    });
+  } catch (err) {
+    console.error('Could not save the service queue position:', err);
+  }
+}
+
+function apply(action) {
+  const prev = state;
+  const next = liveReducer(state, action);
+  if (next === state) return;
+  state = next;
+  if (prev.queuePlanId !== next.queuePlanId || prev.queueCursor !== next.queueCursor) saveQueueState();
+  reconcileWindows();
+  broadcast();
+}
+
+/**
+ * Rebuilds the Service Queue from the last saved plan, so a crash does not lose the service. The position is not
+ * restored: nothing is selected at launch, so no queue row shows CURRENT until the operator plays one.
+ */
+function restoreQueue(planService) {
+  const saved = readQueueState(app.getPath('userData'));
+  if (saved.active_mass_plan_id == null) return;
+  try {
+    const plan = planService.getPlan(saved.active_mass_plan_id);
+    state = liveReducer(state, { type: 'queue/set', items: queueFromPlanItems(plan.items), planId: plan.id });
+  } catch {
+    // The plan was deleted since the last run: start with an empty queue and forget it.
+    saveQueueState();
+  }
+}
+
+/**
+ * Opens the database named in config.json and checks that it answers. If that fails (for
+ * example, the network drive is unplugged), the app opens the local copy and reports it as
+ * an error, so the service can still run. If the local copy itself fails, the app stops.
+ */
+function openConfiguredDatabase() {
+  const userData = app.getPath('userData');
+  const configured = resolveDatabasePath(userData, readConfig(userData));
+  const local = defaultDatabasePath(userData);
+
+  // setupAnnouncements proves the file answers (SELECT 1) before it registers any IPC,
+  // so a failed attempt leaves nothing behind for the fallback to collide with.
+  const attempt = (dbPath) => setupAnnouncements({ loadRoute: load, preload: webPreferences.preload, dbPath });
+
+  try {
+    const handles = attempt(configured);
+    dbStatus = { connected: true, path: configured, fallback: false, error: null };
+    return handles;
+  } catch (err) {
+    if (configured === local) {
+      dbStatus = { connected: false, path: local, fallback: false, error: err.message };
+      dialog.showErrorBox('APCCMMA cannot open its database', `${err.message}\n\n${local}`);
+      app.quit();
+      throw err;
+    }
+    const handles = attempt(local);
+    dbStatus = {
+      connected: true,
+      path: local,
+      fallback: true,
+      error: `Could not open ${configured}: ${err.message}. Using the local copy.`,
+    };
+    return handles;
+  }
+}
+
+function createOperator() {
+  const win = new BrowserWindow({
+    width: 1600,
+    height: 960,
+    // The smallest size the operator layout still shows every control at. Below this the bars scroll or wrap.
+    minWidth: 1024,
+    minHeight: 680,
+    backgroundColor: '#100306',
+    title: 'APCCMMA — Control',
+    icon: APP_ICON,
+    // No native white title bar. The app's own top bar is the drag area, and Windows draws its
+    // minimise, maximise and close buttons over the top-right corner in the canvas colour.
+    // The colour is the default theme's canvas (#100306). Light themes will show a dark strip.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#100306',
+      symbolColor: '#e4e4e7',
+      height: 48,
+    },
+    webPreferences,
+  });
+  windows.operator = win;
+  // Closing mid-copy could leave a new database location half-written, so the window stays open until the move ends.
+  win.on('close', (event) => {
+    if (!settings?.isMoving()) return;
+    event.preventDefault();
+    dialog.showMessageBoxSync(win, {
+      type: 'warning',
+      message: 'The database is still being moved.',
+      detail: 'Please wait for the move to finish before closing APCCMMA. Closing now could leave the new location incomplete.',
+      buttons: ['OK'],
+    });
+  });
+  win.on('closed', () => {
+    windows.operator = null;
+    app.quit();
+  });
+  load(win, 'operator');
+}
+
+ipcMain.handle('live:get', () => state);
+
+/** Saves the lower third's look. A new window target moves the open window, or opens one on that display. */
+ipcMain.handle('lowerThird:save', (_event, patch) => {
+  const before = state.lowerStyle.target;
+  const merged = sanitizeLowerThirdStyle({ ...state.lowerStyle, ...(patch ?? {}) });
+  writeConfig(app.getPath('userData'), { lower_third: merged });
+  apply({ type: 'lowerStyle/set', value: merged });
+  if (merged.target !== before) placeLowerThirdWindow();
+  return state.lowerStyle;
+});
+
+/** Where the browser source is: the local address, and the network address for other computers on the same network. */
+ipcMain.handle('lowerThird:info', () => ({
+  port: LOWER_THIRD_PORT,
+  local: `http://127.0.0.1:${LOWER_THIRD_PORT}/lower-third`,
+  lan: lanAddress() ? `http://${lanAddress()}:${LOWER_THIRD_PORT}/lower-third` : null,
+}));
+
+/** Every connected display, numbered as the identify overlay numbers them. Physical pixels, so 1920x1080 is 1920x1080. */
+function displayList() {
+  const primaryId = screen.getPrimaryDisplay().id;
+  return screen.getAllDisplays().map((d, i) => ({
+    id: d.id,
+    index: i + 1,
+    width: Math.round(d.size.width * d.scaleFactor),
+    height: Math.round(d.size.height * d.scaleFactor),
+    primary: d.id === primaryId,
+    label: d.label ?? '',
+    x: d.bounds.x,
+    y: d.bounds.y,
+  }));
+}
+
+ipcMain.handle('display:list', () => displayList());
+
+// Identify: a large number on each connected display for a few seconds, so the operator can tell them apart.
+const identifyWindows = [];
+ipcMain.handle('display:identify', () => {
+  for (const win of identifyWindows.splice(0)) if (!win.isDestroyed()) win.close();
+  screen.getAllDisplays().forEach((d, i) => {
+    const win = new BrowserWindow({
+      x: d.bounds.x,
+      y: d.bounds.y,
+      width: d.bounds.width,
+      height: d.bounds.height,
+      frame: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      focusable: false,
+      backgroundColor: '#000000',
+      webPreferences: { sandbox: true },
+    });
+    const html = `<!doctype html><html><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#ECC98A;font-family:sans-serif;font-size:40vmin;font-weight:800">${i + 1}</body></html>`;
+    void win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    identifyWindows.push(win);
+  });
+  setTimeout(() => {
+    for (const win of identifyWindows.splice(0)) if (!win.isDestroyed()) win.close();
+  }, 4000);
+});
+
+// Saves projector settings. A change to the display or fullscreen applies the next time the projector window opens.
+ipcMain.handle('projector:save', (_event, patch) => {
+  const merged = sanitizeProjectorSettings({ ...state.settings, ...(patch ?? {}) });
+  writeConfig(app.getPath('userData'), { projector: merged });
+  apply({ type: 'settings/projector', value: merged });
+  return merged;
+});
+// Saves the welcome screen content and style. The projector shows the change the next time the welcome screen is live.
+ipcMain.handle('welcome:save', (_event, patch) => {
+  const merged = sanitizeWelcomeSettings({ ...state.welcome, ...(patch ?? {}) });
+  writeConfig(app.getPath('userData'), { welcome: merged });
+  apply({ type: 'settings/welcome', value: merged });
+  return merged;
+});
+ipcMain.on('live:dispatch', (_event, action) => apply(action));
+ipcMain.handle('launch:open', (_event, target) => {
+  if (typeof target !== 'string' || !target) return;
+  return /^https?:\/\//i.test(target) ? shell.openExternal(target) : shell.openPath(target);
+});
+
+// Online updates, from the GitHub Releases named in package.json (build.publish). Nothing downloads
+// until the operator asks, and a downloaded update installs when the app next quits.
+const { autoUpdater } = electronUpdater;
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
+
+// The last update event and check time. The Updates page asks for them when it opens, so a page
+// reopened mid-download still shows the download.
+let lastUpdateEvent = null;
+let lastUpdateCheck = null;
+
+/** Sends an update event to every window and remembers it for the Updates page. */
+function publishUpdate(channel, payload) {
+  lastUpdateEvent = { channel, payload };
+  if (channel === 'UPDATE_AVAILABLE' || channel === 'UPDATE_NOT_AVAILABLE') lastUpdateCheck = Date.now();
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(channel, payload);
+  }
+}
+
+/** Release notes arrive as plain text, one entry per version, or HTML. The page shows a short plain-text summary. */
+function summarizeNotes(notes) {
+  const text = Array.isArray(notes) ? notes.map((entry) => entry.note ?? '').join(' ') : (notes ?? '');
+  const plain = String(text).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return plain.length > 600 ? `${plain.slice(0, 597)}...` : plain;
+}
+
+function updateInfo(info) {
+  return { version: info.version, releaseDate: info.releaseDate ?? null, notes: summarizeNotes(info.releaseNotes) };
+}
+
+autoUpdater.on('checking-for-update', () => publishUpdate('UPDATE_CHECKING'));
+autoUpdater.on('update-available', (info) => publishUpdate('UPDATE_AVAILABLE', updateInfo(info)));
+autoUpdater.on('update-not-available', (info) => publishUpdate('UPDATE_NOT_AVAILABLE', { version: info.version }));
+autoUpdater.on('download-progress', (progress) =>
+  publishUpdate('UPDATE_PROGRESS', {
+    percent: progress.percent,
+    transferred: progress.transferred,
+    total: progress.total,
+    bytesPerSecond: progress.bytesPerSecond,
+  }),
+);
+autoUpdater.on('update-downloaded', (info) => publishUpdate('UPDATE_DOWNLOADED', updateInfo(info)));
+autoUpdater.on('error', (err) => publishUpdate('UPDATE_ERROR', { message: err?.message ?? String(err) }));
+
+// A development run has no installed release to compare against, so a check says so instead of waiting forever.
+ipcMain.handle('CHECK_FOR_UPDATES', async () => {
+  if (!app.isPackaged) {
+    publishUpdate('UPDATE_ERROR', { message: 'Updates can only be checked in the installed app.' });
+    return;
+  }
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (err) {
+    publishUpdate('UPDATE_ERROR', { message: err.message });
+  }
+});
+ipcMain.handle('START_UPDATE_DOWNLOAD', async () => {
+  try {
+    await autoUpdater.downloadUpdate();
+  } catch (err) {
+    publishUpdate('UPDATE_ERROR', { message: err.message });
+  }
+});
+ipcMain.handle('RESTART_AND_INSTALL_UPDATE', () => autoUpdater.quitAndInstall());
+ipcMain.handle('UPDATES_GET_STATE', () => ({ last: lastUpdateEvent, lastCheckedAt: lastUpdateCheck }));
+
+app.whenReady().then(() => {
+  // No default menu: it would steal F11 (fullscreen) and Ctrl+R from our hotkeys.
+  Menu.setApplicationMenu(null);
+  // The saved projector settings apply before any window opens, so the first projector window already uses them.
+  state = liveReducer(state, { type: 'settings/projector', value: readConfig(app.getPath('userData')).projector });
+  state = liveReducer(state, { type: 'settings/welcome', value: readConfig(app.getPath('userData')).welcome });
+  state = liveReducer(state, { type: 'lowerStyle/set', value: readConfig(app.getPath('userData')).lower_third });
+  announcements = openConfiguredDatabase();
+  setupLyrics(announcements.db);
+  setupLectionary(announcements.db);
+  const planService = setupMassPlans(announcements.db);
+  // Packaged builds copy resources/bible next to the app; in development it is read from the project.
+  const bibleDataDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'bible')
+    : path.join(app.getAppPath(), 'resources', 'bible');
+  try {
+    const { seeded } = seedBible(announcements.db, bibleDataDir);
+    if (seeded.length) console.info(`Bible seeded on first launch: ${seeded.join(', ')}`);
+  } catch (err) {
+    // The app still starts. The Bible module shows an empty list until the data is fixed.
+    console.error('Bible seed failed:', err);
+  }
+  setupBible(announcements.db);
+  seedRosary(announcements.db);
+  setupRosary(announcements.db);
+  setupNotes(announcements.db);
+  setupWhiteboard(announcements.db);
+  // The browser source: the lower third at http://127.0.0.1:3002/lower-third, updated live.
+  lowerThirdServer = createLowerThirdServer({ distDir: path.join(__dirname, '../dist') });
+  void lowerThirdServer.start();
+  if (state.lowerStyle.target != null) placeLowerThirdWindow();
+  media = setupMedia(announcements.db, { loadRoute: load, preload: webPreferences.preload });
+  settings = setupSettings({
+    userData: app.getPath('userData'),
+    getDb: () => announcements.db,
+    getStatus: () => dbStatus,
+    appVersion: app.getVersion(),
+    showOpenDirectory: (win, options) => (win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options)),
+  });
+  // Restore before any window loads, so the first render already shows the resumed queue.
+  restoreQueue(planService);
+  createOperator();
+});
+
+app.on('will-quit', () => {
+  media?.close();
+  announcements?.close();
+});
+
+app.on('window-all-closed', () => app.quit());

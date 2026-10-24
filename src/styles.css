@@ -1,0 +1,433 @@
+@import "tailwindcss";
+@import "@fontsource-variable/archivo/wdth.css";
+@import "@fontsource/cormorant-garamond/400.css";
+@import "@fontsource/cormorant-garamond/500.css";
+@import "@fontsource/cormorant-garamond/600.css";
+@import "@fontsource/cormorant-garamond/700.css";
+@import "@fontsource-variable/jetbrains-mono";
+/* Slide typography choices (Text Slide editor). Families are in shared/text-style.js. */
+@import "@fontsource-variable/inter/wght.css";
+@import "@fontsource/merriweather/400.css";
+@import "@fontsource/merriweather/700.css";
+@import "@fontsource/cinzel/400.css";
+@import "@fontsource/cinzel/700.css";
+@import "@fontsource-variable/roboto/wght.css";
+@import "@fontsource-variable/montserrat/wght.css";
+@import "@fontsource-variable/playfair-display/wght.css";
+@import "@fontsource/bodoni-moda/400.css";
+@import "@fontsource/bodoni-moda/700.css";
+
+/*
+ * Theme tokens. Every colour in the app is one of these variables, so switching theme is
+ * only a change to <html data-theme="…">. The @theme values are the APCCMMA Default
+ * (parish maroon and gold). Each [data-theme] block below overrides the same variables.
+ *
+ * Text pairings in every theme are checked against WCAG AAA (7:1) for the background they
+ * sit on. Accent fills take --color-on-accent for their label, never a fixed colour.
+ */
+@theme {
+  --font-sans: "Archivo Variable", "Segoe UI", system-ui, sans-serif;
+  --font-serif: "Cormorant Garamond", Georgia, serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  --color-canvas: #100306;
+  --color-panel: rgb(47 14 22 / 0.72);
+  --color-panel-2: rgb(74 23 36 / 0.6);
+  --color-line: rgb(105 33 51 / 0.7);
+  --color-line-strong: #8a2e45;
+  --color-fg: #f7eef0;
+  --color-muted: #e6bcc7;
+  --color-faint: #d392a2;
+
+  --color-accent: #ecc98a;
+  --color-on-accent: #1c070d;
+  --color-gold: #ecc98a;
+  --color-danger: #ff8f82;
+  --color-ok: #7fd18b;
+
+  /* Fixed across themes: status and button fills that carry their own labels. */
+  --color-amber: #f5b92e;
+  --color-royal: #1f4fb8;
+  --color-crimson: #9e2424;
+}
+
+/* ─── Signature ─── */
+[data-theme="default"] {
+  --color-canvas: #100306;
+  --color-panel: rgb(47 14 22 / 0.72);
+  --color-panel-2: rgb(74 23 36 / 0.6);
+  --color-line: rgb(105 33 51 / 0.7);
+  --color-line-strong: #8a2e45;
+  --color-fg: #f7eef0;
+  --color-muted: #e6bcc7;
+  --color-faint: #d392a2;
+  --color-accent: #ecc98a;
+  --color-on-accent: #1c070d;
+  --color-gold: #ecc98a;
+  --color-danger: #ff8f82;
+  --color-ok: #7fd18b;
+}
+
+[data-theme="light"] {
+  --color-canvas: #faf6f4;
+  --color-panel: rgb(255 255 255 / 0.86);
+  --color-panel-2: rgb(243 232 234 / 0.9);
+  --color-line: rgb(120 60 75 / 0.25);
+  --color-line-strong: #b98a97;
+  --color-fg: #2a0f17;
+  --color-muted: #5a3a44;
+  --color-faint: #4f3a44;
+  --color-accent: #5a1426;
+  --color-on-accent: #ffffff;
+  --color-gold: #6b1d33;
+  --color-danger: #8a1c22;
+  --color-ok: #1f6b35;
+}
+
+[data-theme="classic"] {
+  --color-canvas: #0d1b2e;
+  --color-panel: rgb(20 36 58 / 0.8);
+  --color-panel-2: rgb(30 52 82 / 0.7);
+  --color-line: rgb(60 90 130 / 0.5);
+  --color-line-strong: #3d5f8f;
+  --color-fg: #f2f5fa;
+  --color-muted: #c7d3e4;
+  --color-faint: #9fb1cb;
+  --color-accent: #e0b860;
+  --color-on-accent: #0d1b2e;
+  --color-gold: #e0b860;
+  --color-danger: #ff8f82;
+  --color-ok: #7fd18b;
+}
+
+[data-theme="olive"] {
+  --color-canvas: #141a0c;
+  --color-panel: rgb(34 42 22 / 0.8);
+  --color-panel-2: rgb(48 58 30 / 0.7);
+  --color-line: rgb(85 100 50 / 0.5);
+  --color-line-strong: #5f7035;
+  --color-fg: #f3f6ea;
+  --color-muted: #cfd9b4;
+  --color-faint: #aab78c;
+  --color-accent: #c9d46e;
+  --color-on-accent: #141a0c;
+  --color-gold: #c9d46e;
+  --color-danger: #ff8f82;
+  --color-ok: #9be08f;
+}
+
+/* ─── Dark ─── */
+[data-theme="black-gold"] {
+  --color-canvas: #0a0a0a;
+  --color-panel: rgb(26 24 20 / 0.85);
+  --color-panel-2: rgb(40 36 28 / 0.75);
+  --color-line: rgb(90 75 30 / 0.5);
+  --color-line-strong: #6b5620;
+  --color-fg: #f6f1e4;
+  --color-muted: #d6cba9;
+  --color-faint: #aa9e7c;
+  --color-accent: #d4af37;
+  --color-on-accent: #0a0a0a;
+  --color-gold: #d4af37;
+  --color-danger: #ff8f82;
+  --color-ok: #7fd18b;
+}
+
+[data-theme="deep-teal"] {
+  --color-canvas: #031f1e;
+  --color-panel: rgb(6 46 44 / 0.8);
+  --color-panel-2: rgb(10 66 63 / 0.7);
+  --color-line: rgb(20 110 103 / 0.5);
+  --color-line-strong: #1f7d75;
+  --color-fg: #eefaf8;
+  --color-muted: #bfe5df;
+  --color-faint: #94c9c1;
+  --color-accent: #5eead4;
+  --color-on-accent: #031f1e;
+  --color-gold: #5eead4;
+  --color-danger: #ff8f82;
+  --color-ok: #7fd18b;
+}
+
+[data-theme="burgundy"] {
+  --color-canvas: #2a0610;
+  --color-panel: rgb(66 12 28 / 0.8);
+  --color-panel-2: rgb(96 20 40 / 0.7);
+  --color-line: rgb(140 40 62 / 0.5);
+  --color-line-strong: #9a3a52;
+  --color-fg: #fbeef0;
+  --color-muted: #e8c6cd;
+  --color-faint: #cf9ea9;
+  --color-accent: #f2c46d;
+  --color-on-accent: #2a0610;
+  --color-gold: #f2c46d;
+  --color-danger: #ff8f82;
+  --color-ok: #7fd18b;
+}
+
+[data-theme="wine"] {
+  --color-canvas: #15070f;
+  --color-panel: rgb(44 14 36 / 0.8);
+  --color-panel-2: rgb(70 24 58 / 0.7);
+  --color-line: rgb(110 50 96 / 0.5);
+  --color-line-strong: #7d3f70;
+  --color-fg: #f6eef5;
+  --color-muted: #dcc5d8;
+  --color-faint: #b89cb4;
+  --color-accent: #d6dbe6;
+  --color-on-accent: #15070f;
+  --color-gold: #d6dbe6;
+  --color-danger: #ff8f82;
+  --color-ok: #7fd18b;
+}
+
+[data-theme="slate"] {
+  --color-canvas: #111418;
+  --color-panel: rgb(30 35 42 / 0.85);
+  --color-panel-2: rgb(44 50 60 / 0.75);
+  --color-line: rgb(78 90 108 / 0.5);
+  --color-line-strong: #5a6578;
+  --color-fg: #eef1f5;
+  --color-muted: #c3cbd6;
+  --color-faint: #9aa5b5;
+  --color-accent: #9ec5ff;
+  --color-on-accent: #0b1220;
+  --color-gold: #9ec5ff;
+  --color-danger: #ff8f82;
+  --color-ok: #7fd18b;
+}
+
+/* ─── Light ─── */
+[data-theme="ice-blue"] {
+  --color-canvas: #eef6fb;
+  --color-panel: rgb(255 255 255 / 0.85);
+  --color-panel-2: rgb(219 236 246 / 0.9);
+  --color-line: rgb(120 160 190 / 0.35);
+  --color-line-strong: #7fa3bd;
+  --color-fg: #0f1d28;
+  --color-muted: #2f4a5c;
+  --color-faint: #33495a;
+  --color-accent: #0f4a70;
+  --color-on-accent: #ffffff;
+  --color-gold: #1a5f8a;
+  --color-danger: #8a1c22;
+  --color-ok: #1f6b35;
+}
+
+[data-theme="mint"] {
+  --color-canvas: #eefaf4;
+  --color-panel: rgb(255 255 255 / 0.85);
+  --color-panel-2: rgb(214 240 226 / 0.9);
+  --color-line: rgb(90 160 120 / 0.35);
+  --color-line-strong: #7fbf9a;
+  --color-fg: #0d2318;
+  --color-muted: #2c5140;
+  --color-faint: #34503f;
+  --color-accent: #0e5232;
+  --color-on-accent: #ffffff;
+  --color-gold: #17663f;
+  --color-danger: #8a1c22;
+  --color-ok: #1f6b35;
+}
+
+[data-theme="sage"] {
+  --color-canvas: #f1f4ee;
+  --color-panel: rgb(255 255 255 / 0.86);
+  --color-panel-2: rgb(224 231 216 / 0.9);
+  --color-line: rgb(110 130 95 / 0.35);
+  --color-line-strong: #9aab88;
+  --color-fg: #1c2416;
+  --color-muted: #414f36;
+  --color-faint: #3f4d33;
+  --color-accent: #36521c;
+  --color-on-accent: #ffffff;
+  --color-gold: #4a6b2a;
+  --color-danger: #8a1c22;
+  --color-ok: #1f6b35;
+}
+
+[data-theme="linen"] {
+  --color-canvas: #f8f3ea;
+  --color-panel: rgb(255 252 246 / 0.88);
+  --color-panel-2: rgb(240 230 214 / 0.9);
+  --color-line: rgb(150 120 80 / 0.3);
+  --color-line-strong: #bfa584;
+  --color-fg: #2b2117;
+  --color-muted: #5b4a36;
+  --color-faint: #4f4030;
+  --color-accent: #6b4412;
+  --color-on-accent: #ffffff;
+  --color-gold: #8a5a1c;
+  --color-danger: #8a1c22;
+  --color-ok: #1f6b35;
+}
+
+[data-theme="shell"] {
+  --color-canvas: #f6f5f8;
+  --color-panel: rgb(255 255 255 / 0.86);
+  --color-panel-2: rgb(233 230 240 / 0.9);
+  --color-line: rgb(110 100 130 / 0.3);
+  --color-line-strong: #aaa3bd;
+  --color-fg: #1d1a24;
+  --color-muted: #4a4458;
+  --color-faint: #4a4260;
+  --color-accent: #4a2f7a;
+  --color-on-accent: #ffffff;
+  --color-gold: #5b3f8c;
+  --color-danger: #8a1c22;
+  --color-ok: #1f6b35;
+}
+
+/* Condensed display cut of Archivo — headlines, labels, the booth clock. */
+@utility condensed {
+  font-stretch: 72%;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  /* The app shell follows the active theme. Text is the theme's own foreground, never pure white. */
+  body {
+    background: var(--color-canvas);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Lower-third window is a transparent overlay for stream capture. */
+  body.transparent {
+    background: transparent;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 6px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 4px;
+  color: var(--color-fg);
+}
+
+/* ─── Luxury surfaces ─── */
+
+/* Standard glass card: translucent, blurred, with a hairline edge. */
+@utility surface-glass {
+  background: var(--color-panel);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid color-mix(in oklab, var(--color-fg) 6%, transparent);
+  box-shadow: 0 8px 32px 0 rgb(0 0 0 / 0.37);
+}
+
+/* Raised card for the active item: a gold-lit edge and a soft ambient glow. */
+@utility surface-elevated {
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--color-panel-2) 30%, transparent),
+    color-mix(in oklab, var(--color-panel) 60%, transparent)
+  );
+  border: 1px solid color-mix(in oklab, var(--color-accent) 20%, transparent);
+  box-shadow: 0 0 25px color-mix(in oklab, var(--color-accent) 8%, transparent);
+}
+
+/* Blackout control: a crimson outline that breathes gently. */
+@keyframes crimson-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(239 68 68 / 0);
+  }
+  50% {
+    box-shadow: 0 0 14px 0 rgb(239 68 68 / 0.35);
+  }
+}
+
+.blackout-breathe {
+  animation: crimson-breathe 3.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blackout-breathe {
+    animation: none;
+  }
+}
+
+/* Ultra-thin scrollbars that follow the active theme. */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: color-mix(in oklab, var(--color-canvas) 40%, transparent);
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--color-line-strong) 60%, transparent);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--color-accent) 40%, transparent);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Named scroll region for long lists in the operator shell: thin, theme-neutral thumb. */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(120 113 108 / 0.5) transparent;
+}
+
+/* Entrance animations for projected content. The duration and easing are set inline by the projector view. */
+@keyframes apcc-enter-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes apcc-enter-left {
+  from { opacity: 0; transform: translateX(8%); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes apcc-enter-right {
+  from { opacity: 0; transform: translateX(-8%); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes apcc-enter-up {
+  from { opacity: 0; transform: translateY(8%); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes apcc-enter-zoom {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The LIVE badge breathes while the output is on. The glow eases in and out; reduced motion keeps it still. */
+@keyframes breathe-live {
+  0%, 100% { opacity: 1; box-shadow: 0 0 14px rgba(245, 158, 11, 0.6); }
+  50% { opacity: 0.65; box-shadow: 0 0 4px rgba(245, 158, 11, 0.2); }
+}
+.live-breathe {
+  animation: breathe-live 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-breathe {
+    animation: none;
+  }
+}
