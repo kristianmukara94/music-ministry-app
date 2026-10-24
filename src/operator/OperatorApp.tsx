@@ -16,6 +16,7 @@ import { MEDIA_DRAG } from '../media/types';
 import { addToQueue } from '../planner/plan-api';
 import { MassPlanner } from '../planner/MassPlanner';
 import { Settings } from '../settings/Settings';
+import { EulaGate } from '../components/EulaModal';
 import { bridge } from '../live/bridge';
 import { useTheme } from '../theme/store';
 import { ServiceQueue } from '../planner/ServiceQueue';
@@ -253,6 +254,8 @@ export function OperatorApp() {
       {previewOpen && <PreviewPanel />}
       <CommandPalette />
       <ProjectorPrompt />
+      {/* Above everything else. Shown until the operator accepts the license, then it renders nothing. */}
+      <EulaGate />
     </div>
   );
 }

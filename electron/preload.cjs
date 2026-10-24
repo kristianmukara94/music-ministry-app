@@ -136,6 +136,8 @@ contextBridge.exposeInMainWorld('apcc', {
     get: () => ipcRenderer.invoke('config:get'),
     setLanguage: (lang) => ipcRenderer.invoke('config:setLanguage', lang),
     setTheme: (theme) => ipcRenderer.invoke('config:setTheme', theme),
+    acceptEula: (registration) => ipcRenderer.invoke('config:acceptEula', registration),
+    updateRegistration: (registration) => ipcRenderer.invoke('config:updateRegistration', registration),
     changeLocation: () => ipcRenderer.invoke('config:changeLocation'),
     backup: () => ipcRenderer.invoke('config:backup'),
     onMigrationProgress: (callback) => {

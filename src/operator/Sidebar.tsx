@@ -10,6 +10,7 @@ import { toggleFullscreen } from './actions';
 import { DatabaseStatus } from '../system/DatabaseStatus';
 import { LOGO_SRC } from '../brand/logo';
 import { useNow } from './useNow';
+import { FOOTER_TEXT } from '../legal/license';
 
 export const NAV: { key: ViewKey; icon: LucideIcon; label: StringKey }[] = [
   { key: 'dashboard', icon: LayoutGrid, label: 'nav.dashboard' },
@@ -213,6 +214,14 @@ export function Sidebar() {
             ))}
           </ul>
         </div>
+
+        {/* Licensing footer. Subtle on purpose: it identifies the licensed build without competing with the operator's tools. */}
+        <p
+          title={FOOTER_TEXT}
+          className="mt-1 truncate border-t border-stone-800/80 px-3 pt-2 pb-1 text-center text-[10px] tracking-wide text-stone-500"
+        >
+          {collapsed ? '©' : FOOTER_TEXT}
+        </p>
       </div>
     </aside>
   );

@@ -8,6 +8,7 @@ import { LowerThirdSettings } from './LowerThirdSettings';
 import { WelcomeScreenSettings } from './WelcomeScreenSettings';
 import { ThemeView } from './ThemeView';
 import { UpdatesPanel } from './UpdatesSettings';
+import { AboutLicensing } from './AboutLicensing';
 import type { ConfigState, Language, MigrationProgress } from './types';
 
 const api = bridge.config;
@@ -24,7 +25,7 @@ type SectionKey =
   | 'projector' | 'lower3rd' | 'cast' | 'welcome'
   | 'rosary' | 'lectionary' | 'lyrics'
   | 'remote'
-  | 'backup' | 'updates';
+  | 'backup' | 'updates' | 'about';
 
 interface NavItem {
   key: SectionKey;
@@ -67,6 +68,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
     items: [
       { key: 'backup', label: 'Backup & restore' },
       { key: 'updates', label: 'Updates' },
+      { key: 'about', label: 'About & Licensing' },
     ],
   },
 ];
@@ -281,6 +283,13 @@ export function Settings() {
         return (
           <Card title="Updates">
             <UpdatesPanel installedVersion={state.version} />
+          </Card>
+        );
+
+      case 'about':
+        return (
+          <Card title="About & Licensing">
+            <AboutLicensing version={state.version} config={state.config} onChanged={() => void reload()} />
           </Card>
         );
 

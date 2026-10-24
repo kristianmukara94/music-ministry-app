@@ -26,7 +26,29 @@ const DEFAULTS = {
   skipped_version: null,
   remind_after: null,
   pause_on_metered: false,
+  eula_accepted: false,
+  registered_church: null,
+  registered_location: null,
+  registered_at: null,
 };
+
+/** The longest church name or location the registration accepts. */
+export const REGISTRATION_MAX_LENGTH = 120;
+
+/**
+ * Checks the registration the operator typed, and returns it trimmed. Throws with a message the form can show,
+ * so a blank or oversized name is refused here rather than saved.
+ */
+export function validateRegistration(input) {
+  const church = typeof input?.church === 'string' ? input.church.trim() : '';
+  const location = typeof input?.location === 'string' ? input.location.trim() : '';
+  if (!church) throw new Error('Enter the church, parish, or ministry name.');
+  if (!location) throw new Error('Enter the location or city.');
+  if (church.length > REGISTRATION_MAX_LENGTH || location.length > REGISTRATION_MAX_LENGTH) {
+    throw new Error(`Each name must be ${REGISTRATION_MAX_LENGTH} characters or fewer.`);
+  }
+  return { church, location };
+}
 // The smallest preview the operator can resize to. A saved size below this is treated as corrupt.
 export const PREVIEW_MIN = { width: 480, height: 270 };
 
@@ -53,6 +75,10 @@ function sanitize(raw) {
     skipped_version: typeof raw.skipped_version === 'string' && raw.skipped_version.trim() ? raw.skipped_version.trim() : null,
     remind_after: Number.isFinite(raw.remind_after) ? raw.remind_after : null,
     pause_on_metered: raw.pause_on_metered === true,
+    eula_accepted: raw.eula_accepted === true,
+    registered_church: typeof raw.registered_church === 'string' && raw.registered_church.trim() ? raw.registered_church.trim() : null,
+    registered_location: typeof raw.registered_location === 'string' && raw.registered_location.trim() ? raw.registered_location.trim() : null,
+    registered_at: typeof raw.registered_at === 'string' && !Number.isNaN(Date.parse(raw.registered_at)) ? raw.registered_at : null,
   };
 }
 

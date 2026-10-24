@@ -10,8 +10,23 @@ export interface DatabaseStatus {
   error: string | null;
 }
 
+/** The church, parish, or ministry the software is licensed to, and where it is. */
+export interface Registration {
+  church: string;
+  location: string;
+}
+
 export interface ConfigState {
-  config: { database_path: string | null; default_language: Language; theme: ThemeId };
+  config: {
+    database_path: string | null;
+    default_language: Language;
+    theme: ThemeId;
+    eula_accepted: boolean;
+    registered_church: string | null;
+    registered_location: string | null;
+    /** ISO date of the EULA acceptance, or null before it. */
+    registered_at: string | null;
+  };
   databasePath: string;
   defaultDatabasePath: string;
   /** The `apccmma_assets` folder beside the active database: media and slide files live here. */
@@ -34,6 +49,10 @@ export interface ConfigApi {
   get(): Promise<ConfigState>;
   setLanguage(lang: Language): Promise<unknown>;
   setTheme(theme: ThemeId): Promise<ThemeId>;
+  /** Records the EULA acceptance and the church registration on this machine. Rejects a blank registration. */
+  acceptEula(registration: Registration): Promise<void>;
+  /** Changes the church and location on an existing registration. */
+  updateRegistration(registration: Registration): Promise<void>;
   /** Null when the operator cancelled the picker. */
   changeLocation(): Promise<{ changed: boolean; path: string } | null>;
   /** Null when the operator cancelled the picker. */

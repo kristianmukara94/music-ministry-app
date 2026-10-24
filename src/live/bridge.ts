@@ -140,7 +140,17 @@ const offlinePdf = { onConvert: () => () => undefined, finish: () => undefined }
 /** Browser preview: no database, so the badge reports it as not connected. */
 const offlineConfig: ConfigApi = {
   get: async () => ({
-    config: { database_path: null, default_language: 'en', theme: 'default' },
+    // The browser preview cannot save anything, so it reports an accepted agreement and a placeholder registration.
+    // Without them the licence gate would return on every reload.
+    config: {
+      database_path: null,
+      default_language: 'en',
+      theme: 'default',
+      eula_accepted: true,
+      registered_church: 'Browser preview',
+      registered_location: 'Browser preview',
+      registered_at: null,
+    },
     databasePath: 'Browser preview (no database)',
     defaultDatabasePath: 'Browser preview (no database)',
     assetsPath: 'Browser preview (no media folder)',
@@ -151,6 +161,8 @@ const offlineConfig: ConfigApi = {
   setLanguage: async () => offlineError(),
   // Browser preview has nowhere to save; the theme still applies for the session.
   setTheme: async (theme) => theme,
+  acceptEula: async () => undefined,
+  updateRegistration: async () => undefined,
   changeLocation: async () => offlineError(),
   backup: async () => offlineError(),
 };

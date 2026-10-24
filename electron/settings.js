@@ -2,7 +2,7 @@ import { BrowserWindow, ipcMain } from 'electron';
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
-import { DB_FILE_NAME, LANGUAGES, defaultDatabasePath, readConfig, resolveDatabasePath, writeConfig } from './config.js';
+import { DB_FILE_NAME, LANGUAGES, defaultDatabasePath, readConfig, resolveDatabasePath, validateRegistration, writeConfig } from './config.js';
 import { assetRootFor, getAssetRoot } from './assets.js';
 
 const FOLDER_OPTIONS = (title) => ({ title, properties: ['openDirectory', 'createDirectory'] });
@@ -89,6 +89,26 @@ export function createSettingsService({ userData, getDb, getStatus, appVersion, 
     setLanguage(lang) {
       if (!LANGUAGES.includes(lang)) throw new Error('Language must be English, Tagalog, or Cebuano.');
       return writeConfig(userData, { default_language: lang });
+    },
+
+    /**
+     * Records the EULA acceptance and the church registration together, with the date of acceptance.
+     * Acceptance is never written without a valid registration, and there is no way to un-accept it in the app.
+     */
+    acceptEula(registration) {
+      const { church, location } = validateRegistration(registration);
+      writeConfig(userData, {
+        eula_accepted: true,
+        registered_church: church,
+        registered_location: location,
+        registered_at: new Date().toISOString(),
+      });
+    },
+
+    /** Changes the church and location on the registration. The date of the original acceptance is kept. */
+    updateRegistration(registration) {
+      const { church, location } = validateRegistration(registration);
+      writeConfig(userData, { registered_church: church, registered_location: location });
     },
 
     /**
@@ -179,6 +199,8 @@ export function setupSettings(deps) {
   handle('get', () => service.get());
   handle('setLanguage', (_win, lang) => service.setLanguage(lang));
   handle('setTheme', (_win, theme) => service.setTheme(theme));
+  handle('acceptEula', (_win, registration) => service.acceptEula(registration));
+  handle('updateRegistration', (_win, registration) => service.updateRegistration(registration));
   // Progress goes back to the window that asked, so only the Settings page sees it.
   ipcMain.handle('config:changeLocation', (event) =>
     service.changeLocation(BrowserWindow.fromWebContents(event.sender), (progress) =>
