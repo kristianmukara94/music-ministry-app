@@ -13,6 +13,22 @@ npm run build     # typecheck + production bundle in dist/, then `npm start`
 
 > Running from inside VS Code's Claude/extension host? Unset `ELECTRON_RUN_AS_NODE` first, otherwise Electron starts as plain Node.
 
+## Releases & code signing
+
+Pushing to `main` runs `.github/workflows/auto-release.yml`. It bumps the patch version, builds the Windows installer, and publishes it to GitHub Releases. The installed app checks those releases for updates (Settings → Updates).
+
+The workflow signs the installer with a code-signing certificate, using three repository secrets:
+
+- **`CSC_LINK`**: the `.pfx` certificate file as a Base64 string, not the file itself. On Windows PowerShell, create it with:
+  ```powershell
+  [Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\to\certificate.pfx")) | Set-Clipboard
+  ```
+  Then paste the clipboard into the secret.
+- **`CSC_KEY_PASSWORD`**: the password of that `.pfx` file.
+- **`GH_TOKEN`**: a token that can push to `main` and create releases.
+
+Add the secrets at Settings → Secrets and variables → Actions. If `CSC_LINK` is missing, the build still succeeds, but the installer is unsigned and Windows SmartScreen will warn users.
+
 ## Layout
 
 | Path | Role |
