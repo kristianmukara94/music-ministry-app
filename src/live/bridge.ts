@@ -157,10 +157,15 @@ const offlineConfig: ConfigApi = {
 
 /** Browser preview: updates come from the desktop app, so checks report that instead of failing silently. */
 const offlineUpdates: UpdatesApi = {
-  getState: async () => ({ last: null, lastCheckedAt: null }),
+  getState: async () => ({ last: null, lastCheckedAt: null, settings: { channel: 'stable', skippedVersion: null, pauseOnMetered: false } }),
   check: async () => offlineError(),
   download: async () => offlineError(),
   restart: async () => offlineError(),
+  setChannel: async () => offlineError(),
+  skipVersion: async () => offlineError(),
+  remindLater: async () => offlineError(),
+  setPauseOnMetered: async () => offlineError(),
+  getReleaseHistory: async () => offlineError(),
   onEvent: () => () => undefined,
 };
 

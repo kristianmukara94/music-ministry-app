@@ -61,24 +61,53 @@ export type UpdateEvent =
   | { channel: 'UPDATE_AVAILABLE'; payload: UpdateInfo }
   | { channel: 'UPDATE_NOT_AVAILABLE'; payload: { version: string } }
   | { channel: 'UPDATE_PROGRESS'; payload: UpdateProgress }
+  /** The download waits because the connection is metered. Downloading anyway is the operator's choice. */
+  | { channel: 'UPDATE_PAUSED'; payload: { reason: 'metered' } }
   | { channel: 'UPDATE_DOWNLOADED'; payload: UpdateInfo }
   | { channel: 'UPDATE_ERROR'; payload: { message: string } };
+
+export type UpdateChannel = 'stable' | 'beta';
+
+export interface UpdateSettings {
+  channel: UpdateChannel;
+  /** The version the operator chose to skip. Background checks stay quiet for it; a manual check still shows it. */
+  skippedVersion: string | null;
+  pauseOnMetered: boolean;
+}
 
 export interface UpdatesState {
   /** The most recent event, or null if no check has run since the app started. */
   last: UpdateEvent | null;
   /** Epoch milliseconds of the last finished check, or null. */
   lastCheckedAt: number | null;
+  settings: UpdateSettings;
+}
+
+/** One published GitHub release, as the history list shows it. */
+export interface ReleaseSummary {
+  name: string;
+  tag_name: string;
+  published_at: string;
+  /** The release notes in Markdown. */
+  body: string;
+  prerelease: boolean;
 }
 
 export interface UpdatesApi {
   getState(): Promise<UpdatesState>;
   /** Looks for a newer release on GitHub. Results arrive through onEvent. */
   check(): Promise<void>;
-  /** Downloads the release found by the last check. Progress arrives through onEvent. */
-  download(): Promise<void>;
+  /** Downloads the release found by the last check. Progress arrives through onEvent. `force` ignores the metered-connection pause once. */
+  download(force?: boolean): Promise<void>;
   /** Quits APCCMMA and installs the downloaded update. */
   restart(): Promise<void>;
+  setChannel(channel: UpdateChannel): Promise<void>;
+  skipVersion(version: string): Promise<void>;
+  /** Hides the update for a day in background checks. Manual checks still show it. */
+  remindLater(): Promise<void>;
+  setPauseOnMetered(enabled: boolean): Promise<void>;
+  /** The last five published releases, newest first. */
+  getReleaseHistory(): Promise<ReleaseSummary[]>;
   /** Returns an unsubscribe function. */
   onEvent(callback: (event: UpdateEvent) => void): () => void;
 }

@@ -12,7 +12,21 @@ export const LANGUAGES = ['en', 'tl', 'ceb'];
 export const THEME_IDS = ['default', 'light', 'classic', 'olive', 'black-gold', 'deep-teal', 'burgundy', 'wine', 'slate', 'ice-blue', 'mint', 'sage', 'linen', 'shell'];
 const FILE = 'config.json';
 
-const DEFAULTS = { database_path: null, default_language: 'en', theme: 'default', preview_window_bounds: null, projector: PROJECTOR_SETTINGS_DEFAULTS, lower_third: LOWER_THIRD_DEFAULTS, welcome: WELCOME_DEFAULTS };
+export const UPDATE_CHANNELS = ['stable', 'beta'];
+
+const DEFAULTS = {
+  database_path: null,
+  default_language: 'en',
+  theme: 'default',
+  preview_window_bounds: null,
+  projector: PROJECTOR_SETTINGS_DEFAULTS,
+  lower_third: LOWER_THIRD_DEFAULTS,
+  welcome: WELCOME_DEFAULTS,
+  update_channel: 'stable',
+  skipped_version: null,
+  remind_after: null,
+  pause_on_metered: false,
+};
 // The smallest preview the operator can resize to. A saved size below this is treated as corrupt.
 export const PREVIEW_MIN = { width: 480, height: 270 };
 
@@ -35,6 +49,10 @@ function sanitize(raw) {
     projector: sanitizeProjectorSettings(raw.projector),
     lower_third: sanitizeLowerThirdStyle(raw.lower_third),
     welcome: sanitizeWelcomeSettings(raw.welcome),
+    update_channel: UPDATE_CHANNELS.includes(raw.update_channel) ? raw.update_channel : DEFAULTS.update_channel,
+    skipped_version: typeof raw.skipped_version === 'string' && raw.skipped_version.trim() ? raw.skipped_version.trim() : null,
+    remind_after: Number.isFinite(raw.remind_after) ? raw.remind_after : null,
+    pause_on_metered: raw.pause_on_metered === true,
   };
 }
 

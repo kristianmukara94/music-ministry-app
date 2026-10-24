@@ -157,11 +157,25 @@ contextBridge.exposeInMainWorld('apcc', {
   updates: {
     getState: () => ipcRenderer.invoke('UPDATES_GET_STATE'),
     check: () => ipcRenderer.invoke('CHECK_FOR_UPDATES'),
-    download: () => ipcRenderer.invoke('START_UPDATE_DOWNLOAD'),
+    /** `force` downloads even on a metered connection when the operator has chosen to pause on those. */
+    download: (force = false) => ipcRenderer.invoke('START_UPDATE_DOWNLOAD', { force: force === true }),
     restart: () => ipcRenderer.invoke('RESTART_AND_INSTALL_UPDATE'),
+    setChannel: (channel) => ipcRenderer.invoke('updater:set-channel', channel),
+    skipVersion: (version) => ipcRenderer.invoke('updater:skip-version', version),
+    remindLater: () => ipcRenderer.invoke('updater:remind-later'),
+    setPauseOnMetered: (enabled) => ipcRenderer.invoke('updater:set-pause-on-metered', enabled),
+    getReleaseHistory: () => ipcRenderer.invoke('updater:get-history'),
     /** Update events, as `{ channel, payload }`. The channel says what happened; the payload carries its details. */
     onEvent: (callback) => {
-      const channels = ['UPDATE_CHECKING', 'UPDATE_AVAILABLE', 'UPDATE_NOT_AVAILABLE', 'UPDATE_PROGRESS', 'UPDATE_DOWNLOADED', 'UPDATE_ERROR'];
+      const channels = [
+        'UPDATE_CHECKING',
+        'UPDATE_AVAILABLE',
+        'UPDATE_NOT_AVAILABLE',
+        'UPDATE_PROGRESS',
+        'UPDATE_PAUSED',
+        'UPDATE_DOWNLOADED',
+        'UPDATE_ERROR',
+      ];
       const handlers = channels.map((channel) => {
         const handler = (_event, payload) => callback({ channel, payload });
         ipcRenderer.on(channel, handler);

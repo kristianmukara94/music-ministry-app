@@ -20,8 +20,10 @@ import { sanitizeProjectorSettings } from '../shared/projector-settings.js';
 import { sanitizeWelcomeSettings } from '../shared/welcome-settings.js';
 import { sanitizeLowerThirdStyle } from '../shared/lower-third-style.js';
 import { createLowerThirdServer, LOWER_THIRD_PORT, lanAddress } from './lower-third-server.js';
-// Default import, then destructure: electron-updater defines autoUpdater as a getter, which ESM named imports cannot see.
-import electronUpdater from 'electron-updater';
+import { setupUpdater } from './updater.js';
+
+// Windows needs this to show notifications under the app's name. It must match build.appId in package.json.
+app.setAppUserModelId('com.apccmma.churchapp');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
@@ -458,72 +460,6 @@ ipcMain.handle('launch:open', (_event, target) => {
   return /^https?:\/\//i.test(target) ? shell.openExternal(target) : shell.openPath(target);
 });
 
-// Online updates, from the GitHub Releases named in package.json (build.publish). Nothing downloads
-// until the operator asks, and a downloaded update installs when the app next quits.
-const { autoUpdater } = electronUpdater;
-autoUpdater.autoDownload = false;
-autoUpdater.autoInstallOnAppQuit = true;
-
-// The last update event and check time. The Updates page asks for them when it opens, so a page
-// reopened mid-download still shows the download.
-let lastUpdateEvent = null;
-let lastUpdateCheck = null;
-
-/** Sends an update event to every window and remembers it for the Updates page. */
-function publishUpdate(channel, payload) {
-  lastUpdateEvent = { channel, payload };
-  if (channel === 'UPDATE_AVAILABLE' || channel === 'UPDATE_NOT_AVAILABLE') lastUpdateCheck = Date.now();
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) win.webContents.send(channel, payload);
-  }
-}
-
-/** Release notes arrive as plain text, one entry per version, or HTML. The page shows a short plain-text summary. */
-function summarizeNotes(notes) {
-  const text = Array.isArray(notes) ? notes.map((entry) => entry.note ?? '').join(' ') : (notes ?? '');
-  const plain = String(text).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  return plain.length > 600 ? `${plain.slice(0, 597)}...` : plain;
-}
-
-function updateInfo(info) {
-  return { version: info.version, releaseDate: info.releaseDate ?? null, notes: summarizeNotes(info.releaseNotes) };
-}
-
-autoUpdater.on('checking-for-update', () => publishUpdate('UPDATE_CHECKING'));
-autoUpdater.on('update-available', (info) => publishUpdate('UPDATE_AVAILABLE', updateInfo(info)));
-autoUpdater.on('update-not-available', (info) => publishUpdate('UPDATE_NOT_AVAILABLE', { version: info.version }));
-autoUpdater.on('download-progress', (progress) =>
-  publishUpdate('UPDATE_PROGRESS', {
-    percent: progress.percent,
-    transferred: progress.transferred,
-    total: progress.total,
-    bytesPerSecond: progress.bytesPerSecond,
-  }),
-);
-autoUpdater.on('update-downloaded', (info) => publishUpdate('UPDATE_DOWNLOADED', updateInfo(info)));
-autoUpdater.on('error', (err) => publishUpdate('UPDATE_ERROR', { message: err?.message ?? String(err) }));
-
-// A development run has no installed release to compare against, so a check says so instead of waiting forever.
-ipcMain.handle('CHECK_FOR_UPDATES', async () => {
-  if (!app.isPackaged) {
-    publishUpdate('UPDATE_ERROR', { message: 'Updates can only be checked in the installed app.' });
-    return;
-  }
-  try {
-    await autoUpdater.checkForUpdates();
-  } catch (err) {
-    publishUpdate('UPDATE_ERROR', { message: err.message });
-  }
-});
-ipcMain.handle('START_UPDATE_DOWNLOAD', async () => {
-  try {
-    await autoUpdater.downloadUpdate();
-  } catch (err) {
-    publishUpdate('UPDATE_ERROR', { message: err.message });
-  }
-});
-ipcMain.handle('RESTART_AND_INSTALL_UPDATE', () => autoUpdater.quitAndInstall());
-ipcMain.handle('UPDATES_GET_STATE', () => ({ last: lastUpdateEvent, lastCheckedAt: lastUpdateCheck }));
 
 app.whenReady().then(() => {
   // No default menu: it would steal F11 (fullscreen) and Ctrl+R from our hotkeys.
@@ -566,6 +502,7 @@ app.whenReady().then(() => {
   });
   // Restore before any window loads, so the first render already shows the resumed queue.
   restoreQueue(planService);
+  setupUpdater({ userData: app.getPath('userData') });
   createOperator();
 });
 
