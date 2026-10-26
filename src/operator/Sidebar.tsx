@@ -6,6 +6,8 @@ import {
 import { useLive } from '../live/store';
 import { LANGS, useT, type StringKey } from '../i18n/strings';
 import { exportSettings, importSettings, setUi, useUi, type ViewKey } from '../state/ui';
+import { formatClock } from '../state/region';
+import { useRegion } from '../state/useRegion';
 import { toggleFullscreen } from './actions';
 import { DatabaseStatus } from '../system/DatabaseStatus';
 import { LOGO_SRC } from '../brand/logo';
@@ -85,6 +87,7 @@ export function Sidebar() {
   const outputs = useLive((s) => s.state.outputs);
   const lowerThirdLive = useLive((s) => s.state.lowerThird.live);
   const now = useNow();
+  const region = useRegion();
   const [ioOpen, setIoOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -206,7 +209,7 @@ export function Sidebar() {
             <div className="flex items-center justify-between px-3 pt-3">
               <span className="text-xs font-extrabold tracking-widest text-amber-400/80 uppercase">{t('side.outputs')}</span>
               <span className="font-mono text-xs font-semibold text-stone-400 tabular-nums">
-                {now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                {formatClock(now, region)}
               </span>
             </div>
           ) : null}

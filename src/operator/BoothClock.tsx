@@ -1,18 +1,22 @@
 import { useUi } from '../state/ui';
+import { formatClock, formatDay, formatWeekday } from '../state/region';
+import { useRegion } from '../state/useRegion';
 import { DATE_LOCALES, useT } from '../i18n/strings';
 import { Panel } from './Panel';
 import { useNow } from './useNow';
 
 /**
- * The booth clock: one 12-hour readout with seconds, and the date beneath it. The time is shown once, so the
+ * The booth clock: one readout with seconds, and the date beneath it. The time is shown once, so the
  * card never repeats itself. Digits are tabular, so the width does not shift as the seconds change.
+ * The zone, clock style and date format come from the Region setting.
  */
 export function BoothClock() {
   const t = useT();
   const lang = useUi((s) => s.lang);
+  const region = useRegion();
   const now = useNow();
-  const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
-  const date = now.toLocaleDateString(DATE_LOCALES[lang], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const time = formatClock(now, region, { seconds: true });
+  const date = `${formatWeekday(now, region, DATE_LOCALES[lang])}, ${formatDay(now, region)}`;
 
   return (
     <Panel eyebrow={t('clock.eyebrow')} title={t('clock.title')}>
