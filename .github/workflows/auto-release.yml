@@ -37,12 +37,32 @@ jobs:
         run: npm ci
 
       - name: Increment Patch Version
+        shell: bash
         run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0)
+          LATEST=${LATEST_TAG#v}
+          CURRENT=$(node -p "require('./package.json').version")
+
+          # Skip the bump when package.json is already ahead of the latest tag.
+          HIGHEST=$(printf '%s\n%s\n' "$LATEST" "$CURRENT" | sort -V | tail -n 1)
+          if [ "$HIGHEST" = "$CURRENT" ] && [ "$CURRENT" != "$LATEST" ]; then
+            echo "package.json is $CURRENT, newer than $LATEST_TAG. Skipping the bump."
+            exit 0
+          fi
+
+          # Patch number of the latest tag, plus one.
+          IFS=. read -r MAJOR MINOR PATCH <<< "$LATEST"
+          NEW="$MAJOR.$MINOR.$((PATCH + 1))"
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git pull origin main --rebase
-          npm version patch -m "chore: release v%s [skip ci]"
+          npm version "$NEW" --no-git-tag-version
+          git add package.json package-lock.json
+          git commit -m "chore: release v$NEW [skip ci]"
+          git tag "v$NEW"
           git push origin main
+          git push origin "v$NEW"
 
       - name: Build & Publish Release
         env:
