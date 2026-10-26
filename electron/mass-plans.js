@@ -2,7 +2,7 @@ import { ipcMain } from 'electron';
 import { parseSourceId } from '../shared/bible-ref.js';
 import { GOSPEL_ACCLAMATION } from './lectionary.js';
 
-export const PLAN_BLOCKS = ['introductory', 'word', 'eucharist', 'concluding'];
+export const PLAN_BLOCKS = ['introductory', 'word', 'eucharist', 'communion', 'concluding'];
 export const PLAN_MODULES = ['lyrics', 'lectionary', 'announcements', 'media', 'mass_order', 'bible', 'custom', 'notes'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_NAME = 120;
@@ -108,6 +108,29 @@ export const PLAN_NOTES_MIGRATIONS = [
   `,
 ];
 
+/**
+ * Adds the fifth block, the Communion Rite (IV), between the Eucharist and the Concluding Rites. The table is copied as in
+ * the earlier rebuilds, so existing rows keep their ids and order, and old plans keep their blocks.
+ */
+export const PLAN_COMMUNION_MIGRATIONS = [
+  `
+  CREATE TABLE mass_plan_items_new (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id           INTEGER NOT NULL REFERENCES mass_plans(id) ON DELETE CASCADE,
+    liturgical_block  TEXT NOT NULL CHECK (liturgical_block IN ('introductory', 'word', 'eucharist', 'communion', 'concluding')),
+    source_module     TEXT NOT NULL CHECK (source_module IN ('lyrics', 'lectionary', 'announcements', 'media', 'mass_order', 'bible', 'custom', 'notes')),
+    source_id         TEXT NOT NULL,
+    label             TEXT NOT NULL,
+    display_order     INTEGER NOT NULL
+  );
+  INSERT INTO mass_plan_items_new (id, plan_id, liturgical_block, source_module, source_id, label, display_order)
+    SELECT id, plan_id, liturgical_block, source_module, source_id, label, display_order FROM mass_plan_items;
+  DROP TABLE mass_plan_items;
+  ALTER TABLE mass_plan_items_new RENAME TO mass_plan_items;
+  CREATE INDEX idx_mass_plan_items_order ON mass_plan_items (plan_id, liturgical_block, display_order);
+  `,
+];
+
 /** Plan data access. Pure: takes a database handle. */
 export function createMassPlanService(db) {
   const q = {
@@ -121,7 +144,7 @@ export function createMassPlanService(db) {
       SELECT liturgical_block AS block, source_module AS module, source_id AS sourceId, label
       FROM mass_plan_items WHERE plan_id = ?
       ORDER BY CASE liturgical_block
-        WHEN 'introductory' THEN 0 WHEN 'word' THEN 1 WHEN 'eucharist' THEN 2 ELSE 3 END,
+        WHEN 'introductory' THEN 0 WHEN 'word' THEN 1 WHEN 'eucharist' THEN 2 WHEN 'communion' THEN 3 ELSE 4 END,
         display_order`),
     clearItems: db.prepare('DELETE FROM mass_plan_items WHERE plan_id = ?'),
     insertItem: db.prepare(

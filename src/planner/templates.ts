@@ -1,5 +1,6 @@
 import type { PlannerKey } from '../../shared/planner-i18n.js';
-import type { LiturgicalBlock, PlanItem } from './types';
+import { MASS_FLOW, stepSourceId } from '../../shared/mass-flow.js';
+import type { PlanItem } from './types';
 
 export type Season = 'blank' | 'advent' | 'lent' | 'ordinary';
 
@@ -14,34 +15,20 @@ export const SEASON_KEY: Record<Season, PlannerKey> = {
 };
 
 /**
- * The run-sheet skeleton for a Mass, as operator notes. Liturgical names stay in English in every
- * language, the way parish worship aids print them. Notes are never shown on the projector.
+ * A new Mass plan starts with the 31 steps of the Ordinary, as placeholders. Each placeholder is filled in by the operator
+ * (a hymn, a Bible passage, a Mass Order text, or typed text). Liturgical names stay in English in every language.
+ * Blank plans start empty. Advent and Lent leave out the Gloria step and note that it is omitted.
  */
-const SKELETON: [LiturgicalBlock, string][] = [
-  ['introductory', 'Opening Hymn'],
-  ['introductory', 'Penitential Act'],
-  ['word', 'First Reading'],
-  ['word', 'Responsorial Psalm'],
-  ['word', 'Gospel Acclamation'],
-  ['word', 'Gospel'],
-  ['word', 'Homily'],
-  ['word', 'Creed'],
-  ['eucharist', 'Offertory'],
-  ['eucharist', 'Sanctus'],
-  ['eucharist', 'Communion'],
-  ['concluding', 'Announcements'],
-  ['concluding', 'Recessional'],
-];
-
-/** Blank plans start empty; the other seasons start from the skeleton, with a season note first. */
 export function seasonItems(season: Season, note: (key: PlannerKey) => string): PlanItem[] {
   if (season === 'blank') return [];
   const items: PlanItem[] = [];
-  if (season === 'advent' || season === 'lent') {
+  const omitsGloria = season === 'advent' || season === 'lent';
+  if (omitsGloria) {
     items.push({ block: 'introductory', module: 'custom', sourceId: note('seasonGloriaOmitted'), label: note('seasonGloriaOmitted') });
   }
-  for (const [block, label] of SKELETON) {
-    items.push({ block, module: 'custom', sourceId: label, label });
+  for (const step of MASS_FLOW) {
+    if (omitsGloria && step.id === 'gloria') continue;
+    items.push({ block: step.block, module: 'custom', sourceId: stepSourceId(step), label: step.name });
   }
   return items;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, ListMusic, Play, Search, Send, Trash2 } from 'lucide-react';
 import { bridge } from '../live/bridge';
 import { dispatch } from '../live/store';
@@ -7,12 +7,14 @@ import { MASS_ORDER, massPartName } from '../liturgy/massOrder';
 import { sundayCycle } from '../liturgy/lectionary';
 import { formatRuns, formatSourceId, parsePassageInput, stripHits } from '../../shared/bible-ref.js';
 import type { Translation } from '../bible/types';
+import type { SongCategory } from '../lyrics/types';
 import { GOSPEL_ACCLAMATION } from '../lectionary/types';
 import { blockRows, moveInto, queueFromPlan, type DragSource } from './logic';
 import { syncQueueIfLoaded } from './plan-api';
 import { openQueueItem } from './routing';
 import { usePlannerT, type PlannerT } from './strings';
 import { SEASONS, SEASON_KEY, seasonItems, type Season } from './templates';
+import { songCategoryOf, stepFor, type MassStep } from '../../shared/mass-flow.js';
 import { BLOCKS, type LibraryItem, type LiturgicalBlock, type PlanItem, type PlanSummary, type SourceModule } from './types';
 
 const api = bridge.plans;
@@ -27,6 +29,9 @@ const TABS: { id: SourceModule; key: string }[] = [
   { id: 'mass_order', key: 'tab_mass_order' },
   { id: 'custom', key: 'tab_custom' },
 ];
+
+/** The label for a placeholder step's kind, shown in place of the module on its row. */
+const KIND_KEY: Record<MassStep['kind'], string> = { song: 'kindSong', reading: 'kindReading', note: 'kindNote' };
 
 const MODULE_KEY: Record<SourceModule, string> = {
   lyrics: 'module_lyrics',
@@ -58,6 +63,7 @@ export async function loadLibrary(
   lang: 'en' | 'tl' | 'ceb',
   t: PlannerT,
   translationId: string,
+  songCategory?: string,
 ): Promise<LibraryItem[]> {
   const q = query.trim().toLowerCase();
   const match = (text: string) => !q || text.toLowerCase().includes(q);
@@ -88,7 +94,7 @@ export async function loadLibrary(
       }));
     }
     case 'lyrics': {
-      const hymns = await bridge.lyrics.listHymns({ search: query });
+      const hymns = await bridge.lyrics.listHymns({ search: query, songCategory });
       return hymns.map((h): LibraryItem => ({
         module: 'lyrics',
         sourceId: String(h.id),
@@ -168,6 +174,12 @@ export function MassPlanner() {
   const [noteBlock, setNoteBlock] = useState<LiturgicalBlock>('introductory');
 
   const [drop, setDrop] = useState<{ block: LiturgicalBlock; slot: number } | null>(null);
+  // The step row being filled from the library or by typed text, and the text typed for it.
+  const [choosing, setChoosing] = useState<number | null>(null);
+  const [typedText, setTypedText] = useState('');
+  // The song category the song list is filtered by while a song step is being filled. Empty means all songs.
+  const [songFilter, setSongFilter] = useState('');
+  const [songCategories, setSongCategories] = useState<SongCategory[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const dragRef = useRef<DragSource | null>(null);
@@ -198,15 +210,16 @@ export function MassPlanner() {
 
   useEffect(() => {
     bridge.bible.getTranslations().then(setTranslations).catch(() => undefined);
+    bridge.lyrics.listSongCategories().then(setSongCategories).catch(() => undefined);
   }, []);
 
   // The library search is debounced so typing does not send a request per keystroke.
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      loadLibrary(tab, query, readingDate, lang, t, bibleTranslation).then(setLibrary).catch(fail);
+      loadLibrary(tab, query, readingDate, lang, t, bibleTranslation, songFilter || undefined).then(setLibrary).catch(fail);
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [tab, query, readingDate, lang, bibleTranslation]);
+  }, [tab, query, readingDate, lang, bibleTranslation, songFilter]);
 
   /** Saves the plan's items. On failure the stored plan is reloaded, so the screen never disagrees with the database. */
   const persist = async (next: PlanItem[]) => {
@@ -225,6 +238,28 @@ export function MassPlanner() {
       setItems(stored.items);
       syncQueueIfLoaded(planId, stored.items);
     }
+  };
+
+  /** Puts a new source in place of a step's placeholder, and saves the plan through the same path as a drop. */
+  const replaceAt = (index: number, next: PlanItem) => {
+    setChoosing(null);
+    setTypedText('');
+    void persist(items.map((item, i) => (i === index ? next : item)));
+  };
+
+  /** Opens the choice for a step: songs come from the song list, readings from the Bible list. */
+  const chooseStep = (index: number, step: MassStep) => {
+    setChoosing(index);
+    setTypedText('');
+    setTab(step.kind === 'reading' ? 'bible' : 'lyrics');
+    // A song step starts on its own song category. The operator can switch to all songs.
+    setSongFilter(songCategoryOf(step) ?? '');
+  };
+
+  /** A library row picked for the step being filled. */
+  const pickFromLibrary = (item: LibraryItem) => {
+    if (choosing == null) return;
+    replaceAt(choosing, { block: items[choosing].block, module: item.module, sourceId: item.sourceId, label: item.label });
   };
 
   const dropAt = (block: LiturgicalBlock, slot: number) => {
@@ -416,6 +451,21 @@ export function MassPlanner() {
             </form>
           )}
 
+          {choosing != null && tab === 'lyrics' && (
+            <label className="flex items-center gap-2 border-t border-line px-3 py-2">
+              <span className="eyebrow shrink-0">{t('songFilterLabel')}</span>
+              <select
+                value={songFilter}
+                onChange={(e) => setSongFilter(e.target.value)}
+                className="h-8 min-w-0 flex-1 rounded-md border border-line-strong bg-canvas px-2 text-sm outline-none focus:border-accent"
+              >
+                <option value="">{t('songFilterAll')}</option>
+                {songCategories.map((c) => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
           {tab !== 'custom' && <ul className="min-h-0 flex-1 overflow-y-auto p-2">
             {library.length === 0 && <li className="p-4 text-sm text-muted">{t('nothingHere')}</li>}
             {library.map((item) => (
@@ -429,6 +479,7 @@ export function MassPlanner() {
                   dragRef.current = null;
                   setDrop(null);
                 }}
+                onClick={() => pickFromLibrary(item)}
                 className="flex cursor-grab items-center gap-3 rounded-md px-2 py-2 hover:bg-panel-2"
               >
                 <span className="shrink-0 rounded bg-canvas px-1.5 py-0.5 text-[10px] font-bold text-muted uppercase">{t(MODULE_KEY[item.module])}</span>
@@ -532,9 +583,10 @@ export function MassPlanner() {
                     {rows.map((row, slot) => {
                       const index = items.indexOf(row);
                       const marked = drop?.block === block.id && drop.slot === slot;
+                      const step = row.module === 'custom' ? stepFor(row.sourceId) : null;
                       return (
+                        <Fragment key={`${index}:${row.module}:${row.sourceId}`}>
                         <li
-                          key={`${index}:${row.module}:${row.sourceId}`}
                           draggable
                           onDragStart={() => {
                             dragRef.current = { kind: 'plan', index };
@@ -557,13 +609,19 @@ export function MassPlanner() {
                           }`}
                         >
                           {row.stale && <AlertTriangle size={15} className="shrink-0 text-danger" aria-label={t('stale')} />}
-                          <span className="shrink-0 rounded bg-canvas px-1.5 py-0.5 text-[10px] font-bold text-muted uppercase">{t(MODULE_KEY[row.module])}</span>
+                          <span className="shrink-0 rounded bg-canvas px-1.5 py-0.5 text-[10px] font-bold text-muted uppercase">{step ? t(KIND_KEY[step.kind]) : t(MODULE_KEY[row.module])}</span>
                           <span className="min-w-0 flex-1">
                             <span className={`block truncate text-sm font-semibold ${row.stale ? 'text-muted line-through' : ''}`}>{row.label}</span>
                             {row.stale && <span className="block text-[11px] text-danger">{t('stale')}</span>}
+                            {step && <span className="block text-[11px] text-muted">{t('pendingStep')}</span>}
                           </span>
                           {row.stale && (
                             <span className="shrink-0 rounded bg-crimson px-1.5 py-0.5 text-[10px] font-extrabold text-white uppercase">{t('staleBadge')}</span>
+                          )}
+                          {step && (
+                            <button type="button" onClick={() => chooseStep(index, step)} className="h-8 shrink-0 rounded-md border border-line-strong px-3 text-[11px] font-bold uppercase hover:bg-panel-2">
+                              {t('choose')}
+                            </button>
                           )}
                           <div className="flex shrink-0 items-center opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
                             <button
@@ -606,6 +664,45 @@ export function MassPlanner() {
                             </button>
                           </div>
                         </li>
+                        {step && choosing === index && (
+                          <li className="flex flex-col gap-2 rounded-md border border-line-strong bg-canvas p-3 pl-10">
+                            <p className="text-xs text-muted">{t(step.kind === 'reading' ? 'chooseReading' : 'chooseSong')}</p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <input
+                                value={typedText}
+                                onChange={(e) => setTypedText(e.target.value)}
+                                maxLength={300}
+                                placeholder={t('chooseText')}
+                                aria-label={t('chooseText')}
+                                className="h-9 min-w-0 flex-1 rounded-md border border-line-strong bg-panel px-3 text-sm outline-none focus:border-accent"
+                              />
+                              <button
+                                type="button"
+                                disabled={!typedText.trim()}
+                                onClick={() => replaceAt(index, { block: row.block, module: 'custom', sourceId: typedText.trim(), label: typedText.trim() })}
+                                className="h-9 rounded-md border border-line-strong px-3 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40"
+                              >
+                                {t('chooseTextAdd')}
+                              </button>
+                              {step.massOrderId && MASS_ORDER.some((p) => p.id === step.massOrderId) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const part = MASS_ORDER.find((p) => p.id === step.massOrderId);
+                                    if (part) replaceAt(index, { block: row.block, module: 'mass_order', sourceId: part.id, label: massPartName(part, lang) });
+                                  }}
+                                  className="h-9 rounded-md border border-line-strong px-3 text-xs font-bold uppercase hover:bg-panel-2"
+                                >
+                                  {t('chooseMassOrder')}
+                                </button>
+                              )}
+                              <button type="button" onClick={() => { setChoosing(null); setTypedText(''); }} className="h-9 rounded-md px-3 text-xs font-bold uppercase text-muted hover:text-fg">
+                                {t('chooseCancel')}
+                              </button>
+                            </div>
+                          </li>
+                        )}
+                        </Fragment>
                       );
                     })}
                   </ol>
