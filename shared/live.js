@@ -75,6 +75,9 @@ function reduce(s, a) {
 
     case 'output/set': {
       if (s.outputs[a.output] === a.on) return s;
+      // Switching the projector off ends a pause, since Resume is disabled while the projector is off. The next turn-on
+      // then shows the latest state, not the frame that was frozen.
+      if (a.output === 'projector' && !a.on && s.projector.paused) s = reduce(s, { type: 'projector/pause', paused: false });
       const outputs = { ...s.outputs, [a.output]: a.on };
       const ended = a.output === 'projector' && !a.on ? { ...endQueueSelection(s), ...endPwAir(s) } : {};
       return { ...s, ...ended, outputs };

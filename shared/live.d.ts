@@ -101,7 +101,7 @@ export interface PwLive {
 export interface QueueItem {
   id: string;
   label: string;
-  block: 'introductory' | 'word' | 'eucharist' | 'concluding';
+  block: 'introductory' | 'word' | 'eucharist' | 'communion' | 'concluding';
   module: 'lyrics' | 'lectionary' | 'announcements' | 'media' | 'mass_order' | 'bible' | 'custom' | 'notes';
   sourceId: string;
   /** The source was deleted after the plan was saved. Shown flagged; cannot be opened. */
