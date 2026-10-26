@@ -6,6 +6,8 @@ import { RosarySettings } from './RosarySettings';
 import { ProjectorSettingsPanel } from './ProjectorSettings';
 import { LowerThirdSettings } from './LowerThirdSettings';
 import { WelcomeScreenSettings } from './WelcomeScreenSettings';
+import { RemoteViewSettings } from './RemoteViewSettings';
+import { RegionSettings } from './RegionSettings';
 import { ThemeView } from './ThemeView';
 import { UpdatesPanel } from './UpdatesSettings';
 import { AboutLicensing } from './AboutLicensing';
@@ -21,7 +23,7 @@ const LANGUAGE_OPTIONS: { code: Language; label: string }[] = [
 ];
 
 type SectionKey =
-  | 'theme' | 'language'
+  | 'theme' | 'language' | 'region'
   | 'projector' | 'lower3rd' | 'cast' | 'welcome'
   | 'rosary' | 'lectionary' | 'lyrics'
   | 'remote'
@@ -40,6 +42,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
     items: [
       { key: 'theme', label: 'Theme' },
       { key: 'language', label: 'Language' },
+      { key: 'region', label: 'Region' },
     ],
   },
   {
@@ -61,7 +64,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
   },
   {
     title: 'Connections',
-    items: [{ key: 'remote', label: 'Remote view', soon: true }],
+    items: [{ key: 'remote', label: 'Remote view' }],
   },
   {
     title: 'System',
@@ -227,6 +230,9 @@ export function Settings() {
           </Card>
         );
 
+      case 'region':
+        return <RegionSettings />;
+
       case 'lower3rd':
         return <LowerThirdSettings />;
 
@@ -238,6 +244,9 @@ export function Settings() {
 
       case 'rosary':
         return <RosarySettings />;
+
+      case 'remote':
+        return <RemoteViewSettings />;
 
       case 'backup':
         return (
