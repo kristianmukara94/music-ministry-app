@@ -23,6 +23,7 @@ import { bridge } from '../live/bridge';
 import { useTheme } from '../theme/store';
 import { ServiceQueue } from '../planner/ServiceQueue';
 import { stepQueue } from '../planner/routing';
+import { watchProjectorPromptChoice } from '../live/prompt-choice';
 import { stepLive } from '../praise-worship/live';
 import { CommandPalette } from './CommandPalette';
 import { ProjectorPrompt } from './ProjectorPrompt';
@@ -209,6 +210,8 @@ function QueueDrawer() {
 }
 
 export function OperatorApp() {
+  // Keeps the projector-prompt choice in step with the projector and the loaded queue or session.
+  useEffect(() => watchProjectorPromptChoice(), []);
   const view = useUi((s) => s.view);
   const previewOpen = useUi((s) => s.previewOpen);
   const lang = useUi((s) => s.lang);

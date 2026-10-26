@@ -103,6 +103,11 @@ export async function playQueueAt(index: number): Promise<void> {
   const item = queue[index];
   if (!item) return;
   if (!outputs.projector) {
+    // The operator chose to skip for this session: go live in the app only, with no prompt and no projector window.
+    if (useUi.getState().projectorPromptChoice === 'skip') {
+      await takeQueueItem(item, index);
+      return;
+    }
     setUi({
       projectorPrompt: {
         label: item.label,
@@ -111,6 +116,11 @@ export async function playQueueAt(index: number): Promise<void> {
           turnOnProjectorAndGo(() => {
             void takeQueueItem(item, index).catch((err) => window.alert(err instanceof Error ? err.message : String(err)));
           });
+        },
+        // Live without the projector: no window opens and the startup helper is not used. The preview shows the item.
+        skip: () => {
+          setUi({ projectorPrompt: null, projectorPromptChoice: 'skip' });
+          void takeQueueItem(item, index).catch((err) => window.alert(err instanceof Error ? err.message : String(err)));
         },
       },
     });

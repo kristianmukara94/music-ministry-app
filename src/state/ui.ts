@@ -58,6 +58,8 @@ interface UiState {
   pendingFocus: PendingFocus | null;
   /** Shown when a queue item is played while the projector is off. Not persisted. */
   projectorPrompt: ProjectorPrompt | null;
+  /** The choice made for the projector prompt in this session. Reset to 'ask' when the projector turns on, or a new queue or session loads. */
+  projectorPromptChoice: ProjectorPromptChoice;
   /** The Go Live hub's date and the entry chosen for it. Transient: a restart returns the hub to today. */
   goLiveDate: string;
   goLiveChoice: GoLiveChoice | null;
@@ -81,11 +83,22 @@ const todayIso = () => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
+/**
+ * What the operator chose when a live launch found the projector off. 'ask' shows the prompt, 'skip' goes live in the app
+ * only, and 'projector' asks again. Held in memory for the session: it is not persisted.
+ */
+export type ProjectorPromptChoice = 'ask' | 'skip' | 'projector';
+
 export interface ProjectorPrompt {
   /** The queue item that was played. */
   label: string;
   /** Turns the projector on, then puts the item on the screen. */
   turnOnAndGo: () => void;
+  /**
+   * Puts the item live without opening the projector: the in-app preview shows it, and no projector window opens.
+   * Only offered where the item can go live that way (a Mass Queue item).
+   */
+  skip?: () => void;
 }
 
 export const useUi = create<UiState>()(
@@ -102,6 +115,7 @@ export const useUi = create<UiState>()(
       launchpad: [],
       pendingFocus: null,
       projectorPrompt: null,
+      projectorPromptChoice: 'ask',
       slideStyleOpen: false,
       goLiveDate: todayIso(),
       goLiveChoice: null,

@@ -92,12 +92,22 @@ export function showPosition(session: PwSession, deck: LiveStep[][], pos: PwPosi
     }
   };
   if (!live.outputs.projector) {
+    // The operator chose to skip for this session: go live in the app only, with no prompt and no projector window.
+    if (useUi.getState().projectorPromptChoice === 'skip') {
+      go();
+      return;
+    }
     setUi({
       projectorPrompt: {
         label: segment.name,
         turnOnAndGo: () => {
           setUi({ projectorPrompt: null });
           turnOnProjectorAndGo(go);
+        },
+        // Live without the projector: the same step as going live with it on, and no window opens.
+        skip: () => {
+          setUi({ projectorPrompt: null, projectorPromptChoice: 'skip' });
+          go();
         },
       },
     });

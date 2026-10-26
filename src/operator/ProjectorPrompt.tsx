@@ -3,8 +3,8 @@ import { MonitorOff, Presentation, X } from 'lucide-react';
 import { setUi, useUi } from '../state/ui';
 
 /**
- * Shown when a Mass Queue item is played while the projector is off. Nothing goes live until the operator either turns
- * the projector on and goes live, or dismisses the prompt. Escape dismisses it too.
+ * Shown when a live launch (a Mass Queue item or a Praise & Worship segment) finds the projector off. The operator can turn
+ * the projector on and go live, skip to test in the app only, or cancel. Escape cancels too.
  */
 export function ProjectorPrompt() {
   const prompt = useUi((s) => s.projectorPrompt);
@@ -50,29 +50,52 @@ export function ProjectorPrompt() {
           </button>
         </header>
 
-        <p id="projector-prompt-message" className="text-sm text-stone-300">
-          Please turn on the projector before launching queue items to the display.
-        </p>
-        <p className="truncate text-xs font-semibold text-stone-500" title={prompt.label}>
-          {prompt.label}
-        </p>
+        <div className="flex flex-col gap-1.5">
+          <p id="projector-prompt-message" className="text-sm text-stone-300">
+            Please turn on the projector before launching queue items to the display.
+          </p>
+          <p className="truncate text-xs font-semibold text-stone-500" title={prompt.label}>
+            {prompt.label}
+          </p>
+        </div>
 
-        <footer className="flex flex-wrap justify-end gap-2">
-          <button
-            type="button"
-            onClick={dismiss}
-            className="flex h-10 items-center rounded-lg border border-stone-700 bg-stone-900 px-4 text-xs font-bold tracking-wider text-stone-200 uppercase hover:border-stone-500"
-          >
-            Cancel
-          </button>
+        <div className="flex flex-col gap-4">
+          {/* 1. The main action. */}
           <button
             type="button"
             onClick={() => prompt.turnOnAndGo()}
-            className="flex h-10 items-center gap-2 rounded-lg bg-amber-500 px-4 text-xs font-bold tracking-wider text-stone-950 uppercase shadow-md shadow-amber-950/40 hover:bg-amber-400"
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 text-xs font-bold tracking-wider text-stone-950 uppercase shadow-md shadow-amber-950/40 hover:bg-amber-400"
           >
             <Presentation size={14} aria-hidden /> Turn On Projector &amp; Go Live
           </button>
-        </footer>
+
+          {/* 2. Test without the projector. Only offered where the item can go live in the app alone. */}
+          {prompt.skip && (
+            <div className="flex flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => prompt.skip?.()}
+                className="flex h-11 w-full items-center justify-center rounded-lg border border-stone-600 bg-stone-900 px-4 text-xs font-bold tracking-wider text-stone-100 uppercase hover:border-stone-400"
+              >
+                Skip, test without projector
+              </button>
+              <p className="text-center text-[11px] text-stone-500">
+                Goes live in the app only. Won&apos;t ask again until you turn the projector on.
+              </p>
+            </div>
+          )}
+
+          {/* 3. Cancel: a text button on its own line. It changes nothing. */}
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={dismiss}
+              className="h-9 px-3 text-xs font-bold tracking-wider text-stone-400 uppercase hover:text-stone-100"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -106,6 +106,7 @@ export function TopBar() {
   const { outputs, projector, lowerThird } = useLive((s) => s.state);
   const liveKind = projector.live.kind;
   const previewOpen = useUi((s) => s.previewOpen);
+  const promptChoice = useUi((s) => s.projectorPromptChoice);
 
   return (
     // pr-[144px] keeps the master switch clear of the Windows caption buttons (about 46px each).
@@ -114,6 +115,18 @@ export function TopBar() {
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5">
         {/* Cluster 1: emergency and state controls. */}
         <div role="group" aria-label={t('top.groupState')} className="flex items-center gap-1.5">
+          {promptChoice === 'skip' && (
+            <span role="status" className="flex h-8 items-center gap-2 rounded-full border border-stone-600 bg-stone-900/80 px-3 text-[11px] font-bold tracking-wider text-stone-300 uppercase">
+              Projector: skipped
+              <button
+                type="button"
+                onClick={() => setUi({ projectorPromptChoice: 'ask' })}
+                className="text-amber-300 underline underline-offset-2 hover:text-amber-200"
+              >
+                Ask again
+              </button>
+            </span>
+          )}
           <ControlButton icon={Moon} label={t('top.blackout')} tone={EMERGENCY} active={liveKind === 'blackout'} onClick={liveCommands.blackout} />
           <ControlButton
             icon={projector.paused ? PlayCircle : PauseCircle}
