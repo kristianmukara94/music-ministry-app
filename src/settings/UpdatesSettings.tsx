@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, Download, Pause, RefreshCw, RotateCw } from 'lucide-react';
 import { bridge } from '../live/bridge';
+import { formatDay, formatDayAndClock } from '../state/region';
+import { useRegion } from '../state/useRegion';
 import type { ReleaseSummary, UpdateChannel, UpdateEvent, UpdateSettings, UpdatesState } from './types';
 
 const api = bridge.updates;
@@ -18,8 +20,6 @@ const greenButton =
 
 const MB = 1024 * 1024;
 const megabytes = (bytes: number) => `${(bytes / MB).toFixed(1)} MB`;
-const formatTime = (epochMs: number) => new Date(epochMs).toLocaleString();
-const formatDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 const DEFAULT_SETTINGS: UpdateSettings = { channel: 'stable', skippedVersion: null, pauseOnMetered: false };
@@ -236,6 +236,7 @@ interface StatusProps {
 }
 
 function UpdateStatus({ event, lastCheckedAt, skippedVersion, onCheck, onDownload, onDownloadAnyway, onRemindLater, onSkip, onRestart }: StatusProps) {
+  const region = useRegion();
   if (!event) {
     return <p className={`text-sm ${MUTED}`}>Press Check for updates to look for a newer version on GitHub.</p>;
   }
@@ -258,7 +259,7 @@ function UpdateStatus({ event, lastCheckedAt, skippedVersion, onCheck, onDownloa
           <span className="flex items-center gap-2 text-sm font-bold text-emerald-400">
             <CheckCircle2 size={16} aria-hidden /> You are running the latest version
           </span>
-          {lastCheckedAt && <span className={`text-xs ${MUTED}`}>Last checked {formatTime(lastCheckedAt)}</span>}
+          {lastCheckedAt && <span className={`text-xs ${MUTED}`}>Last checked {formatDayAndClock(new Date(lastCheckedAt), region, { seconds: true })}</span>}
         </div>
       );
 
@@ -487,6 +488,7 @@ function ChangelogView({ markdown, fallback }: { markdown: string; fallback: str
 // ---- Release history --------------------------------------------------------------------------
 
 function ReleaseHistory({ history, onRetry }: { history: HistoryState; onRetry: () => void }) {
+  const region = useRegion();
   if (history.status === 'loading') {
     return <p className={`text-sm ${MUTED}`}>Loading the last five releases...</p>;
   }
@@ -518,7 +520,7 @@ function ReleaseHistory({ history, onRetry }: { history: HistoryState; onRetry: 
               {release.prerelease && (
                 <span className="rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-px text-[10px] font-bold text-amber-400 uppercase">Pre-release</span>
               )}
-              <span className={`ml-auto text-xs ${MUTED}`}>{formatDate(release.published_at)}</span>
+              <span className={`ml-auto text-xs ${MUTED}`}>{formatDay(new Date(release.published_at), region)}</span>
             </summary>
             <div className="mt-4">
               <ChangelogView markdown={release.body} fallback="This release has no notes." />
