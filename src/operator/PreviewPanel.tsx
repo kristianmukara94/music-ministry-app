@@ -140,6 +140,7 @@ function Grip({ corner, onDown, onMove, onUp }: {
  */
 export function PreviewPanel() {
   const projectorOn = useLive((s) => s.state.outputs.projector);
+  const paused = useLive((s) => s.state.projector.paused);
   // The lock pins the header open. It does not freeze the picture, which keeps following the output.
   const [headerPinned, setHeaderPinned] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -244,21 +245,23 @@ export function PreviewPanel() {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {/* The status: a breathing gold badge while the output is live, a muted one while it is off. */}
+          {/* The status: a breathing gold badge while the output is live, a steady one while it is paused, a muted one while it is off. */}
           <span
             className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${
-              projectorOn
+              projectorOn && !paused
                 ? 'live-breathe border-amber-500/50 bg-amber-500/20 text-amber-300 shadow-lg shadow-amber-950/50'
-                : 'border-stone-800 bg-stone-900/80 text-stone-500'
+                : projectorOn
+                  ? 'border-sky-500/50 bg-sky-500/15 text-sky-300'
+                  : 'border-stone-800 bg-stone-900/80 text-stone-500'
             }`}
           >
-            {projectorOn && (
+            {projectorOn && !paused && (
               <span className="relative mr-1.5 inline-flex size-2 items-center justify-center" aria-hidden>
                 <span className="absolute size-2 animate-ping rounded-full bg-amber-400" />
                 <span className="relative size-2 rounded-full bg-amber-400" />
               </span>
             )}
-            {projectorOn ? 'LIVE' : 'OFF'}
+            {projectorOn ? (paused ? 'Projector paused' : 'LIVE') : 'OFF'}
           </span>
 
           <button

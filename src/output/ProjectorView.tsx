@@ -464,10 +464,13 @@ export function ProjectorView({ mirror = false, embedded = false }: { mirror?: b
   const noteOverlay = useOutput((s) => s.noteOverlay);
   // Transitions off means changes switch at once, so the fade and the entrance both take no time.
   const transitionMs = settings.transitionsOn ? settings.fadeMs : 0;
-  const { frame, fading, serial } = useFadedFrame(projector.live, transitionMs);
+  // While the projector is paused, the operator's mirror shows the staged frame, so it follows every change. The projector
+  // itself keeps the frame it was showing until it resumes.
+  const picture = mirror && projector.paused ? projector.staged : projector.live;
+  const { frame, fading, serial } = useFadedFrame(picture, transitionMs);
 
   // Blackout hides the background as well as the foreground, and keeps it queued for when it lifts.
-  const blackedOut = projector.live.kind === 'blackout';
+  const blackedOut = picture.kind === 'blackout';
   // The projector output shows nothing while its master switch is OFF, whatever the live buffer holds.
   // The operator mirror is a separate monitor with its own toggle, so it is not gated by this switch.
   const outputShowing = mirror || projectorOn;
