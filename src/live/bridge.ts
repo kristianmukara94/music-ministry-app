@@ -68,6 +68,33 @@ export interface LowerThirdApi {
   info(): Promise<{ port: number; local: string; lan: string | null }>;
 }
 
+/** Remote view: the phone page on the local network. The PIN is never sent back, only whether one is set. */
+export interface RemoteViewStatus {
+  enabled: boolean;
+  /** The port the operator chose. The page may run on a later port if this one is taken; `url` shows the port in use. */
+  port: number;
+  pinSet: boolean;
+  running: boolean;
+  /** The address phones open, for example http://192.168.1.20:3003. Null when the page is not running. */
+  url: string | null;
+  /** Devices with the page open, counted once per address. */
+  devices: number;
+  /** Why the page is not running when it is turned on. Null otherwise. */
+  error: string | null;
+}
+
+export interface RemoteViewPatch {
+  enabled?: boolean;
+  port?: number;
+  /** Null or an empty string removes the PIN. */
+  pin?: string | null;
+}
+
+export interface RemoteViewApi {
+  get(): Promise<RemoteViewStatus>;
+  save(patch: RemoteViewPatch): Promise<RemoteViewStatus>;
+}
+
 interface ElectronApi {
   /** Native path of a file dropped on the window. The browser never exposes it, so drops only work in the desktop app. */
   files: { pathFor(file: File): string };
@@ -88,6 +115,7 @@ interface ElectronApi {
   projector: ProjectorApi;
   welcome: WelcomeApi;
   lowerThird: LowerThirdApi;
+  remoteView: RemoteViewApi;
   whiteboard: WhiteboardApi;
   config: ConfigApi;
   updates: UpdatesApi;
@@ -232,6 +260,11 @@ const offlineLowerThird: LowerThirdApi = {
   info: async () => ({ port: 3002, local: 'http://127.0.0.1:3002/lower-third', lan: null }),
 };
 
+const offlineRemoteView: RemoteViewApi = {
+  get: async () => ({ enabled: false, port: 3003, pinSet: false, running: false, url: null, devices: 0, error: 'Open the desktop app to share the live view.' }),
+  save: async () => offlineError(),
+};
+
 const offlineProjector: ProjectorApi = {
   save: async () => offlineError(),
 };
@@ -369,6 +402,7 @@ function createBrowserBridge(): LiveBridge {
     projector: offlineProjector,
     welcome: offlineWelcome,
     lowerThird: offlineLowerThird,
+    remoteView: offlineRemoteView,
     whiteboard: offlineWhiteboard,
     config: offlineConfig,
     updates: offlineUpdates,
