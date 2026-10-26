@@ -3,6 +3,8 @@ import { AlertTriangle, ArrowDown, ArrowUp, ListMusic, Play, Search, Send, Trash
 import { bridge } from '../live/bridge';
 import { dispatch } from '../live/store';
 import { setUi, useUi } from '../state/ui';
+import { formatIsoDay } from '../state/region';
+import { useRegion } from '../state/useRegion';
 import { MASS_ORDER, massPartName } from '../liturgy/massOrder';
 import { sundayCycle } from '../liturgy/lectionary';
 import { formatRuns, formatSourceId, parsePassageInput, stripHits } from '../../shared/bible-ref.js';
@@ -156,6 +158,7 @@ export async function loadLibrary(
 export function MassPlanner() {
   const t = usePlannerT();
   const lang = useUi((s) => s.lang);
+  const region = useRegion();
   const [tab, setTab] = useState<SourceModule>('lyrics');
   const [query, setQuery] = useState('');
   const [readingDate, setReadingDate] = useState(upcomingSunday);
@@ -505,7 +508,7 @@ export function MassPlanner() {
                 className="h-10 min-w-0 flex-1 rounded-md border border-line-strong bg-canvas px-2 text-sm text-fg outline-none focus:border-accent"
               >
                 {plans.map((p) => (
-                  <option key={p.id} value={p.id}>{p.liturgicalDate} · {p.name}</option>
+                  <option key={p.id} value={p.id}>{formatIsoDay(p.liturgicalDate, region)} · {p.name}</option>
                 ))}
               </select>
             ) : (

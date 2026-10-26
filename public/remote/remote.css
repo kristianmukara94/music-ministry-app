@@ -1,0 +1,195 @@
+/* The phone page for Remote view. Dark, high contrast, and sized for a phone held at arm's length. No outside fonts. */
+:root {
+  --bg: #000;
+  --fg: #fff;
+  --muted: #bdbdbd;
+  --gold: #ecc98a;
+  --line: #3a3a3a;
+  --danger: #ff8a80;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+
+body {
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+main {
+  min-height: 100dvh;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+}
+
+.panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* The PIN form */
+#pin {
+  justify-content: center;
+}
+
+#pin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 420px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+#pin-form label {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+#pin-form input {
+  height: 64px;
+  font-size: 2rem;
+  letter-spacing: 0.3em;
+  text-align: center;
+  color: var(--fg);
+  background: #111;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  padding: 0 12px;
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+#pin-form input:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+
+#pin-form button {
+  height: 60px;
+  font-size: 1.25rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #000;
+  background: var(--gold);
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+#pin-error {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--danger);
+  font-size: 1rem;
+}
+
+/* The live screen */
+#view header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.status {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#title {
+  margin: 0;
+  font-size: clamp(1.4rem, 5vw, 2.4rem);
+  font-weight: 800;
+  color: var(--gold);
+  overflow-wrap: anywhere;
+}
+
+.position {
+  margin: 4px 0 0;
+  font-size: 1rem;
+  color: var(--muted);
+}
+
+.lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35em;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.lines p {
+  margin: 0;
+  font-size: clamp(2rem, 8vw, 3.6rem);
+  line-height: 1.25;
+  font-weight: 700;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+#view footer {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.next-label {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.next {
+  margin: 2px 0 0;
+  font-size: clamp(1.1rem, 4.5vw, 1.6rem);
+  font-weight: 700;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+#view.stale .lines,
+#view.stale #title,
+#view.stale .next {
+  opacity: 0.35;
+}
+
+.connection {
+  margin: 16px 0 0;
+  padding: 12px;
+  text-align: center;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lines p {
+    transition: opacity 0.2s ease;
+  }
+}

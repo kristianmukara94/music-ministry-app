@@ -1,0 +1,262 @@
+import crypto from 'node:crypto';
+import http from 'node:http';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+/** How many ports are tried, starting at the chosen one, when it is taken. */
+const PORT_TRIES = 10;
+/** Wrong PIN entries allowed before the unlock pauses. A PIN has few digits, so this stops guessing. */
+const PIN_TRIES = 5;
+const PIN_PAUSE_MS = 60_000;
+const COOKIE = 'apccmma_remote';
+/** Keeps idle connections alive and drops the ones phones left without closing. */
+const HEARTBEAT_MS = 15_000;
+
+// Private network ranges only. A public address must never be served, so the page cannot leave the local network.
+const PRIVATE_IPV4 = [/^192\.168\./, /^10\./, /^172\.(1[6-9]|2\d|3[01])\./];
+// Adapters that are not the WiFi or wired network a phone can reach: virtual switches, VPNs, and containers.
+const VIRTUAL_ADAPTER = /virtual|vethernet|vmware|virtualbox|hyper-v|docker|wsl|loopback|bluetooth/i;
+
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  // Everything comes from this laptop. No outside scripts, styles, fonts, or connections.
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'",
+};
+
+/**
+ * The address phones on this network use. `entries` are the interfaces as Node lists them. Prefers a 192.168 address,
+ * then any other private one. Null when there is no private address, which means no WiFi or local network.
+ */
+export function pickLocalAddress(entries) {
+  const found = entries
+    .filter((e) => e.family === 'IPv4' && !e.internal && !VIRTUAL_ADAPTER.test(e.name ?? ''))
+    .map((e) => e.address)
+    .filter((ip) => PRIVATE_IPV4.some((range) => range.test(ip)));
+  return found.find((ip) => ip.startsWith('192.168.')) ?? found[0] ?? null;
+}
+
+export function localNetworkAddress() {
+  const entries = Object.entries(os.networkInterfaces()).flatMap(([name, list]) => (list ?? []).map((info) => ({ name, ...info })));
+  return pickLocalAddress(entries);
+}
+
+/** The phone page's folder inside the built app. Only this folder is served, so nothing else in the app is exposed. */
+const PAGE_FOLDER = 'remote';
+
+/**
+ * Serves the phone page for Remote view: a read-only live screen for the local network. The page is a static folder in
+ * the build. `/api/remote/stream` sends the live screen as the laptop changes it. When a PIN is set, the stream and
+ * the unlock are the only routes that matter, and the stream needs an unlocked session. Nothing here can change the app.
+ */
+export function createRemoteViewServer({ distDir }) {
+  let server = null;
+  let bound = null;
+  let starting = null;
+  let pin = null;
+  let latest = null;
+  let heartbeat = null;
+  const streams = new Set();
+  const sessions = new Set();
+  let misses = 0;
+  let pausedUntil = 0;
+
+  const pinRequired = () => pin !== null;
+
+  function sessionToken(req) {
+    const match = /(?:^|;\s*)apccmma_remote=([0-9a-f]{48})/.exec(req.headers.cookie ?? '');
+    return match ? match[1] : null;
+  }
+
+  const unlocked = (req) => !pinRequired() || sessions.has(sessionToken(req));
+
+  function pinMatches(given) {
+    const a = Buffer.from(given);
+    const b = Buffer.from(pin);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+
+  function sendJson(res, status, body, headers = {}) {
+    res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
+    res.end(JSON.stringify(body));
+  }
+
+  function unlock(req, res) {
+    if (req.method !== 'POST') return sendJson(res, 405, { ok: false }, { Allow: 'POST' });
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => {
+      body += chunk;
+      // A PIN is a few bytes. Anything bigger is dropped without reading the rest.
+      if (body.length > 1024) req.destroy();
+    });
+    req.on('end', () => {
+      let given;
+      try {
+        given = JSON.parse(body).pin;
+      } catch {
+        return sendJson(res, 400, { ok: false, error: 'The request was not understood.' });
+      }
+      if (!pinRequired()) return sendJson(res, 200, { ok: true });
+      if (Date.now() < pausedUntil) {
+        const seconds = Math.ceil((pausedUntil - Date.now()) / 1000);
+        return sendJson(res, 429, { ok: false, error: `Too many wrong PINs. Wait ${seconds} seconds and try again.` });
+      }
+      if (typeof given === 'string' && pinMatches(given)) {
+        misses = 0;
+        const token = crypto.randomBytes(24).toString('hex');
+        sessions.add(token);
+        return sendJson(res, 200, { ok: true }, { 'Set-Cookie': `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict` });
+      }
+      misses += 1;
+      if (misses >= PIN_TRIES) {
+        misses = 0;
+        pausedUntil = Date.now() + PIN_PAUSE_MS;
+      }
+      return sendJson(res, 401, { ok: false, error: 'That PIN is not right.' });
+    });
+  }
+
+  function stream(req, res) {
+    if (req.method !== 'GET') return sendJson(res, 405, { ok: false }, { Allow: 'GET' });
+    if (!unlocked(req)) return sendJson(res, 401, { ok: false, error: 'Enter the PIN first.' });
+    res.writeHead(200, {
+      ...SECURITY_HEADERS,
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-store',
+      Connection: 'keep-alive',
+    });
+    // The headers go out now, so the phone is connected at once even while the screen has nothing new to send.
+    res.flushHeaders();
+    const entry = { res, ip: (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '') };
+    streams.add(entry);
+    if (latest) res.write(`data: ${JSON.stringify(latest)}\n\n`);
+    req.on('close', () => streams.delete(entry));
+  }
+
+  function servePage(req, res, pathname) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { ok: false }, { Allow: 'GET, HEAD' });
+    if (!fs.existsSync(distDir)) {
+      res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }).end('The app has not been built. Run npm run build first.');
+      return;
+    }
+    const root = path.resolve(distDir, PAGE_FOLDER);
+    let relative;
+    if (pathname === '/' || pathname === '/remote' || pathname === '/remote/') {
+      relative = 'index.html';
+    } else if (pathname.startsWith(`/${PAGE_FOLDER}/`)) {
+      try {
+        relative = decodeURIComponent(pathname.slice(PAGE_FOLDER.length + 2));
+      } catch {
+        return res.writeHead(400).end();
+      }
+    } else {
+      return res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
+    }
+    const file = path.resolve(root, relative);
+    if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+      return res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
+    }
+    const type = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' }[path.extname(file)];
+    res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': type ?? 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    if (req.method === 'HEAD') res.end();
+    else fs.createReadStream(file).pipe(res);
+  }
+
+  function handle(req, res) {
+    let pathname;
+    try {
+      pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+    } catch {
+      res.writeHead(400).end();
+      return;
+    }
+    if (pathname === '/api/remote/status') {
+      if (req.method !== 'GET') return sendJson(res, 405, { ok: false }, { Allow: 'GET' });
+      return sendJson(res, 200, { pinRequired: pinRequired(), unlocked: unlocked(req) });
+    }
+    if (pathname === '/api/remote/unlock') return unlock(req, res);
+    if (pathname === '/api/remote/stream') return stream(req, res);
+    return servePage(req, res, pathname);
+  }
+
+  /** Binds to one port. Resolves with the port, or with the error code when it cannot. */
+  function listenOn(host, port) {
+    return new Promise((resolve) => {
+      const candidate = http.createServer(handle);
+      candidate.once('error', (err) => resolve({ ok: false, code: err.code, message: err.message }));
+      candidate.listen(port, host, () => {
+        candidate.removeAllListeners('error');
+        candidate.on('error', (err) => console.warn(`[remote view] ${err.message}`));
+        server = candidate;
+        resolve({ ok: true, port: candidate.address().port });
+      });
+    });
+  }
+
+  return {
+    running: () => bound !== null,
+    address: () => bound?.address ?? null,
+    port: () => bound?.port ?? null,
+
+    /** Devices with the page open, counted once per address. Two tabs on one phone count as one device. */
+    devices: () => new Set([...streams].map((s) => s.ip)).size,
+
+    /**
+     * Starts the page on `host` (the laptop's network address). Tries the chosen port and the next few when it is
+     * taken. Resolves with `{ ok, port }` or `{ ok: false, error }`. Starting again while it runs does nothing.
+     */
+    start({ host, port, pin: nextPin }) {
+      if (bound) return Promise.resolve({ ok: true, port: bound.port });
+      if (starting) return starting;
+      pin = nextPin ?? null;
+      starting = (async () => {
+        try {
+          for (let candidate = port; candidate < port + PORT_TRIES && candidate <= 65535; candidate += 1) {
+            const result = await listenOn(host, candidate);
+            if (result.ok) {
+              bound = { address: host, port: result.port };
+              heartbeat = setInterval(() => {
+                for (const s of streams) s.res.write(': ping\n\n');
+              }, HEARTBEAT_MS);
+              heartbeat.unref();
+              return { ok: true, port: result.port };
+            }
+            if (result.code !== 'EADDRINUSE') return { ok: false, error: `The Remote view page could not start: ${result.message}` };
+          }
+          return { ok: false, error: `Ports ${port} to ${port + PORT_TRIES - 1} are all in use. Close the program using one, or choose another port.` };
+        } finally {
+          starting = null;
+        }
+      })();
+      return starting;
+    },
+
+    /** Stops the page: phones lose the connection, the sessions end, and the port is free again. */
+    async stop() {
+      if (starting) await starting;
+      if (!server) return;
+      clearInterval(heartbeat);
+      heartbeat = null;
+      for (const s of streams) s.res.end();
+      streams.clear();
+      sessions.clear();
+      const closing = server;
+      server = null;
+      bound = null;
+      pin = null;
+      await new Promise((resolve) => {
+        closing.close(() => resolve());
+        closing.closeAllConnections?.();
+      });
+    },
+
+    /** Sends the live screen to every connected phone. The latest is sent to a phone that connects later. */
+    push(payload) {
+      latest = payload;
+      const data = `data: ${JSON.stringify(payload)}\n\n`;
+      for (const s of streams) s.res.write(data);
+    },
+  };
+}
