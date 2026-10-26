@@ -14,6 +14,8 @@ const REMIND_LATER_MS = 24 * 60 * 60 * 1000;
 // The launch check waits so it does not compete with the windows opening.
 const LAUNCH_CHECK_DELAY_MS = 15 * 1000;
 const METERED_CHECK_TIMEOUT_MS = 5 * 1000;
+// The most release-note text sent to the page. Longer notes end with an ellipsis.
+const NOTES_LIMIT = 4000;
 
 // Windows reports how a connection is billed. NetworkCostType 2 (Fixed) and 3 (Variable) are metered.
 // Electron has no API for this, so it is read through WinRT in PowerShell.
@@ -27,11 +29,29 @@ function updateInfo(info) {
   return { version: info.version, releaseDate: info.releaseDate ?? null, notes: summarizeNotes(info.releaseNotes) };
 }
 
-/** Release notes arrive as plain text, one entry per version, or HTML. The page shows a short plain-text summary. */
+/**
+ * Release notes arrive as plain text, one entry per version, or HTML. The page shows them as plain text with their line
+ * breaks kept: tags and link targets are removed, so nothing from the notes is rendered as markup.
+ */
 function summarizeNotes(notes) {
-  const text = Array.isArray(notes) ? notes.map((entry) => entry.note ?? '').join(' ') : (notes ?? '');
-  const plain = String(text).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  return plain.length > 600 ? `${plain.slice(0, 597)}...` : plain;
+  const text = Array.isArray(notes) ? notes.map((entry) => entry.note ?? '').join('\n\n') : (notes ?? '');
+  const plain = String(text)
+    .replace(/\r\n?/g, '\n')
+    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<br\s*\/?>|<\/(p|div|li|ul|ol|h[1-6])>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return plain.length > NOTES_LIMIT ? `${plain.slice(0, NOTES_LIMIT - 3).trimEnd()}...` : plain;
 }
 
 /** Resolves true only when Windows reports a metered connection. Any failure counts as unmetered, so a broken check never blocks an update. */

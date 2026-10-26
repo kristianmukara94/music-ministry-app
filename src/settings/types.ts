@@ -62,7 +62,7 @@ export interface ConfigApi {
 export interface UpdateInfo {
   version: string;
   releaseDate: string | null;
-  /** Plain-text summary of the release notes, shortened in the main process. */
+  /** Release notes as plain text with their line breaks kept. Shortened in the main process, and empty when the release has none. */
   notes: string;
 }
 

@@ -106,8 +106,6 @@ export function UpdatesPanel({ installedVersion }: Props) {
   const event = state.last;
   const working = event?.channel === 'UPDATE_CHECKING' || event?.channel === 'UPDATE_PROGRESS';
   const availableVersion = event?.channel === 'UPDATE_AVAILABLE' ? event.payload.version : null;
-  // The notes for a release come from its GitHub release when it is in the history, otherwise from the update event.
-  const releaseFor = (version: string) => history.releases.find((release) => release.tag_name === `v${version}` || release.tag_name === version) ?? null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -149,7 +147,6 @@ export function UpdatesPanel({ installedVersion }: Props) {
               event={event}
               lastCheckedAt={state.lastCheckedAt}
               skippedVersion={state.settings.skippedVersion}
-              notesFor={(version, fallback) => releaseFor(version)?.body || fallback}
               onCheck={check}
               onDownload={() => download(false)}
               onDownloadAnyway={() => download(true)}
@@ -230,7 +227,6 @@ interface StatusProps {
   event: UpdateEvent | null;
   lastCheckedAt: number | null;
   skippedVersion: string | null;
-  notesFor: (version: string, fallback: string) => string;
   onCheck: () => void;
   onDownload: () => void;
   onDownloadAnyway: () => void;
@@ -239,7 +235,7 @@ interface StatusProps {
   onRestart: () => void;
 }
 
-function UpdateStatus({ event, lastCheckedAt, skippedVersion, notesFor, onCheck, onDownload, onDownloadAnyway, onRemindLater, onSkip, onRestart }: StatusProps) {
+function UpdateStatus({ event, lastCheckedAt, skippedVersion, onCheck, onDownload, onDownloadAnyway, onRemindLater, onSkip, onRestart }: StatusProps) {
   if (!event) {
     return <p className={`text-sm ${MUTED}`}>Press Check for updates to look for a newer version on GitHub.</p>;
   }
@@ -277,7 +273,7 @@ function UpdateStatus({ event, lastCheckedAt, skippedVersion, notesFor, onCheck,
             </span>
             {skipped && <span className={`text-xs ${MUTED}`}>You skipped this version. Background checks stay quiet for it.</span>}
           </div>
-          <ChangelogView markdown={notesFor(version, notes)} fallback="No release notes were published for this version." />
+          {notes && <p className="max-h-64 overflow-y-auto text-sm break-words whitespace-pre-line text-[#d4d4d8]">{notes}</p>}
           <div className="flex flex-wrap gap-3">
             <button type="button" onClick={onDownload} className={amberButton}>
               <Download size={15} aria-hidden /> Download Now
