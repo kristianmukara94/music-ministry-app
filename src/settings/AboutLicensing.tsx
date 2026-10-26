@@ -3,6 +3,8 @@ import { ChevronDown, Pencil, ShieldCheck } from 'lucide-react';
 import { bridge } from '../live/bridge';
 import { LicenseText, RegistrationFields } from '../components/EulaModal';
 import { AUTHORIZED_SCOPE, BUILT_BY_LINE, LICENSED_BADGE, SOFTWARE_NAME } from '../legal/license';
+import { formatDay } from '../state/region';
+import { useRegion } from '../state/useRegion';
 import type { ConfigState, Registration } from './types';
 
 interface Props {
@@ -17,6 +19,7 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
 
 /** The About & Licensing card: the registered church, the licence status, the copyright, and the full EULA behind a toggle. */
 export function AboutLicensing({ version, config, onChanged }: Props) {
+  const region = useRegion();
   const [eulaOpen, setEulaOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Registration>({ church: '', location: '' });
@@ -91,7 +94,7 @@ export function AboutLicensing({ version, config, onChanged }: Props) {
         {config.registered_at && (
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <dt className={LABEL}>Registered on</dt>
-            <dd>{new Date(config.registered_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</dd>
+            <dd>{formatDay(new Date(config.registered_at), region)}</dd>
           </div>
         )}
       </dl>
