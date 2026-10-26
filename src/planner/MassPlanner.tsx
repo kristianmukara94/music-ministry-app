@@ -50,7 +50,8 @@ const upcomingSunday = () => {
 };
 
 /** Library rows for one tab, filtered by the search box. */
-async function loadLibrary(
+/** The library rows for one tab. Exported so the Go Live hub can search with the planner's own search. */
+export async function loadLibrary(
   tab: SourceModule,
   query: string,
   date: string,
@@ -180,7 +181,10 @@ export function MassPlanner() {
     }).catch(fail);
 
   useEffect(() => {
-    void reloadPlans(null);
+    // A plan the Go Live hub asked to open is taken once, here. Otherwise the first plan is shown, as before.
+    const requested = useUi.getState().pendingMassPlanId;
+    if (requested != null) setUi({ pendingMassPlanId: null });
+    void reloadPlans(requested);
   }, []);
 
   useEffect(() => {

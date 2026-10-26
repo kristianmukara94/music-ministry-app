@@ -16,6 +16,7 @@ import { MEDIA_DRAG } from '../media/types';
 import { addToQueue } from '../planner/plan-api';
 import { MassPlanner } from '../planner/MassPlanner';
 import { PraiseWorship } from '../praise-worship/PraiseWorship';
+import { GoLiveHub } from '../golive/GoLiveHub';
 import { Settings } from '../settings/Settings';
 import { EulaGate } from '../components/EulaModal';
 import { bridge } from '../live/bridge';
@@ -247,10 +248,11 @@ export function OperatorApp() {
           {view === 'media' && <MediaLibrary />}
           {view === 'planner' && <MassPlanner />}
           {view === 'praiseWorship' && <PraiseWorship />}
+          {view === 'goLive' && <GoLiveHub />}
           {view === 'settings' && <Settings />}
           {view === 'notes' && <NotesPrayersView />}
           {view === 'whiteboard' && <WhiteboardDeck />}
-          {!['dashboard', 'announcements', 'lyrics', 'lectionary', 'bible', 'rosary', 'media', 'notes', 'whiteboard', 'planner', 'praiseWorship', 'settings'].includes(view) && <ModulePlaceholder />}
+          {!['dashboard', 'announcements', 'lyrics', 'lectionary', 'bible', 'rosary', 'media', 'notes', 'whiteboard', 'planner', 'praiseWorship', 'goLive', 'settings'].includes(view) && <ModulePlaceholder />}
         </main>
       </div>
 
