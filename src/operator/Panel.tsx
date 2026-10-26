@@ -10,7 +10,7 @@ export function Panel({ eyebrow, title, children, className = '' }: {
         <div className="text-[10px] font-bold tracking-widest text-fg/50 uppercase">{eyebrow}</div>
         <h3 className="text-sm font-bold text-fg">{title}</h3>
       </header>
-      <div className="relative flex-1">{children}</div>
+      <div className="relative min-h-0 flex-1 overflow-y-auto">{children}</div>
     </section>
   );
 }

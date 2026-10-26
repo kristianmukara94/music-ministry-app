@@ -109,9 +109,9 @@ export function TopBar() {
 
   return (
     // pr-[144px] keeps the master switch clear of the Windows caption buttons (about 46px each).
-    <header className={`relative z-20 flex h-12 shrink-0 items-center justify-between gap-3 overflow-hidden border-b border-line bg-canvas/80 pr-[144px] pl-4 backdrop-blur-md select-none ${DRAG}`}>
+    <header className={`relative z-20 flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-line bg-canvas/80 py-1.5 pr-[144px] pl-4 backdrop-blur-md select-none ${DRAG}`}>
       {/* At narrow widths the controls scroll sideways rather than being clipped. The projector switch stays in place. */}
-      <div className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto whitespace-nowrap [scrollbar-width:none]">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5">
         {/* Cluster 1: emergency and state controls. */}
         <div role="group" aria-label={t('top.groupState')} className="flex items-center gap-1.5">
           <ControlButton icon={Moon} label={t('top.blackout')} tone={EMERGENCY} active={liveKind === 'blackout'} onClick={liveCommands.blackout} />

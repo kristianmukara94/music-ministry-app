@@ -26,7 +26,7 @@ function ConsoleHeader() {
   const t = useT();
   const today = useNow();
   return (
-    <section className="relative overflow-hidden rounded-xl border border-line bg-panel backdrop-blur-md px-5 pt-4 pb-3">
+    <section className="relative shrink-0 overflow-hidden rounded-xl border border-line bg-panel backdrop-blur-md px-5 pt-4 pb-3">
       <Contours />
       <div className="relative flex items-end justify-between gap-6">
         <div>
@@ -141,7 +141,7 @@ function StatusCards() {
     : { tone: 'off', label: t('status.empty') };
 
   return (
-    <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+    <div className="grid shrink-0 grid-cols-2 gap-4 xl:grid-cols-4">
       <StatusWidget icon={Monitor} eyebrow={t('card.congregation')} tone={projectorBadge.tone} badge={projectorBadge.label}
         detail={outputs.projector ? `${t('card.showing')}: ${showing}` : t('card.projectorOff')}
         action={outputs.projector ? t('card.action.projectorOff') : t('card.action.projectorOn')}
@@ -174,7 +174,7 @@ const ACTIONS: { icon: LucideIcon; title: StringKey; desc: StringKey; view: View
 function ActionCenter() {
   const t = useT();
   return (
-    <section>
+    <section className="shrink-0">
       <div className="text-[10px] font-bold tracking-widest text-fg/50 uppercase">{t('act.eyebrow')}</div>
       <h2 className="mb-2.5 text-sm font-bold text-fg">{t('act.title')}</h2>
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
@@ -202,7 +202,7 @@ export function Dashboard() {
       <ConsoleHeader />
       <StatusCards />
       <ActionCenter />
-      <div className="grid min-h-[264px] flex-1 grid-cols-1 gap-4 lg:grid-cols-[1.1fr_1fr_1.55fr]">
+      <div className="grid min-h-[264px] shrink-0 grid-cols-1 gap-4 min-[1180px]:flex-1 min-[1180px]:grid-cols-[1.1fr_1fr_1.55fr]">
         <BoothClock />
         <KeyboardMap />
         <Launchpad />

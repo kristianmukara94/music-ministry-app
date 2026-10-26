@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDownUp, BookOpen, BookOpenText, ClipboardList, Flower2, Film, HandHeart, Languages, LayoutGrid, Maximize, Megaphone,
-  Music, NotebookPen, PanelLeftClose, PanelLeftOpen, Presentation, Search, Settings, type LucideIcon,
+  Music, NotebookPen, PanelLeftClose, PanelLeftOpen, Presentation, Radio, Search, Settings, type LucideIcon,
 } from 'lucide-react';
 import { useLive } from '../live/store';
 import { LANGS, useT, type StringKey } from '../i18n/strings';
@@ -23,6 +23,7 @@ export const NAV: { key: ViewKey; icon: LucideIcon; label: StringKey }[] = [
   { key: 'lyrics', icon: Music, label: 'nav.lyrics' },
   { key: 'whiteboard', icon: Presentation, label: 'nav.whiteboard' },
   { key: 'planner', icon: ClipboardList, label: 'nav.planner' },
+  { key: 'goLive', icon: Radio, label: 'nav.goLive' },
   { key: 'praiseWorship', icon: HandHeart, label: 'nav.praiseWorship' },
   { key: 'settings', icon: Settings, label: 'nav.settings' },
 ];
@@ -30,7 +31,7 @@ export const NAV: { key: ViewKey; icon: LucideIcon; label: StringKey }[] = [
 /** Sidebar sections, in the order the operator works through them. Each module appears once. */
 const NAV_GROUPS: { key: StringKey; items: ViewKey[] }[] = [
   { key: 'nav.group.liturgy', items: ['lectionary', 'bible', 'rosary', 'notes'] },
-  { key: 'nav.group.worship', items: ['praiseWorship', 'lyrics', 'media', 'announcements'] },
+  { key: 'nav.group.worship', items: ['goLive', 'praiseWorship', 'lyrics', 'media', 'announcements'] },
   { key: 'nav.group.management', items: ['planner', 'dashboard', 'settings', 'whiteboard'] },
 ];
 
