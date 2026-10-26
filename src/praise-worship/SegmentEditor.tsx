@@ -13,8 +13,12 @@ import { setUi } from '../state/ui';
 import type { Hymn } from '../lyrics/types';
 import type { ReadingType } from '../lectionary/types';
 import { pad2, STATUS_TONE } from './LineupRail';
-import { PwSlideFace } from './PwSlideFace';
-import { SlideThumb, slideFooter } from './SlideThumb';
+import { CurrentNextPreview } from './CurrentNextPreview';
+import { ShowAllVerses } from '../components/ShowAllVerses';
+import { useLive } from '../live/store';
+import { useUi } from '../state/ui';
+import { SlideThumb } from './SlideThumb';
+import { livePosition, visibleSlideIndexes } from '../../shared/pw.js';
 import { resolvedFor, setPwState, updateSegment, usePw } from './store';
 import { usePwT } from './strings';
 
@@ -48,7 +52,7 @@ function ItemCard({ icon, kicker, title, sub, children }: { icon: ReactNode; kic
       <span className="grid size-14 shrink-0 place-items-center rounded-xl bg-accent text-on-accent">{icon}</span>
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="text-xs text-muted">{kicker}</span>
-        <span className="font-serif text-2xl leading-tight font-semibold">{title}</span>
+        <span className="font-sans condensed text-2xl leading-tight font-black uppercase">{title}</span>
         <span className="text-sm text-muted">{sub}</span>
       </div>
       {children && <div className="flex flex-wrap gap-2">{children}</div>}
@@ -186,14 +190,16 @@ function PreviewDialog({ segment, slides, onClose }: { segment: PwSegment; slide
       className="m-auto w-[min(92vw,1100px)] rounded-2xl border border-line-strong bg-canvas p-5 text-fg backdrop:bg-black/70"
     >
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="font-serif text-2xl font-semibold">{t('previewTitle', { name: segment.name })}</h2>
+        <h2 className="font-sans condensed text-2xl font-black uppercase">{t('previewTitle', { name: segment.name })}</h2>
         <button type="button" onClick={onClose} autoFocus className={BTN} aria-label={t('close')}>
           <X size={16} aria-hidden />
         </button>
       </div>
-      <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-line [container-type:size]">
-        {slide && <PwSlideFace slide={slide} segmentName={segment.name} type={segment.type} index={index} total={slides.length} footer={slideFooter(slide, t('prayTogether'))} />}
-      </div>
+      <CurrentNextPreview
+        current={{ slide: slide ?? null, segmentName: segment.name, type: segment.type, index, total: slides.length }}
+        next={slides[index + 1] ? { slide: slides[index + 1], segmentName: segment.name, type: segment.type, index: index + 1, total: slides.length } : null}
+        endLabel={t('previewEndSegment')}
+      />
       <div className="mt-3 flex items-center justify-between">
         <button type="button" className={BTN} disabled={index === 0} onClick={() => setIndex(index - 1)}>
           <ChevronLeft size={16} aria-hidden /> {t('prevSlide')}
@@ -216,6 +222,8 @@ export function SegmentEditor() {
   const day = usePw((s) => s.day);
   const replacing = usePw((s) => s.replacing);
   const [previewing, setPreviewing] = useState(false);
+  const livePw = useLive((s) => s.state.pw);
+  const showAllVerses = useUi((s) => s.showAllVerses);
 
   const segment = session.segments[selected];
   if (!segment) return null;
@@ -223,6 +231,11 @@ export function SegmentEditor() {
   const status = segmentStatus(segment);
   const group = session.groups.find((g) => g.key === segment.group);
   const slides = slidesFor(segment, resolvedFor(segment, { hymns, prayers, day }));
+  // While "Show all verses" is off, a song lists its live slide and the next one, or the first before any slide is live.
+  const liveAt = livePw?.onAir && livePw.sessionId === session.id ? livePosition(session.segments, livePw) : null;
+  const liveSlide = liveAt && liveAt.segment === selected ? liveAt.slide : -1;
+  const shownIndexes =
+    segment.type === 'song' && !showAllVerses ? visibleSlideIndexes(slides.length, liveSlide) : slides.map((_, n) => n);
   const c = segment.content;
   const songHymns = c.kind === 'song' ? c.hymnIds.map((id) => hymns[id]).filter((h): h is Hymn => Boolean(h)) : [];
   const key = songHymns.find((h) => h.musicalKey)?.musicalKey ?? '—';
@@ -251,10 +264,10 @@ export function SegmentEditor() {
     <section aria-labelledby="pw-segment-title" className="flex min-w-0 flex-col gap-5 rounded-2xl border border-line bg-panel p-5 @container/editor">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-extrabold tracking-[0.18em] text-accent uppercase">
+          <p className="eyebrow !text-accent">
             {t('segmentEyebrow', { n: pad2(i + 1), group: group?.name ?? segment.group })}
           </p>
-          <h2 id="pw-segment-title" className="mt-1 font-serif text-4xl leading-tight font-semibold @2xl/editor:text-5xl">
+          <h2 id="pw-segment-title" className="mt-1 font-sans condensed text-2xl leading-tight font-black uppercase">
             {segment.name}
           </h2>
         </div>
@@ -388,9 +401,14 @@ export function SegmentEditor() {
           <h3 className="font-bold">{t('projectorSlides')}</h3>
           <span className="text-sm text-muted">{t('slidesCount', { n: slides.length })}</span>
         </div>
+        {segment.type === 'song' && (
+          <div className="flex items-center">
+            <ShowAllVerses label={t('showAllVerses')} />
+          </div>
+        )}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
-          {slides.map((slide, n) => (
-            <SlideThumb key={n} slide={slide} index={n} total={slides.length} segmentName={segment.name} type={segment.type} />
+          {shownIndexes.map((n) => (
+            <SlideThumb key={n} slide={slides[n]} index={n} total={slides.length} segmentName={segment.name} type={segment.type} />
           ))}
         </div>
       </div>

@@ -129,8 +129,8 @@ export function PlanView() {
 
       <header className="flex flex-wrap items-end justify-between gap-5">
         <div className="min-w-0">
-          <p className="text-xs font-extrabold tracking-[0.2em] text-accent uppercase">{t('eyebrow_plan')}</p>
-          <h1 className="mt-1 font-serif text-5xl leading-tight font-semibold">{session.name}</h1>
+          <p className="eyebrow !text-accent">{t('eyebrow_plan')}</p>
+          <h1 className="mt-1 font-sans condensed text-[56px] leading-none font-black uppercase">{session.name}</h1>
           <label className="mt-1 inline-flex items-center gap-2 text-muted">
             <span className="sr-only">{t('date')}</span>
             <input
@@ -143,10 +143,10 @@ export function PlanView() {
         </div>
         <div className="flex flex-wrap gap-3">
           <Stat label={t('stat_segments')}>
-            <span className="font-mono text-3xl">{total}</span>
+            <span className="font-mono text-2xl font-bold">{total}</span>
           </Stat>
           <Stat label={t('stat_runTime')}>
-            <span className="font-mono text-3xl whitespace-nowrap">{formatRunTime(totalMinutes(session.segments))}</span>
+            <span className="font-mono text-2xl font-bold whitespace-nowrap">{formatRunTime(totalMinutes(session.segments))}</span>
           </Stat>
           <div className="flex min-w-64 flex-[2] flex-col gap-2 rounded-2xl border border-line bg-panel px-5 py-3.5">
             <div className="flex items-baseline justify-between gap-3">

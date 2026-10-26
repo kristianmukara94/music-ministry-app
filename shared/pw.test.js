@@ -1,7 +1,7 @@
 // Praise & Worship model and live-state tests. Run with: node --test shared/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_TEMPLATE, livePosition, moveSegment, segmentFromTemplate, step } from './pw.js';
+import { DEFAULT_TEMPLATE, livePosition, moveSegment, segmentFromTemplate, step, visibleSlideIndexes } from './pw.js';
 import { initialLiveState, liveReducer } from './live.js';
 
 const lineup = () => DEFAULT_TEMPLATE.groups.flatMap((g) => DEFAULT_TEMPLATE.segments.filter((s) => s.group === g.key)).map(segmentFromTemplate);
@@ -70,4 +70,13 @@ test('Mass Queue activity takes Praise & Worship off air and keeps its place', (
   s = liveReducer(s, { type: 'projector/take', source: 'MASS_QUEUE' });
   assert.equal(s.pw.onAir, false);
   assert.equal(s.pw.segmentKey, 'holy_spirit');
+});
+
+test('"Show all verses" off lists the live slide and the next one, or the first before any cue', () => {
+  assert.deepEqual(visibleSlideIndexes(6, -1), [0]);
+  assert.deepEqual(visibleSlideIndexes(6, null), [0]);
+  assert.deepEqual(visibleSlideIndexes(6, 0), [0, 1]);
+  assert.deepEqual(visibleSlideIndexes(6, 4), [4, 5]);
+  assert.deepEqual(visibleSlideIndexes(6, 5), [5], 'the last slide has no next one');
+  assert.deepEqual(visibleSlideIndexes(0, -1), []);
 });

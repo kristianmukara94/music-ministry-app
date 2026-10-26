@@ -203,6 +203,15 @@ export function step(counts, pos, delta) {
 }
 
 /**
+ * Which slides of a song a list shows while "Show all verses" is off: the live one and the next one. Before any slide is
+ * live (`liveIndex` is -1 or null), only the first is shown, as the next one. Returns indexes in order.
+ */
+export function visibleSlideIndexes(count, liveIndex) {
+  if (liveIndex == null || liveIndex < 0) return count > 0 ? [0] : [];
+  return [liveIndex, liveIndex + 1].filter((i) => i < count);
+}
+
+/**
  * Where the live position is in the lineup now. It is held by segment key, so reordering a live lineup moves nothing on
  * the projector. A null `segmentKey` is the start of the lineup. Null when the live segment has been removed.
  */

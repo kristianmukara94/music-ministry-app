@@ -111,6 +111,7 @@ export function sectionOrder(hymn: PwHymn, arrangement: Record<string, string[]>
 export function pagesOf(text: string, maxLines?: number): string[];
 export function slidesFor(segment: PwSegment, resolved?: PwResolved): PwSlide[];
 export function step(counts: number[], pos: PwPosition, delta: 1 | -1): PwPosition | null;
+export function visibleSlideIndexes(count: number, liveIndex: number | null | undefined): number[];
 export function livePosition(segments: PwSegment[], pw: { segmentKey: string | null; slide: number } | null): PwPosition | null;
 export function groupOrdered(segments: PwSegment[], groups: PwGroup[]): PwSegment[];
 export function moveSegment(segments: PwSegment[], groups: PwGroup[], from: number, group: string, slot: number): PwSegment[];

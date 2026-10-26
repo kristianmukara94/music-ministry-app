@@ -81,8 +81,8 @@ export function OutputTemplates() {
   return (
     <section aria-labelledby="pw-out-heading" className="flex flex-col gap-4 rounded-2xl border border-line bg-panel p-5">
       <div className="flex flex-col gap-1">
-        <p className="text-xs font-extrabold tracking-[0.2em] text-accent uppercase">{t('eyebrow_outputs')}</p>
-        <h2 id="pw-out-heading" className="font-serif text-3xl font-semibold">{t('out_heading')}</h2>
+        <p className="eyebrow !text-accent">{t('eyebrow_outputs')}</p>
+        <h2 id="pw-out-heading" className="font-sans condensed text-2xl font-black uppercase">{t('out_heading')}</h2>
         <p className="max-w-3xl text-sm text-muted">{t('out_note')}</p>
       </div>
 

@@ -14,7 +14,7 @@ export function SlideThumb({ slide, index, total, segmentName, type }: { slide: 
   const t = usePwT();
   return (
     <figure className="flex min-w-0 flex-col gap-1.5">
-      <figcaption className="text-[11px] font-bold tracking-[0.16em] text-accent uppercase">{t('slideN', { n: index + 1 })}</figcaption>
+      <figcaption className="eyebrow !text-accent">{t('slideN', { n: index + 1 })}</figcaption>
       <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-line [container-type:size]">
         <PwSlideFace slide={slide} segmentName={segmentName} type={type} index={index} total={total} footer={slideFooter(slide, t('prayTogether'))} />
       </div>

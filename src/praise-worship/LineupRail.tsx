@@ -97,7 +97,7 @@ export function LineupRail() {
             }}
           >
             <div className="flex items-baseline justify-between px-1 pb-1.5">
-              <h3 className="text-xs font-extrabold tracking-[0.18em] text-accent uppercase">{group.name}</h3>
+              <h3 className="eyebrow !text-accent">{group.name}</h3>
               <span className="font-mono text-xs text-muted">{groupMinutes(segments, group.key)} {t('minutes')}</span>
             </div>
             <ol className="flex min-h-11 flex-col gap-1">

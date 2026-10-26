@@ -1,12 +1,14 @@
 import { AlertTriangle, Check, Play } from 'lucide-react';
-import { livePosition, readiness, segmentStatus } from '../../shared/pw.js';
+import { livePosition, readiness, segmentStatus, step, visibleSlideIndexes } from '../../shared/pw.js';
 import { dispatch, useLive } from '../live/store';
 import { ProjectorView } from '../output/ProjectorView';
 import { LowerThirdStage } from '../output/LowerThirdView';
 import { useNow } from '../operator/useNow';
 import { pad2, STATUS_TONE } from './LineupRail';
 import { endSession, goLive, jumpTo, liveDeck, otherSourceOnAir, showPosition, stepLive, type LiveStep } from './live';
-import { PwSlideFace } from './PwSlideFace';
+import { CurrentNextPreview, type Shown } from './CurrentNextPreview';
+import { ShowAllVerses } from '../components/ShowAllVerses';
+import { useUi } from '../state/ui';
 import { setPwState, usePw } from './store';
 import { usePwT, type PwT } from './strings';
 import type { PwSession } from './types';
@@ -17,6 +19,14 @@ const TOGGLE = (on: boolean) =>
   `inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-5 text-sm font-semibold transition ${
     on ? 'border-accent bg-accent/15 text-accent' : 'border-line-strong hover:bg-panel-2'
   }`;
+
+/** One step as the preview shows it: its slide, or a black screen for the end-of-segment step. */
+function shownAt(session: PwSession, deck: LiveStep[][], at: { segment: number; slide: number }): Shown {
+  const seg = session.segments[at.segment];
+  const s = deck[at.segment]?.[at.slide];
+  if (s?.kind === 'slide') return { slide: s.slide, segmentName: seg.name, type: seg.type, index: s.index, total: s.total };
+  return { slide: null, segmentName: seg?.name ?? '', type: seg?.type ?? 'song', index: 0, total: 1 };
+}
 
 /** mm:ss, or h:mm:ss once past an hour. */
 function clock(ms: number) {
@@ -87,6 +97,7 @@ export function LiveView() {
   usePw((s) => s.prayers);
   usePw((s) => s.day);
   const live = useLive((s) => s.state);
+  const showAllVerses = useUi((s) => s.showAllVerses);
   const now = useNow().getTime();
   if (!session) return <p className="rounded-2xl border border-line bg-panel p-6 text-muted">{t('noSessions')}</p>;
 
@@ -114,9 +125,12 @@ export function LiveView() {
     );
   }
   const segmentIndex = at.segment;
+  // The slide after this one, across segments, as the Next key would reach it. Null at the end of the lineup.
+  const nextAt = step(deck.map((d) => d.length), at, 1);
+  // While "Show all verses" is off, a song's chips are its live section and the next one.
+  const chipFilter = session.segments[segmentIndex]?.type === 'song' && !showAllVerses ? visibleSlideIndexes(deck[segmentIndex]?.length ?? 0, at.slide) : null;
   const segment = session.segments[segmentIndex];
   const steps = deck[segmentIndex] ?? [];
-  const current = steps[at.slide];
   const group = session.groups.find((g) => g.key === segment?.group)?.name ?? '';
   const songTitles = segment?.content.kind === 'song' ? segment.content.hymnIds.map((id) => hymns[id]?.title).filter(Boolean).join(' · ') : '';
   const planned = (segment?.minutes ?? 0) * 60_000;
@@ -166,10 +180,10 @@ export function LiveView() {
           <section aria-labelledby="pw-live-title" className="flex min-w-0 flex-col gap-4 rounded-2xl border border-line bg-panel p-5">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div className="min-w-0">
-                <p className="text-xs font-extrabold tracking-[0.18em] text-accent uppercase">
+                <p className="eyebrow !text-accent">
                   {t('nowEyebrow', { n: pad2(segmentIndex + 1), total: session.segments.length, group })}
                 </p>
-                <h2 id="pw-live-title" className="mt-1 font-serif text-4xl leading-tight font-semibold">{segment.name}</h2>
+                <h2 id="pw-live-title" className="mt-1 font-sans condensed text-2xl leading-tight font-black uppercase">{segment.name}</h2>
                 {songTitles && <p className="text-muted">{songTitles}</p>}
               </div>
               <div className="flex min-w-56 flex-col gap-1.5">
@@ -193,19 +207,19 @@ export function LiveView() {
               </div>
             )}
 
-            {/* What this step looks like, drawn locally. The real projector is on the right. */}
-            <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-line-strong [container-type:size]">
-              {current?.kind === 'slide' ? (
-                <PwSlideFace slide={current.slide} segmentName={segment.name} type={segment.type} index={current.index} total={current.total} footer={current.slide.kind === 'lyrics' ? current.slide.hymnTitle : current.slide.kind === 'prayer' ? t('prayTogether') : undefined} />
-              ) : (
-                <div data-theme="default" className="absolute inset-0 grid place-items-center bg-canvas text-muted">{t('blackStep')}</div>
-              )}
-            </div>
+            {/* The current step, with the next one beside it. Drawn locally; the real projector is on the right. */}
+            <CurrentNextPreview
+              current={shownAt(session, deck, at)}
+              next={nextAt ? shownAt(session, deck, nextAt) : null}
+              endLabel={t('previewEnd')}
+            />
 
             <div className="flex flex-col gap-2">
-              <h3 className="text-xs font-extrabold tracking-[0.18em] text-accent uppercase">{t('jumpToSection')}</h3>
+              <h3 className="eyebrow !text-accent">{t('jumpToSection')}</h3>
+              {segment.type === 'song' && <ShowAllVerses label={t('showAllVerses')} />}
               <ol className="flex flex-wrap gap-2">
                 {steps.map((s, i) => {
+                  if (chipFilter && !chipFilter.includes(i)) return null;
                   const chip = stepChip(s, t);
                   const here = i === at.slide;
                   return (
@@ -259,10 +273,10 @@ export function LiveView() {
           </section>
 
           <section aria-labelledby="pw-next-up" className="flex flex-col gap-1 rounded-2xl border border-line bg-panel p-4">
-            <h2 id="pw-next-up" className="text-xs font-extrabold tracking-[0.18em] text-accent uppercase">{t('nextUp')}</h2>
+            <h2 id="pw-next-up" className="eyebrow !text-accent">{t('nextUp')}</h2>
             {nextSegment ? (
               <>
-                <p className="font-serif text-2xl font-semibold">{nextSegment.name}</p>
+                <p className="font-sans condensed text-2xl font-black uppercase">{nextSegment.name}</p>
                 <p className={`text-sm font-semibold ${STATUS_TONE[segmentStatus(nextSegment)]}`}>
                   {t(`status_${segmentStatus(nextSegment)}`)}
                 </p>
@@ -273,7 +287,7 @@ export function LiveView() {
           </section>
 
           <section aria-labelledby="pw-preflight" className="flex flex-col gap-2 rounded-2xl border border-line bg-panel p-4">
-            <h2 id="pw-preflight" className="text-xs font-extrabold tracking-[0.18em] text-accent uppercase">{t('preflight')}</h2>
+            <h2 id="pw-preflight" className="eyebrow !text-accent">{t('preflight')}</h2>
             <p>{missingSongs === 0 ? t('preflightOk') : missingSongs === 1 ? t('preflightSongsOne') : t('preflightSongs', { n: missingSongs })}</p>
             {missingSongs > 0 && (
               <button type="button" className="min-h-11 self-start font-semibold text-accent underline underline-offset-2" onClick={() => setPwState({ tab: 'plan' })}>
