@@ -1,4 +1,4 @@
-export type LiturgicalBlock = 'introductory' | 'word' | 'eucharist' | 'concluding';
+export type LiturgicalBlock = 'introductory' | 'word' | 'eucharist' | 'communion' | 'concluding';
 export type SourceModule = 'lyrics' | 'lectionary' | 'announcements' | 'media' | 'mass_order' | 'bible' | 'custom' | 'notes';
 
 export interface PlanItem {
@@ -47,7 +47,8 @@ export const BLOCKS: { id: LiturgicalBlock; titleKey: string; hintKey: string }[
   { id: 'introductory', titleKey: 'block_introductory', hintKey: 'hint_introductory' },
   { id: 'word', titleKey: 'block_word', hintKey: 'hint_word' },
   { id: 'eucharist', titleKey: 'block_eucharist', hintKey: 'hint_eucharist' },
+  { id: 'communion', titleKey: 'block_communion', hintKey: 'hint_communion' },
   { id: 'concluding', titleKey: 'block_concluding', hintKey: 'hint_concluding' },
 ];
 
-export const BLOCK_RANK: Record<LiturgicalBlock, number> = { introductory: 0, word: 1, eucharist: 2, concluding: 3 };
+export const BLOCK_RANK: Record<LiturgicalBlock, number> = { introductory: 0, word: 1, eucharist: 2, communion: 3, concluding: 4 };

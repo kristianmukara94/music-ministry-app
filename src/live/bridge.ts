@@ -24,6 +24,8 @@ import type { ConfigApi, UpdatesApi } from '../settings/types';
 export interface PdfJob {
   jobId: string;
   bytes: Uint8Array;
+  /** 'lyrics' reads the text only, for a lyrics import. Normal imports send no mode. */
+  mode?: 'lyrics';
 }
 
 export interface PdfResult {
@@ -258,6 +260,11 @@ const offlineLyrics: LyricsApi = {
   getSetlist: async () => [],
   saveSetlist: async () => offlineError(),
   setStyle: async () => offlineError(),
+  importFile: async () => offlineError(),
+  listSongCategories: async () => [],
+  createSongCategory: async () => offlineError(),
+  renameSongCategory: async () => offlineError(),
+  deleteSongCategory: async () => offlineError(),
   editHymn: async () => offlineError(),
 };
 
