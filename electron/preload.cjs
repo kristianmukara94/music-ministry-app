@@ -119,6 +119,11 @@ contextBridge.exposeInMainWorld('apcc', {
     info: () => ipcRenderer.invoke('lowerThird:info'),
   },
 
+  remoteView: {
+    get: () => ipcRenderer.invoke('remoteView:get'),
+    save: (patch) => ipcRenderer.invoke('remoteView:save', patch),
+  },
+
   whiteboard: {
     list: () => ipcRenderer.invoke('whiteboard:list'),
     save: (input) => ipcRenderer.invoke('whiteboard:save', input),
