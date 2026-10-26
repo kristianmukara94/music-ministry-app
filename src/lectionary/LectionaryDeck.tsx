@@ -3,6 +3,8 @@ import { BookOpen, ChevronLeft, ChevronRight, Play, Save, Scissors, Sparkles, Tr
 import { bridge } from '../live/bridge';
 import { dispatch } from '../live/store';
 import { setUi, useUi } from '../state/ui';
+import { formatIsoDay, formatIsoWeekday } from '../state/region';
+import { useRegion } from '../state/useRegion';
 import { useAnnT } from '../announcements/strings';
 import { SlidePreview } from '../announcements/TextSlideModal';
 import { ColorField, StyleToolbar } from '../announcements/StyleControls';
@@ -219,7 +221,8 @@ export function LectionaryDeck() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const dateLabel = parseIso(date).toLocaleDateString(DATE_LOCALE[lang], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const region = useRegion();
+  const dateLabel = `${formatIsoWeekday(date, DATE_LOCALE[lang])}, ${formatIsoDay(date, region)}`;
 
   return (
     <div className="flex min-h-[calc(100vh-88px)] flex-col">
