@@ -35,12 +35,59 @@ function textEffects(style: LowerThirdStyle): CSSProperties {
 }
 
 /**
+ * The Praise & Worship lower third: the segment name on a gold tag, over a maroon bar that carries the song title and,
+ * beneath it, a smaller line. Drawn in the default palette whatever the operator theme (decision D), so the stream
+ * never gets a light bar. Sizes are in container widths, as the other lower thirds are.
+ */
+export function SegmentLowerThird({ value }: { value: LowerThird }) {
+  return (
+    <div data-theme="default" className="flex max-w-[80cqw] flex-col items-start">
+      {value.tag && (
+        <div
+          className="font-sans font-extrabold tracking-[0.18em] uppercase"
+          style={{
+            background: 'var(--color-accent)',
+            color: 'var(--color-on-accent)',
+            fontSize: cq(19),
+            padding: `${cq(6)} ${cq(14)}`,
+            borderRadius: `${cq(3)} ${cq(3)} 0 0`,
+          }}
+        >
+          {value.tag}
+        </div>
+      )}
+      <div
+        className="flex min-w-0 flex-col"
+        style={{
+          background: 'color-mix(in oklab, var(--color-line-strong) 55%, var(--color-canvas))',
+          color: 'var(--color-fg)',
+          padding: `${cq(16)} ${cq(24)}`,
+          borderRadius: `0 ${cq(3)} ${cq(3)} ${cq(3)}`,
+          boxShadow: `0 ${cq(4)} ${cq(14)} rgba(0, 0, 0, 0.45)`,
+        }}
+      >
+        <div className="font-serif font-semibold" style={{ fontSize: cq(56), lineHeight: 1.1 }}>
+          {value.line1}
+        </div>
+        {value.line2 && (
+          <div className="font-sans" style={{ fontSize: cq(24), color: 'var(--color-muted)', marginTop: cq(4) }}>
+            {value.line2}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * One lower third, drawn to its style. The response prompt keeps its white pill; everything else is the styled card:
  * the name, and the reference beneath it on its own line or folded into the main text.
  * Sizes are in container widths, so the preview and the live output are drawn to the same proportions.
  */
 export function LowerThirdCard({ value, style }: { value: LowerThird; style: LowerThirdStyle }) {
   const template: LowerThirdTemplate = value.template ?? 'nameplate';
+
+  if (template === 'segment') return <SegmentLowerThird value={value} />;
 
   if (template === 'response') {
     // A liturgical response on a white pill, for example "R: And with your spirit".

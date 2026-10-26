@@ -45,6 +45,7 @@ const STRINGS = {
     slot_first: 'First Reading',
     slot_psalm: 'Responsorial Psalm',
     slot_second: 'Second Reading',
+    slot_acclamation: 'Gospel Acclamation',
     slot_gospel: 'Gospel',
   },
   tl: {
@@ -89,6 +90,7 @@ const STRINGS = {
     slot_first: 'Unang Pagbasa',
     slot_psalm: 'Salmong Tugunan',
     slot_second: 'Ikalawang Pagbasa',
+    slot_acclamation: 'Aleluya bago ang Mabuting Balita',
     slot_gospel: 'Mabuting Balita',
   },
   ceb: {
@@ -133,6 +135,7 @@ const STRINGS = {
     slot_first: 'Unang Basahon',
     slot_psalm: 'Salmo sa Tubag',
     slot_second: 'Ikaduhang Basahon',
+    slot_acclamation: 'Aleluya sa Dili pa ang Maayong Balita',
     slot_gospel: 'Maayong Balita',
   },
 };

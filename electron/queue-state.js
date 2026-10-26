@@ -4,7 +4,7 @@ import path from 'node:path';
 // Tiny file in userData. It records which plan is loaded and where the operator was in it.
 // The queue itself is rebuilt from the plan in the database, so it never goes stale.
 const FILE = 'queue-state.json';
-const EMPTY = { active_mass_plan_id: null, current_queue_index: -1 };
+const EMPTY = { active_mass_plan_id: null, current_queue_index: -1, active_pw_session_id: null };
 
 export function readQueueState(userData) {
   try {
@@ -12,6 +12,8 @@ export function readQueueState(userData) {
     return {
       active_mass_plan_id: Number.isInteger(data.active_mass_plan_id) ? data.active_mass_plan_id : null,
       current_queue_index: Number.isInteger(data.current_queue_index) ? data.current_queue_index : -1,
+      // The Praise & Worship session loaded for live use. Files from before it existed have none.
+      active_pw_session_id: Number.isInteger(data.active_pw_session_id) ? data.active_pw_session_id : null,
     };
   } catch {
     // Missing or unreadable (first run, or a crash mid-write): start with an empty queue.

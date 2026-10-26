@@ -3,6 +3,7 @@ import type { ProjectorSettings } from './projector-settings';
 import type { WelcomeSettings } from './welcome-settings';
 import type { LowerThirdStyle } from './lower-third-style';
 import type { WhiteboardDesign } from './whiteboard';
+import type { PwSlide, PwType } from './pw';
 export type Lang = 'en' | 'tl' | 'ceb';
 
 export type OutputKey = 'projector' | 'lowerThird' | 'preview';
@@ -24,7 +25,7 @@ export interface PassageMark {
 }
 
 /** Who sent the frame now on the projector: a Mass Queue item, or a direct projection from a module deck. */
-export type ProjectionSource = 'MASS_QUEUE' | 'DIRECT_DECK';
+export type ProjectionSource = 'MASS_QUEUE' | 'DIRECT_DECK' | 'PW_SESSION';
 
 export type Frame =
   | { kind: 'idle' }
@@ -59,7 +60,9 @@ export type Frame =
       style?: TextStyle | null;
     }
   /** A whiteboard slide, drawn from its design. */
-  | { kind: 'whiteboard'; slide: { title: string; content: string; design: WhiteboardDesign } };
+  | { kind: 'whiteboard'; slide: { title: string; content: string; design: WhiteboardDesign } }
+  /** One Praise & Worship slide, drawn by PwSlideFace. `index` and `total` count the segment's slides. */
+  | { kind: 'pw'; slide: PwSlide; segmentName: string; type: PwType; index: number; total: number; footer?: string };
 
 /** A background layer item: an image or a looping video. */
 export interface MediaFrame {
@@ -70,12 +73,28 @@ export interface MediaFrame {
 }
 
 /** The lower-third layouts. An absent template means the nameplate, which is what older lower thirds used. */
-export type LowerThirdTemplate = 'nameplate' | 'intention' | 'response';
+export type LowerThirdTemplate = 'nameplate' | 'intention' | 'response' | 'segment';
 
 export interface LowerThird {
   template?: LowerThirdTemplate;
   line1: string;
   line2?: string;
+  /** The small tag above the bar on the `segment` template: the Praise & Worship segment's name. */
+  tag?: string;
+}
+
+/** The Praise & Worship session loaded for live use. */
+export interface PwLive {
+  sessionId: number;
+  /** The live segment's key. Null at the start of the lineup. Held by key so reordering the lineup does not move it. */
+  segmentKey: string | null;
+  slide: number;
+  /** When the current segment went on air (ms since epoch), for the segment timer. Null before it has. */
+  startedAt: number | null;
+  /** When the session first went on air, for the session clock. */
+  liveSince: number | null;
+  /** True while the projector shows this session. Anything else taking the projector clears it. */
+  onAir: boolean;
 }
 
 /** One entry in the Service Queue: a Mass plan item, routed back to its module when opened. */
@@ -136,6 +155,7 @@ export interface LiveState {
   queuePlanId: number | null;
   /** Index of the item last opened from the queue, or -1 before the first. */
   queueCursor: number;
+  pw: PwLive | null;
 }
 
 export type LiveAction =
@@ -166,7 +186,10 @@ export type LiveAction =
   | { type: 'lowerThird/pause'; paused?: boolean }
   | { type: 'stop' }
   | { type: 'queue/set'; items: QueueItem[]; planId?: number | null }
-  | { type: 'queue/cursor'; index: number };
+  | { type: 'queue/cursor'; index: number }
+  | { type: 'pw/load'; sessionId: number }
+  | { type: 'pw/cursor'; segmentKey: string; slide: number; now: number }
+  | { type: 'pw/end' };
 
 export const OUTPUTS: OutputKey[];
 export function initialLiveState(): LiveState;

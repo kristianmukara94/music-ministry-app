@@ -15,12 +15,14 @@ import { WhiteboardDeck } from '../whiteboard/WhiteboardDeck';
 import { MEDIA_DRAG } from '../media/types';
 import { addToQueue } from '../planner/plan-api';
 import { MassPlanner } from '../planner/MassPlanner';
+import { PraiseWorship } from '../praise-worship/PraiseWorship';
 import { Settings } from '../settings/Settings';
 import { EulaGate } from '../components/EulaModal';
 import { bridge } from '../live/bridge';
 import { useTheme } from '../theme/store';
 import { ServiceQueue } from '../planner/ServiceQueue';
 import { stepQueue } from '../planner/routing';
+import { stepLive } from '../praise-worship/live';
 import { CommandPalette } from './CommandPalette';
 import { ProjectorPrompt } from './ProjectorPrompt';
 import { Dashboard } from './Dashboard';
@@ -63,9 +65,12 @@ function useGlobalHotkeys() {
         liveCommands[action]();
         return;
       }
-      // Presentation clickers send PageUp/PageDown.
-      if (e.key === 'PageDown' || e.key === 'ArrowRight') dispatch({ type: 'projector/step', delta: 1 });
-      if (e.key === 'PageUp' || e.key === 'ArrowLeft') dispatch({ type: 'projector/step', delta: -1 });
+      // Presentation clickers send PageUp/PageDown. While Praise & Worship is on air they step its lineup instead.
+      const delta = e.key === 'PageDown' || e.key === 'ArrowRight' ? 1 : e.key === 'PageUp' || e.key === 'ArrowLeft' ? -1 : 0;
+      // Keys a control already handled (tab lists, arrangement chips) do not step the lineup.
+      if (delta && useLive.getState().state.pw?.onAir) {
+        if (!e.defaultPrevented) void stepLive(delta);
+      } else if (delta) dispatch({ type: 'projector/step', delta });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -241,10 +246,11 @@ export function OperatorApp() {
           {view === 'rosary' && <RosaryDeck />}
           {view === 'media' && <MediaLibrary />}
           {view === 'planner' && <MassPlanner />}
+          {view === 'praiseWorship' && <PraiseWorship />}
           {view === 'settings' && <Settings />}
           {view === 'notes' && <NotesPrayersView />}
           {view === 'whiteboard' && <WhiteboardDeck />}
-          {!['dashboard', 'announcements', 'lyrics', 'lectionary', 'bible', 'rosary', 'media', 'notes', 'whiteboard', 'planner', 'settings'].includes(view) && <ModulePlaceholder />}
+          {!['dashboard', 'announcements', 'lyrics', 'lectionary', 'bible', 'rosary', 'media', 'notes', 'whiteboard', 'planner', 'praiseWorship', 'settings'].includes(view) && <ModulePlaceholder />}
         </main>
       </div>
 

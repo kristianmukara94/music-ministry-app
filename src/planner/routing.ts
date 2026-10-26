@@ -1,6 +1,7 @@
 import type { Frame, QueueItem } from '../../shared/live.js';
 import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
+import { turnOnProjectorAndGo } from '../live/startup';
 import { massPartFrame } from '../liturgy/massOrder';
 import { pagesOf } from '../announcements/paginate';
 import { loadPassage, scriptureSlides } from '../bible/projection';
@@ -107,8 +108,9 @@ export async function playQueueAt(index: number): Promise<void> {
         label: item.label,
         turnOnAndGo: () => {
           setUi({ projectorPrompt: null });
-          dispatch({ type: 'output/set', output: 'projector', on: true });
-          void takeQueueItem(item, index).catch((err) => window.alert(err instanceof Error ? err.message : String(err)));
+          turnOnProjectorAndGo(() => {
+            void takeQueueItem(item, index).catch((err) => window.alert(err instanceof Error ? err.message : String(err)));
+          });
         },
       },
     });

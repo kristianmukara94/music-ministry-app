@@ -7,6 +7,7 @@ import { MASS_ORDER, massPartName } from '../liturgy/massOrder';
 import { sundayCycle } from '../liturgy/lectionary';
 import { formatRuns, formatSourceId, parsePassageInput, stripHits } from '../../shared/bible-ref.js';
 import type { Translation } from '../bible/types';
+import { GOSPEL_ACCLAMATION } from '../lectionary/types';
 import { blockRows, moveInto, queueFromPlan, type DragSource } from './logic';
 import { syncQueueIfLoaded } from './plan-api';
 import { openQueueItem } from './routing';
@@ -96,8 +97,9 @@ async function loadLibrary(
     }
     case 'lectionary': {
       const day = await bridge.lectionary.getDay(date);
+      // The Gospel Acclamation is entered for Praise & Worship only. Mass plans never list it.
       return day.readings
-        .filter((r) => r.rawText)
+        .filter((r) => r.rawText && r.readingType !== GOSPEL_ACCLAMATION)
         .map((r): LibraryItem => ({
           module: 'lectionary',
           sourceId: `${date}|${r.readingType}`,

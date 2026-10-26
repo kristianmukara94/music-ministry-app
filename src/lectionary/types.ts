@@ -1,8 +1,11 @@
 import type { TextStyle } from '../../shared/text-style';
 
-export type ReadingType = 'First Reading' | 'Responsorial Psalm' | 'Second Reading' | 'Gospel';
+export type ReadingType = 'First Reading' | 'Responsorial Psalm' | 'Second Reading' | 'Gospel Acclamation' | 'Gospel';
 
-export const READING_TYPES: readonly ReadingType[] = ['First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel'];
+export const READING_TYPES: readonly ReadingType[] = ['First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel Acclamation', 'Gospel'];
+
+/** Entered in the Lectionary for Praise & Worship. The Mass planner leaves it out of its library. */
+export const GOSPEL_ACCLAMATION: ReadingType = 'Gospel Acclamation';
 
 export interface ReadingRow {
   readingType: ReadingType;

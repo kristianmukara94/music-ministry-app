@@ -1,7 +1,9 @@
 import { ipcMain } from 'electron';
 import { parseTextStyle, sanitizeTextStyle } from '../shared/text-style.js';
 
-export const READING_TYPES = ['First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel'];
+export const READING_TYPES = ['First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel Acclamation', 'Gospel'];
+/** Entered here for Praise & Worship. Mass plans leave it out, so the Mass planner behaves as it did before it existed. */
+export const GOSPEL_ACCLAMATION = 'Gospel Acclamation';
 const PSALM = 'Responsorial Psalm';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_TEXT = 20000;
@@ -45,6 +47,33 @@ const clean = (value, max, label) => {
 
 // How a reading is set on the projector: font, size, colour, background and alignment. One style per reading, saved as JSON.
 export const LECTIONARY_STYLE_MIGRATIONS = [`ALTER TABLE lectionary_readings ADD COLUMN style TEXT;`];
+
+/**
+ * Rebuilds lectionary_readings so its CHECK constraint accepts 'Gospel Acclamation'. SQLite cannot change a CHECK
+ * in place, so the table is copied, as the Mass plan rebuilds do. Existing readings keep their ids and text.
+ */
+export const LECTIONARY_ACCLAMATION_MIGRATIONS = [
+  `
+  CREATE TABLE lectionary_readings_new (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    liturgical_date         TEXT NOT NULL CHECK (liturgical_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+    liturgical_season_info  TEXT NOT NULL DEFAULT '',
+    reading_type            TEXT NOT NULL CHECK (reading_type IN ('First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel Acclamation', 'Gospel')),
+    citation                TEXT NOT NULL DEFAULT '',
+    congregation_response   TEXT NOT NULL DEFAULT '',
+    raw_text                TEXT NOT NULL DEFAULT '',
+    updated_at              TEXT NOT NULL DEFAULT (datetime('now')),
+    style                   TEXT,
+    UNIQUE (liturgical_date, reading_type)
+  );
+  INSERT INTO lectionary_readings_new
+    (id, liturgical_date, liturgical_season_info, reading_type, citation, congregation_response, raw_text, updated_at, style)
+    SELECT id, liturgical_date, liturgical_season_info, reading_type, citation, congregation_response, raw_text, updated_at, style
+    FROM lectionary_readings;
+  DROP TABLE lectionary_readings;
+  ALTER TABLE lectionary_readings_new RENAME TO lectionary_readings;
+  `,
+];
 
 /** Reading data access. Pure: takes a database handle. */
 export function createLectionaryService(db) {

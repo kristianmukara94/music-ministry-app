@@ -10,6 +10,7 @@ import { setupWhiteboard } from './whiteboard.js';
 import { setupLectionary } from './lectionary.js';
 import { setupMedia } from './media.js';
 import { setupMassPlans } from './mass-plans.js';
+import { setupPwSessions } from './pw-sessions.js';
 import { seedBible } from './bible-seed.js';
 import { setupBible } from './bible.js';
 import { seedRosary, setupRosary } from './rosary.js';
@@ -270,6 +271,7 @@ function saveQueueState() {
     writeQueueState(app.getPath('userData'), {
       active_mass_plan_id: state.queuePlanId,
       current_queue_index: state.queueCursor,
+      active_pw_session_id: state.pw?.sessionId ?? null,
     });
   } catch (err) {
     console.error('Could not save the service queue position:', err);
@@ -281,7 +283,7 @@ function apply(action) {
   const next = liveReducer(state, action);
   if (next === state) return;
   state = next;
-  if (prev.queuePlanId !== next.queuePlanId || prev.queueCursor !== next.queueCursor) saveQueueState();
+  if (prev.queuePlanId !== next.queuePlanId || prev.queueCursor !== next.queueCursor || prev.pw?.sessionId !== next.pw?.sessionId) saveQueueState();
   reconcileWindows();
   broadcast();
 }
@@ -290,8 +292,17 @@ function apply(action) {
  * Rebuilds the Service Queue from the last saved plan, so a crash does not lose the service. The position is not
  * restored: nothing is selected at launch, so no queue row shows CURRENT until the operator plays one.
  */
-function restoreQueue(planService) {
+function restoreQueue(planService, pwService) {
   const saved = readQueueState(app.getPath('userData'));
+  // The Praise & Worship session comes back loaded but off air, at its start, as the Mass Queue comes back unselected.
+  if (saved.active_pw_session_id != null) {
+    try {
+      pwService.getSession(saved.active_pw_session_id);
+      state = liveReducer(state, { type: 'pw/load', sessionId: saved.active_pw_session_id });
+    } catch {
+      // Deleted since the last run: forget it.
+    }
+  }
   if (saved.active_mass_plan_id == null) return;
   try {
     const plan = planService.getPlan(saved.active_mass_plan_id);
@@ -472,6 +483,7 @@ app.whenReady().then(() => {
   setupLyrics(announcements.db);
   setupLectionary(announcements.db);
   const planService = setupMassPlans(announcements.db);
+  const pwService = setupPwSessions(announcements.db);
   // Packaged builds copy resources/bible next to the app; in development it is read from the project.
   const bibleDataDir = app.isPackaged
     ? path.join(process.resourcesPath, 'bible')
@@ -501,7 +513,7 @@ app.whenReady().then(() => {
     showOpenDirectory: (win, options) => (win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options)),
   });
   // Restore before any window loads, so the first render already shows the resumed queue.
-  restoreQueue(planService);
+  restoreQueue(planService, pwService);
   setupUpdater({ userData: app.getPath('userData') });
   createOperator();
 });

@@ -13,6 +13,7 @@ export type ViewKey =
   | 'lyrics'
   | 'whiteboard'
   | 'planner'
+  | 'praiseWorship'
   | 'settings';
 
 export type HotkeyAction = 'announcements' | 'welcome' | 'blackout' | 'clear';

@@ -33,6 +33,8 @@ export function initialLiveState() {
     queue: [],
     queuePlanId: null,
     queueCursor: -1,
+    // Praise & Worship: the session loaded for live use and where the operator is in it. Null when none is loaded.
+    pw: null,
   };
 }
 
@@ -58,30 +60,40 @@ function endQueueSelection(s) {
   return s.queueCursor === -1 ? {} : { queueCursor: -1 };
 }
 
+// Praise & Worship is on air until something else takes the projector. Its session and position are kept, so it can take over again.
+function endPwAir(s) {
+  return s.pw?.onAir ? { pw: { ...s.pw, onAir: false } } : {};
+}
+
 function reduce(s, a) {
   switch (a.type) {
     case 'output/toggle': {
       const outputs = { ...s.outputs, [a.output]: !s.outputs[a.output] };
-      const ended = a.output === 'projector' && !outputs.projector ? endQueueSelection(s) : {};
+      const ended = a.output === 'projector' && !outputs.projector ? { ...endQueueSelection(s), ...endPwAir(s) } : {};
       return { ...s, ...ended, outputs };
     }
 
     case 'output/set': {
       if (s.outputs[a.output] === a.on) return s;
       const outputs = { ...s.outputs, [a.output]: a.on };
-      const ended = a.output === 'projector' && !a.on ? endQueueSelection(s) : {};
+      const ended = a.output === 'projector' && !a.on ? { ...endQueueSelection(s), ...endPwAir(s) } : {};
       return { ...s, ...ended, outputs };
     }
 
     // Only a direct show ends the selection. The startup screen is not one, so a restored selection survives launch.
+    // Praise & Worship's show is tagged with its source, so the console can tell who has the projector. It also ends
+    // the Mass Queue's selection: whichever took the projector last is the one on air.
     case 'projector/show': {
-      const ended = a.source === 'DIRECT_DECK' ? endQueueSelection(s) : {};
+      if (a.source === 'PW_SESSION') {
+        return { ...s, ...endQueueSelection(s), projector: { ...showFrame(s.projector, a.frame), source: 'PW_SESSION' } };
+      }
+      const ended = a.source === 'DIRECT_DECK' ? { ...endQueueSelection(s), ...endPwAir(s) } : {};
       return { ...s, ...ended, projector: showFrame(s.projector, a.frame) };
     }
 
     // Clear touches only the foreground: the background keeps playing.
     case 'projector/clear':
-      return { ...s, ...endQueueSelection(s), projector: { ...showFrame(s.projector, IDLE), source: null } };
+      return { ...s, ...endQueueSelection(s), ...endPwAir(s), projector: { ...showFrame(s.projector, IDLE), source: null } };
 
     case 'projector/blackout': {
       const p = s.projector;
@@ -120,6 +132,7 @@ function reduce(s, a) {
       // Who sent the frame: the Mass Queue, or a module deck. A module deck's take is a direct projection, so it ends the selection.
       const source = a.source ?? 'DIRECT_DECK';
       const ended = source === 'DIRECT_DECK' ? endQueueSelection(s) : {};
+      if (source !== 'PW_SESSION') Object.assign(ended, endPwAir(s));
       if (p.live.kind === 'blackout') return { ...s, ...ended, projector: { ...p, beforeBlackout: p.staged } };
       return { ...s, ...ended, projector: { ...p, live: p.staged, source } };
     }
@@ -193,6 +206,7 @@ function reduce(s, a) {
       return {
         ...s,
         ...endQueueSelection(s),
+        ...endPwAir(s),
         projector: { live: IDLE, staged: IDLE, paused: false, beforeBlackout: null, background: NO_BACKGROUND, source: null },
         lowerThird: { live: null, staged: null, paused: false },
       };
@@ -208,6 +222,33 @@ function reduce(s, a) {
     case 'queue/cursor':
       if (s.queueCursor === a.index) return s;
       return { ...s, queueCursor: a.index };
+
+    // Loads a Praise & Worship session for live use, at its start and off air. Reloading the same session keeps the place.
+    case 'pw/load':
+      if (s.pw?.sessionId === a.sessionId) return s;
+      return { ...s, pw: { sessionId: a.sessionId, segmentKey: null, slide: 0, startedAt: null, liveSince: null, onAir: false } };
+
+    // Moves the live position and puts Praise & Worship on air. Sent with the projector/show of the same slide.
+    // Times come from the action, so the reducer stays pure. A new segment restarts the segment timer.
+    case 'pw/cursor': {
+      if (!s.pw) return s;
+      const newSegment = a.segmentKey !== s.pw.segmentKey || s.pw.startedAt == null;
+      return {
+        ...s,
+        ...endQueueSelection(s),
+        pw: {
+          ...s.pw,
+          segmentKey: a.segmentKey,
+          slide: a.slide,
+          startedAt: newSegment ? a.now : s.pw.startedAt,
+          liveSince: s.pw.liveSince ?? a.now,
+          onAir: true,
+        },
+      };
+    }
+
+    case 'pw/end':
+      return s.pw ? { ...s, pw: null } : s;
 
     default:
       return s;

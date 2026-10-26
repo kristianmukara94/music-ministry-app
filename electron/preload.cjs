@@ -77,6 +77,19 @@ contextBridge.exposeInMainWorld('apcc', {
     save: (id, items) => ipcRenderer.invoke('plans:save', id, items),
   },
 
+  pw: {
+    listSessions: () => ipcRenderer.invoke('pw:listSessions'),
+    createSession: (input) => ipcRenderer.invoke('pw:createSession', input),
+    getSession: (id) => ipcRenderer.invoke('pw:getSession', id),
+    saveSession: (id, input) => ipcRenderer.invoke('pw:saveSession', id, input),
+    deleteSession: (id) => ipcRenderer.invoke('pw:deleteSession', id),
+    listTemplates: () => ipcRenderer.invoke('pw:listTemplates'),
+    saveAsTemplate: (sessionId, name) => ipcRenderer.invoke('pw:saveAsTemplate', sessionId, name),
+    deleteTemplate: (id) => ipcRenderer.invoke('pw:deleteTemplate', id),
+    listTags: () => ipcRenderer.invoke('pw:listTags'),
+    setTag: (hymnId, segmentKey, on) => ipcRenderer.invoke('pw:setTag', hymnId, segmentKey, on),
+  },
+
   notes: {
     list: () => ipcRenderer.invoke('notes:list'),
     get: (id) => ipcRenderer.invoke('notes:get', id),

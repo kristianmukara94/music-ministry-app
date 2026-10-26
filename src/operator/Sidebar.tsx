@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from 'react';
 import {
-  ArrowDownUp, BookOpen, BookOpenText, ClipboardList, Flower2, Film, Languages, LayoutGrid, Maximize, Megaphone,
+  ArrowDownUp, BookOpen, BookOpenText, ClipboardList, Flower2, Film, HandHeart, Languages, LayoutGrid, Maximize, Megaphone,
   Music, NotebookPen, PanelLeftClose, PanelLeftOpen, Presentation, Search, Settings, type LucideIcon,
 } from 'lucide-react';
 import { useLive } from '../live/store';
@@ -23,13 +23,14 @@ export const NAV: { key: ViewKey; icon: LucideIcon; label: StringKey }[] = [
   { key: 'lyrics', icon: Music, label: 'nav.lyrics' },
   { key: 'whiteboard', icon: Presentation, label: 'nav.whiteboard' },
   { key: 'planner', icon: ClipboardList, label: 'nav.planner' },
+  { key: 'praiseWorship', icon: HandHeart, label: 'nav.praiseWorship' },
   { key: 'settings', icon: Settings, label: 'nav.settings' },
 ];
 
 /** Sidebar sections, in the order the operator works through them. Each module appears once. */
 const NAV_GROUPS: { key: StringKey; items: ViewKey[] }[] = [
   { key: 'nav.group.liturgy', items: ['lectionary', 'bible', 'rosary', 'notes'] },
-  { key: 'nav.group.worship', items: ['lyrics', 'media', 'announcements'] },
+  { key: 'nav.group.worship', items: ['praiseWorship', 'lyrics', 'media', 'announcements'] },
   { key: 'nav.group.management', items: ['planner', 'dashboard', 'settings', 'whiteboard'] },
 ];
 

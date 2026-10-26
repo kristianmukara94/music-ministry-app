@@ -102,7 +102,7 @@ function StatusWidget({ icon: Icon, eyebrow, tone, badge, detail, action, onActi
   );
 }
 
-const FRAME_LABEL: Record<Exclude<Frame['kind'], 'deck' | 'image' | 'text' | 'lyrics' | 'psalm' | 'rosary' | 'whiteboard'>, StringKey> = {
+const FRAME_LABEL: Record<Exclude<Frame['kind'], 'deck' | 'image' | 'text' | 'lyrics' | 'psalm' | 'rosary' | 'whiteboard' | 'pw'>, StringKey> = {
   idle: 'frame.idle',
   blackout: 'frame.blackout',
   welcome: 'frame.welcome',
@@ -119,7 +119,9 @@ function StatusCards() {
         ? projector.live.section
         : projector.live.kind === 'whiteboard'
           ? projector.live.slide.title
-          : t(FRAME_LABEL[projector.live.kind]);
+          : projector.live.kind === 'pw'
+            ? projector.live.segmentName
+            : t(FRAME_LABEL[projector.live.kind]);
 
   const projectorBadge: { tone: BadgeTone; label: string } = !outputs.projector
     ? { tone: 'off', label: t('status.off') }

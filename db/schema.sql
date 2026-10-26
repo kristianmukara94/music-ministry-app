@@ -148,3 +148,45 @@ CREATE TABLE mass_plan_items (
   moment    TEXT
 );
 CREATE INDEX idx_plan_items ON mass_plan_items(plan_id, sort);
+
+-- ── Praise & Worship (live copy: PW_MIGRATIONS in electron/pw-sessions.js) ──
+-- Separate from the Mass planner. A session copies its segments from a template when created.
+CREATE TABLE pw_sessions (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  name             TEXT NOT NULL,
+  liturgical_date  TEXT NOT NULL,
+  groups           TEXT NOT NULL DEFAULT '[]',       -- JSON [{ key, name }] in lineup order
+  created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE pw_segments (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id     INTEGER NOT NULL REFERENCES pw_sessions(id) ON DELETE CASCADE,
+  display_order  INTEGER NOT NULL,
+  segment_key    TEXT NOT NULL,                     -- 'marian_song', 'worship', ...
+  group_key      TEXT NOT NULL,
+  name           TEXT NOT NULL,
+  type           TEXT NOT NULL CHECK (type IN ('prayer','song','scripture')),
+  minutes        INTEGER NOT NULL DEFAULT 0,
+  leader         TEXT NOT NULL DEFAULT '',
+  content_ref    TEXT NOT NULL DEFAULT '{}',        -- JSON PwContent (shared/pw.d.ts)
+  arrangement    TEXT NOT NULL DEFAULT '{}',        -- JSON { hymnId: stanzaId[] }
+  cues           TEXT NOT NULL DEFAULT '{}',        -- JSON { lowerThird, titleFirst, fadeOut }
+  notes          TEXT NOT NULL DEFAULT ''           -- operator only, never projected
+);
+CREATE INDEX idx_pw_segments_order ON pw_segments (session_id, display_order);
+
+CREATE TABLE pw_templates (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL,
+  groups      TEXT NOT NULL,
+  segments    TEXT NOT NULL,
+  built_in    INTEGER NOT NULL DEFAULT 0,           -- 1 = the default lineup, seeded at launch, cannot be deleted
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE pw_hymn_tags (
+  hymn_id      INTEGER NOT NULL REFERENCES hymns(id) ON DELETE CASCADE,
+  segment_key  TEXT NOT NULL,
+  PRIMARY KEY (hymn_id, segment_key)
+);

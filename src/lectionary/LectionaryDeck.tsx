@@ -19,6 +19,7 @@ const SLOT_KEY: Record<ReadingType, string> = {
   'First Reading': 'slot_first',
   'Responsorial Psalm': 'slot_psalm',
   'Second Reading': 'slot_second',
+  'Gospel Acclamation': 'slot_acclamation',
   Gospel: 'slot_gospel',
 };
 const DATE_LOCALE = { en: 'en-PH', tl: 'fil-PH', ceb: 'en-PH' } as const;

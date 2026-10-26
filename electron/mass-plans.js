@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { parseSourceId } from '../shared/bible-ref.js';
+import { GOSPEL_ACCLAMATION } from './lectionary.js';
 
 export const PLAN_BLOCKS = ['introductory', 'word', 'eucharist', 'concluding'];
 export const PLAN_MODULES = ['lyrics', 'lectionary', 'announcements', 'media', 'mass_order', 'bible', 'custom', 'notes'];
@@ -214,6 +215,9 @@ export function createMassPlanService(db) {
         if (item.module === 'mass_order' && !MASS_PART.test(sourceId)) throw new Error('Unknown Mass part.');
         if (item.module === 'notes' && q.note.get(Number(sourceId))?.display === 'operator') {
           throw new Error('Operator-only notes cannot go to the Service Queue.');
+        }
+        if (item.module === 'lectionary' && sourceId.split('|')[1] === GOSPEL_ACCLAMATION) {
+          throw new Error('The Gospel Acclamation is for Praise & Worship. It cannot be added to a Mass plan.');
         }
         requireSource(item.module, sourceId);
         const label = String(item.label ?? '').trim().slice(0, MAX_LABEL) || sourceId;

@@ -14,6 +14,7 @@ import type { LectionaryApi } from '../lectionary/types';
 import type { MediaApi, ThumbnailJob } from '../media/types';
 import type { PlansApi } from '../planner/types';
 import type { NotesApi } from '../notes/types';
+import type { PwApi } from '../praise-worship/types';
 import type { ProjectorSettings } from '../../shared/projector-settings';
 import type { WelcomeSettings } from '../../shared/welcome-settings';
 import type { LowerThirdStyle } from '../../shared/lower-third-style';
@@ -79,6 +80,7 @@ interface ElectronApi {
   rosary: RosaryApi;
   media: MediaApi;
   plans: PlansApi;
+  pw: PwApi;
   notes: NotesApi;
   displays: DisplaysApi;
   projector: ProjectorApi;
@@ -187,6 +189,20 @@ const offlinePlans: PlansApi = {
   deletePlan: async () => offlineError(),
   get: async () => offlineError(),
   save: async () => offlineError(),
+};
+
+/** Browser preview has no database, so Praise & Worship lists nothing and cannot save. */
+const offlinePw: PwApi = {
+  listSessions: async () => [],
+  createSession: async () => offlineError(),
+  getSession: async () => offlineError(),
+  saveSession: async () => offlineError(),
+  deleteSession: async () => offlineError(),
+  listTemplates: async () => [],
+  saveAsTemplate: async () => offlineError(),
+  deleteTemplate: async () => offlineError(),
+  listTags: async () => [],
+  setTag: async () => offlineError(),
 };
 
 const offlineNotes: NotesApi = {
@@ -340,6 +356,7 @@ function createBrowserBridge(): LiveBridge {
     rosary: offlineRosary,
     media: offlineMedia,
     plans: offlinePlans,
+    pw: offlinePw,
     notes: offlineNotes,
     displays: offlineDisplays,
     projector: offlineProjector,

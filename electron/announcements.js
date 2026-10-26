@@ -9,7 +9,7 @@ import { createPdfConverter } from './pdf-converter.js';
 import os from 'node:os';
 import { DOCUMENT_EXTENSIONS, findSoffice, pptxToPdf, readDocumentPages, readPptxSlides, renderWithPowerPoint } from './documents.js';
 import { LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } from './lyrics.js';
-import { LECTIONARY_MIGRATIONS, LECTIONARY_STYLE_MIGRATIONS } from './lectionary.js';
+import { LECTIONARY_ACCLAMATION_MIGRATIONS, LECTIONARY_MIGRATIONS, LECTIONARY_STYLE_MIGRATIONS } from './lectionary.js';
 import { MEDIA_AUDIO_MIGRATIONS, MEDIA_MIGRATIONS } from './media.js';
 import { WHITEBOARD_MIGRATIONS } from './whiteboard.js';
 import { MASS_PLAN_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_NOTES_MIGRATIONS } from './mass-plans.js';
@@ -17,6 +17,7 @@ import { PRAYER_NOTES_MIGRATIONS, setupNotes } from './notes.js';
 import { ROSARY_LITANY_MIGRATIONS } from './rosary.js';
 import { BIBLE_MIGRATIONS } from './bible-seed.js';
 import { ROSARY_MIGRATIONS } from './rosary.js';
+import { PW_MIGRATIONS } from './pw-sessions.js';
 import { MEDIA_SCHEME, installMediaProtocol, registerMediaRoute } from './protocol.js';
 import { assetRootFor, migrateAbsolutePaths, relPath, resolveAsset, setActiveAssetRoot } from './assets.js';
 
@@ -116,6 +117,8 @@ const ALL_MIGRATIONS = [
   ...PLAN_NOTES_MIGRATIONS,
   ...MEDIA_AUDIO_MIGRATIONS,
   ...WHITEBOARD_MIGRATIONS,
+  ...PW_MIGRATIONS,
+  ...LECTIONARY_ACCLAMATION_MIGRATIONS,
 ];
 
 const SLIDE_SELECT = `

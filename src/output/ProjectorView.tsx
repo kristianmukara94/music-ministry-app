@@ -12,6 +12,7 @@ import { WelcomeFrame } from './WelcomeScreen';
 import { SlideCanvas } from '../whiteboard/SlideCanvas';
 import type { NoteOverlay } from '../../shared/live.js';
 import type { TextStyle } from '../../shared/text-style';
+import { PwSlideFace } from '../praise-worship/PwSlideFace';
 
 /** How long clearing the foreground takes to fade out. Keep in step with `duration-300` below. */
 export const FOREGROUND_FADE_MS = 300;
@@ -263,6 +264,9 @@ function FrameView({ frame }: { frame: Frame }) {
           </div>
         </>
       );
+    case 'pw':
+      // A Praise & Worship slide. It draws its own background, so it fills the stage.
+      return <PwSlideFace slide={frame.slide} segmentName={frame.segmentName} type={frame.type} index={frame.index} total={frame.total} footer={frame.footer} />;
     case 'whiteboard':
       // Sized to the space the screen leaves, so the lower-third clearance on the parent shortens it too.
       return (
