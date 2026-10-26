@@ -3,7 +3,6 @@ import { ListMusic, Music, Pencil, Play, Plus, Search, Trash2, Type } from 'luci
 import { BACKGROUND_COLORS, sanitizeTextStyle } from '../../shared/text-style.js';
 import type { TextStyle } from '../../shared/text-style';
 import { ColorField, StyleToolbar } from '../announcements/StyleControls';
-import { SlidePreview } from '../announcements/TextSlideModal';
 import type { Frame } from '../../shared/live.js';
 import { CATEGORIES, LANGUAGES } from '../../shared/lyrics-parser.js';
 import { bridge } from '../live/bridge';
@@ -12,6 +11,7 @@ import { setUi, useUi } from '../state/ui';
 import { ShowAllVerses } from '../components/ShowAllVerses';
 import { useAnnT } from '../announcements/strings';
 import { CreateHymnModal } from './CreateHymnModal';
+import { SongCategoriesModal } from './SongCategoriesModal';
 import { useLyT } from './strings';
 import type { Hymn, HymnCategory, HymnLanguage, HymnSummary, Setlist, SetlistEntry } from './types';
 
@@ -65,6 +65,7 @@ export function SongLyrics() {
   // Whether the hymn on screen came from the Mass Queue. Its takes stay on the queue's account; any other hymn is a direct take.
   const hymnFromQueue = useRef(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [showCategories, setShowCategories] = useState(false);
   const [editing, setEditing] = useState<Hymn | null>(null);
 
   // Library
@@ -300,8 +301,6 @@ export function SongLyrics() {
 
   // The song's style, as it will be saved and drawn. Changing it saves the song and updates whatever is on the screen.
   const hymnStyle: TextStyle = hymn?.style ?? {};
-  const checked = sanitizeTextStyle(hymnStyle);
-  const previewText = hymn ? (hymn.stanzas[cue >= 0 ? cue : 0]?.lyricsText ?? '') : '';
 
   const changeStyle = (patch: TextStyle) => {
     if (!hymn) return;
@@ -341,6 +340,10 @@ export function SongLyrics() {
           <div className="flex flex-col gap-3 border-b border-line p-4">
             <div className="flex items-center justify-between">
               <span className="eyebrow text-fg">{t('libraryTitle')}</span>
+              <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setShowCategories(true)} className="h-9 rounded-md border border-line-strong px-3 text-xs font-bold whitespace-nowrap uppercase hover:bg-panel-2">
+                {t('songCategoriesButton')}
+              </button>
               <button
                 type="button"
                 onClick={() => setShowCreate(true)}
@@ -348,6 +351,7 @@ export function SongLyrics() {
               >
                 <Plus size={14} strokeWidth={2.5} aria-hidden /> {t('createHymn')}
               </button>
+              </div>
             </div>
             <label className="relative">
               <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" aria-hidden />
@@ -593,9 +597,6 @@ export function SongLyrics() {
                     clearLabel="No colour"
                   />
                 </div>
-                <div className="shrink-0 border-b border-line p-3">
-                  <SlidePreview text={previewText} bgSrc={null} style={checked} className="h-40 w-full rounded-md border border-line" />
-                </div>
 
               {/* By default the list shows the live verse and the next one. The checkbox lists them all. The projector is unchanged. */}
               <div className="flex shrink-0 items-center border-b border-line px-3 py-2">
@@ -605,26 +606,31 @@ export function SongLyrics() {
               <ol className="p-3">
                 {hymn.stanzas.map((stanza, i) => {
                   const live = isLive(i);
+                  // The selected verse is the one the operator picked (the cue). It stays selected until another is picked.
+                  const selected = cue === i;
                   const next = i === cue + 1;
-                  // One verse at a time: the live verse and the next one. Before the first cue, the first verse is the next one.
-                  if (!showAllVerses && !live && !next) return null;
+                  // One verse at a time: the selected verse, the live verse and the next one. Before the first cue, the first verse is the next one.
+                  if (!showAllVerses && !live && !next && !selected) return null;
                   return (
                     <li key={stanza.id} className="mb-2">
                       <button
                         type="button"
-                        onClick={() => stage(i)}
+                        onClick={() => showNow(i)}
                         aria-pressed={live}
+                        aria-current={selected ? 'true' : undefined}
                         className={`w-full rounded-lg border p-4 text-left transition ${
-                          live
-                            ? 'border-accent bg-accent/10 ring-1 ring-accent'
-                            : next
-                              ? 'border-line-strong bg-panel-2'
-                              : 'border-line bg-panel hover:border-line-strong'
+                          selected
+                            ? 'border-amber-400 bg-amber-400/15 ring-2 ring-amber-400'
+                            : live
+                              ? 'border-emerald-500 bg-emerald-500/10'
+                              : next
+                                ? 'border-dashed border-line-strong bg-panel-2'
+                                : 'border-line bg-panel hover:border-line-strong'
                         }`}
                       >
                         <div className="mb-2 flex items-center gap-2">
                           <span className="font-mono text-[11px] font-bold tracking-wider text-accent uppercase">{stanza.stanzaType}</span>
-                          {live && <span className="rounded bg-accent px-1.5 py-0.5 text-[10px] font-extrabold text-on-accent uppercase">{t('live')}</span>}
+                          {live && <span className="rounded bg-emerald-500 px-1.5 py-0.5 text-[10px] font-extrabold text-stone-950 uppercase">{t('live')}</span>}
                           {next && !live && <span className="text-[10px] font-bold text-muted uppercase">{t('next')}</span>}
                         </div>
                         <p className="line-clamp-4 text-[15px] leading-snug whitespace-pre-line">{stanza.lyricsText}</p>
@@ -657,6 +663,7 @@ export function SongLyrics() {
         </section>
       </div>
 
+      {showCategories && <SongCategoriesModal onClose={() => setShowCategories(false)} />}
       {showCreate && <CreateHymnModal onClose={() => setShowCreate(false)} onSaved={() => void afterSave()} />}
       {editing && <CreateHymnModal hymn={editing} onClose={() => setEditing(null)} onSaved={() => void afterSave()} />}
     </div>

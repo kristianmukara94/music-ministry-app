@@ -18,3 +18,6 @@ export interface ParseResult {
 
 export function parseLyrics(raw: string): ParseResult;
 export function toTaggedLyrics(stanzas: ParsedStanza[]): string;
+
+/** The section a line starts: its kind and number, or null for a lyric line. A bracket tag with an unknown kind has kind null. */
+export function sectionHeader(line: string): { kind: string | null; number: string; tag: string | null } | null;

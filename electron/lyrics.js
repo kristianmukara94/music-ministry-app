@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { CATEGORIES, LANGUAGES, parseLyrics } from '../shared/lyrics-parser.js';
 import { parseTextStyle, sanitizeTextStyle } from '../shared/text-style.js';
+import { createSongCategoryService, resolveSongCategory } from './song-categories.js';
 
 const MAX_TITLE = 120;
 const MAX_COMPOSER = 80;
@@ -75,28 +76,30 @@ function checkedHymnInput(input) {
 
 /** Data access and lyric parsing for Song Lyrics. Pure: takes a database handle. */
 export function createLyricsService(db) {
+  const songCategories = createSongCategoryService(db);
   const q = {
     list: db.prepare(`
-      SELECT h.id, h.title, h.composer, h.category, h.language, h.musical_key AS musicalKey,
+      SELECT h.id, h.title, h.composer, h.category, h.language, h.musical_key AS musicalKey, h.song_category AS songCategory,
              (SELECT COUNT(*) FROM hymn_stanzas s WHERE s.hymn_id = h.id) AS stanzaCount
       FROM hymns h
       WHERE (@category IS NULL OR h.category = @category)
         AND (@language IS NULL OR h.language = @language)
+        AND (@songCategory IS NULL OR h.song_category = @songCategory COLLATE NOCASE)
         AND (@term IS NULL
              OR h.title LIKE @term ESCAPE '\\'
              OR h.composer LIKE @term ESCAPE '\\'
              OR h.musical_key LIKE @term ESCAPE '\\'
              OR EXISTS (SELECT 1 FROM hymn_stanzas s WHERE s.hymn_id = h.id AND s.lyrics_text LIKE @term ESCAPE '\\'))
       ORDER BY h.title COLLATE NOCASE`),
-    hymn: db.prepare('SELECT id, title, composer, category, language, musical_key AS musicalKey, style AS styleJson FROM hymns WHERE id = ?'),
+    hymn: db.prepare('SELECT id, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory, style AS styleJson FROM hymns WHERE id = ?'),
     setStyle: db.prepare('UPDATE hymns SET style = ? WHERE id = ?'),
     stanzas: db.prepare(`
       SELECT id, stanza_type AS stanzaType, lyrics_text AS lyricsText, display_order AS "order"
       FROM hymn_stanzas WHERE hymn_id = ? ORDER BY display_order, id`),
-    insertHymn: db.prepare('INSERT INTO hymns (title, composer, category, language, musical_key) VALUES (?, ?, ?, ?, ?)'),
+    insertHymn: db.prepare('INSERT INTO hymns (title, composer, category, language, musical_key, song_category) VALUES (?, ?, ?, ?, ?, ?)'),
     insertStanza: db.prepare('INSERT INTO hymn_stanzas (hymn_id, stanza_type, lyrics_text, display_order) VALUES (?, ?, ?, ?)'),
     deleteHymn: db.prepare('DELETE FROM hymns WHERE id = ?'),
-    updateHymn: db.prepare('UPDATE hymns SET title = ?, composer = ?, category = ?, language = ?, musical_key = ? WHERE id = ?'),
+    updateHymn: db.prepare('UPDATE hymns SET title = ?, composer = ?, category = ?, language = ?, musical_key = ?, song_category = ? WHERE id = ?'),
     clearStanzas: db.prepare('DELETE FROM hymn_stanzas WHERE hymn_id = ?'),
     setlists: db.prepare('SELECT id, date, name FROM setlists ORDER BY date DESC, id DESC'),
     setlist: db.prepare('SELECT id, date, name FROM setlists WHERE id = ?'),
@@ -112,14 +115,14 @@ export function createLyricsService(db) {
     insertItem: db.prepare('INSERT INTO setlist_items (setlist_id, hymn_id, position) VALUES (?, ?, ?)'),
   };
 
-  const insertHymnWithStanzas = db.transaction((title, composer, category, language, musicalKey, stanzas) => {
-    const { lastInsertRowid } = q.insertHymn.run(title, composer, category, language, musicalKey);
+  const insertHymnWithStanzas = db.transaction((title, composer, category, language, musicalKey, songCategory, stanzas) => {
+    const { lastInsertRowid } = q.insertHymn.run(title, composer, category, language, musicalKey, songCategory);
     stanzas.forEach((s, i) => q.insertStanza.run(lastInsertRowid, s.stanzaType, s.lyricsText, i + 1));
     return Number(lastInsertRowid);
   });
 
   const replaceHymn = db.transaction((id, hymn) => {
-    q.updateHymn.run(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, id);
+    q.updateHymn.run(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, hymn.songCategory, id);
     q.clearStanzas.run(id);
     hymn.stanzas.forEach((s, i) => q.insertStanza.run(id, s.stanzaType, s.lyricsText, i + 1));
   });
@@ -144,6 +147,7 @@ export function createLyricsService(db) {
       return q.list.all({
         category: CATEGORIES.includes(filter.category) ? filter.category : null,
         language: LANGUAGES.includes(filter.language) ? filter.language : null,
+        songCategory: filter.songCategory ? String(filter.songCategory) : null,
         term: term ? `%${escaped}%` : null,
       });
     },
@@ -159,14 +163,17 @@ export function createLyricsService(db) {
     /** Parses the pasted lyrics and stores the hymn with its stanzas in one transaction. */
     createHymn(input = {}) {
       const hymn = checkedHymnInput(input);
-      const id = insertHymnWithStanzas(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, hymn.stanzas);
+      const songCategory = resolveSongCategory(db, input.songCategory);
+      const id = insertHymnWithStanzas(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, songCategory, hymn.stanzas);
       return { id, warnings: hymn.warnings };
     },
 
     /** Updates the hymn's details and replaces its stanzas with a fresh parse of `raw`. */
     editHymn(id, input = {}) {
-      if (!q.hymn.get(id)) throw new Error('That hymn no longer exists.');
+      const current = q.hymn.get(id);
+      if (!current) throw new Error('That hymn no longer exists.');
       const hymn = checkedHymnInput(input);
+      hymn.songCategory = resolveSongCategory(db, input.songCategory, current.songCategory);
       replaceHymn(id, hymn);
       return { id, warnings: hymn.warnings };
     },
@@ -200,6 +207,22 @@ export function createLyricsService(db) {
       return q.deleteSetlist.run(id).changes > 0;
     },
 
+    listSongCategories() {
+      return songCategories.listSongCategories();
+    },
+
+    createSongCategory(input = {}) {
+      return songCategories.createSongCategory(input);
+    },
+
+    renameSongCategory(id, input = {}) {
+      return songCategories.renameSongCategory(id, input);
+    },
+
+    deleteSongCategory(id) {
+      return songCategories.deleteSongCategory(id);
+    },
+
     getSetlist(id) {
       requireSetlist(id);
       return q.entries.all(id);
@@ -229,5 +252,9 @@ export function setupLyrics(db) {
   handle('createSetlist', (input) => service.createSetlist(input));
   handle('deleteSetlist', (id) => service.deleteSetlist(Number(id)));
   handle('getSetlist', (id) => service.getSetlist(Number(id)));
+  handle('listSongCategories', () => service.listSongCategories());
+  handle('createSongCategory', (input) => service.createSongCategory(input));
+  handle('renameSongCategory', (id, input) => service.renameSongCategory(Number(id), input));
+  handle('deleteSongCategory', (id) => service.deleteSongCategory(Number(id)));
   handle('saveSetlist', (id, hymnIds) => service.saveSetlist(Number(id), hymnIds));
 }

@@ -16,6 +16,26 @@ const TAG_KIND = {
 
 const TAG_FOR_KIND = { Verse: 'V', Chorus: 'C', Bridge: 'B', Tag: 'T', Outro: 'O' };
 
+// A section written as a word: "Verse 1", "VERSE 1:", "Chorus", "Refrain". The colon or full stop is optional.
+const WORD_HEADER = /^\s*(verse|chorus|refrain|bridge|tag|outro)\s*(\d*)\s*[:.]?\s*$/i;
+const WORD_KIND = { verse: 'Verse', chorus: 'Chorus', refrain: 'Chorus', bridge: 'Bridge', tag: 'Tag', outro: 'Outro' };
+
+/**
+ * The section a line starts, or null for a lyric line. Recognises the bracket tags ([V1], [C], [B], [T], [O]) and the word
+ * headers ("Verse 1", "VERSE 1:", "Chorus", "Refrain"). A bracket tag that is not known comes back with kind null, so the
+ * parser can report it. Short forms such as "C" are not headers: they stay lyric lines.
+ */
+export function sectionHeader(line) {
+  const text = String(line ?? '');
+  const bracket = text.match(TAG);
+  if (bracket) {
+    return { kind: TAG_KIND[bracket[1].toLowerCase()] ?? null, number: bracket[2], tag: `[${bracket[1]}${bracket[2]}]` };
+  }
+  const word = text.match(WORD_HEADER);
+  if (word) return { kind: WORD_KIND[word[1].toLowerCase()], number: word[2], tag: null };
+  return null;
+}
+
 /** The inverse of parseLyrics: stored stanzas back to tagged text, for the edit dialog. */
 export function toTaggedLyrics(stanzas) {
   return stanzas
@@ -47,22 +67,22 @@ export function parseLyrics(raw) {
     return section;
   };
 
-  if (lines.some((line) => TAG.test(line))) {
+  if (lines.some((line) => sectionHeader(line))) {
     let current = null;
     for (const line of lines) {
-      const tag = line.match(TAG);
-      if (tag) {
-        const kind = TAG_KIND[tag[1].toLowerCase()];
+      const header = sectionHeader(line);
+      if (header) {
+        const { kind, number } = header;
         if (!kind) {
-          errors.push(`Unknown tag [${tag[1]}${tag[2]}]. Use [V1], [C], [B], [T], or [O].`);
+          errors.push(`Unknown tag ${header.tag}. Use [V1], [C], [B], [T], or [O].`);
           current = null;
           continue;
         }
         if (kind === 'Verse') {
           verseCount += 1;
-          current = startSection(`Verse ${tag[2] ? Number(tag[2]) : verseCount}`);
+          current = startSection(`Verse ${number ? Number(number) : verseCount}`);
         } else {
-          current = startSection(tag[2] ? `${kind} ${Number(tag[2])}` : kind);
+          current = startSection(number ? `${kind} ${Number(number)}` : kind);
         }
       } else if (line.trim()) {
         if (!current) {

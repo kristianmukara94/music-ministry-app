@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from 'react';
 import { X } from 'lucide-react';
-import { CATEGORIES, LANGUAGES, parseLyrics, toTaggedLyrics } from '../../shared/lyrics-parser.js';
+import { CATEGORIES, LANGUAGES, parseLyrics, sectionHeader, toTaggedLyrics } from '../../shared/lyrics-parser.js';
+import { isMetadataLine, splitSongSheet } from '../../shared/lyrics-import.js';
 import { bridge } from '../live/bridge';
 import { useLyT } from './strings';
-import type { Hymn, HymnCategory, HymnLanguage } from './types';
+import type { Hymn, HymnCategory, HymnLanguage, SongCategory } from './types';
 
 const api = bridge.lyrics;
 
@@ -18,6 +19,9 @@ Aleluya, aleluya
 Sa sariwang pastulan`;
 
 const field = 'h-10 w-full rounded-md border border-line-strong bg-canvas px-3 text-sm outline-none focus:border-accent';
+
+/** The main process sends IPC errors with a prefix that the operator should not see. */
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
 /** Create when `hymn` is absent; edit (prefilled from the stored hymn) when it is present. */
 export function CreateHymnModal({
@@ -35,25 +39,85 @@ export function CreateHymnModal({
   const [musicalKey, setMusicalKey] = useState(hymn?.musicalKey ?? '');
   const [category, setCategory] = useState<HymnCategory>(hymn?.category ?? 'General');
   const [language, setLanguage] = useState<HymnLanguage>(hymn?.language ?? 'EN');
+  const [songCategory, setSongCategory] = useState(hymn?.songCategory ?? '');
+  const [songCategories, setSongCategories] = useState<SongCategory[]>([]);
   const [raw, setRaw] = useState(hymn ? toTaggedLyrics(hymn.stanzas) : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const lyricsRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    api.listSongCategories().then(setSongCategories).catch(() => undefined);
+  }, []);
+  // A song keeps its category even when the list no longer has it, so the form shows it as it is.
+  const songCategoryOptions = [
+    ...songCategories.map((c) => c.name),
+    ...(songCategory && !songCategories.some((c) => c.name === songCategory) ? [songCategory] : []),
+  ];
+
+  /**
+   * Pasting a song sheet fills the title and the stanzas: the credit lines are dropped, and the title goes in only when the
+   * title field is empty. A plain single-line paste keeps the browser's own paste. Nothing is saved until the operator saves.
+   */
+  const pasteSheet = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const pasted = e.clipboardData.getData('text');
+    const trimmed = pasted.trim();
+    const isSheet = /[\r\n]/.test(pasted) || Boolean(sectionHeader(trimmed)) || isMetadataLine(trimmed);
+    if (!isSheet) return;
+    const sheet = splitSongSheet(pasted);
+    if (!sheet.title && !sheet.raw) return;
+    e.preventDefault();
+
+    const el = e.currentTarget;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const empty = raw.trim() === '';
+    setRaw(empty ? sheet.raw : `${raw.slice(0, start)}${sheet.raw}${raw.slice(end)}`);
+    if (!title.trim() && sheet.title) setTitle(sheet.title);
+    setError(null);
+    setNotice(t('sheetPasted'));
+    if (!empty) {
+      const caret = start + sheet.raw.length;
+      requestAnimationFrame(() => lyricsRef.current?.setSelectionRange(caret, caret));
+    }
+  };
 
   const parsed = parseLyrics(raw);
   const blocking = raw.trim() ? parsed.errors[0] : undefined;
   const canSave = !busy && title.trim().length > 0 && !blocking && parsed.stanzas.length > 0;
+
+  /** Reads a PDF, Word or text file in the main process and fills the form. Nothing is saved until the operator saves. */
+  const importFile = async () => {
+    setError(null);
+    setNotice(null);
+    setImporting(true);
+    try {
+      const result = await api.importFile();
+      if (!result) return;
+      if (raw.trim() && !window.confirm(t('importReplace', { name: result.fileName }))) return;
+      setRaw(result.raw);
+      if (!title.trim()) setTitle(result.title);
+      setNotice(t('importedFrom', { name: result.fileName }));
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const input = { title, composer, category, language, musicalKey, raw };
+      const input = { title, composer, category, language, musicalKey, songCategory, raw };
       if (hymn) await api.editHymn(hymn.id, input);
       else await api.createHymn(input);
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorText(err));
     } finally {
       setBusy(false);
     }
@@ -98,10 +162,34 @@ export function CreateHymnModal({
               </label>
             </div>
 
+            {!hymn && (
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={importFile}
+                  disabled={importing}
+                  className="h-10 self-start rounded-md border border-line-strong px-4 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40"
+                >
+                  {importing ? t('importing') : t('importFile')}
+                </button>
+                <p className="text-xs text-faint">{t('importHelp')}</p>
+              </div>
+            )}
+            {notice && <p role="status" className="text-sm text-ok">{notice}</p>}
+            <label className="flex flex-col gap-1.5">
+              <span className="eyebrow">{t('songCategoryField')}</span>
+              <select value={songCategory} onChange={(e) => setSongCategory(e.target.value)} className={field}>
+                <option value="">{t('songCategoryNone')}</option>
+                {songCategoryOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </label>
+
             <label className="flex min-h-0 flex-1 flex-col gap-1.5">
               <span className="eyebrow">{t('fieldLyrics')}</span>
               <textarea
                 value={raw}
+                ref={lyricsRef}
+                onPaste={pasteSheet}
                 onChange={(e) => setRaw(e.target.value)}
                 placeholder={SAMPLE}
                 spellCheck={false}
