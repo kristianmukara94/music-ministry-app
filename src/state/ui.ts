@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Lang } from '../../shared/live.js';
+import { DEFAULT_REGION_SETTINGS, type RegionSettings } from './region';
 
 export type ViewKey =
   | 'dashboard'
@@ -46,6 +47,8 @@ export const DEFAULT_KEYMAP: Record<HotkeyAction, string> = {
 
 interface UiState {
   lang: Lang;
+  /** How times and dates are displayed. Saved with the other operator preferences. */
+  region: RegionSettings;
   view: ViewKey;
   collapsed: boolean;
   paletteOpen: boolean;
@@ -105,6 +108,7 @@ export const useUi = create<UiState>()(
   persist(
     (): UiState => ({
       lang: 'en',
+      region: DEFAULT_REGION_SETTINGS,
       view: 'dashboard',
       collapsed: false,
       paletteOpen: false,
@@ -125,7 +129,7 @@ export const useUi = create<UiState>()(
     {
       name: 'apccmma.ui',
       // Only operator preferences survive restarts; transient UI does not.
-      partialize: ({ lang, collapsed, keymap, launchpad }) => ({ lang, collapsed, keymap, launchpad }),
+      partialize: ({ lang, region, collapsed, keymap, launchpad }) => ({ lang, region, collapsed, keymap, launchpad }),
     },
   ),
 );
