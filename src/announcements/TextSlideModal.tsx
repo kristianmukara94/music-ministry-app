@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ImagePlus, Scissors, Sparkles, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ImagePlus, Scissors, Sparkles, Type, X } from 'lucide-react';
 import { BACKGROUND_COLORS, customSizes, fontCss, sanitizeTextStyle } from '../../shared/text-style.js';
 import type { TextAlign, TextStyle } from '../../shared/text-style';
 import { bridge } from '../live/bridge';
-import { useUi } from '../state/ui';
+import { setUi, useUi } from '../state/ui';
 import { useAnnT } from './strings';
 import { ColorField, StyleToolbar } from './StyleControls';
 import { autoPaginateText, BREAK, pagesOf, SLIDE_W, TEXT_FONT_SHARE, withFitter } from './paginate';
@@ -81,6 +81,8 @@ export function TextSlideModal({
 }) {
   const tr = useAnnT();
   const lang = useUi((s) => s.lang);
+  // Hidden until the operator opens it. Its open state is kept in the UI store for the session only.
+  const styleOpen = useUi((s) => s.slideStyleOpen);
   const [master, setMaster] = useState('');
   const [bgName, setBgName] = useState<string | null>(null);
   const [style, setStyle] = useState<TextStyle>({ fontFamily: 'sans' });
@@ -165,7 +167,27 @@ export function TextSlideModal({
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto p-6 lg:grid-cols-2">
           <section className="flex min-w-0 flex-col gap-3">
-            <StyleToolbar style={style} onChange={update} />
+            <button
+              type="button"
+              aria-expanded={styleOpen}
+              aria-controls="ann-style-panel"
+              onClick={() => setUi({ slideStyleOpen: !styleOpen })}
+              className={button}
+            >
+              <Type size={14} aria-hidden /> {tr('styleToggle')}
+            </button>
+            <div id="ann-style-panel" hidden={!styleOpen} className="flex flex-col gap-3">
+              <StyleToolbar style={style} onChange={update} />
+              {/* Background colour: used when no background image is set. */}
+              <ColorField
+                label="Background colour"
+                prefix="Background"
+                value={style.bgColor}
+                presets={BACKGROUND_COLORS}
+                onChange={(hex) => update({ bgColor: hex })}
+                clearLabel="No colour"
+              />
+            </div>
 
             <label htmlFor="ann-text" className="eyebrow">{tr('textLabel')}</label>
             <textarea
@@ -195,16 +217,6 @@ export function TextSlideModal({
                 </button>
               )}
             </div>
-
-            {/* Background colour: used when no background image is set. */}
-            <ColorField
-              label="Background colour"
-              prefix="Background"
-              value={style.bgColor}
-              presets={BACKGROUND_COLORS}
-              onChange={(hex) => update({ bgColor: hex })}
-              clearLabel="No colour"
-            />
 
           </section>
 
