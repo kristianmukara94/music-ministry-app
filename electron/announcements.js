@@ -12,12 +12,13 @@ import { LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } from './lyrics.js';
 import { LECTIONARY_ACCLAMATION_MIGRATIONS, LECTIONARY_MIGRATIONS, LECTIONARY_STYLE_MIGRATIONS } from './lectionary.js';
 import { MEDIA_AUDIO_MIGRATIONS, MEDIA_MIGRATIONS } from './media.js';
 import { WHITEBOARD_MIGRATIONS } from './whiteboard.js';
-import { MASS_PLAN_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_NOTES_MIGRATIONS } from './mass-plans.js';
+import { MASS_PLAN_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_NOTES_MIGRATIONS } from './mass-plans.js';
 import { PRAYER_NOTES_MIGRATIONS, setupNotes } from './notes.js';
 import { ROSARY_LITANY_MIGRATIONS } from './rosary.js';
 import { BIBLE_MIGRATIONS } from './bible-seed.js';
 import { ROSARY_MIGRATIONS } from './rosary.js';
 import { PW_MIGRATIONS } from './pw-sessions.js';
+import { SONG_CATEGORY_MIGRATIONS } from './song-categories.js';
 import { MEDIA_SCHEME, installMediaProtocol, registerMediaRoute } from './protocol.js';
 import { assetRootFor, migrateAbsolutePaths, relPath, resolveAsset, setActiveAssetRoot } from './assets.js';
 
@@ -119,6 +120,8 @@ const ALL_MIGRATIONS = [
   ...WHITEBOARD_MIGRATIONS,
   ...PW_MIGRATIONS,
   ...LECTIONARY_ACCLAMATION_MIGRATIONS,
+  ...PLAN_COMMUNION_MIGRATIONS,
+  ...SONG_CATEGORY_MIGRATIONS,
 ];
 
 const SLIDE_SELECT = `
@@ -596,7 +599,7 @@ export function setupAnnouncements({ loadRoute, preload, dbPath }) {
   const converter = createPdfConverter({ loadRoute, preload });
   const service = createAnnouncementService(db, root, {
     showOpenDialog: (win, options) => (win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options)),
-    convertPdf: (file) => converter.convert(file),
+    convertPdf: (file, mode) => converter.convert(file, mode),
   });
 
   registerIpc(service);
@@ -606,6 +609,7 @@ export function setupAnnouncements({ loadRoute, preload, dbPath }) {
   return {
     db,
     root,
+    convertPdf: (file, mode) => converter.convert(file, mode),
     close() {
       converter.dispose();
       db.close();
