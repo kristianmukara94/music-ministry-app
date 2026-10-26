@@ -101,8 +101,11 @@ export function createPdfConverter({ loadRoute, preload }) {
   }
 
   return {
-    /** Resolves to an array of `{ jpeg, text }`, one per page. Rejects with a message the operator can read. */
-    async convert(filePath) {
+    /**
+     * Resolves to an array of `{ jpeg, text }`, one per page. Rejects with a message the operator can read.
+     * `mode` is 'lyrics' for a lyrics import: the renderer then reads the text only and sends no images.
+     */
+    async convert(filePath, mode) {
       const name = path.basename(filePath);
       console.info(`${LOG} Rendering ${name}.`);
       await ensureWindow();
@@ -127,7 +130,7 @@ export function createPdfConverter({ loadRoute, preload }) {
           reject(new Error(`Rendering ${name} took too long.`));
         }, JOB_TIMEOUT_MS);
         jobs.set(jobId, { resolve, reject, timer });
-        target.webContents.send('pdf:convert', { jobId, bytes });
+        target.webContents.send('pdf:convert', { jobId, bytes, mode });
       });
     },
 

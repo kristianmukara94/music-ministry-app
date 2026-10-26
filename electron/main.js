@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { initialLiveState, liveReducer, OUTPUTS } from '../shared/live.js';
 import { setupAnnouncements } from './announcements.js';
 import { setupLyrics } from './lyrics.js';
+import { registerLyricsImport } from './lyrics-import.js';
 import { setupNotes } from './notes.js';
 import { setupWhiteboard } from './whiteboard.js';
 import { setupLectionary } from './lectionary.js';
@@ -17,6 +18,7 @@ import { seedRosary, setupRosary } from './rosary.js';
 import { queueFromPlanItems, readQueueState, writeQueueState } from './queue-state.js';
 import { defaultDatabasePath, PREVIEW_MIN, readConfig, resolveDatabasePath, writeConfig } from './config.js';
 import { setupSettings } from './settings.js';
+import { titleBarOverlayFor } from '../shared/title-bar.js';
 import { sanitizeProjectorSettings } from '../shared/projector-settings.js';
 import { sanitizeWelcomeSettings } from '../shared/welcome-settings.js';
 import { sanitizeLowerThirdStyle } from '../shared/lower-third-style.js';
@@ -151,9 +153,25 @@ function openPreviewWindow() {
   return win;
 }
 
-/** Shows the chosen startup screen when the projector window opens. "Last content" keeps whatever was live. */
+/** True when a live frame holds something the operator chose: a verse, a Mass Queue item, a slide or an announcement. */
+function holdsContent(frame) {
+  if (!frame || ['idle', 'blackout', 'welcome'].includes(frame.kind)) return false;
+  if (frame.kind === 'lyrics') return frame.text.trim() !== '';
+  return true;
+}
+
+/**
+ * Shows the chosen startup screen when the projector window opens. "Last content" keeps whatever was live. A live frame
+ * with content is kept too, so turning the projector on shows what the operator chose, not the welcome screen.
+ */
 function applyStartupScreen() {
   const mode = state.settings.startupScreen;
+  if (holdsContent(state.projector.live)) {
+    // Staging the frame that is already staged changes nothing on screen. It still counts as the startup step, which the
+    // startup helper in the renderer waits for before it takes a Mass Queue or Praise & Worship item.
+    apply({ type: 'projector/stage', frame: state.projector.staged });
+    return;
+  }
   if (mode === 'welcome') {
     apply({ type: 'projector/show', frame: { kind: 'welcome', lang: readConfig(app.getPath('userData')).default_language } });
   } else if (mode === 'black') {
@@ -361,13 +379,10 @@ function createOperator() {
     icon: APP_ICON,
     // No native white title bar. The app's own top bar is the drag area, and Windows draws its
     // minimise, maximise and close buttons over the top-right corner in the canvas colour.
-    // The colour is the default theme's canvas (#100306). Light themes will show a dark strip.
+    // The colours are the saved theme's canvas and foreground, so the buttons match the top bar. Changing the theme
+    // updates them (see electron/settings.js).
     titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#100306',
-      symbolColor: '#e4e4e7',
-      height: 48,
-    },
+    titleBarOverlay: titleBarOverlayFor(readConfig(app.getPath('userData')).theme),
     webPreferences,
   });
   windows.operator = win;
@@ -481,6 +496,7 @@ app.whenReady().then(() => {
   state = liveReducer(state, { type: 'lowerStyle/set', value: readConfig(app.getPath('userData')).lower_third });
   announcements = openConfiguredDatabase();
   setupLyrics(announcements.db);
+  registerLyricsImport(announcements.convertPdf);
   setupLectionary(announcements.db);
   const planService = setupMassPlans(announcements.db);
   const pwService = setupPwSessions(announcements.db);

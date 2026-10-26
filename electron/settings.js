@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DB_FILE_NAME, LANGUAGES, defaultDatabasePath, readConfig, resolveDatabasePath, validateRegistration, writeConfig } from './config.js';
+import { titleBarOverlayFor } from '../shared/title-bar.js';
 import { assetRootFor, getAssetRoot } from './assets.js';
 
 const FOLDER_OPTIONS = (title) => ({ title, properties: ['openDirectory', 'createDirectory'] });
@@ -198,7 +199,12 @@ export function setupSettings(deps) {
 
   handle('get', () => service.get());
   handle('setLanguage', (_win, lang) => service.setLanguage(lang));
-  handle('setTheme', (_win, theme) => service.setTheme(theme));
+  // The title-bar buttons take the new theme's colours at once, so they match the top bar without a restart.
+  handle('setTheme', (win, theme) => {
+    const saved = service.setTheme(theme);
+    if (process.platform === 'win32') win?.setTitleBarOverlay?.(titleBarOverlayFor(saved));
+    return saved;
+  });
   handle('acceptEula', (_win, registration) => service.acceptEula(registration));
   handle('updateRegistration', (_win, registration) => service.updateRegistration(registration));
   // Progress goes back to the window that asked, so only the Settings page sees it.

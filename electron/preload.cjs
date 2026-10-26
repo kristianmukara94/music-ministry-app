@@ -38,6 +38,11 @@ contextBridge.exposeInMainWorld('apcc', {
     getSetlist: (id) => ipcRenderer.invoke('lyrics:getSetlist', id),
     saveSetlist: (id, hymnIds) => ipcRenderer.invoke('lyrics:saveSetlist', id, hymnIds),
     setStyle: (id, style) => ipcRenderer.invoke('lyrics:setStyle', id, style),
+    importFile: () => ipcRenderer.invoke('lyrics:importFile'),
+    listSongCategories: () => ipcRenderer.invoke('lyrics:listSongCategories'),
+    createSongCategory: (input) => ipcRenderer.invoke('lyrics:createSongCategory', input),
+    renameSongCategory: (id, input) => ipcRenderer.invoke('lyrics:renameSongCategory', id, input),
+    deleteSongCategory: (id) => ipcRenderer.invoke('lyrics:deleteSongCategory', id),
   },
 
   lectionary: {
