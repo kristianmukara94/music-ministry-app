@@ -14,6 +14,7 @@ export type ViewKey =
   | 'whiteboard'
   | 'planner'
   | 'praiseWorship'
+  | 'goLive'
   | 'settings';
 
 export type HotkeyAction = 'announcements' | 'welcome' | 'blackout' | 'clear';
@@ -57,7 +58,28 @@ interface UiState {
   pendingFocus: PendingFocus | null;
   /** Shown when a queue item is played while the projector is off. Not persisted. */
   projectorPrompt: ProjectorPrompt | null;
+  /** The Go Live hub's date and the entry chosen for it. Transient: a restart returns the hub to today. */
+  goLiveDate: string;
+  goLiveChoice: GoLiveChoice | null;
+  /** A Mass plan the Go Live hub asked to open. The Mass planner takes it on mount, through its own plan loader. */
+  pendingMassPlanId: number | null;
+  /** The Text Slide editor's style panel is open. Kept for the session only: it is not persisted, so a restart closes it. */
+  slideStyleOpen: boolean;
+  /** The Song Lyrics verse list shows every verse, not just the live and next one. Kept for the session only, not persisted. */
+  showAllVerses: boolean;
 }
+
+/** The entry the Go Live hub has chosen: a Mass plan, or a Praise & Worship session, by its id in its own module. */
+export interface GoLiveChoice {
+  kind: 'mass' | 'pw';
+  id: number;
+}
+
+const todayIso = () => {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
 
 export interface ProjectorPrompt {
   /** The queue item that was played. */
@@ -80,6 +102,11 @@ export const useUi = create<UiState>()(
       launchpad: [],
       pendingFocus: null,
       projectorPrompt: null,
+      slideStyleOpen: false,
+      goLiveDate: todayIso(),
+      goLiveChoice: null,
+      pendingMassPlanId: null,
+      showAllVerses: false,
     }),
     {
       name: 'apccmma.ui',

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ListMusic, Music, Pencil, Play, Plus, Search, Trash2 } from 'lucide-react';
+import { ListMusic, Music, Pencil, Play, Plus, Search, Trash2, Type } from 'lucide-react';
 import { BACKGROUND_COLORS, sanitizeTextStyle } from '../../shared/text-style.js';
 import type { TextStyle } from '../../shared/text-style';
 import { ColorField, StyleToolbar } from '../announcements/StyleControls';
@@ -9,6 +9,7 @@ import { CATEGORIES, LANGUAGES } from '../../shared/lyrics-parser.js';
 import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
 import { setUi, useUi } from '../state/ui';
+import { ShowAllVerses } from '../components/ShowAllVerses';
 import { useAnnT } from '../announcements/strings';
 import { CreateHymnModal } from './CreateHymnModal';
 import { useLyT } from './strings';
@@ -83,6 +84,10 @@ export function SongLyrics() {
 
   // Cue controller
   const [selected, setSelected] = useState<number | null>(null);
+  // Kept for the session only (the UI store is not persisted), so a restart shows one verse at a time again.
+  const showAllVerses = useUi((s) => s.showAllVerses);
+  // Hidden until opened. Kept for the session in the UI store, shared with the Text Slide editor, and not persisted.
+  const styleOpen = useUi((s) => s.slideStyleOpen);
   const [hymn, setHymn] = useState<Hymn | null>(null);
   const [cue, setCue] = useState(-1);
   const liveFrame = useLive((s) => s.state.projector.live);
@@ -330,7 +335,7 @@ export function SongLyrics() {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[360px_minmax(0,1fr)_minmax(0,1.1fr)]">
+      <div className="grid min-h-0 grid-cols-1 xl:flex-1 xl:grid-cols-[360px_minmax(0,1fr)_minmax(0,1.1fr)]">
         {/* ── Library ── */}
         <section className="flex min-h-[420px] flex-col border-r border-line">
           <div className="flex flex-col gap-3 border-b border-line p-4">
@@ -529,8 +534,8 @@ export function SongLyrics() {
         </section>
 
         {/* ── Live cue controller ── */}
-        <section className="flex min-h-[420px] flex-col">
-          <div className="border-b border-line p-4">
+        <section className="flex min-h-[auto] min-w-0 flex-col xl:min-h-0">
+          <div className="shrink-0 border-b border-line p-4">
             <span className="eyebrow text-fg">{t('cuesTitle')}</span>
             {hymn ? (
               <>
@@ -545,7 +550,7 @@ export function SongLyrics() {
           {hymn ? (
             <>
               {/* Section pills: one press takes a whole section live. */}
-              <div role="toolbar" aria-label="Sections" className="flex flex-wrap gap-1.5 border-b border-line p-3">
+              <div role="toolbar" aria-label="Sections" className="flex shrink-0 flex-wrap gap-1.5 border-b border-line p-3">
                 {hymn.stanzas.map((stanza, i) => (
                   <button
                     key={stanza.id}
@@ -562,24 +567,47 @@ export function SongLyrics() {
                 ))}
               </div>
 
-              {/* The styling toolbar sits above the preview. The look is saved with the song. */}
-              <div className="flex flex-col gap-2 border-b border-line p-3">
-                <StyleToolbar style={hymnStyle} onChange={changeStyle} />
-                <ColorField
-                  label="Background colour"
-                  prefix="Background"
-                  value={hymnStyle.bgColor}
-                  presets={BACKGROUND_COLORS}
-                  onChange={(hex) => changeStyle({ bgColor: hex })}
-                  clearLabel="No colour"
-                />
-                <SlidePreview text={previewText} bgSrc={null} style={checked} className="aspect-video w-full rounded-md border border-line" />
+              {/* Fixed top: the Style button. Its open state is kept for the session, as in the Text Slide editor. */}
+              <div className="flex shrink-0 items-center border-b border-line p-3">
+                <button
+                  type="button"
+                  aria-expanded={styleOpen}
+                  aria-controls="lyr-style-panel"
+                  onClick={() => setUi({ slideStyleOpen: !styleOpen })}
+                  className="flex h-9 w-fit items-center gap-2 rounded-md border border-line-strong px-3 text-xs font-bold uppercase hover:bg-panel-2"
+                >
+                  <Type size={14} aria-hidden /> {t('styleToggle')}
+                </button>
               </div>
 
-              <ol className="min-h-0 flex-1 overflow-y-auto p-3">
+              {/* The middle scrolls: the style panel, the preview, the checkbox and the verse list. The bar below stays fixed. */}
+              <div className="flex min-h-0 flex-col overflow-y-auto max-h-[50vh] xl:max-h-none xl:flex-1">
+                <div id="lyr-style-panel" hidden={!styleOpen} className="flex shrink-0 flex-col gap-2 border-b border-line p-3">
+                  <StyleToolbar style={hymnStyle} onChange={changeStyle} />
+                  <ColorField
+                    label="Background colour"
+                    prefix="Background"
+                    value={hymnStyle.bgColor}
+                    presets={BACKGROUND_COLORS}
+                    onChange={(hex) => changeStyle({ bgColor: hex })}
+                    clearLabel="No colour"
+                  />
+                </div>
+                <div className="shrink-0 border-b border-line p-3">
+                  <SlidePreview text={previewText} bgSrc={null} style={checked} className="h-40 w-full rounded-md border border-line" />
+                </div>
+
+              {/* By default the list shows the live verse and the next one. The checkbox lists them all. The projector is unchanged. */}
+              <div className="flex shrink-0 items-center border-b border-line px-3 py-2">
+                <ShowAllVerses label={t('showAllVerses')} />
+              </div>
+
+              <ol className="p-3">
                 {hymn.stanzas.map((stanza, i) => {
                   const live = isLive(i);
                   const next = i === cue + 1;
+                  // One verse at a time: the live verse and the next one. Before the first cue, the first verse is the next one.
+                  if (!showAllVerses && !live && !next) return null;
                   return (
                     <li key={stanza.id} className="mb-2">
                       <button
@@ -605,8 +633,9 @@ export function SongLyrics() {
                   );
                 })}
               </ol>
-              <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3">
-                <p className="text-xs text-muted">
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-t border-line px-4 py-3">
+                <p className="min-w-[15rem] flex-1 text-xs text-muted">
                   <span className="kbd">Space</span> / <span className="kbd">↓</span> {t('hintNext')} ·<span className="kbd">↑</span> {t('hintPrev')} ·{' '}
                   <span className="kbd">Enter</span> {tAnn('play')}
                 </p>
@@ -614,7 +643,7 @@ export function SongLyrics() {
                   type="button"
                   onClick={takeLive}
                   disabled={cue < 0}
-                  className="flex shrink-0 items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-xs font-bold tracking-wider text-white uppercase shadow-md transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="ml-auto flex shrink-0 items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-xs font-bold tracking-wider text-white uppercase shadow-md transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Play size={14} fill="currentColor" aria-hidden /> {tAnn('play')}
                 </button>
