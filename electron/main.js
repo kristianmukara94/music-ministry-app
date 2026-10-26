@@ -23,6 +23,8 @@ import { sanitizeProjectorSettings } from '../shared/projector-settings.js';
 import { sanitizeWelcomeSettings } from '../shared/welcome-settings.js';
 import { sanitizeLowerThirdStyle } from '../shared/lower-third-style.js';
 import { createLowerThirdServer, LOWER_THIRD_PORT, lanAddress } from './lower-third-server.js';
+import { createRemoteViewServer, localNetworkAddress } from './remote-view-server.js';
+import { remoteViewSnapshot, sanitizeRemoteView, validateRemoteViewPatch } from '../shared/remote-view.js';
 import { setupUpdater } from './updater.js';
 
 // Windows needs this to show notifications under the app's name. It must match build.appId in package.json.
@@ -276,8 +278,52 @@ function placeLowerThirdWindow() {
   apply({ type: 'output/set', output: 'lowerThird', on: true });
 }
 
+/** The phone page for Remote view, on the local network only. Its on/off, port and PIN are saved in config.json. */
+const remoteView = createRemoteViewServer({ distDir: path.join(__dirname, '../dist') });
+const REMOTE_NO_NETWORK = 'No WiFi or local network was found. Connect this laptop to the same WiFi as the phones. The page starts by itself once a network is found.';
+// Why the page is not running when it is turned on. Null when it runs, or when it is off.
+let remoteViewError = null;
+
+/**
+ * Makes the phone page match its settings. It starts when it is on and a network is found, and stops when it is off
+ * or when the laptop's network address has changed, so it never serves an address phones cannot reach.
+ */
+async function syncRemoteView() {
+  const config = readConfig(app.getPath('userData')).remote_view;
+  const address = config.enabled ? localNetworkAddress() : null;
+  if (remoteView.running() && remoteView.address() !== address) await remoteView.stop();
+  if (!config.enabled) {
+    remoteViewError = null;
+    return;
+  }
+  if (!address) {
+    remoteViewError = REMOTE_NO_NETWORK;
+    return;
+  }
+  if (remoteView.running()) return;
+  const result = await remoteView.start({ host: address, port: config.port, pin: config.pin });
+  remoteViewError = result.ok ? null : result.error;
+  if (result.ok) remoteView.push(remoteViewSnapshot(state));
+}
+
+/** What the Remote view settings show. The PIN itself is never sent to the page; only whether one is set. */
+function remoteViewStatus() {
+  const config = readConfig(app.getPath('userData')).remote_view;
+  const running = remoteView.running();
+  return {
+    enabled: config.enabled,
+    port: config.port,
+    pinSet: config.pin !== null,
+    running,
+    url: running ? `http://${remoteView.address()}:${remoteView.port()}` : null,
+    devices: remoteView.devices(),
+    error: remoteViewError,
+  };
+}
+
 function broadcast() {
   lowerThirdServer?.push({ lowerThird: state.lowerThird.live, lowerStyle: state.lowerStyle });
+  if (remoteView.running()) remoteView.push(remoteViewSnapshot(state));
   for (const win of Object.values(windows)) {
     if (win && !win.isDestroyed()) win.webContents.send('live:state', state);
   }
@@ -423,6 +469,26 @@ ipcMain.handle('lowerThird:info', () => ({
   lan: lanAddress() ? `http://${lanAddress()}:${LOWER_THIRD_PORT}/lower-third` : null,
 }));
 
+/** Remote view's status. Also starts the page if it is on and a network has appeared since the last check. */
+ipcMain.handle('remoteView:get', async () => {
+  await syncRemoteView();
+  return remoteViewStatus();
+});
+
+/**
+ * Saves the Remote view's on/off, port and PIN. Any change restarts the page, so phones reconnect, and they ask for the
+ * PIN again when one is set.
+ */
+ipcMain.handle('remoteView:save', async (_event, patch) => {
+  const userData = app.getPath('userData');
+  validateRemoteViewPatch(patch ?? {});
+  const merged = sanitizeRemoteView({ ...readConfig(userData).remote_view, ...(patch ?? {}) });
+  writeConfig(userData, { remote_view: merged });
+  await remoteView.stop();
+  await syncRemoteView();
+  return remoteViewStatus();
+});
+
 /** Every connected display, numbered as the identify overlay numbers them. Physical pixels, so 1920x1080 is 1920x1080. */
 function displayList() {
   const primaryId = screen.getPrimaryDisplay().id;
@@ -519,6 +585,8 @@ app.whenReady().then(() => {
   // The browser source: the lower third at http://127.0.0.1:3002/lower-third, updated live.
   lowerThirdServer = createLowerThirdServer({ distDir: path.join(__dirname, '../dist') });
   void lowerThirdServer.start();
+  // Remote view starts only when the operator turned it on last time.
+  void syncRemoteView();
   if (state.lowerStyle.target != null) placeLowerThirdWindow();
   media = setupMedia(announcements.db, {
     loadRoute: load,
@@ -545,6 +613,7 @@ app.whenReady().then(() => {
 });
 
 app.on('will-quit', () => {
+  void remoteView.stop();
   media?.close();
   announcements?.close();
 });
