@@ -15,6 +15,7 @@ interface Props {
 }
 
 const LABEL = 'w-40 shrink-0 text-xs font-bold tracking-wider text-muted uppercase';
+const QA_CREDIT = 'Tested by: Julien Rey Dejanio (Software Quality Assurance Engineer)';
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** The About & Licensing card: the registered church, the licence status, the copyright, and the full EULA behind a toggle. */
@@ -89,6 +90,11 @@ export function AboutLicensing({ version, config, onChanged }: Props) {
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <dt className={LABEL}>Developer &amp; copyright</dt>
           <dd>{BUILT_BY_LINE}</dd>
+        </div>
+
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <dt className={LABEL}>QA TESTING</dt>
+          <dd>{QA_CREDIT}</dd>
         </div>
 
         {config.registered_at && (

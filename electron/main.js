@@ -24,7 +24,15 @@ import { sanitizeWelcomeSettings } from '../shared/welcome-settings.js';
 import { sanitizeLowerThirdStyle } from '../shared/lower-third-style.js';
 import { createLowerThirdServer, LOWER_THIRD_PORT, lanAddress } from './lower-third-server.js';
 import { createRemoteViewServer, localNetworkAddress } from './remote-view-server.js';
-import { remoteViewSnapshot, sanitizeRemoteView, validateRemoteViewPatch } from '../shared/remote-view.js';
+import {
+  REMOTE_DEVICE_LIMIT,
+  REMOTE_HOTSPOT_WARN_ABOVE,
+  REMOTE_ROLES,
+  controlAction,
+  remoteViewSnapshot,
+  sanitizeRemoteView,
+  validateRemoteViewPatch,
+} from '../shared/remote-view.js';
 import { setupUpdater } from './updater.js';
 
 // Windows needs this to show notifications under the app's name. It must match build.appId in package.json.
@@ -278,52 +286,121 @@ function placeLowerThirdWindow() {
   apply({ type: 'output/set', output: 'lowerThird', on: true });
 }
 
-/** The phone page for Remote view, on the local network only. Its on/off, port and PIN are saved in config.json. */
-const remoteView = createRemoteViewServer({ distDir: path.join(__dirname, '../dist') });
 const REMOTE_NO_NETWORK = 'No WiFi or local network was found. Connect this laptop to the same WiFi as the phones. The page starts by itself once a network is found.';
-// Why the page is not running when it is turned on. Null when it runs, or when it is off.
-let remoteViewError = null;
+const ACTIVITY_LIMIT = 30;
+/** The two viewers' pages. Each is its own server on its own port: Primary controls the output, Secondary only watches. */
+const remoteViews = {
+  primary: createRemoteViewServer({ distDir: path.join(__dirname, '../dist'), role: 'primary', canConnect: canAcceptPhone, onControl: controlFromPhone }),
+  secondary: createRemoteViewServer({ distDir: path.join(__dirname, '../dist'), role: 'secondary', canConnect: canAcceptPhone }),
+};
+// Why each viewer is not running when it is turned on. Null when it runs, or when it is off.
+const remoteViewErrors = { primary: null, secondary: null };
+// Control actions phones have sent, newest last. Kept for the session only, so the operator can see who changed the slide.
+const remoteActivity = [];
+
+/** Phones with a viewer open, across both viewers. Past the limit, new phones are turned away. */
+function phonesConnected() {
+  return REMOTE_ROLES.reduce((total, role) => total + remoteViews[role].devices(), 0);
+}
+
+function canAcceptPhone() {
+  return phonesConnected() < REMOTE_DEVICE_LIMIT;
+}
+
+function describeControl(request) {
+  if (request?.action === 'next') return 'Next slide';
+  if (request?.action === 'previous') return 'Previous slide';
+  if (request?.action === 'jump') return `Jump to slide ${Number(request.index) + 1}`;
+  return 'Unknown control';
+}
 
 /**
- * Makes the phone page match its settings. It starts when it is on and a network is found, and stops when it is off
+ * A control request from the Primary viewer. It goes through the same paths as the operator: the action is the one the
+ * arrow keys send, and it is refused while the projector is paused. Every attempt is recorded, allowed or not.
+ */
+function controlFromPhone(request, device) {
+  const result = controlAction(state, request);
+  if (result.ok && result.action) apply(result.action);
+  remoteActivity.push({
+    at: Date.now(),
+    device: `${device.label} (${device.ip})`,
+    action: describeControl(request),
+    ok: result.ok,
+    error: result.ok ? null : result.error,
+  });
+  if (remoteActivity.length > ACTIVITY_LIMIT) remoteActivity.shift();
+  return result;
+}
+
+/**
+ * Makes one viewer's page match its settings. It starts when it is on and a network is found, and stops when it is off
  * or when the laptop's network address has changed, so it never serves an address phones cannot reach.
  */
-async function syncRemoteView() {
-  const config = readConfig(app.getPath('userData')).remote_view;
-  const address = config.enabled ? localNetworkAddress() : null;
-  if (remoteView.running() && remoteView.address() !== address) await remoteView.stop();
-  if (!config.enabled) {
-    remoteViewError = null;
+async function syncRemoteViewRole(role, wanted, address) {
+  const view = remoteViews[role];
+  if (view.running() && view.address() !== address) await view.stop();
+  if (!wanted.enabled) {
+    remoteViewErrors[role] = null;
     return;
   }
   if (!address) {
-    remoteViewError = REMOTE_NO_NETWORK;
+    remoteViewErrors[role] = REMOTE_NO_NETWORK;
     return;
   }
-  if (remoteView.running()) return;
-  const result = await remoteView.start({ host: address, port: config.port, pin: config.pin });
-  remoteViewError = result.ok ? null : result.error;
-  if (result.ok) remoteView.push(remoteViewSnapshot(state));
+  if (view.running()) return;
+  const result = await view.start({ host: address, port: wanted.port, pin: wanted.pin });
+  remoteViewErrors[role] = result.ok ? null : result.error;
+  if (result.ok) view.push(remoteViewSnapshot(state));
 }
 
-/** What the Remote view settings show. The PIN itself is never sent to the page; only whether one is set. */
+/** Brings both viewers in line with the saved settings. Each one is checked on its own. */
+async function syncRemoteView() {
+  const config = readConfig(app.getPath('userData')).remote_view;
+  const anyOn = REMOTE_ROLES.some((role) => config[role].enabled);
+  const address = anyOn ? localNetworkAddress() : null;
+  for (const role of REMOTE_ROLES) await syncRemoteViewRole(role, config[role], address);
+}
+
+/** One viewer's status for the settings. The PIN itself is never sent; only whether one is set. */
+function remoteViewRoleStatus(role, wanted) {
+  const view = remoteViews[role];
+  const running = view.running();
+  return {
+    enabled: wanted.enabled,
+    port: wanted.port,
+    pinSet: wanted.pin !== null,
+    running,
+    url: running ? `http://${view.address()}:${view.port()}` : null,
+    devices: view.devices(),
+    error: remoteViewErrors[role],
+  };
+}
+
+/** What the Remote view settings show, for both viewers, the device counts, and the activity list. */
 function remoteViewStatus() {
   const config = readConfig(app.getPath('userData')).remote_view;
-  const running = remoteView.running();
+  const address = remoteViews.primary.address() ?? remoteViews.secondary.address();
   return {
-    enabled: config.enabled,
-    port: config.port,
-    pinSet: config.pin !== null,
-    running,
-    url: running ? `http://${remoteView.address()}:${remoteView.port()}` : null,
-    devices: remoteView.devices(),
-    error: remoteViewError,
+    primary: remoteViewRoleStatus('primary', config.primary),
+    secondary: remoteViewRoleStatus('secondary', config.secondary),
+    devices: phonesConnected(),
+    deviceLimit: REMOTE_DEVICE_LIMIT,
+    // Windows' laptop hotspot hands out 192.168.137.x addresses. Its warning is for that case only.
+    hotspot: address?.startsWith('192.168.137.') === true,
+    hotspotWarnAbove: REMOTE_HOTSPOT_WARN_ABOVE,
+    activity: remoteActivity.slice().reverse(),
   };
+}
+
+function stopRemoteViews() {
+  return Promise.all(REMOTE_ROLES.map((role) => remoteViews[role].stop()));
 }
 
 function broadcast() {
   lowerThirdServer?.push({ lowerThird: state.lowerThird.live, lowerStyle: state.lowerStyle });
-  if (remoteView.running()) remoteView.push(remoteViewSnapshot(state));
+  for (const role of REMOTE_ROLES) {
+    if (remoteViews[role].running()) remoteViews[role].push(remoteViewSnapshot(state));
+  }
   for (const win of Object.values(windows)) {
     if (win && !win.isDestroyed()) win.webContents.send('live:state', state);
   }
@@ -476,15 +553,17 @@ ipcMain.handle('remoteView:get', async () => {
 });
 
 /**
- * Saves the Remote view's on/off, port and PIN. Any change restarts the page, so phones reconnect, and they ask for the
- * PIN again when one is set.
+ * Saves one viewer's on/off, port and PIN. Any change restarts that viewer's page, so its phones reconnect, and they ask
+ * for the PIN again when one is set. The other viewer keeps running.
  */
 ipcMain.handle('remoteView:save', async (_event, patch) => {
   const userData = app.getPath('userData');
-  validateRemoteViewPatch(patch ?? {});
-  const merged = sanitizeRemoteView({ ...readConfig(userData).remote_view, ...(patch ?? {}) });
+  const current = sanitizeRemoteView(readConfig(userData).remote_view);
+  validateRemoteViewPatch(patch ?? {}, current);
+  const { role, ...changes } = patch;
+  const merged = sanitizeRemoteView({ ...current, [role]: { ...current[role], ...changes } });
   writeConfig(userData, { remote_view: merged });
-  await remoteView.stop();
+  await remoteViews[role].stop();
   await syncRemoteView();
   return remoteViewStatus();
 });
@@ -613,7 +692,7 @@ app.whenReady().then(() => {
 });
 
 app.on('will-quit', () => {
-  void remoteView.stop();
+  void stopRemoteViews();
   media?.close();
   announcements?.close();
 });

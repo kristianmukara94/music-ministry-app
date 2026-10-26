@@ -188,6 +188,104 @@ main {
   border-radius: 10px;
 }
 
+/* The Primary viewer's controls */
+.paused {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #000;
+  background: var(--gold);
+  border-radius: 10px;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.big-button {
+  min-height: 84px;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #000;
+  background: var(--gold);
+  border: 0;
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.big-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.control-error {
+  min-height: 1.4em;
+  margin: 8px 0 0;
+  text-align: center;
+  color: var(--danger);
+}
+
+.coming {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.next-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  margin-top: 4px;
+}
+
+.next-lines p {
+  margin: 0;
+  font-size: clamp(1.2rem, 5vw, 1.9rem);
+  font-weight: 600;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.next-empty {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.sections button {
+  min-height: 64px;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--fg);
+  background: #111;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.sections button[aria-current='true'] {
+  color: #000;
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.sections button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .lines p {
     transition: opacity 0.2s ease;

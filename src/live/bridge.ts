@@ -68,22 +68,45 @@ export interface LowerThirdApi {
   info(): Promise<{ port: number; local: string; lan: string | null }>;
 }
 
-/** Remote view: the phone page on the local network. The PIN is never sent back, only whether one is set. */
-export interface RemoteViewStatus {
+/** Remote view: the two phone viewers on the local network. A PIN is never sent back, only whether one is set. */
+export type RemoteRole = 'primary' | 'secondary';
+
+export interface RemoteRoleStatus {
   enabled: boolean;
-  /** The port the operator chose. The page may run on a later port if this one is taken; `url` shows the port in use. */
   port: number;
   pinSet: boolean;
   running: boolean;
-  /** The address phones open, for example http://192.168.1.20:3003. Null when the page is not running. */
+  /** The address phones open, for example http://192.168.1.20:8787. Null when the viewer is not running. */
   url: string | null;
-  /** Devices with the page open, counted once per address. */
+  /** Phones with this viewer open, counted once per address. */
   devices: number;
-  /** Why the page is not running when it is turned on. Null otherwise. */
+  /** Why the viewer is not running when it is turned on, for example "Port in use, pick another". Null otherwise. */
   error: string | null;
 }
 
+export interface RemoteActivity {
+  at: number;
+  device: string;
+  action: string;
+  ok: boolean;
+  error: string | null;
+}
+
+export interface RemoteViewStatus {
+  primary: RemoteRoleStatus;
+  secondary: RemoteRoleStatus;
+  /** Phones across both viewers. */
+  devices: number;
+  deviceLimit: number;
+  /** True on a Windows laptop hotspot, where more than `hotspotWarnAbove` phones is a warning. */
+  hotspot: boolean;
+  hotspotWarnAbove: number;
+  /** Control actions from phones, newest first. */
+  activity: RemoteActivity[];
+}
+
 export interface RemoteViewPatch {
+  role: RemoteRole;
   enabled?: boolean;
   port?: number;
   /** Null or an empty string removes the PIN. */
@@ -260,8 +283,9 @@ const offlineLowerThird: LowerThirdApi = {
   info: async () => ({ port: 3002, local: 'http://127.0.0.1:3002/lower-third', lan: null }),
 };
 
+const offlineRole: RemoteRoleStatus = { enabled: false, port: 0, pinSet: false, running: false, url: null, devices: 0, error: 'Open the desktop app to share the live view.' };
 const offlineRemoteView: RemoteViewApi = {
-  get: async () => ({ enabled: false, port: 3003, pinSet: false, running: false, url: null, devices: 0, error: 'Open the desktop app to share the live view.' }),
+  get: async () => ({ primary: offlineRole, secondary: offlineRole, devices: 0, deviceLimit: 20, hotspot: false, hotspotWarnAbove: 8, activity: [] }),
   save: async () => offlineError(),
 };
 

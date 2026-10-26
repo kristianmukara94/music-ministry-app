@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import qrcode from 'qrcode-generator';
 import { Copy, KeyRound, Smartphone, WifiOff } from 'lucide-react';
-import { bridge, type RemoteViewPatch, type RemoteViewStatus } from '../live/bridge';
+import { bridge, type RemoteActivity, type RemoteRole, type RemoteRoleStatus, type RemoteViewPatch, type RemoteViewStatus } from '../live/bridge';
+import { formatDayAndClock } from '../state/region';
+import { useRegion } from '../state/useRegion';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-// Must match electron/remote-view-server.js and shared/remote-view.js.
-const DEFAULT_PORT = 3003;
+// Must match shared/remote-view.js.
 const PORT_MIN = 1024;
 const PORT_MAX = 65535;
 const PIN_PATTERN = /^\d{4,8}$/;
@@ -14,6 +15,17 @@ const PIN_PATTERN = /^\d{4,8}$/;
 const button =
   'flex h-10 items-center gap-2 rounded-md border border-line-strong px-4 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40';
 const field = 'h-10 rounded-md border border-line-strong bg-canvas px-3 font-mono text-sm outline-none focus:border-accent';
+
+const ROLE_TEXT: Record<RemoteRole, { title: string; help: string }> = {
+  primary: {
+    title: 'Primary viewer',
+    help: 'For the person running the service. Shows the current and next slide large, and lets a phone move to the next or previous slide, or jump to a slide. The buttons stop while the projector is paused.',
+  },
+  secondary: {
+    title: 'Secondary viewer',
+    help: 'Read-only. Shows the current slide text, the item title, and the next item title. It has no buttons and cannot change the screen.',
+  },
+};
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -50,19 +62,157 @@ function qrDataUrl(text: string): string {
   return qr.createDataURL(6, 4);
 }
 
+interface ViewerProps {
+  role: RemoteRole;
+  status: RemoteRoleStatus;
+  busy: boolean;
+  onSave: (patch: Omit<RemoteViewPatch, 'role'>, done?: () => void) => void;
+}
+
+/** One viewer: its toggle, its address, its phones, its port, and its PIN. */
+function ViewerCard({ role, status, busy, onSave }: ViewerProps) {
+  const [portDraft, setPortDraft] = useState(String(status.port));
+  const [pinDraft, setPinDraft] = useState('');
+  const [copied, setCopied] = useState(false);
+  const qr = useMemo(() => (status.url ? qrDataUrl(status.url) : null), [status.url]);
+
+  useEffect(() => {
+    setPortDraft(String(status.port));
+  }, [status.port]);
+
+  const portNumber = Number(portDraft);
+  const portValid = Number.isInteger(portNumber) && portNumber >= PORT_MIN && portNumber <= PORT_MAX;
+  const pinValid = PIN_PATTERN.test(pinDraft);
+  const text = ROLE_TEXT[role];
+
+  const copy = () => {
+    if (!status.url) return;
+    navigator.clipboard
+      ?.writeText(status.url)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => undefined);
+  };
+
+  return (
+    <Card title={text.title}>
+      <p className="text-sm text-muted">{text.help}</p>
+
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="text-sm font-semibold">{text.title} on local WiFi</div>
+          <div className="text-xs text-muted">{status.enabled ? 'On' : 'Off'}</div>
+        </div>
+        <Switch label={`${text.title} on local WiFi`} on={status.enabled} disabled={busy} onChange={(on) => onSave({ enabled: on })} />
+      </div>
+
+      {status.error && (
+        <div role="alert" className="flex items-start gap-2 rounded-md border border-danger/40 bg-canvas p-3 text-sm text-danger">
+          <WifiOff size={16} className="mt-0.5 shrink-0" aria-hidden />
+          {status.error}
+        </div>
+      )}
+
+      {status.running && status.url && qr && (
+        <div className="flex flex-wrap items-center gap-6">
+          <img src={qr} alt={`QR code for ${text.title} at ${status.url}`} className="size-40 rounded-md bg-white p-2" />
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <p className="text-xs text-muted">Open this address in a phone's browser on the same WiFi, or scan the code with the camera.</p>
+            <code aria-label={`${text.title} address`} className="block break-all rounded-md border border-line-strong bg-canvas px-3 py-2 font-mono text-lg font-bold">
+              {status.url}
+            </code>
+            <div className="flex flex-wrap items-center gap-3">
+              <button type="button" onClick={copy} className={button}>
+                <Copy size={14} aria-hidden /> {copied ? 'Copied' : 'Copy address'}
+              </button>
+              <span className="flex items-center gap-2 text-sm">
+                <Smartphone size={15} aria-hidden /> {status.devices === 1 ? '1 phone connected' : `${status.devices} phones connected`}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        <span className="eyebrow">Port</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={PORT_MIN}
+            max={PORT_MAX}
+            value={portDraft}
+            onChange={(e) => setPortDraft(e.target.value)}
+            aria-label={`${text.title} port`}
+            className={`${field} w-32`}
+          />
+          <button
+            type="button"
+            onClick={() => onSave({ port: portNumber })}
+            disabled={busy || !portValid || portNumber === status.port}
+            className={button}
+          >
+            Save port
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <span className="eyebrow">PIN (optional)</span>
+        <div className="flex items-center gap-2 text-sm">
+          <KeyRound size={15} aria-hidden />
+          {status.pinSet ? 'A PIN is set.' : 'No PIN. Anyone on this WiFi who has the address can open this page.'}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={8}
+            autoComplete="off"
+            value={pinDraft}
+            onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))}
+            aria-label={`${text.title} new PIN`}
+            placeholder="4 to 8 digits"
+            className={`${field} w-40`}
+          />
+          <button type="button" onClick={() => onSave({ pin: pinDraft }, () => setPinDraft(''))} disabled={busy || !pinValid} className={button}>
+            {status.pinSet ? 'Change PIN' : 'Set PIN'}
+          </button>
+          {status.pinSet && (
+            <button type="button" onClick={() => onSave({ pin: null })} disabled={busy} className={button}>
+              Remove PIN
+            </button>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/** One control action from a phone, with the device and the time. A refused action says why. */
+function ActivityRow({ entry }: { entry: RemoteActivity }) {
+  const region = useRegion();
+  return (
+    <li className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line py-2 text-sm last:border-b-0">
+      <span className="font-semibold">{entry.action}</span>
+      <span className="text-xs text-muted">{entry.device}</span>
+      <span className="font-mono text-xs text-muted">{formatDayAndClock(new Date(entry.at), region, { seconds: true })}</span>
+      {!entry.ok && <span className="w-full text-xs text-danger">Not done: {entry.error}</span>}
+    </li>
+  );
+}
+
 /**
- * Remote view: the read-only live screen that singers and players open on their phones over the local WiFi. The switch
- * starts and stops the page. The address and a QR code show where it is, and the port and PIN are set here too.
+ * Remote view: two phone viewers on the local WiFi. Primary controls the slide from a phone, Secondary only watches. Each
+ * has its own port, switch and PIN. The status is read every 2 seconds, so the device counts and the activity list stay current.
  */
 export function RemoteViewSettings() {
   const [status, setStatus] = useState<RemoteViewStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [portDraft, setPortDraft] = useState('');
-  const [pinDraft, setPinDraft] = useState('');
-  const [copied, setCopied] = useState(false);
 
-  // The status is read every 2 seconds, so the device count and a network that comes back are shown without a reload.
   useEffect(() => {
     let alive = true;
     const load = () =>
@@ -78,12 +228,6 @@ export function RemoteViewSettings() {
     };
   }, []);
 
-  useEffect(() => {
-    if (status) setPortDraft(String(status.port));
-  }, [status?.port]);
-
-  const qr = useMemo(() => (status?.url ? qrDataUrl(status.url) : null), [status?.url]);
-
   const save = (patch: RemoteViewPatch, done?: () => void) => {
     setBusy(true);
     setError(null);
@@ -97,42 +241,23 @@ export function RemoteViewSettings() {
       .finally(() => setBusy(false));
   };
 
-  const copy = () => {
-    if (!status?.url) return;
-    navigator.clipboard
-      ?.writeText(status.url)
-      .then(() => {
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(() => setError('Could not copy. Select the address and copy it by hand.'));
-  };
-
   if (!status) return <div className="p-6 text-sm text-muted">{error ?? 'Loading Remote view…'}</div>;
 
-  const portNumber = Number(portDraft);
-  const portValid = Number.isInteger(portNumber) && portNumber >= PORT_MIN && portNumber <= PORT_MAX;
-  const pinValid = PIN_PATTERN.test(pinDraft);
-  const devicesText = status.devices === 1 ? '1 device connected' : `${status.devices} devices connected`;
+  const warnHotspot = status.hotspot && status.devices > status.hotspotWarnAbove;
 
   return (
     <div className="flex flex-col gap-6">
-      <Card title="Share on local WiFi">
-        <p className="text-sm text-muted">
-          Singers and players follow the live slide on their phones. It works over this WiFi with no internet. The page is read-only:
-          it cannot change the screen, the fonts, or any setting.
-        </p>
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <div className="text-sm font-semibold">Share on local WiFi</div>
-            <div className="text-xs text-muted">{status.enabled ? 'On' : 'Off'}</div>
-          </div>
-          <Switch label="Share on local WiFi" on={status.enabled} disabled={busy} onChange={(on) => save({ enabled: on })} />
+      <Card title="Phones connected">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <Smartphone size={15} aria-hidden />
+          <span>
+            {status.devices} of {status.deviceLimit} phones connected, across both viewers.
+          </span>
         </div>
-        {status.error && (
-          <div role="alert" className="flex items-start gap-2 rounded-md border border-danger/40 bg-canvas p-3 text-sm text-danger">
-            <WifiOff size={16} className="mt-0.5 shrink-0" aria-hidden />
-            {status.error}
+        {warnHotspot && (
+          <div role="alert" className="rounded-md border border-danger/40 bg-canvas p-3 text-sm text-danger">
+            This laptop is sharing its own WiFi (a hotspot). With more than {status.hotspotWarnAbove} phones, the connection can drop. Ask
+            some to disconnect, or use a WiFi router.
           </div>
         )}
         {error && (
@@ -142,88 +267,28 @@ export function RemoteViewSettings() {
         )}
       </Card>
 
-      {status.running && status.url && qr && (
-        <Card title="Address for phones">
-          <div className="flex flex-wrap items-center gap-6">
-            <img src={qr} alt={`QR code for ${status.url}`} className="size-44 rounded-md bg-white p-2" />
-            <div className="flex min-w-0 flex-1 flex-col gap-3">
-              <p className="text-xs text-muted">Open this address in a phone's browser on the same WiFi, or scan the code with the camera.</p>
-              <code aria-label="Remote view address" className="block break-all rounded-md border border-line-strong bg-canvas px-3 py-2 font-mono text-lg font-bold">
-                {status.url}
-              </code>
-              <div className="flex flex-wrap items-center gap-3">
-                <button type="button" onClick={copy} className={button}>
-                  <Copy size={14} aria-hidden /> {copied ? 'Copied' : 'Copy address'}
-                </button>
-                <span className="flex items-center gap-2 text-sm">
-                  <Smartphone size={15} aria-hidden /> {devicesText}
-                </span>
-              </div>
-            </div>
-          </div>
-        </Card>
-      )}
+      <ViewerCard role="primary" status={status.primary} busy={busy} onSave={(patch, done) => save({ role: 'primary', ...patch }, done)} />
+      <ViewerCard role="secondary" status={status.secondary} busy={busy} onSave={(patch, done) => save({ role: 'secondary', ...patch }, done)} />
 
-      <Card title="Port">
-        <p className="text-sm text-muted">
-          The port the page starts on. The default is {DEFAULT_PORT}. If it is taken, the next free ports are tried, and the address above
-          shows the one in use.
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <input
-            type="number"
-            inputMode="numeric"
-            min={PORT_MIN}
-            max={PORT_MAX}
-            value={portDraft}
-            onChange={(e) => setPortDraft(e.target.value)}
-            aria-label="Port"
-            className={`${field} w-32`}
-          />
-          <button type="button" onClick={() => save({ port: portNumber })} disabled={busy || !portValid || portNumber === status.port} className={button}>
-            Save port
-          </button>
-        </div>
-      </Card>
-
-      <Card title="PIN">
-        <p className="text-sm text-muted">
-          Off by default. When a PIN is set, the page asks for it before it shows anything. Setting or changing the PIN restarts the page,
-          so phones must enter it again.
-        </p>
-        <div className="flex items-center gap-2 text-sm">
-          <KeyRound size={15} aria-hidden />
-          {status.pinSet ? 'A PIN is set.' : 'No PIN. Anyone on this WiFi who has the address can open the page.'}
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <input
-            type="text"
-            inputMode="numeric"
-            maxLength={8}
-            autoComplete="off"
-            value={pinDraft}
-            onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))}
-            aria-label="New PIN"
-            placeholder="4 to 8 digits"
-            className={`${field} w-40`}
-          />
-          <button type="button" onClick={() => save({ pin: pinDraft }, () => setPinDraft(''))} disabled={busy || !pinValid} className={button}>
-            {status.pinSet ? 'Change PIN' : 'Set PIN'}
-          </button>
-          {status.pinSet && (
-            <button type="button" onClick={() => save({ pin: null })} disabled={busy} className={button}>
-              Remove PIN
-            </button>
-          )}
-        </div>
+      <Card title="Control activity">
+        {status.activity.length === 0 ? (
+          <p className="text-sm text-muted">No changes from phones yet. Next and previous slide, and jumps, are listed here with the device and time.</p>
+        ) : (
+          <ul className="flex flex-col">
+            {status.activity.map((entry, i) => (
+              <ActivityRow key={`${entry.at}-${i}`} entry={entry} />
+            ))}
+          </ul>
+        )}
       </Card>
 
       <Card title="Who can see it">
         <ul className="flex list-disc flex-col gap-2 pl-5 text-sm text-muted">
-          <li>Anyone on this WiFi who has the address can open the page, unless a PIN is set.</li>
-          <li>The page is served only on this laptop's local network address. Nothing is sent to the internet.</li>
+          <li>Anyone on this WiFi who has a viewer's address can open it, unless that viewer has a PIN.</li>
+          <li>Each viewer is served only on this laptop's local network address. Nothing is sent to the internet.</li>
+          <li>Only the Primary viewer can change the slide, and only while the projector is not paused. The Secondary viewer has no controls.</li>
           <li>Only the live text, the item titles, and the next item are shared. The rest of the app is not.</li>
-          <li>The PIN is saved on this laptop in plain text. It stops casual viewing, not someone who can open the laptop's files.</li>
+          <li>PINs are saved on this laptop in plain text. They stop casual viewing, not someone who can open the laptop's files.</li>
         </ul>
       </Card>
     </div>

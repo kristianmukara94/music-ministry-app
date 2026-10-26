@@ -3,15 +3,15 @@ import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { snapshotForRole } from '../shared/remote-view.js';
 
-/** How many ports are tried, starting at the chosen one, when it is taken. */
-const PORT_TRIES = 10;
 /** Wrong PIN entries allowed before the unlock pauses. A PIN has few digits, so this stops guessing. */
 const PIN_TRIES = 5;
 const PIN_PAUSE_MS = 60_000;
-const COOKIE = 'apccmma_remote';
 /** Keeps idle connections alive and drops the ones phones left without closing. */
 const HEARTBEAT_MS = 15_000;
+/** A PIN or a control request is a few bytes. Anything bigger is dropped without reading the rest. */
+const MAX_BODY = 1024;
 
 // Private network ranges only. A public address must never be served, so the page cannot leave the local network.
 const PRIVATE_IPV4 = [/^192\.168\./, /^10\./, /^172\.(1[6-9]|2\d|3[01])\./];
@@ -23,6 +23,13 @@ const SECURITY_HEADERS = {
   'Referrer-Policy': 'no-referrer',
   // Everything comes from this laptop. No outside scripts, styles, fonts, or connections.
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'",
+};
+
+/** The page each viewer opens at its address, and the only files each viewer's folder may serve. */
+const ROLE_PAGE = { primary: 'index.html', secondary: 'viewer.html' };
+const ROLE_FILES = {
+  primary: ['index.html', 'common.js', 'remote.js', 'remote.css'],
+  secondary: ['viewer.html', 'common.js', 'viewer.js', 'remote.css'],
 };
 
 /**
@@ -42,15 +49,24 @@ export function localNetworkAddress() {
   return pickLocalAddress(entries);
 }
 
-/** The phone page's folder inside the built app. Only this folder is served, so nothing else in the app is exposed. */
-const PAGE_FOLDER = 'remote';
+/** A short name for the phone, from its browser's user agent. It is shown in the activity list only. */
+export function deviceLabel(userAgent = '') {
+  if (/iPad/.test(userAgent)) return 'iPad';
+  if (/iPhone/.test(userAgent)) return 'iPhone';
+  if (/Android/.test(userAgent)) return 'Android';
+  if (/Windows/.test(userAgent)) return 'Windows';
+  if (/Macintosh/.test(userAgent)) return 'Mac';
+  if (/Linux/.test(userAgent)) return 'Linux';
+  return 'Browser';
+}
 
 /**
- * Serves the phone page for Remote view: a read-only live screen for the local network. The page is a static folder in
- * the build. `/api/remote/stream` sends the live screen as the laptop changes it. When a PIN is set, the stream and
- * the unlock are the only routes that matter, and the stream needs an unlocked session. Nothing here can change the app.
+ * Serves one phone page for Remote view, on one port. `role` is fixed when the server is made: `primary` also accepts
+ * control requests, and `secondary` never does. The role is checked here on the server, so a crafted request to the
+ * Secondary port is refused whatever the page sends. `/api/remote/stream` sends the live screen as the laptop changes it.
+ * When a PIN is set, every route needs an unlocked session, and each viewer has its own session cookie.
  */
-export function createRemoteViewServer({ distDir }) {
+export function createRemoteViewServer({ distDir, role = 'primary', canConnect = () => true, onControl = () => ({ ok: false, status: 409, error: 'Control is not set up.' }) }) {
   let server = null;
   let bound = null;
   let starting = null;
@@ -59,13 +75,14 @@ export function createRemoteViewServer({ distDir }) {
   let heartbeat = null;
   const streams = new Set();
   const sessions = new Set();
+  const cookieName = `apccmma_remote_${role}`;
   let misses = 0;
   let pausedUntil = 0;
 
   const pinRequired = () => pin !== null;
 
   function sessionToken(req) {
-    const match = /(?:^|;\s*)apccmma_remote=([0-9a-f]{48})/.exec(req.headers.cookie ?? '');
+    const match = new RegExp(`(?:^|;\\s*)${cookieName}=([0-9a-f]{48})`).exec(req.headers.cookie ?? '');
     return match ? match[1] : null;
   }
 
@@ -82,32 +99,37 @@ export function createRemoteViewServer({ distDir }) {
     res.end(JSON.stringify(body));
   }
 
-  function unlock(req, res) {
-    if (req.method !== 'POST') return sendJson(res, 405, { ok: false }, { Allow: 'POST' });
+  /** Reads a small JSON body. Calls `done` with the parsed value, or with null when it is not valid JSON. */
+  function readJson(req, res, done) {
     let body = '';
     req.setEncoding('utf8');
     req.on('data', (chunk) => {
       body += chunk;
-      // A PIN is a few bytes. Anything bigger is dropped without reading the rest.
-      if (body.length > 1024) req.destroy();
+      if (body.length > MAX_BODY) req.destroy();
     });
     req.on('end', () => {
-      let given;
       try {
-        given = JSON.parse(body).pin;
+        done(JSON.parse(body));
       } catch {
-        return sendJson(res, 400, { ok: false, error: 'The request was not understood.' });
+        done(null);
       }
+    });
+  }
+
+  function unlock(req, res) {
+    if (req.method !== 'POST') return sendJson(res, 405, { ok: false }, { Allow: 'POST' });
+    readJson(req, res, (parsed) => {
+      if (parsed === null) return sendJson(res, 400, { ok: false, error: 'The request was not understood.' });
       if (!pinRequired()) return sendJson(res, 200, { ok: true });
       if (Date.now() < pausedUntil) {
         const seconds = Math.ceil((pausedUntil - Date.now()) / 1000);
         return sendJson(res, 429, { ok: false, error: `Too many wrong PINs. Wait ${seconds} seconds and try again.` });
       }
-      if (typeof given === 'string' && pinMatches(given)) {
+      if (typeof parsed.pin === 'string' && pinMatches(parsed.pin)) {
         misses = 0;
         const token = crypto.randomBytes(24).toString('hex');
         sessions.add(token);
-        return sendJson(res, 200, { ok: true }, { 'Set-Cookie': `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict` });
+        return sendJson(res, 200, { ok: true }, { 'Set-Cookie': `${cookieName}=${token}; Path=/; HttpOnly; SameSite=Strict` });
       }
       misses += 1;
       if (misses >= PIN_TRIES) {
@@ -121,6 +143,7 @@ export function createRemoteViewServer({ distDir }) {
   function stream(req, res) {
     if (req.method !== 'GET') return sendJson(res, 405, { ok: false }, { Allow: 'GET' });
     if (!unlocked(req)) return sendJson(res, 401, { ok: false, error: 'Enter the PIN first.' });
+    if (!canConnect()) return sendJson(res, 503, { ok: false, error: 'This page is full. Close some phones and try again.' });
     res.writeHead(200, {
       ...SECURITY_HEADERS,
       'Content-Type': 'text/event-stream; charset=utf-8',
@@ -131,8 +154,32 @@ export function createRemoteViewServer({ distDir }) {
     res.flushHeaders();
     const entry = { res, ip: (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '') };
     streams.add(entry);
-    if (latest) res.write(`data: ${JSON.stringify(latest)}\n\n`);
+    if (latest) res.write(`data: ${JSON.stringify(snapshotForRole(latest, role))}\n\n`);
     req.on('close', () => streams.delete(entry));
+  }
+
+  /** A control request from the Primary viewer. The Secondary viewer's port never reaches the handler. */
+  function control(req, res) {
+    if (role !== 'primary') return sendJson(res, 403, { ok: false, error: 'This page is read-only.' });
+    if (req.method !== 'POST') return sendJson(res, 405, { ok: false }, { Allow: 'POST' });
+    if (!unlocked(req)) return sendJson(res, 401, { ok: false, error: 'Enter the PIN first.' });
+    // Only a JSON body is accepted. A plain web form from another site cannot send one, so it cannot reach this.
+    if (!(req.headers['content-type'] ?? '').startsWith('application/json')) {
+      return sendJson(res, 415, { ok: false, error: 'The request was not understood.' });
+    }
+    readJson(req, res, async (parsed) => {
+      if (parsed === null) return sendJson(res, 400, { ok: false, error: 'The request was not understood.' });
+      const device = { ip: (req.socket.remoteAddress ?? '').replace(/^::ffff:/, ''), label: deviceLabel(req.headers['user-agent']) };
+      let result;
+      try {
+        result = await onControl(parsed, device);
+      } catch (err) {
+        console.warn(`[remote view] control failed: ${err.message}`);
+        return sendJson(res, 500, { ok: false, error: 'The change could not be made.' });
+      }
+      if (!result.ok) return sendJson(res, result.status ?? 409, { ok: false, error: result.error });
+      return sendJson(res, 200, { ok: true });
+    });
   }
 
   function servePage(req, res, pathname) {
@@ -141,19 +188,23 @@ export function createRemoteViewServer({ distDir }) {
       res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }).end('The app has not been built. Run npm run build first.');
       return;
     }
-    const root = path.resolve(distDir, PAGE_FOLDER);
     let relative;
     if (pathname === '/' || pathname === '/remote' || pathname === '/remote/') {
-      relative = 'index.html';
-    } else if (pathname.startsWith(`/${PAGE_FOLDER}/`)) {
+      relative = ROLE_PAGE[role];
+    } else if (pathname.startsWith('/remote/')) {
       try {
-        relative = decodeURIComponent(pathname.slice(PAGE_FOLDER.length + 2));
+        relative = decodeURIComponent(pathname.slice('/remote/'.length));
       } catch {
         return res.writeHead(400).end();
       }
     } else {
       return res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
     }
+    // Only this viewer's own files are served. The other viewer's page and scripts are not reachable from this port.
+    if (!ROLE_FILES[role].includes(relative)) {
+      return res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
+    }
+    const root = path.resolve(distDir, 'remote');
     const file = path.resolve(root, relative);
     if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
       return res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
@@ -174,14 +225,15 @@ export function createRemoteViewServer({ distDir }) {
     }
     if (pathname === '/api/remote/status') {
       if (req.method !== 'GET') return sendJson(res, 405, { ok: false }, { Allow: 'GET' });
-      return sendJson(res, 200, { pinRequired: pinRequired(), unlocked: unlocked(req) });
+      return sendJson(res, 200, { role, pinRequired: pinRequired(), unlocked: unlocked(req) });
     }
     if (pathname === '/api/remote/unlock') return unlock(req, res);
     if (pathname === '/api/remote/stream') return stream(req, res);
+    if (pathname === '/api/remote/control') return control(req, res);
     return servePage(req, res, pathname);
   }
 
-  /** Binds to one port. Resolves with the port, or with the error code when it cannot. */
+  /** Binds to the one port. Resolves with the port, or with the error code when it cannot. */
   function listenOn(host, port) {
     return new Promise((resolve) => {
       const candidate = http.createServer(handle);
@@ -196,16 +248,18 @@ export function createRemoteViewServer({ distDir }) {
   }
 
   return {
+    role,
     running: () => bound !== null,
     address: () => bound?.address ?? null,
     port: () => bound?.port ?? null,
 
-    /** Devices with the page open, counted once per address. Two tabs on one phone count as one device. */
+    /** Phones with the page open, counted once per address. Two tabs on one phone count as one device. */
     devices: () => new Set([...streams].map((s) => s.ip)).size,
 
     /**
-     * Starts the page on `host` (the laptop's network address). Tries the chosen port and the next few when it is
-     * taken. Resolves with `{ ok, port }` or `{ ok: false, error }`. Starting again while it runs does nothing.
+     * Starts the page on `host` (the laptop's network address) and the chosen port. A port that is taken is not moved
+     * to another one: the result says so, and the page does not start. Resolves with `{ ok, port }` or
+     * `{ ok: false, error }`. Starting again while it runs does nothing.
      */
     start({ host, port, pin: nextPin }) {
       if (bound) return Promise.resolve({ ok: true, port: bound.port });
@@ -213,19 +267,18 @@ export function createRemoteViewServer({ distDir }) {
       pin = nextPin ?? null;
       starting = (async () => {
         try {
-          for (let candidate = port; candidate < port + PORT_TRIES && candidate <= 65535; candidate += 1) {
-            const result = await listenOn(host, candidate);
-            if (result.ok) {
-              bound = { address: host, port: result.port };
-              heartbeat = setInterval(() => {
-                for (const s of streams) s.res.write(': ping\n\n');
-              }, HEARTBEAT_MS);
-              heartbeat.unref();
-              return { ok: true, port: result.port };
-            }
-            if (result.code !== 'EADDRINUSE') return { ok: false, error: `The Remote view page could not start: ${result.message}` };
+          const result = await listenOn(host, port);
+          if (!result.ok) {
+            pin = null;
+            if (result.code === 'EADDRINUSE') return { ok: false, error: 'Port in use, pick another' };
+            return { ok: false, error: `The Remote view page could not start: ${result.message}` };
           }
-          return { ok: false, error: `Ports ${port} to ${port + PORT_TRIES - 1} are all in use. Close the program using one, or choose another port.` };
+          bound = { address: host, port: result.port };
+          heartbeat = setInterval(() => {
+            for (const s of streams) s.res.write(': ping\n\n');
+          }, HEARTBEAT_MS);
+          heartbeat.unref();
+          return { ok: true, port: result.port };
         } finally {
           starting = null;
         }
@@ -252,10 +305,10 @@ export function createRemoteViewServer({ distDir }) {
       });
     },
 
-    /** Sends the live screen to every connected phone. The latest is sent to a phone that connects later. */
+    /** Sends the live screen to every connected phone, shaped for this viewer. The latest is sent to a phone that connects later. */
     push(payload) {
       latest = payload;
-      const data = `data: ${JSON.stringify(payload)}\n\n`;
+      const data = `data: ${JSON.stringify(snapshotForRole(payload, role))}\n\n`;
       for (const s of streams) s.res.write(data);
     },
   };
