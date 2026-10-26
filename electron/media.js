@@ -204,11 +204,12 @@ export function createMediaService(db, root, deps) {
     deleteMedia(id) {
       const row = q.byId.get(id);
       if (!row) return false;
-      q.remove.run(id);
+      // The files go first. If one cannot be removed, the row stays, so the library still lists a file that is on disk.
       for (const rel of [row.filePath, row.thumbnailPath]) {
         const file = rel ? resolveAsset(root, rel) : null;
         if (file) fs.rmSync(file, { force: true });
       }
+      q.remove.run(id);
       return true;
     },
 
@@ -241,7 +242,29 @@ export function createMediaService(db, root, deps) {
 }
 
 /** Registers `media:*` IPC, the `apcc-media://media|thumb` routes, and the thumbnailer. */
-export function setupMedia(db, { loadRoute, preload }) {
+/**
+ * Waits until the file can be opened for writing again. Windows keeps a file locked while the projector is still showing
+ * it, so a delete that comes straight after a background clear waits here for the renderer to let go.
+ */
+async function waitForFileRelease(file) {
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    try {
+      fs.closeSync(fs.openSync(file, 'r+'));
+      return;
+    } catch (err) {
+      if (err.code !== 'EBUSY' && err.code !== 'EPERM') return;
+      if (Date.now() > deadline) throw new Error('This file is still open on the projector. Try again in a moment.');
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
+}
+
+/**
+ * Registers `media:*` IPC. `releaseBackground(url)` is supplied by the main process: it clears the background layer when it
+ * shows the file at `url`, and returns true when it did.
+ */
+export function setupMedia(db, { loadRoute, preload, releaseBackground }) {
   const root = getAssetRoot();
 
   const thumbnailer = createVideoThumbnailer({ loadRoute, preload });
@@ -269,7 +292,15 @@ export function setupMedia(db, { loadRoute, preload }) {
     ipcMain.handle(`media:${channel}`, (event, ...args) => fn(BrowserWindow.fromWebContents(event.sender), ...args));
   handle('list', () => service.list());
   handle('import', (win) => service.importMedia(win));
-  handle('delete', (_win, id) => service.deleteMedia(Number(id)));
+  handle('delete', async (_win, id) => {
+    const mediaId = Number(id);
+    // A file on the projector is cleared first, so the screen lets go of it. Then the delete waits for the file to be free.
+    if (releaseBackground?.(`apcc-media://media/${mediaId}`)) {
+      const file = service.filePath(mediaId);
+      if (file) await waitForFileRelease(file);
+    }
+    return service.deleteMedia(mediaId);
+  });
   handle('rename', (_win, id, name) => service.renameMedia(Number(id), name));
   handle('reveal', (_win, id) => service.revealMedia(Number(id)));
 

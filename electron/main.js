@@ -520,7 +520,17 @@ app.whenReady().then(() => {
   lowerThirdServer = createLowerThirdServer({ distDir: path.join(__dirname, '../dist') });
   void lowerThirdServer.start();
   if (state.lowerStyle.target != null) placeLowerThirdWindow();
-  media = setupMedia(announcements.db, { loadRoute: load, preload: webPreferences.preload });
+  media = setupMedia(announcements.db, {
+    loadRoute: load,
+    preload: webPreferences.preload,
+    // Deleting a file that the background layer shows clears the layer first, so the file is not held open.
+    releaseBackground: (url) => {
+      const bg = state.projector.background;
+      if (![bg.live, bg.staged].some((frame) => frame?.src === url)) return false;
+      apply({ type: 'background/clear' });
+      return true;
+    },
+  });
   settings = setupSettings({
     userData: app.getPath('userData'),
     getDb: () => announcements.db,
