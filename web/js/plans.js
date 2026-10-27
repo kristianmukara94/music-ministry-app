@@ -1,8 +1,10 @@
 // Plans: the summary cards, the plan type tabs, the search box and the plan list.
 import { PLANS, PLAN_STATUS, SUMMARY } from './sample-data.js';
 import { esc, mountSidebar } from './shell.js';
+import { guard } from './auth.js';
 
 mountSidebar();
+void guard();
 
 const state = { tab: 'all', query: '' };
 

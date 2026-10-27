@@ -1,3 +1,4 @@
-# The APCCMMA Web Planner: a static site in web/. There is no build step.
+# The APCCMMA Web Planner: a static site in web/, with its sign-in functions in netlify/functions/.
 [build]
   publish = "web"
+  functions = "netlify/functions"

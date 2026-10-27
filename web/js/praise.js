@@ -2,8 +2,10 @@
 // minutes updates the section totals, the total time, the time bars and the readiness checks.
 import { PRAISE_PLAN } from './sample-data.js';
 import { esc, mountSidebar } from './shell.js';
+import { guard } from './auth.js';
 
 mountSidebar();
+void guard();
 
 const MIN_MINUTES = 1;
 const MAX_MINUTES = 60;

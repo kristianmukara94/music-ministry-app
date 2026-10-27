@@ -33,16 +33,21 @@
 
     <form id="sign-in" style="display: flex; flex-direction: column; gap: 18px; max-width: 440px">
       <label style="display: flex; flex-direction: column; gap: 8px">
-        <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Email</span>
-        <input type="email" name="email" autocomplete="username" placeholder="name@example.com" style="height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 15px; outline: 0">
+        <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Username</span>
+        <input type="text" name="username" required autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="Your username" style="height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 15px; outline: 0">
       </label>
       <label style="display: flex; flex-direction: column; gap: 8px">
         <span style="display: flex; justify-content: space-between; align-items: baseline">
           <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Password</span>
-          <a href="login.html" style="font-size: 13px; color: #ecc98a; font-weight: 600">Forgot password?</a>
+          <span style="font-size: 13px; color: #b48d99">Ask your admin to reset it</span>
         </span>
-        <input type="password" name="password" autocomplete="current-password" placeholder="Your password" style="height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 15px; outline: 0">
+        <input type="password" name="password" required autocomplete="current-password" placeholder="Your password" style="height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 15px; outline: 0">
       </label>
+      <label style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Church code <span style="font-weight: 400; color: #b48d99">(asked the first time; then remembered on this laptop)</span></span>
+        <input type="text" name="churchCode" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. K7QM-4XD2" style="height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 15px; outline: 0">
+      </label>
+      <p id="sign-in-error" role="alert" aria-live="assertive" style="margin: 0; min-height: 1.4em; font-size: 14px; color: #ff9a9a"></p>
       <button type="submit" style="height: 50px; border-radius: 10px; border: 0; background: #ecc98a; color: #1c070d; font-size: 15px; font-weight: 700; cursor: pointer">Sign in</button>
       <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #b48d99">Only parish ministry members can sign in. Ask the music ministry lead for an invite.</p>
     </form>

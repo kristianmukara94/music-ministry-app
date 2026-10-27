@@ -2,8 +2,10 @@
 // from the list or a typed note; a reading takes a reference; a rite takes an optional note for the operator.
 import { LANGUAGE_CODE, MASS_PLAN, SONGS } from './sample-data.js';
 import { esc, mountSidebar } from './shell.js';
+import { guard } from './auth.js';
 
 mountSidebar();
+void guard();
 
 const STEPS = MASS_PLAN.sections.flatMap((section) =>
   section.rows.map(([n, name, kind, cat, value, src, optional, hint]) => ({

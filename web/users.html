@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en" data-base="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<title>Users · APCCMMA Web Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/planner.css">
+<script type="module" src="js/users.js"></script>
+</head>
+<body>
+<div class="shell" style="display: flex; flex-wrap: wrap; background: #0f0407; color: #f7eef0; font-family: 'Archivo','Segoe UI',system-ui,sans-serif">
+
+  <div data-sidebar="users"></div>
+
+  <main class="main" style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; display: flex; flex-direction: column; gap: 24px">
+
+    <header style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #ecc98a">ADMIN · CHURCH USERS</span>
+      <h1 style="margin: 0; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 48px; line-height: 1.02">Users</h1>
+      <p style="margin: 0; max-width: 680px; font-size: 15px; line-height: 1.55; color: #dbb3bf">Add people who plan for the church, and choose what each can do. A temporary password is shown once, when it is made. The person must choose their own at first sign-in.</p>
+    </header>
+
+    <section aria-label="Add a user" style="border: 1px solid #3a1523; border-radius: 16px; background: #1b0a13; padding: 20px; display: flex; flex-direction: column; gap: 16px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.12em; color: #ecc98a">ADD A USER</h2>
+      <form id="add-user" style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px">
+        <label class="field">Username
+          <input name="username" required maxlength="80" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </label>
+        <label class="field">Display name
+          <input name="displayName" required maxlength="120" autocomplete="off">
+        </label>
+        <label class="field">Role
+          <select name="role">
+            <option value="planner">Planner: can edit plans</option>
+            <option value="viewer">Viewer: can read only</option>
+            <option value="admin">Admin: can manage users</option>
+          </select>
+        </label>
+        <button type="submit" class="primary">Add user</button>
+      </form>
+      <p id="add-error" role="alert" class="form-error"></p>
+    </section>
+
+    <section aria-label="Users in this church" style="display: flex; flex-direction: column; gap: 12px">
+      <p id="users-error" role="alert" class="form-error"></p>
+      <div id="users" style="border: 1px solid #3a1523; border-radius: 16px; background: #1b0a13; overflow: hidden">
+        <p style="margin: 0; padding: 18px; font-size: 14px; color: #b48d99">Loading users…</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="temp-dialog" aria-labelledby="temp-title">
+  <div class="dialog-body">
+    <h2 id="temp-title">Temporary password</h2>
+    <p id="temp-who"></p>
+    <p class="dialog-note">Give this to the person now. It is not shown again, and it is not kept anywhere. They must choose their own password at first sign-in.</p>
+    <code id="temp-value" aria-label="Temporary password"></code>
+    <div class="dialog-actions">
+      <button type="button" id="temp-copy" class="quiet">Copy</button>
+      <button type="button" id="temp-close" class="primary">Done</button>
+    </div>
+  </div>
+</dialog>
+</body>
+</html>

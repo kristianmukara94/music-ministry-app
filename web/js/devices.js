@@ -1,8 +1,10 @@
 // Devices & sync: the linked laptops, the conflict that needs a decision, the sync activity, and the link code.
 import { ACTIVITY, CONFLICT, DEVICES, LINK_CODE } from './sample-data.js';
 import { esc, mountSidebar } from './shell.js';
+import { guard } from './auth.js';
 
 mountSidebar();
+void guard();
 
 const TONE = {
   ok: { fg: '#8fd9ae', bg: '#12301f' },

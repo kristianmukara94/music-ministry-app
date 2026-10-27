@@ -2,8 +2,10 @@
 // search and the language, so they show how many songs each chip would list.
 import { LANGUAGES, SONG_CATEGORIES, SONGS, SONGS_SYNCED } from './sample-data.js';
 import { esc, mountSidebar } from './shell.js';
+import { guard } from './auth.js';
 
 mountSidebar();
+void guard();
 
 const state = { q: '', cat: 'All', lang: 'All' };
 

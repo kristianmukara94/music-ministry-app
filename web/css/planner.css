@@ -46,6 +46,221 @@ button:focus-visible {
   min-height: 100vh;
 }
 
+/* Sign-in gate: the planner is hidden until the server confirms who is signed in. */
+.auth-pending .shell {
+  visibility: hidden;
+}
+
+.auth-notice {
+  margin: 0;
+  padding: 24px;
+  color: #ff9a9a;
+  font-family: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+}
+
+/* The temporary-password screen, shown before anything else for an account that must change its password. */
+.change-password {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #0f0407;
+  font-family: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+  color: #f7eef0;
+}
+
+.change-password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 440px;
+}
+
+.change-password-form h1 {
+  margin: 0;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.05;
+}
+
+.change-password-form p {
+  margin: 0;
+  color: #dbb3bf;
+  line-height: 1.5;
+}
+
+.change-password-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #dbb3bf;
+}
+
+.change-password-form input {
+  height: 48px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid #55202f;
+  background: #150610;
+  color: #f7eef0;
+  font-size: 15px;
+}
+
+.change-password-form input:focus {
+  outline: 2px solid #ecc98a;
+  outline-offset: 1px;
+}
+
+.change-password-form button {
+  height: 50px;
+  border: 0;
+  border-radius: 10px;
+  background: #ecc98a;
+  color: #1c070d;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.change-password-form button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.change-password-error {
+  min-height: 1.4em;
+  color: #ff9a9a !important;
+  font-size: 14px !important;
+}
+
+/* Users page: form fields, buttons, errors and the temporary-password dialog. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #dbb3bf;
+}
+
+.field.small {
+  min-width: 140px;
+}
+
+.field input,
+.field select {
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid #55202f;
+  background: #150610;
+  color: #f7eef0;
+  font-size: 14px;
+}
+
+.field input:focus,
+.field select:focus {
+  outline: 2px solid #ecc98a;
+  outline-offset: 1px;
+}
+
+button.primary,
+button.quiet {
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button.primary {
+  border: 0;
+  background: #ecc98a;
+  color: #1c070d;
+}
+
+button.quiet {
+  border: 1px solid #6e2a3e;
+  background: #2a0c18;
+  color: #f7eef0;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-error {
+  min-height: 1.4em;
+  margin: 0;
+  font-size: 14px;
+  color: #ff9a9a;
+  font-family: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+}
+
+dialog#temp-dialog {
+  width: min(460px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid #55202f;
+  border-radius: 16px;
+  background: #1b0a13;
+  color: #f7eef0;
+  font-family: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+}
+
+dialog#temp-dialog::backdrop {
+  background: rgba(15, 4, 7, 0.75);
+}
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+}
+
+.dialog-body h2 {
+  margin: 0;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.dialog-body p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #dbb3bf;
+}
+
+.dialog-body code {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px dashed #6e2a3e;
+  background: #150610;
+  color: #ecc98a;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 22px;
+  letter-spacing: 0.08em;
+  text-align: center;
+  user-select: all;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 /* Sign in page */
 .login a:hover {
   color: #ecc98a;

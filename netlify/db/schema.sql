@@ -67,3 +67,43 @@ CREATE TABLE devices (
   last_seen_at  TIMESTAMPTZ
 );
 CREATE INDEX devices_church ON devices (church_id);
+
+-- Web planner sign-in. Usernames are unique within a church (case-insensitive). Sign-in can name the church by its display
+-- code when the same username is used by more than one church.
+CREATE TABLE users (
+  id                    UUID PRIMARY KEY,
+  church_id             UUID NOT NULL REFERENCES churches(id) ON DELETE CASCADE,
+  username              TEXT NOT NULL CHECK (char_length(username) BETWEEN 1 AND 80),
+  display_name          TEXT NOT NULL CHECK (char_length(display_name) BETWEEN 1 AND 120),
+  role                  TEXT NOT NULL CHECK (role IN ('admin', 'planner', 'viewer')),
+  password_hash         TEXT NOT NULL,
+  must_change_password  BOOLEAN NOT NULL DEFAULT true,
+  disabled              BOOLEAN NOT NULL DEFAULT false,
+  failed_attempts       INT NOT NULL DEFAULT 0,
+  locked_until          TIMESTAMPTZ,
+  last_login_at         TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX users_church_username ON users (church_id, lower(username));
+
+-- A web session. Only a keyed hash of the token is stored, never the token.
+CREATE TABLE sessions (
+  token_hash  TEXT PRIMARY KEY,
+  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  church_id   UUID NOT NULL REFERENCES churches(id) ON DELETE CASCADE,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX sessions_user ON sessions (user_id);
+
+-- Every user-management change: who did it, to whom, and when. Holds no passwords.
+CREATE TABLE audit_log (
+  id              BIGSERIAL PRIMARY KEY,
+  church_id       UUID NOT NULL REFERENCES churches(id) ON DELETE CASCADE,
+  actor_user_id   UUID REFERENCES users(id) ON DELETE SET NULL,
+  action          TEXT NOT NULL CHECK (action IN ('user.created', 'user.role_changed', 'user.disabled', 'user.enabled',
+                                                  'user.password_reset', 'user.unlocked')),
+  target_user_id  UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX audit_log_church ON audit_log (church_id, created_at);
