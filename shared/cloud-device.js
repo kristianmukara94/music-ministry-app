@@ -57,3 +57,29 @@ export function checkWebUser({ username, displayName, role } = {}) {
   if (!WEB_USER_ROLES.includes(role)) return 'Choose a role: admin, planner or viewer.';
   return null;
 }
+
+export const SETUP_KEY_LENGTH = 12;
+
+/** A setup key as the operator types it: upper case, with a dash after every four characters. */
+export function formatSetupKey(input) {
+  const compact = String(input ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, SETUP_KEY_LENGTH);
+  return [compact.slice(0, 4), compact.slice(4, 8), compact.slice(8)].filter(Boolean).join('-');
+}
+
+/** True when the typed setup key has all twelve characters. */
+export const isCompleteSetupKey = (input) => formatSetupKey(input).replace(/-/g, '').length === SETUP_KEY_LENGTH;
+
+/**
+ * Checks the Create church admin form before anything is sent: the setup key, the church name, the admin's username and name
+ * (the same rules as a web user), and the laptop's name. Returns the plain message for the first problem, or null.
+ */
+export function checkChurchSetup({ setupKey, churchName, username, displayName, deviceLabel } = {}) {
+  if (!isCompleteSetupKey(setupKey)) return 'Type the whole setup key, in the form ABCD-EFGH-JKLM.';
+  const church = String(churchName ?? '').trim();
+  if (!church || church.length > 120) return 'Enter a church name of up to 120 characters.';
+  const admin = checkWebUser({ username, displayName, role: 'admin' });
+  if (admin) return admin;
+  const laptop = String(deviceLabel ?? '').trim();
+  if (!laptop || laptop.length > 80) return 'Name this laptop, in up to 80 characters.';
+  return null;
+}

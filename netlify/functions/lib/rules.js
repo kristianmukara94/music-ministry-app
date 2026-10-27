@@ -70,3 +70,9 @@ export function checkDisplayName(name) {
   if (!name || name.length > 120) return 'Enter a name of up to 120 characters.';
   return null;
 }
+
+/** A church's name: 1 to 120 characters. Matches the churches table. */
+export function checkChurchName(name) {
+  if (!name || name.length > 120) return 'Enter a church name of up to 120 characters.';
+  return null;
+}

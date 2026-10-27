@@ -621,6 +621,16 @@ ipcMain.handle('cloud:unlink', () => cloud().unlink());
 ipcMain.handle('cloud:create-web-user', (_event, input) =>
   cloud().createWebUser({ username: input?.username, displayName: input?.displayName, role: input?.role }),
 );
+// Checked in cloud-device.js in the main process before anything is sent. Only these five fields are read.
+ipcMain.handle('cloud:create-church-admin', (_event, input) =>
+  cloud().createChurchAdmin({
+    setupKey: input?.setupKey,
+    churchName: input?.churchName,
+    username: input?.username,
+    displayName: input?.displayName,
+    deviceLabel: input?.deviceLabel,
+  }),
+);
 ipcMain.handle('cloud:defaultLabel', () => os.hostname());
 
 /** Remote view's status. Also starts the page if it is on and a network has appeared since the last check. */

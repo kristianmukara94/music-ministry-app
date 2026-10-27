@@ -14,8 +14,9 @@ import { createAdminApi } from '../lib/admin.js';
 import { tagFromQuery } from '../lib/db.js';
 import { createLinkingApi, REDEEM_LIMIT } from '../lib/linking.js';
 import { createDeviceUsersApi } from '../lib/device-users.js';
+import { createChurchSetupApi } from '../lib/church-setup.js';
 import { createRateLimiter } from '../lib/rules.js';
-import { hashPassword } from '../lib/auth.js';
+import { hashPassword, hashToken, setupKey } from '../lib/auth.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.resolve(here, '..', '..', '..', 'web');
@@ -40,6 +41,10 @@ for (const [username, role, mustChange] of [['planner', 'planner', false], ['vie
 }
 await db.query(`INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at) VALUES (gen_random_uuid(), $1, 'All Saints', '2026-11-01', '{}', now())`, [CHURCH]);
 
+// One setup key for this run, so a new church can be set up from the browser. Printed below, as the test password is.
+const SETUP_KEY = setupKey();
+await db.query(`INSERT INTO setup_keys (key_hash) VALUES ($1)`, [hashToken(SETUP_KEY, LOCAL_SECRET)]);
+
 const sql = async (strings, ...values) => {
   const text = strings.reduce((acc, s, i) => acc + s + (i < values.length ? `$${i + 1}` : ''), '');
   return (await db.query(text, values)).rows;
@@ -49,12 +54,14 @@ const transaction = (work) => db.transaction((tx) => work(tagFromQuery((t, v) =>
 const admin = createAdminApi({ sql, transaction, secret: LOCAL_SECRET });
 const linking = createLinkingApi({ sql, transaction, secret: LOCAL_SECRET, redeemLimiter: createRateLimiter(REDEEM_LIMIT) });
 const deviceUsers = createDeviceUsersApi({ sql, secret: LOCAL_SECRET, addUser: admin.addUser });
+const churchSetup = createChurchSetupApi({ transaction, secret: LOCAL_SECRET });
 const routes = {
   login: api.login, logout: api.logout, me: api.me, 'change-password': api.changePassword, plans: api.plans,
   'users-list': admin.list, 'users-create': admin.create, 'users-update': admin.update,
   'users-reset-password': admin.resetPassword, 'users-unlock': admin.unlock,
   'link-code-create': linking.createCode, 'link-redeem': linking.redeem, 'device-status': linking.status, 'device-unlink': linking.unlink,
   'device-users-create': deviceUsers,
+  'setup-church-admin': churchSetup,
 };
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
@@ -85,4 +92,5 @@ http.createServer(async (req, res) => {
 }).listen(PORT, () => {
   console.log(`Local planner on http://localhost:${PORT}  (test accounts: planner, viewer, fresh, boss (admin))`);
   console.log(`Test password for this run: ${PASSWORD}`);
+  console.log(`Test setup key for this run (works once): ${SETUP_KEY}`);
 });

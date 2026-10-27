@@ -3,10 +3,11 @@
 // the screen. The app talks to Netlify functions only; it has no database address.
 //
 // The dependencies are passed in (safeStorage, the file, fetch) so the logic can be tested without Electron.
-import { checkWebUser } from '../shared/cloud-device.js';
+import { checkChurchSetup, checkWebUser } from '../shared/cloud-device.js';
 
 export const MESSAGES = {
   notLinked: 'This laptop is not linked to a church yet. Link it first.',
+  alreadyLinked: 'This laptop is already linked to a church. Unlink it first to set up a new church.',
   noSafeStorage: 'This computer cannot protect the link key, so this laptop cannot be linked. Check that Windows is signed in to a user account, then try again.',
   noCloudAddress: 'The cloud address is not set on this computer. Ask your technical helper to set it.',
   offline: 'Cannot reach the cloud. Check the internet connection and try again.',
@@ -158,5 +159,42 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl }) {
     return { username: res.body.user.username, temporaryPassword: res.body.temporaryPassword };
   }
 
-  return { link, status, unlink, createWebUser };
+  /**
+   * Creates a new church and its first admin, using a setup key the developer gave out, and links this laptop to it in the same
+   * step. The key is sent once and never kept. The token is stored, encrypted, the same way as a code link. The password comes
+   * back once, for the screen to show.
+   */
+  async function createChurchAdmin(input) {
+    const clean = {
+      setupKey: String(input?.setupKey ?? ''),
+      churchName: String(input?.churchName ?? '').trim(),
+      username: String(input?.username ?? '').trim(),
+      displayName: String(input?.displayName ?? '').trim(),
+      deviceLabel: String(input?.deviceLabel ?? '').trim(),
+    };
+    const problem = checkChurchSetup(clean);
+    if (problem) throw new Error(problem);
+    if (!baseUrl) throw new Error(MESSAGES.noCloudAddress);
+    // A damaged link file is removed by readRecord, so it no longer counts as a link.
+    const existing = readRecord();
+    if (existing !== null && existing !== 'unreadable') throw new Error(MESSAGES.alreadyLinked);
+    if (!storage.isEncryptionAvailable()) throw new Error(MESSAGES.noSafeStorage);
+    const res = await call('setup-church-admin', { method: 'POST', body: clean });
+    if (!res.ok) throw new Error(serverMessage(res.body));
+    writeRecord({
+      token: res.body.token,
+      church: res.body.churchName,
+      admin: res.body.displayName,
+      label: res.body.deviceLabel,
+      lastSeenAt: null,
+    });
+    return {
+      username: res.body.username,
+      temporaryPassword: res.body.temporaryPassword,
+      churchCode: res.body.displayCode,
+      link: await status(),
+    };
+  }
+
+  return { link, status, unlink, createWebUser, createChurchAdmin };
 }

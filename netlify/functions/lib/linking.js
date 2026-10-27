@@ -11,6 +11,22 @@ export const LINK_CODE_MINUTES = 10;
 export const REDEEM_LIMIT = { requests: 10, windowMs: 60 * 1000 };
 const LABEL_MAX = 80;
 
+/** A laptop's name: 1 to 80 characters. The plain message, or null when it is fine. */
+export const checkDeviceLabel = (label) => (!label || label.length > LABEL_MAX ? `Name this laptop, in up to ${LABEL_MAX} characters.` : null);
+
+/**
+ * Links a laptop inside the caller's transaction: writes the device row and its audit line, and returns the raw token, which
+ * is shown to the laptop once. Only its keyed hash is stored. Used by code redemption and by church setup.
+ */
+export async function issueDeviceToken(tx, { churchId, userId, label, secret, now }) {
+  const token = deviceToken();
+  await tx`
+    INSERT INTO device_tokens (token_hash, church_id, user_id, device_name, created_at)
+    VALUES (${hashToken(token, secret)}, ${churchId}, ${userId}, ${label}, ${now().toISOString()})`;
+  await tx`INSERT INTO audit_log (church_id, actor_user_id, action) VALUES (${churchId}, ${userId}, 'device.linked')`;
+  return token;
+}
+
 const json = (statusCode, body, extraHeaders = {}) => ({
   statusCode,
   headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extraHeaders },
@@ -18,7 +34,7 @@ const json = (statusCode, body, extraHeaders = {}) => ({
 });
 
 const lowerHeaders = (headers = {}) => Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
-const clientIp = (headers) => headers['x-nf-client-connection-ip'] ?? headers['x-forwarded-for']?.split(',')[0].trim() ?? 'unknown';
+export const clientIp = (headers) => headers['x-nf-client-connection-ip'] ?? headers['x-forwarded-for']?.split(',')[0].trim() ?? 'unknown';
 
 function parseJson(event) {
   try {
@@ -73,7 +89,8 @@ export function createLinkingApi({ sql, transaction, secret, now = () => new Dat
     const code = normaliseLinkCode(body?.code);
     const label = typeof body?.deviceLabel === 'string' ? body.deviceLabel.trim() : '';
     if (!code) return json(400, { error: 'That code is not valid. Check it and try again.' });
-    if (!label || label.length > LABEL_MAX) return json(400, { error: `Name this laptop, in up to ${LABEL_MAX} characters.` });
+    const labelProblem = checkDeviceLabel(label);
+    if (labelProblem) return json(400, { error: labelProblem });
 
     const result = await transaction(async (tx) => {
       const rows = await tx`
@@ -91,11 +108,7 @@ export function createLinkingApi({ sql, transaction, secret, now = () => new Dat
       const church = (await tx`SELECT name FROM churches WHERE id = ${row.church_id}`)[0];
 
       await tx`UPDATE link_codes SET used_at = ${now().toISOString()} WHERE code_hash = ${hashToken(code, secret)}`;
-      const token = deviceToken();
-      await tx`
-        INSERT INTO device_tokens (token_hash, church_id, user_id, device_name, created_at)
-        VALUES (${hashToken(token, secret)}, ${row.church_id}, ${row.created_by}, ${label}, ${now().toISOString()})`;
-      await tx`INSERT INTO audit_log (church_id, actor_user_id, action) VALUES (${row.church_id}, ${row.created_by}, 'device.linked')`;
+      const token = await issueDeviceToken(tx, { churchId: row.church_id, userId: row.created_by, label, secret, now });
       return { token, churchName: church.name, adminName: admin[0].display_name, deviceLabel: label };
     });
     // The raw token leaves the server in this one response only.

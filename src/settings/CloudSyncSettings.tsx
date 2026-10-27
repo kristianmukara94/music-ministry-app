@@ -1,11 +1,26 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Cloud, Copy, Laptop, UserPlus, WifiOff } from 'lucide-react';
-import { bridge, type CloudLink, type CreatedWebUser, type NewWebUser } from '../live/bridge';
-import { checkWebUser, cloudViewState, formatLinkCode, isCompleteLinkCode } from '../../shared/cloud-device.js';
+import { Church, Cloud, Copy, Laptop, UserPlus, WifiOff } from 'lucide-react';
+import {
+  bridge,
+  type CloudLink,
+  type CreatedChurchAdmin,
+  type CreatedWebUser,
+  type NewChurchAdmin,
+  type NewWebUser,
+} from '../live/bridge';
+import {
+  checkChurchSetup,
+  checkWebUser,
+  cloudViewState,
+  formatLinkCode,
+  formatSetupKey,
+  isCompleteLinkCode,
+} from '../../shared/cloud-device.js';
 
 const cloud = bridge.cloud;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 const emptyUser: NewWebUser = { username: '', displayName: '', role: 'planner' };
+const emptySetup: NewChurchAdmin = { setupKey: '', churchName: '', username: '', displayName: '', deviceLabel: '' };
 
 const button =
   'flex h-10 items-center gap-2 rounded-md border border-line-strong px-4 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40';
@@ -36,9 +51,20 @@ export function CloudSyncSettings() {
   const [newUser, setNewUser] = useState<NewWebUser>(emptyUser);
   const [created, setCreated] = useState<CreatedWebUser | null>(null);
   const [copied, setCopied] = useState(false);
+  const [settingUp, setSettingUp] = useState(false);
+  const [setup, setSetup] = useState<NewChurchAdmin>(emptySetup);
+  const [createdChurch, setCreatedChurch] = useState<CreatedChurchAdmin | null>(null);
+  const [copiedChurch, setCopiedChurch] = useState(false);
 
-  // The temporary password lives only in this screen's state. It is cleared when the screen goes away.
-  useEffect(() => () => setCreated(null), []);
+  // The temporary password and the setup key live only in this screen's state. Both are cleared when the screen goes away.
+  useEffect(
+    () => () => {
+      setCreated(null);
+      setCreatedChurch(null);
+      setSetup(emptySetup);
+    },
+    [],
+  );
 
   const refresh = () =>
     cloud
@@ -115,6 +141,52 @@ export function CloudSyncSettings() {
     }
   };
 
+  const setupProblem = checkChurchSetup(setup);
+  const setupTyped = setup.setupKey !== '' || setup.churchName !== '' || setup.username !== '' || setup.displayName !== '';
+
+  const openSetup = () => {
+    setSetup({ ...emptySetup, deviceLabel: label });
+    setSettingUp(true);
+  };
+
+  const closeSetup = () => {
+    setSettingUp(false);
+    setSetup(emptySetup);
+  };
+
+  const createChurch = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await cloud.createChurchAdmin(setup);
+      setCreatedChurch(result);
+      setCopiedChurch(false);
+      setLink(result.link);
+      setSettingUp(false);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      // The setup key is cleared whatever the outcome. A failed attempt needs the key typed again.
+      setSetup(emptySetup);
+      setBusy(false);
+    }
+  };
+
+  const closeChurchResult = () => {
+    setCreatedChurch(null);
+    setCopiedChurch(false);
+  };
+
+  const copyChurchPassword = async () => {
+    if (!createdChurch) return;
+    try {
+      await navigator.clipboard.writeText(createdChurch.temporaryPassword);
+      setCopiedChurch(true);
+    } catch {
+      setError('Could not copy. Select the password and copy it by hand.');
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <Card title="Cloud sync">
@@ -158,6 +230,83 @@ export function CloudSyncSettings() {
                 <Cloud size={15} aria-hidden /> {busy ? 'Linking…' : 'Link this laptop'}
               </button>
             </div>
+          </div>
+        )}
+
+        {view.kind === 'unlinked' && (
+          <div className="flex flex-col gap-4">
+            {settingUp ? (
+              <div className="flex flex-col gap-4 rounded-md border border-line p-4">
+                <h3 className="text-sm font-bold">Create church admin for website</h3>
+                <p className="text-xs text-muted">Use the setup key you were given. It works once.</p>
+                <label className="flex flex-col gap-2">
+                  <span className="eyebrow">Setup key</span>
+                  <input
+                    value={setup.setupKey}
+                    onChange={(e) => setSetup({ ...setup, setupKey: formatSetupKey(e.target.value) })}
+                    placeholder="ABCD-EFGH-JKLM"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className={`${field} w-64 uppercase tracking-widest`}
+                  />
+                </label>
+                <label className="flex flex-col gap-2">
+                  <span className="eyebrow">Church name</span>
+                  <input
+                    value={setup.churchName}
+                    onChange={(e) => setSetup({ ...setup, churchName: e.target.value })}
+                    maxLength={120}
+                    className={`${field} w-72`}
+                  />
+                </label>
+                <label className="flex flex-col gap-2">
+                  <span className="eyebrow">Admin username</span>
+                  <input
+                    value={setup.username}
+                    onChange={(e) => setSetup({ ...setup, username: e.target.value })}
+                    maxLength={80}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className={`${field} w-72`}
+                  />
+                </label>
+                <label className="flex flex-col gap-2">
+                  <span className="eyebrow">Admin name</span>
+                  <input
+                    value={setup.displayName}
+                    onChange={(e) => setSetup({ ...setup, displayName: e.target.value })}
+                    maxLength={120}
+                    className={`${field} w-72`}
+                  />
+                </label>
+                <label className="flex flex-col gap-2">
+                  <span className="eyebrow flex items-center gap-2">
+                    <Laptop size={14} aria-hidden /> Name for this laptop
+                  </span>
+                  <input
+                    value={setup.deviceLabel}
+                    onChange={(e) => setSetup({ ...setup, deviceLabel: e.target.value })}
+                    maxLength={80}
+                    className={`${field} w-72`}
+                  />
+                </label>
+                {setupTyped && setupProblem && <p className="text-xs text-muted">{setupProblem}</p>}
+                <div className="flex flex-wrap gap-3">
+                  <button type="button" onClick={createChurch} disabled={busy || setupProblem !== null} className={primary}>
+                    <Church size={15} aria-hidden /> {busy ? 'Creating…' : 'Create church and admin'}
+                  </button>
+                  <button type="button" onClick={closeSetup} disabled={busy} className={button}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <button type="button" onClick={openSetup} disabled={busy} className={button}>
+                  <Church size={15} aria-hidden /> Create church admin for website
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -262,6 +411,30 @@ export function CloudSyncSettings() {
               </button>
               <button type="button" onClick={unlink} disabled={busy} className={button}>
                 Unlink this laptop
+              </button>
+            </div>
+          </div>
+        )}
+
+        {createdChurch && (
+          <div role="status" className="flex flex-col gap-3 rounded-md border border-accent p-4">
+            <h3 className="text-sm font-bold">{createdChurch.username} is the church admin</h3>
+            <p className="text-sm">
+              Church code for sign-in:{' '}
+              <code className="select-all font-mono text-base font-bold tracking-widest">{createdChurch.churchCode}</code>
+            </p>
+            <p className="text-sm">
+              Temporary password:{' '}
+              <code className="select-all font-mono text-base font-bold tracking-widest">{createdChurch.temporaryPassword}</code>
+            </p>
+            <p className="text-xs text-muted">They must change this password the first time they sign in.</p>
+            <p className="text-xs text-muted">Give this to the admin. It won't be shown again.</p>
+            <div className="flex flex-wrap gap-3">
+              <button type="button" onClick={copyChurchPassword} className={button}>
+                <Copy size={15} aria-hidden /> {copiedChurch ? 'Copied' : 'Copy password'}
+              </button>
+              <button type="button" onClick={closeChurchResult} className={primary}>
+                Done
               </button>
             </div>
           </div>

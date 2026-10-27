@@ -77,6 +77,28 @@ export function linkCode() {
   return `${chars.slice(0, 4)}-${chars.slice(4)}`;
 }
 
+/** A church's display code, for example K7QM-4XD2. Made the same way as a link code. */
+export function displayCode() {
+  const chars = [...randomBytes(8)].map((b) => LINK_ALPHABET[b % LINK_ALPHABET.length]).join('');
+  return `${chars.slice(0, 4)}-${chars.slice(4)}`;
+}
+
+/**
+ * A setup key for creating a church's first admin from a laptop. The developer makes it with scripts/create-setup-key.mjs and
+ * gives it out once. Twelve characters in three groups of four, for example ABCD-EFGH-JKLM. No 0, O, 1 or I.
+ */
+export function setupKey() {
+  const chars = [...randomBytes(12)].map((b) => LINK_ALPHABET[b % LINK_ALPHABET.length]).join('');
+  return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
+}
+
+/** A typed setup key, tidied: case, spaces and dashes are ignored. Null when it cannot be a setup key. */
+export function normaliseSetupKey(input) {
+  const compact = String(input ?? '').toUpperCase().replace(/[\s-]/g, '');
+  if (!/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{12}$/.test(compact)) return null;
+  return `${compact.slice(0, 4)}-${compact.slice(4, 8)}-${compact.slice(8)}`;
+}
+
 /** The device token from an Authorization header (Bearer <token>), or null. */
 export function bearerToken(headers) {
   const match = /^Bearer\s+(\S+)$/.exec(String(lowerHeaders(headers).authorization ?? ''));

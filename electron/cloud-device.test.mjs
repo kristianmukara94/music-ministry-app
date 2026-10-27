@@ -9,7 +9,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCloudDevice, MESSAGES } from './cloud-device.js';
-import { checkWebUser, cloudViewState, formatLinkCode, isCompleteLinkCode, lastSyncedText } from '../shared/cloud-device.js';
+import {
+  checkChurchSetup,
+  checkWebUser,
+  cloudViewState,
+  formatLinkCode,
+  formatSetupKey,
+  isCompleteLinkCode,
+  lastSyncedText,
+} from '../shared/cloud-device.js';
 
 const BASE = 'https://church.example';
 const TOKEN = 'device-token-value-that-must-never-leak-0123456789';
@@ -68,6 +76,17 @@ function fakeServer(overrides = {}) {
     if (name === 'device-unlink') return respond(200, { ok: true });
     if (name === 'device-users-create') {
       return respond(201, { user: { username: 'anna', role: 'planner' }, temporaryPassword: 'abcd-efgh-jkmn' });
+    }
+    if (name === 'setup-church-admin') {
+      return respond(201, {
+        token: TOKEN,
+        churchName: 'St Mary Parish',
+        displayCode: 'K7QM-4XD2',
+        username: 'parishadmin',
+        displayName: 'Parish Admin',
+        deviceLabel: 'Office laptop',
+        temporaryPassword: 'abcd-efgh-jkmn',
+      });
     }
     return respond(404, { error: 'Not found.' });
   };
@@ -362,7 +381,144 @@ test('a refusal from the server shows its plain message', async () => {
 test('the form and the password are cleared when the result closes and when the screen goes away', () => {
   const screen = fs.readFileSync(SCREEN, 'utf8');
   assert.match(screen, /const closeCreated = \(\) => \{\s*setCreated\(null\);/, 'closing the result clears the password');
-  assert.match(screen, /useEffect\(\(\) => \(\) => setCreated\(null\), \[\]\);/, 'leaving the screen clears the password');
+  assert.match(screen, /useEffect\(\s*\(\) => \(\) => \{\s*setCreated\(null\);/, 'leaving the screen clears the password');
   assert.match(screen, /setNewUser\(emptyUser\);\s*setAddingUser\(false\);/, 'a successful create clears the form');
   assert.ok(screen.includes("Give this to the new user. It won't be shown again."), 'the one-time note is on the result panel');
+});
+
+// ---- Creating a church and its first admin from this laptop ----
+
+const SETUP = { setupKey: 'ABCD-EFGH-JKLM', churchName: 'St Mary Parish', username: 'parishadmin', displayName: 'Parish Admin', deviceLabel: 'Office laptop' };
+const SETUP_KEY_PLAIN = 'ABCDEFGHJKLM';
+const PASSWORD = 'abcd-efgh-jkmn';
+
+test('the Create church admin form is written inside the unlinked branch, so it is hidden when the laptop is linked', () => {
+  const screen = fs.readFileSync(SCREEN, 'utf8');
+  const unlinked = screen.indexOf("view.kind === 'unlinked'");
+  const form = screen.indexOf('Create church admin for website');
+  const linked = screen.indexOf("view.kind === 'linked'");
+  assert.ok(unlinked > 0 && form > unlinked && form < linked, 'the form only appears for an unlinked laptop');
+});
+
+test('a laptop that is already linked cannot create a church, and nothing is sent', async () => {
+  const { device, server } = await linkedLaptop();
+  const sentBefore = server.calls.length;
+  await assert.rejects(device.createChurchAdmin(SETUP), (err) => err.message === 'This laptop is already linked to a church. Unlink it first to set up a new church.');
+  assert.equal(server.calls.length, sentBefore);
+});
+
+test('a laptop with no safe storage refuses before it sends the setup key', async () => {
+  const server = fakeServer();
+  const device = createCloudDevice({ storage: realisticStorage({ available: false }), file: memoryFile(), fetchFn: server.fetchFn, baseUrl: BASE });
+  await assert.rejects(device.createChurchAdmin(SETUP), (err) => err.message === MESSAGES.noSafeStorage);
+  assert.equal(server.calls.length, 0, 'the setup key was not sent');
+});
+
+test('creating a church stores the token encrypted, links the laptop, and returns the password once', async () => {
+  const file = memoryFile();
+  const server = fakeServer();
+  const device = createCloudDevice({ storage: realisticStorage(), file, fetchFn: server.fetchFn, baseUrl: BASE });
+  const made = await device.createChurchAdmin(SETUP);
+  assert.equal(made.username, 'parishadmin');
+  assert.equal(made.temporaryPassword, PASSWORD);
+  assert.equal(made.churchCode, 'K7QM-4XD2');
+  assert.equal(made.link.linked, true);
+  assert.equal(made.link.church, 'St Mary', 'the church name comes back from the cloud status');
+  assert.equal(file.raw.toString('utf8').includes(TOKEN), false, 'the token is stored encrypted');
+});
+
+test('the setup key and the password never reach localStorage or the disk', async () => {
+  const file = memoryFile();
+  let writes = 0;
+  const write = file.write;
+  file.write = (bytes) => {
+    writes += 1;
+    write(bytes);
+  };
+  const device = createCloudDevice({ storage: realisticStorage(), file, fetchFn: fakeServer().fetchFn, baseUrl: BASE });
+  const made = await device.createChurchAdmin(SETUP);
+  assert.ok(writes >= 1, 'the link was written');
+  assert.equal(file.raw.toString('utf8').includes(made.temporaryPassword), false);
+  for (const secret of [SETUP.setupKey, SETUP_KEY_PLAIN, made.temporaryPassword]) {
+    assert.equal(file.raw.toString('utf8').includes(secret), false, 'not in the stored bytes');
+    assert.equal(file.raw.toString('latin1').includes(secret), false, 'not in the stored bytes, in any encoding');
+  }
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const source = fs.readFileSync(path.join(here, 'cloud-device.js'), 'utf8');
+  // Comments may name localStorage to say it is not used; the code itself must not use it.
+  const code = source
+    .split('\n')
+    .filter((line) => !/^\s*(\/\/|\*|\/\*\*)/.test(line))
+    .join('\n');
+  assert.equal(/localStorage|sessionStorage/.test(code), false, 'the desktop code never uses browser storage');
+});
+
+test('the token never reaches the screen: the result has no token, and the link the screen gets has no token', async () => {
+  const device = createCloudDevice({ storage: realisticStorage(), file: memoryFile(), fetchFn: fakeServer().fetchFn, baseUrl: BASE });
+  const made = await device.createChurchAdmin(SETUP);
+  assert.deepEqual(Object.keys(made).sort(), ['churchCode', 'link', 'temporaryPassword', 'username']);
+  assert.equal(JSON.stringify(made).includes(TOKEN), false);
+});
+
+test('the password and the key are not written to any log while creating', async () => {
+  const device = createCloudDevice({ storage: realisticStorage(), file: memoryFile(), fetchFn: fakeServer().fetchFn, baseUrl: BASE });
+  const logged = [];
+  const saved = ['log', 'info', 'warn', 'error', 'debug'].map((method) => {
+    const original = console[method];
+    console[method] = (...args) => logged.push(args.join(' '));
+    return [method, original];
+  });
+  let made;
+  try {
+    made = await device.createChurchAdmin(SETUP);
+  } finally {
+    for (const [method, original] of saved) console[method] = original;
+  }
+  assert.equal(logged.join('\n').includes(made.temporaryPassword), false);
+  assert.equal(logged.join('\n').includes(SETUP.setupKey), false);
+});
+
+test('invalid input is refused in the main process, and nothing is sent', async () => {
+  const server = fakeServer();
+  const device = createCloudDevice({ storage: realisticStorage(), file: memoryFile(), fetchFn: server.fetchFn, baseUrl: BASE });
+  const bad = [
+    { ...SETUP, setupKey: 'ABCD' },
+    { ...SETUP, setupKey: '' },
+    { ...SETUP, churchName: '' },
+    { ...SETUP, churchName: 'x'.repeat(121) },
+    { ...SETUP, username: 'has space' },
+    { ...SETUP, displayName: '   ' },
+    { ...SETUP, deviceLabel: 'x'.repeat(81) },
+  ];
+  for (const input of bad) {
+    await assert.rejects(device.createChurchAdmin(input), (err) => typeof err.message === 'string' && err.message.length > 0);
+  }
+  assert.equal(server.calls.length, 0, 'no request left the laptop');
+});
+
+test('a key the server does not accept gives its plain message, and stores nothing', async () => {
+  const file = memoryFile();
+  const device = createCloudDevice({
+    storage: realisticStorage(),
+    file,
+    fetchFn: fakeServer({ 'setup-church-admin': () => respond(400, { error: 'That setup key is not valid or has already been used.' }) }).fetchFn,
+    baseUrl: BASE,
+  });
+  await assert.rejects(device.createChurchAdmin(SETUP), (err) => err.message === 'That setup key is not valid or has already been used.');
+  assert.equal(file.raw, null);
+});
+
+test('the form, the key and the password are cleared when the result closes and when the screen goes away', () => {
+  const screen = fs.readFileSync(SCREEN, 'utf8');
+  assert.match(screen, /const closeChurchResult = \(\) => \{\s*setCreatedChurch\(null\);/, 'closing the result clears the password');
+  assert.match(screen, /setCreatedChurch\(null\);\s*setSetup\(emptySetup\);/, 'leaving the screen clears the password and the key');
+  assert.match(screen, /finally \{\s*\/\/ The setup key is cleared whatever the outcome\.[\s\S]*?setSetup\(emptySetup\);/, 'the key is cleared after every attempt');
+  assert.ok(screen.includes("Give this to the admin. It won't be shown again."), 'the one-time note is on the result panel');
+});
+
+test('the setup key is checked on the screen the same way the main process checks it', () => {
+  assert.equal(checkChurchSetup(SETUP), null);
+  assert.equal(checkChurchSetup({ ...SETUP, setupKey: 'ABCD-EF' }), 'Type the whole setup key, in the form ABCD-EFGH-JKLM.');
+  assert.equal(formatSetupKey('abcdefghjklm'), 'ABCD-EFGH-JKLM');
+  assert.equal(formatSetupKey('abcde'), 'ABCD-E');
 });

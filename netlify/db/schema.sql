@@ -86,7 +86,8 @@ CREATE TABLE audit_log (
   actor_user_id   UUID REFERENCES users(id) ON DELETE SET NULL,
   action          TEXT NOT NULL CHECK (action IN ('user.created', 'user.role_changed', 'user.disabled', 'user.enabled',
                                                   'user.password_reset', 'user.unlocked',
-                                                  'device.link_code_created', 'device.linked', 'device.unlinked')),
+                                                  'device.link_code_created', 'device.linked', 'device.unlinked',
+                                                  'church.created')),
   target_user_id  UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -116,3 +117,13 @@ CREATE TABLE device_tokens (
   revoked_at    TIMESTAMPTZ
 );
 CREATE INDEX device_tokens_church ON device_tokens (church_id);
+
+-- One-time setup keys. The developer makes a key with scripts/create-setup-key.mjs and gives it out once. Using it creates a
+-- church and its first admin from a laptop. Only a keyed hash of the key is stored. A key works once and expires after 7 days.
+CREATE TABLE setup_keys (
+  key_hash    TEXT PRIMARY KEY,                  -- a keyed hash of the key, never the key itself
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at  TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '7 days'),
+  used_at     TIMESTAMPTZ,
+  church_id   UUID REFERENCES churches(id) ON DELETE SET NULL  -- set when the key is used
+);

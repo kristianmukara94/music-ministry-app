@@ -38,3 +38,18 @@ export interface WebUserInput {
 
 /** The plain message for the first problem with a new web user, or null when it is fine. */
 export function checkWebUser(input: Partial<WebUserInput> | null | undefined): string | null;
+
+export const SETUP_KEY_LENGTH: number;
+export function formatSetupKey(input: string): string;
+export function isCompleteSetupKey(input: string): boolean;
+
+export interface ChurchSetupInput {
+  setupKey: string;
+  churchName: string;
+  username: string;
+  displayName: string;
+  deviceLabel: string;
+}
+
+/** The plain message for the first problem with the Create church admin form, or null when it is fine. */
+export function checkChurchSetup(input: Partial<ChurchSetupInput> | null | undefined): string | null;

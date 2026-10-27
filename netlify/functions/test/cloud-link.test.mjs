@@ -12,7 +12,8 @@ import { createApi } from '../lib/handlers.js';
 import { createAdminApi } from '../lib/admin.js';
 import { createDeviceUsersApi } from '../lib/device-users.js';
 import { createRateLimiter } from '../lib/rules.js';
-import { hashPassword } from '../lib/auth.js';
+import { hashPassword, hashToken, setupKey } from '../lib/auth.js';
+import { createChurchSetupApi } from '../lib/church-setup.js';
 import { tagFromQuery } from '../lib/db.js';
 import { createCloudDevice } from '../../../electron/cloud-device.js';
 
@@ -28,6 +29,7 @@ let clock;
 let linking;
 let webApi;
 let deviceUsers;
+let churchSetup;
 
 const sql = tagFromQuery((text, params) => pg.query(text, params));
 const transaction = (work) => pg.transaction((tx) => work(tagFromQuery((t, v) => tx.query(t, v))));
@@ -52,7 +54,9 @@ function fetchToHandlers() {
           ? await linking.unlink(ev({ bearer }))
           : name === 'device-users-create'
             ? await deviceUsers(ev({ bearer, body }))
-            : { statusCode: 404, body: '{"error":"Not found."}' };
+            : name === 'setup-church-admin'
+              ? await churchSetup(ev({ body }))
+              : { statusCode: 404, body: '{"error":"Not found."}' };
     return { ok: result.statusCode >= 200 && result.statusCode < 300, status: result.statusCode, json: async () => JSON.parse(result.body) };
   };
 }
@@ -102,7 +106,8 @@ beforeEach(async () => {
   webApi = createApi({ sql, secret: SECRET, now: () => clock });
   const admin = createAdminApi({ sql, transaction, secret: SECRET, now: () => clock });
   deviceUsers = createDeviceUsersApi({ sql, secret: SECRET, addUser: admin.addUser, now: () => clock });
-  await pg.exec('TRUNCATE sessions, device_tokens, link_codes, audit_log, users, plans, songs, devices, licences, churches CASCADE;');
+  churchSetup = createChurchSetupApi({ transaction, secret: SECRET, now: () => clock });
+  await pg.exec('TRUNCATE sessions, device_tokens, link_codes, setup_keys, audit_log, users, plans, songs, devices, licences, churches CASCADE;');
   await pg.query(`INSERT INTO churches (id, display_code, name) VALUES ($1, 'K7QM-4XD2', 'St Mary')`, [CHURCH]);
   await pg.query(
     `INSERT INTO users (id, church_id, username, display_name, role, password_hash, must_change_password)
@@ -182,6 +187,29 @@ test('a linked laptop adds a web user through the real handlers, and the passwor
   assert.equal(signIn.statusCode, 200);
   assert.equal((await pg.query(`SELECT COUNT(*)::int AS n FROM audit_log WHERE action = 'user.created'`)).rows[0].n, 1);
   assert.equal(JSON.stringify((await pg.query('SELECT * FROM audit_log')).rows).includes(made.temporaryPassword), false);
+});
+
+test('a new church is set up from a laptop with a setup key, and that laptop can then add a planner', async () => {
+  const key = setupKey();
+  await pg.query('INSERT INTO setup_keys (key_hash) VALUES ($1)', [hashToken(key, SECRET)]);
+  const desktop = createCloudDevice({ storage: storage(), file: memoryFile(), fetchFn: fetchToHandlers(), baseUrl: BASE });
+  const made = await desktop.createChurchAdmin({
+    setupKey: key,
+    churchName: 'Holy Cross',
+    username: 'crossadmin',
+    displayName: 'Cross Admin',
+    deviceLabel: 'Office laptop',
+  });
+  assert.equal(made.username, 'crossadmin');
+  assert.equal(made.link.linked, true);
+  assert.equal(made.link.church, 'Holy Cross');
+  assert.equal(made.link.admin, 'Cross Admin');
+
+  const planner = await desktop.createWebUser({ username: 'anna', displayName: 'Anna Lee', role: 'planner' });
+  assert.equal(planner.username, 'anna');
+  const signIn = await webApi.login(ev({ body: { username: 'anna', password: planner.temporaryPassword, churchCode: made.churchCode } }));
+  assert.equal(signIn.statusCode, 200, 'the planner signs in to the new church');
+  assert.equal((await pg.query(`SELECT COUNT(*)::int AS n FROM setup_keys WHERE used_at IS NOT NULL`)).rows[0].n, 1);
 });
 
 test('no raw code or token is stored on the server, and the stored desktop bytes hold neither', async () => {

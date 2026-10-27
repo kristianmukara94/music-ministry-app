@@ -124,6 +124,8 @@ contextBridge.exposeInMainWorld('apcc', {
     link: (code, label) => ipcRenderer.invoke('cloud:link', { code, label }),
     unlink: () => ipcRenderer.invoke('cloud:unlink'),
     createWebUser: ({ username, displayName, role }) => ipcRenderer.invoke('cloud:create-web-user', { username, displayName, role }),
+    createChurchAdmin: ({ setupKey, churchName, username, displayName, deviceLabel }) =>
+      ipcRenderer.invoke('cloud:create-church-admin', { setupKey, churchName, username, displayName, deviceLabel }),
     defaultLabel: () => ipcRenderer.invoke('cloud:defaultLabel'),
   },
 

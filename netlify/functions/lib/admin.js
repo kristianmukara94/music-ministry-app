@@ -38,6 +38,28 @@ function parseJson(event) {
 export const statusOf = (user, at) => (user.disabled ? 'disabled' : isLocked(user, at) ? 'locked' : 'active');
 
 /**
+ * Writes one new user inside the caller's transaction: checks the name, username and role, refuses a username already used in
+ * the church, writes the account with a hashed password, and writes its audit line. Every new account comes through here: a
+ * signed-in admin, a linked laptop, or church setup. `actorId` is null when no signed-in user did it. The password is hashed,
+ * and only the hash is stored. Nothing is audited with the password in it.
+ */
+export async function insertUser(tx, { churchId, actorId, username, displayName, role, password, mustChange = true }) {
+  const problem = checkUsername(username) ?? checkDisplayName(displayName);
+  if (problem) throw new ApiError(400, problem);
+  if (!ROLES.includes(role)) throw new ApiError(400, 'Choose a role: admin, planner or viewer.');
+  const taken = await tx`SELECT 1 FROM users WHERE church_id = ${churchId} AND lower(username) = lower(${username})`;
+  if (taken.length) throw new ApiError(409, 'That username is already used in this church.');
+  const rows = await tx`
+    INSERT INTO users (id, church_id, username, display_name, role, password_hash, must_change_password)
+    VALUES (gen_random_uuid(), ${churchId}, ${username}, ${displayName}, ${role}, ${await hashPassword(password)}, ${mustChange})
+    RETURNING id`;
+  await tx`
+    INSERT INTO audit_log (church_id, actor_user_id, action, target_user_id)
+    VALUES (${churchId}, ${actorId}, 'user.created', ${rows[0].id})`;
+  return { id: rows[0].id };
+}
+
+/**
  * `transaction(work)` runs `work(tx)` in one database transaction, where `tx` is a query tag. It commits when `work`
  * returns, and rolls back when it throws. The production and test databases each provide one.
  */
@@ -84,7 +106,7 @@ export function createAdminApi({ sql, transaction, secret, now = () => new Date(
     });
   }
 
-  /** Runs a handler, mapping a refusal to its status and any other failure to a plain 500 that reveals nothing. */
+/** Runs a handler, mapping a refusal to its status and any other failure to a plain 500 that reveals nothing. */
   const safely = (handler) => async (event) => {
     try {
       return await handler(event);
@@ -125,17 +147,7 @@ export function createAdminApi({ sql, transaction, secret, now = () => new Date(
     const temporary = temporaryPassword();
     const created = await transaction(async (tx) => {
       if (authorise) await authorise(tx);
-      const problem = checkUsername(username) ?? checkDisplayName(displayName);
-      if (problem) throw new ApiError(400, problem);
-      if (!ROLES.includes(role)) throw new ApiError(400, 'Choose a role: admin, planner or viewer.');
-      const taken = await tx`SELECT 1 FROM users WHERE church_id = ${churchId} AND lower(username) = lower(${username})`;
-      if (taken.length) throw new ApiError(409, 'That username is already used in this church.');
-      const rows = await tx`
-        INSERT INTO users (id, church_id, username, display_name, role, password_hash, must_change_password)
-        VALUES (gen_random_uuid(), ${churchId}, ${username}, ${displayName}, ${role}, ${await hashPassword(temporary)}, true)
-        RETURNING id`;
-      await audit(tx, churchId, actorId, 'user.created', rows[0].id);
-      return rows[0];
+      return insertUser(tx, { churchId, actorId, username, displayName, role, password: temporary });
     });
     return {
       user: { id: created.id, username, displayName, role, status: 'active', lastSignInAt: null },

@@ -361,11 +361,28 @@ export interface CreatedWebUser {
   temporaryPassword: string;
 }
 
+/** A new church, with its first admin, made from a setup key. The key is sent once and never kept. */
+export interface NewChurchAdmin {
+  setupKey: string;
+  churchName: string;
+  username: string;
+  displayName: string;
+  deviceLabel: string;
+}
+
+export interface CreatedChurchAdmin {
+  username: string;
+  temporaryPassword: string;
+  churchCode: string;
+  link: CloudLink;
+}
+
 export interface CloudApi {
   status(): Promise<CloudLink>;
   link(code: string, label: string): Promise<CloudLink>;
   unlink(): Promise<CloudLink>;
   createWebUser(input: NewWebUser): Promise<CreatedWebUser>;
+  createChurchAdmin(input: NewChurchAdmin): Promise<CreatedChurchAdmin>;
   defaultLabel(): Promise<string>;
 }
 
@@ -374,6 +391,7 @@ const offlineCloud: CloudApi = {
   link: async () => offlineError(),
   unlink: async () => ({ linked: false, error: null }),
   createWebUser: async () => offlineError(),
+  createChurchAdmin: async () => offlineError(),
   defaultLabel: async () => 'This computer',
 };
 
