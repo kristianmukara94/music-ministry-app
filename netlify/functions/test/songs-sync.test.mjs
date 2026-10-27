@@ -12,6 +12,7 @@ import { createPlanEditingApi } from '../lib/plan-editing.js';
 import { createApi } from '../lib/handlers.js';
 import { hashPassword, hashToken } from '../lib/auth.js';
 import { tagFromQuery } from '../lib/db.js';
+import { filterSongs } from '../../../web/js/song-list.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA = fs.readFileSync(path.join(here, '..', '..', 'db', 'schema.sql'), 'utf8');
@@ -266,4 +267,156 @@ test('the log line names the column for a missing-column error, and the step for
   assert.equal(failureLine('read', Object.assign(new Error('column "musical_key" does not exist'), { name: 'error', code: '42703' })), '[songs] step=read name=error code=42703 column=musical_key');
   assert.equal(failureLine('validate', new TypeError('boom')), '[songs] step=validate name=TypeError');
   assert.equal(failureLine('auth', undefined), '[songs] step=auth name=Error');
+});
+
+// ---- The Songs page: the server's list, as the page reads it ----
+
+const pageList = async (cookie) => JSON.parse((await planEditing().listSongs({ httpMethod: 'GET', headers: { cookie } })).body);
+
+test('a song pushed from the laptop appears on the Songs page list, and a search for "test" finds it', async () => {
+  await push(laptopA, { songs: [laptopSong(HYMN_1, 'Test song for the page', { category: 'Communion', key: 'F' })] });
+  const cookie = await cookieFor('planner', 'K7QM-4XD2');
+  const listed = await pageList(cookie);
+  assert.ok(listed.songs.some((s) => s.title === 'Test song for the page' && s.key === 'F'), 'the pushed song is in the list');
+  assert.deepEqual(filterSongs(listed.songs, { q: 'test' }).map((s) => s.title), ['Test song for the page']);
+  assert.equal(filterSongs(listed.songs, { q: 'TEST' }).length, 1, 'the search ignores case');
+});
+
+test('the page filters work on the real data: language and category, and the counts follow them', async () => {
+  await push(laptopA, { songs: [
+    laptopSong(HYMN_1, 'Praise to the Lord', { category: 'Entrance Procession', language: 'English' }),
+    laptopSong(HYMN_2, 'Panginoon, Ikaw ang Aking Lakas', { category: 'Communion', language: 'Tagalog' }),
+    laptopSong(HYMN_3, 'Test song in Tagalog', { category: 'Communion', language: 'Tagalog' }),
+  ] });
+  const listed = await pageList(await cookieFor('planner', 'K7QM-4XD2'));
+  assert.deepEqual(filterSongs(listed.songs, { language: 'Tagalog' }).map((s) => s.title).sort(), ['Panginoon, Ikaw ang Aking Lakas', 'Test song in Tagalog']);
+  assert.deepEqual(filterSongs(listed.songs, { language: 'Tagalog', category: 'Communion', q: 'test' }).map((s) => s.title), ['Test song in Tagalog']);
+});
+
+test('a removed song does not appear on the Songs page, but the list\'s last update still counts the removal', async () => {
+  await push(laptopA, { songs: [laptopSong(HYMN_1, 'Praise to the Lord'), laptopSong(HYMN_2, 'Gone next time')] });
+  clock = new Date('2026-10-27T13:00:00Z');
+  await push(laptopA, { songs: [laptopSong(HYMN_1, 'Praise to the Lord')] });
+  const listed = await pageList(await cookieFor('planner', 'K7QM-4XD2'));
+  assert.deepEqual(listed.songs.map((s) => s.title), ['Praise to the Lord']);
+  assert.equal(listed.lastUpdatedAt, '2026-10-27T13:00:00.000Z', 'the synced time is the server\'s time of the removal');
+});
+
+test('another church\'s songs never appear on this church\'s Songs page', async () => {
+  await push(laptopA, { songs: [laptopSong(HYMN_1, 'Our song')] });
+  const listed = await pageList(await cookieFor('planner', 'K7QM-4XD2'));
+  assert.deepEqual(listed.songs.map((s) => s.title), ['Our song']);
+  assert.equal(listed.songs.some((s) => s.title === 'Holy Cross song'), false);
+});
+
+test('the synced time is the server\'s last song update, and it is empty for a church with no songs', async () => {
+  const empty = await pageList(await cookieFor('planner', 'K7QM-4XD2'));
+  assert.equal(empty.lastUpdatedAt, null, 'no songs, no synced time');
+  clock = new Date('2026-10-27T14:30:00Z');
+  await push(laptopA, { songs: [laptopSong(HYMN_1, 'Stamped by the server')] });
+  const listed = await pageList(await cookieFor('planner', 'K7QM-4XD2'));
+  assert.equal(listed.lastUpdatedAt, '2026-10-27T14:30:00.000Z');
+});
+
+// ---- A hymn deleted on the laptop (the list without it is pushed) ----
+
+test('a hymn deleted on the laptop is marked removed on the next push, and only that one leaves the web list', async () => {
+  await push(laptopA, { songs: [laptopSong(HYMN_1, 'Keep this one'), laptopSong(HYMN_2, 'Delete this one'), laptopSong(HYMN_3, 'Also keep')] });
+  const res = await push(laptopA, { songs: [laptopSong(HYMN_1, 'Keep this one'), laptopSong(HYMN_3, 'Also keep')] });
+  assert.deepEqual(JSON.parse(res.body), { created: 0, updated: 0, unchanged: 2, removed: 1 });
+  const listed = await pageList(await cookieFor('planner', 'K7QM-4XD2'));
+  assert.deepEqual(listed.songs.map((s) => s.title), ['Also keep', 'Keep this one'], 'only the deleted hymn is gone from the web list');
+  const gone = (await pg.query('SELECT removed_at FROM songs WHERE church_id = $1 AND id = $2', [CHURCH_A, HYMN_2])).rows[0];
+  assert.ok(gone.removed_at, 'the deleted song is kept on the server, marked removed');
+});
+
+test('deleting the last hymn: the empty list is refused, so the last song stays on the web until another song exists', async () => {
+  // Decision: the empty-list guard stays. An empty push is not allowed to remove every song, because a bad or empty read on the
+  // laptop must not wipe the church's list. So a deleted last hymn stays listed on the web until a song is added.
+  await push(laptopA, { songs: [laptopSong(HYMN_1, 'The only song')] });
+  const res = await push(laptopA, { songs: [] });
+  assert.equal(res.statusCode, 409, 'the empty list is refused');
+  const listed = await pageList(await cookieFor('planner', 'K7QM-4XD2'));
+  assert.deepEqual(listed.songs.map((s) => s.title), ['The only song'], 'the last song stays listed');
+  await push(laptopA, { songs: [laptopSong(HYMN_2, 'A new song')] });
+  const after = await pageList(await cookieFor('planner', 'K7QM-4XD2'));
+  assert.deepEqual(after.songs.map((s) => s.title), ['A new song'], 'once another song exists, the old one is removed');
+});
+
+// ---- The removal cap ----
+
+const snapshot = async (church) => JSON.stringify((await pg.query(
+  'SELECT id, title, category, language, musical_key, removed_at, updated_at FROM songs WHERE church_id = $1 ORDER BY id', [church])).rows);
+
+/** Captures what the server logs during one call, so a test can check the log names no title or id. */
+async function logged(work) {
+  const lines = [];
+  const original = console.error;
+  console.error = (...args) => lines.push(args.join(' '));
+  try {
+    return { result: await work(), lines };
+  } finally {
+    console.error = original;
+  }
+}
+
+test('a push that removes exactly 5 songs succeeds', async () => {
+  const ids = Array.from({ length: 7 }, () => randomUUID());
+  await push(laptopA, { songs: ids.map((id, i) => laptopSong(id, `Song ${i}`)) });
+  const res = await push(laptopA, { songs: ids.slice(0, 2).map((id, i) => laptopSong(id, `Song ${i}`)) });
+  assert.equal(res.statusCode, 200);
+  assert.equal(JSON.parse(res.body).removed, 5);
+});
+
+test('a push that would remove 6 songs is refused, with the plain message, and no row changes', async () => {
+  const ids = Array.from({ length: 7 }, () => randomUUID());
+  await push(laptopA, { songs: ids.map((id, i) => laptopSong(id, `Song ${i}`)) });
+  const before = await snapshot(CHURCH_A);
+  const before2 = await pageList(await cookieFor('planner', 'K7QM-4XD2'));
+  const { result: res, lines } = await logged(() => push(laptopA, { songs: [laptopSong(ids[0], 'Song 0')] }));
+  assert.equal(res.statusCode, 409);
+  assert.equal(JSON.parse(res.body).error, 'This change would remove more than 5 songs at once, so nothing was sent. Remove fewer songs at a time.');
+  assert.equal(await snapshot(CHURCH_A), before, 'every row is exactly as it was');
+  assert.deepEqual(await pageList(await cookieFor('planner', 'K7QM-4XD2')), before2, 'the list is exactly as it was');
+  assert.deepEqual(lines, ['[songs] step=cap name=too-many-removals count=6'], 'the log names the step, the name and the count only');
+  assert.equal(lines.join(' ').includes('Song 1'), false, 'no title in the log');
+  assert.equal(lines.join(' ').includes(ids[1]), false, 'no id in the log');
+});
+
+test('a push of 6 new songs and no removals is not affected by the cap', async () => {
+  await push(laptopA, { songs: [laptopSong(HYMN_1, 'Existing')] });
+  const fresh = Array.from({ length: 6 }, () => randomUUID());
+  const res = await push(laptopA, { songs: [laptopSong(HYMN_1, 'Existing'), ...fresh.map((id, i) => laptopSong(id, `New ${i}`))] });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(JSON.parse(res.body), { created: 6, updated: 0, unchanged: 1, removed: 0 });
+});
+
+// ---- Restore: a removed song comes back under the same id ----
+
+test('a hymn deleted on the laptop is removed on the web, and re-adding it under the same id restores it, with a plan intact through both', async () => {
+  await push(laptopA, { songs: [laptopSong(HYMN_1, 'Keep'), laptopSong(HYMN_2, 'Came back')] });
+  const planId = randomUUID();
+  const planItems = [{ key: 'hymn', group: 'word', order: 1, kind: 'song', songId: HYMN_2 }];
+  await pg.query(`INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at) VALUES ($1, $2, 'Plan with a song', '2026-11-01', $3::jsonb, $4)`,
+    [planId, CHURCH_A, JSON.stringify({ kind: 'mass', items: planItems }), '2026-10-27T10:00:00.000Z']);
+  const planBefore = (await pg.query('SELECT body FROM plans WHERE id = $1', [planId])).rows[0].body;
+
+  // The hymn is deleted on the laptop, and the next push leaves it out.
+  clock = new Date('2026-10-27T11:00:00Z');
+  await push(laptopA, { songs: [laptopSong(HYMN_1, 'Keep')] });
+  const removed = await pageList(await cookieFor('planner', 'K7QM-4XD2'));
+  assert.deepEqual(removed.songs.map((s) => s.title), ['Keep'], 'it is gone from the web list');
+  assert.ok((await pg.query('SELECT removed_at FROM songs WHERE id = $1', [HYMN_2])).rows[0].removed_at, 'marked removed, not deleted');
+  assert.deepEqual((await pg.query('SELECT body FROM plans WHERE id = $1', [planId])).rows[0].body, planBefore, 'the plan still refers to it, unchanged');
+
+  // The same hymn is added back with the same id.
+  clock = new Date('2026-10-27T12:00:00Z');
+  const back = await push(laptopA, { songs: [laptopSong(HYMN_1, 'Keep'), laptopSong(HYMN_2, 'Came back')] });
+  assert.equal(back.statusCode, 200);
+  assert.equal(JSON.parse(back.body).updated, 1, 'the existing row is updated, not made again');
+  const row = (await pg.query('SELECT removed_at, title FROM songs WHERE id = $1 AND church_id = $2', [HYMN_2, CHURCH_A])).rows[0];
+  assert.equal(row.removed_at, null, 'removed_at is cleared');
+  const restored = await pageList(await cookieFor('planner', 'K7QM-4XD2'));
+  assert.ok(restored.songs.some((s) => s.id === HYMN_2 && s.title === 'Came back'), 'it is back in the web list');
+  assert.deepEqual((await pg.query('SELECT body FROM plans WHERE id = $1', [planId])).rows[0].body, planBefore, 'the plan still refers to it after the restore');
 });

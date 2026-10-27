@@ -62,7 +62,7 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
     if (typeof id !== 'string' || !UUID.test(id)) throw new ApiError(400, 'Choose a plan.');
     const rows = await sql`
       SELECT id, name, liturgical_date, body, updated_at FROM plans WHERE id = ${id} AND church_id = ${gate.who.churchId}`;
-    if (!rows.length) throw new ApiError(404, 'That plan is not in your church.');
+    if (!rows.length || rows[0].body?.deleted) throw new ApiError(404, 'That plan is not in your church.');
     const plan = planOut(rows[0]);
     const referenced = new Set(plan.items.map((item) => item.songId).filter(Boolean));
     const songRows = referenced.size
@@ -78,11 +78,14 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
   const listSongs = safely(async (event) => {
     const gate = await signedIn(event, 'GET');
     if (gate.response) return gate.response;
+    // Only this church's songs, and only those not removed. The last update counts removals too, since a removal is a change to the list.
     const rows = await sql`
       SELECT id, title, category, language, musical_key FROM songs
       WHERE church_id = ${gate.who.churchId} AND removed_at IS NULL ORDER BY lower(title), id`;
+    const [last] = await sql`SELECT MAX(updated_at) AS last FROM songs WHERE church_id = ${gate.who.churchId}`;
     return json(200, {
       songs: rows.map((r) => ({ id: r.id, title: r.title, category: r.category, language: r.language, key: r.musical_key })),
+      lastUpdatedAt: last?.last ? new Date(last.last).toISOString() : null,
     });
   });
 
@@ -105,7 +108,7 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
     const at = now().toISOString();
     const result = await transaction(async (tx) => {
       const rows = await tx`SELECT id, name, liturgical_date, body, updated_at FROM plans WHERE id = ${planId} AND church_id = ${who.churchId} FOR UPDATE`;
-      if (!rows.length) throw new ApiError(404, 'That plan is not in your church.');
+      if (!rows.length || rows[0].body?.deleted) throw new ApiError(404, 'That plan is not in your church.');
       const row = rows[0];
       if (new Date(base).getTime() !== new Date(row.updated_at).getTime()) return { conflict: planOut(row) };
       const songs = await tx`SELECT id FROM songs WHERE church_id = ${who.churchId}`;

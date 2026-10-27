@@ -96,6 +96,8 @@ const routes = {
   'songs-list': planEditing.listSongs,
   'songs-sync-push': songsSync.pushSongs,
   'plan-create': planSync.createPlan,
+  'plan-delete': planSync.deletePlan,
+  'plan-sync-get': planSync.getPlan,
   'plan-sync-pull': planSync.pullPlans,
   'plan-sync-push': planSync.pushPlans,
 };

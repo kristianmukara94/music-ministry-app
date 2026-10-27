@@ -176,7 +176,7 @@ export function createApi({ sql, secret, now = () => new Date() }) {
     // a plan opens in, and is read from the body without sending it.
     const rows = await sql`
       SELECT id, name, liturgical_date, updated_at, body->>'kind' AS kind FROM plans
-      WHERE church_id = ${session.churchId}
+      WHERE church_id = ${session.churchId} AND COALESCE(body->>'deleted', '') <> 'true'
       ORDER BY liturgical_date, name, id`;
     const plans = rows.map((r) => ({
       id: r.id,

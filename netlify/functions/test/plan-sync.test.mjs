@@ -416,3 +416,89 @@ test("the create limit applies per session and per laptop", async () => {
   const otherLaptop = await sync().createPlan({ httpMethod: "POST", headers: { authorization: `Bearer ${laptopB}` }, body: JSON.stringify(body()) });
   assert.equal(otherLaptop.statusCode, 201, "another laptop has its own limit");
 });
+
+// ---- Delete ----
+
+const deleteReq = (headersObj, id) => ({ httpMethod: 'POST', headers: headersObj, body: JSON.stringify({ id }) });
+const pulledPlans = async (token) => JSON.parse((await sync().pullPlans(pullReq({ headers: headers(token) }))).body).plans;
+
+test('a laptop delete is seen by every laptop on its next pull, and the web no longer lists or opens the plan', async () => {
+  const id = await plantPlan(CHURCH_A, { name: 'To remove' });
+  const res = await sync().deletePlan(deleteReq(headers(laptopA), id));
+  assert.equal(res.statusCode, 200);
+  assert.equal(JSON.parse(res.body).deleted, true);
+  const gone = (await pulledPlans(laptopA)).find((p) => p.id === id);
+  assert.equal(gone.deleted, true);
+  assert.deepEqual(gone.items, []);
+  const cookie = await cookieFor('planner');
+  const list = JSON.parse((await web().plans({ httpMethod: 'GET', headers: { cookie } })).body).plans;
+  assert.equal(list.some((p) => p.id === id), false, 'the web list hides it');
+  const opened = await editing().getPlan({ httpMethod: 'GET', headers: { cookie }, queryStringParameters: { id } });
+  assert.equal(opened.statusCode, 404);
+});
+
+test('a web delete is seen by a laptop on its next pull', async () => {
+  const id = await plantPlan(CHURCH_A);
+  const cookie = await cookieFor('planner');
+  assert.equal((await sync().deletePlan(deleteReq({ cookie }, id))).statusCode, 200);
+  assert.equal((await pulledPlans(laptopA)).find((p) => p.id === id).deleted, true);
+});
+
+test('deleting again gives the same answer, and nothing else changes', async () => {
+  const id = await plantPlan(CHURCH_A);
+  const first = JSON.parse((await sync().deletePlan(deleteReq(headers(laptopA), id))).body);
+  clock = new Date('2026-10-27T13:00:00Z');
+  const again = await sync().deletePlan(deleteReq(headers(laptopA), id));
+  assert.equal(again.statusCode, 200);
+  assert.equal(JSON.parse(again.body).updatedAt, first.updatedAt, 'the delete time does not move');
+});
+
+test('a viewer cannot delete, and neither can a planner in another church, who gets not-found', async () => {
+  const id = await plantPlan(CHURCH_A, { name: 'Keep me' });
+  const cookie = await cookieFor('viewer');
+  assert.equal((await sync().deletePlan(deleteReq({ cookie }, id))).statusCode, 403);
+  assert.equal((await sync().deletePlan(deleteReq(headers(viewerLaptop), id))).statusCode, 403);
+  const other = await sync().deletePlan(deleteReq(headers(laptopB), id));
+  assert.equal(other.statusCode, 404);
+  assert.equal((await serverRow(id)).body.deleted, undefined, 'the plan is untouched');
+});
+
+test('a deleted plan cannot be pushed back, and its id cannot be created again', async () => {
+  const id = await plantPlan(CHURCH_A);
+  const stored = await serverRow(id);
+  await sync().deletePlan(deleteReq(headers(laptopA), id));
+  const pushed = JSON.parse((await sync().pushPlans(pushReq(laptopA, [body({ id, baseUpdatedAt: new Date(stored.updated_at).toISOString() })]))).body);
+  assert.equal(pushed.results[0].status, 'error');
+  assert.equal(pushed.results[0].message, NOT_SAVED);
+  const created = await sync().createPlan({ httpMethod: 'POST', headers: headers(laptopA), body: JSON.stringify(body({ id })) });
+  assert.equal(created.statusCode, 409);
+});
+
+test('a real delete is recorded in the audit log as plan.deleted, against the plan, and a retry records nothing more', async () => {
+  const id = await plantPlan(CHURCH_A);
+  await sync().deletePlan(deleteReq(headers(laptopA), id));
+  await sync().deletePlan(deleteReq(headers(laptopA), id));
+  const rows = (await pg.query(`SELECT action, target_plan_id, church_id FROM audit_log WHERE action = 'plan.deleted'`)).rows;
+  assert.equal(rows.length, 1, 'one delete, one row');
+  assert.equal(rows[0].target_plan_id, id);
+  assert.equal(rows[0].church_id, CHURCH_A);
+});
+
+test('a laptop reads one plan of its own church; another church and a viewer\'s laptop get nothing', async () => {
+  const id = await plantPlan(CHURCH_A, { name: 'Ours' });
+  const read = (token, planId = id) => sync().getPlan({ httpMethod: 'GET', headers: headers(token), queryStringParameters: { id: planId } });
+  const own = await read(laptopA);
+  assert.equal(own.statusCode, 200);
+  assert.equal(JSON.parse(own.body).plan.name, 'Ours');
+  assert.equal((await read(laptopB)).statusCode, 404, 'another church sees not-found');
+  assert.equal((await read(viewerLaptop)).statusCode, 403, 'a viewer\'s laptop cannot read plans');
+  assert.equal((await read(laptopA, randomUUID())).statusCode, 404, 'a plan that does not exist is not-found too');
+});
+
+test('a push that carries no note for an item keeps the note the server already has for it', async () => {
+  const id = await plantPlan(CHURCH_A, { kind: 'pw', items: [item('prayer_authority', 1, { note: 'Pray for the parish' })] });
+  const stored = await serverRow(id);
+  const pushed = await sync().pushPlans(pushReq(laptopA, [body({ id, kind: 'pw', baseUpdatedAt: new Date(stored.updated_at).toISOString(), items: [item('prayer_authority', 1)] })]));
+  assert.equal(JSON.parse(pushed.body).results[0].status, 'accepted');
+  assert.equal((await serverRow(id)).body.items[0].note, 'Pray for the parish');
+});

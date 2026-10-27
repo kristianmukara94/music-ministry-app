@@ -14,6 +14,7 @@ export const MAX_ITEMS = 200;
 export const MAX_PLANS_PER_PUSH = 50;
 export const PUSH_LIMIT = { requests: 20, windowMs: 10 * 60 * 1000 };
 export const CREATE_LIMIT = { requests: 20, windowMs: 10 * 60 * 1000 };
+export const DELETE_LIMIT = { requests: 20, windowMs: 10 * 60 * 1000 };
 const KINDS = ['song', 'reading', 'rite'];
 const PLAN_KINDS = ['mass', 'pw'];
 const ITEM_FIELDS = ['key', 'group', 'order', 'kind', 'songId', 'text', 'minutes', 'note'];
@@ -50,13 +51,15 @@ export function dateText(value) {
 /** A plan as the API returns it: its fields and its ordered items. The stored body holds the kind and the items. */
 export function planOut(row) {
   const body = row.body ?? {};
+  // A deleted plan keeps its row, marked deleted and with no items, so every laptop learns of the delete on its next pull.
   return {
     id: row.id,
     name: row.name,
     date: dateText(row.liturgical_date),
     kind: body.kind ?? null,
-    items: Array.isArray(body.items) ? body.items : [],
+    items: body.deleted ? [] : Array.isArray(body.items) ? body.items : [],
     updatedAt: new Date(row.updated_at).toISOString(),
+    ...(body.deleted ? { deleted: true } : {}),
   };
 }
 
@@ -186,7 +189,8 @@ export async function pushOnePlan({ sql, transaction, churchId, userId, input, s
       const rows = await tx`SELECT id, church_id, name, liturgical_date, body, updated_at FROM plans WHERE id = ${id} FOR UPDATE`;
       // A push only updates a plan that already exists in this church. An unknown id and a plan in another church get the same
       // refusal, and nothing is written for either. Plans are created through plan-create, never by a push.
-      if (!rows.length || rows[0].church_id !== churchId) return { id, status: 'error', message: NOT_SAVED };
+      // A deleted plan is refused the same way: a laptop cannot bring a deleted plan back by editing it.
+      if (!rows.length || rows[0].church_id !== churchId || rows[0].body?.deleted) return { id, status: 'error', message: NOT_SAVED };
       const row = rows[0];
       // A plan's type is fixed once it exists. Its name and date can change.
       if ((row.body?.kind ?? null) !== fields.kind) return { id, status: 'error', message: 'A plan cannot change its type. Nothing was saved.' };
@@ -194,9 +198,13 @@ export async function pushOnePlan({ sql, transaction, churchId, userId, input, s
       if (base === null || new Date(base).getTime() !== new Date(row.updated_at).getTime()) {
         return { id, status: 'conflict', serverVersion: planOut(row) };
       }
+      // A laptop keeps its own segment notes and does not send them, so a push that carries no note for an item keeps the note
+      // the server already has for that item. Otherwise a note typed on the web would be lost on the next laptop push.
+      const notes = new Map((Array.isArray(row.body?.items) ? row.body.items : []).filter((i) => i.note).map((i) => [i.key, i.note]));
+      const kept = items.map((i) => (i.note === undefined && notes.has(i.key) ? { ...i, note: notes.get(i.key) } : i));
       await tx`
         UPDATE plans SET name = ${fields.name}, liturgical_date = ${fields.date},
-          body = ${JSON.stringify({ kind: fields.kind, items })}::jsonb, updated_at = ${at}
+          body = ${JSON.stringify({ kind: fields.kind, items: kept })}::jsonb, updated_at = ${at}
         WHERE id = ${id} AND church_id = ${churchId}`;
       return { id, status: 'accepted', updatedAt: at };
     });
@@ -298,6 +306,59 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
     return json(201, { plan: { id, name: fields.name, date: fields.date, kind: fields.kind, items, updatedAt: at } });
   });
 
+  /**
+   * Deletes a plan for everyone. The row stays, marked deleted, so a pull tells every laptop. A planner or admin may delete, from the
+   * web or from a linked laptop. Deleting a plan that is already deleted succeeds with the same answer, so a retry is safe. A plan in
+   * another church is not found. A real delete is recorded in the audit log as plan.deleted, in the same transaction.
+   */
+  const deleteRoute = safely(async (event) => {
+    if (event.httpMethod !== 'POST') return json(405, { error: 'Use POST.' }, { Allow: 'POST' });
+    const maker = await creator(event);
+    if (maker.response) return maker.response;
+    const { churchId, userId, key } = maker;
+    const limit = await hit(sql, `plan-delete:${key}`, DELETE_LIMIT.requests, DELETE_LIMIT.windowMs / 1000, now());
+    if (!limit.allowed) {
+      return json(429, { error: 'Too many plans deleted in a short time. Wait ten minutes and try again.' }, { 'Retry-After': String(limit.retryAfterSeconds) });
+    }
+    const body = parseJson(event);
+    const id = typeof body?.id === 'string' ? body.id.toLowerCase() : '';
+    if (!UUID.test(id)) throw refuse('A plan needs a valid id. Nothing was deleted.');
+    const at = now().toISOString();
+    const result = await transaction(async (tx) => {
+      const rows = await tx`SELECT id, body, updated_at FROM plans WHERE id = ${id} AND church_id = ${churchId} FOR UPDATE`;
+      if (!rows.length) return null;
+      if (rows[0].body?.deleted) return { updatedAt: new Date(rows[0].updated_at).toISOString() };
+      await tx`
+        UPDATE plans SET body = ${JSON.stringify({ kind: rows[0].body?.kind ?? null, items: [], deleted: true })}::jsonb, updated_at = ${at}
+        WHERE id = ${id} AND church_id = ${churchId}`;
+      await tx`INSERT INTO audit_log (church_id, actor_user_id, action, target_plan_id) VALUES (${churchId}, ${userId}, 'plan.deleted', ${id})`;
+      return { updatedAt: at };
+    });
+    if (!result) return json(404, { error: 'That plan is not in your church.' });
+    return json(200, { id, deleted: true, updatedAt: result.updatedAt });
+  });
+
+  /**
+   * One plan, for a linked laptop whose planner or admin is still active. Used when a create comes back 409: the laptop compares the
+   * website's version before it sends anything. A plan in another church, and a plan that does not exist, get the same not-found.
+   */
+  const getRoute = safely(async (event) => {
+    if (event.httpMethod !== 'GET') return json(405, { error: 'Use GET.' }, { Allow: 'GET' });
+    const token = bearerToken(event.headers ?? {});
+    if (!token) return json(401, { error: 'This laptop is not linked to a church.' });
+    const device = await deviceFrom({ sql, secret }, token);
+    if (!device) return json(401, { error: 'This laptop is not linked to a church.' });
+    const linked = await sql`SELECT role, disabled FROM users WHERE id = ${device.user_id} AND church_id = ${device.church_id}`;
+    if (!linked.length || linked[0].disabled || !EDITING_ROLES.includes(linked[0].role)) {
+      return json(403, { error: 'Only a planner or admin can read plans from this laptop.' });
+    }
+    const id = typeof event.queryStringParameters?.id === 'string' ? event.queryStringParameters.id.toLowerCase() : '';
+    if (!UUID.test(id)) throw refuse('A plan needs a valid id.');
+    const rows = await sql`SELECT id, name, liturgical_date, body, updated_at FROM plans WHERE id = ${id} AND church_id = ${device.church_id}`;
+    if (!rows.length || rows[0].body?.deleted) return json(404, { error: 'That plan is not in your church.' });
+    return json(200, { plan: planOut(rows[0]) });
+  });
+
   /** The changes since a cursor. A laptop or a signed-in user may call it. */
   const pullRoute = safely(async (event) => {
     if (event.httpMethod !== 'GET') return json(405, { error: 'Use GET.' }, { Allow: 'GET' });
@@ -340,5 +401,5 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
     return json(200, { results, counts });
   });
 
-  return { createPlan: createRoute, pullPlans: pullRoute, pushPlans: pushRoute };
+  return { createPlan: createRoute, pullPlans: pullRoute, pushPlans: pushRoute, deletePlan: deleteRoute, getPlan: getRoute };
 }

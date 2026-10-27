@@ -11,6 +11,7 @@ import { EDITING_ROLES } from './rules.js';
 export const SONGS_PUSH_LIMIT = { requests: 10, windowMs: 10 * 60 * 1000 };
 export const LANGUAGES = ['English', 'Tagalog', 'Cebuano'];
 const MAX_SONGS = 5000;
+export const MAX_REMOVALS_PER_PUSH = 5;
 const ALLOWED = ['id', 'title', 'category', 'language', 'key'];
 // Field names that would carry lyrics, slides, media or Bible text. Refused by name, so nothing is silently dropped.
 const FORBIDDEN = /lyric|stanza|slide|media|bible|verse|scripture|audio|video|image|file|text|hymn/i;
@@ -120,6 +121,13 @@ export function createSongsSyncApi({ sql, transaction, secret, now = () => new D
       }
       const byId = new Map(existing.map((r) => [r.id, r]));
       const incoming = new Set(songs.map((s) => s.id));
+      // A push may remove at most MAX_REMOVALS_PER_PUSH songs. Checked before any write, so a refused push changes nothing. The log
+      // names the step and the count only, never a title or an id.
+      const removing = existing.filter((r) => !r.removed_at && !incoming.has(r.id)).length;
+      if (removing > MAX_REMOVALS_PER_PUSH) {
+        console.error(`[songs] step=cap name=too-many-removals count=${removing}`);
+        throw new ApiError(409, 'This change would remove more than 5 songs at once, so nothing was sent. Remove fewer songs at a time.');
+      }
       const counts = { created: 0, updated: 0, unchanged: 0, removed: 0 };
       step.name = 'write';
       for (const s of songs) {
