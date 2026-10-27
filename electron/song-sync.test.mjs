@@ -189,7 +189,7 @@ test('the status the screen gets has no token, and nothing is logged while the l
     for (const [m, original] of saved) console[m] = original;
   }
   assert.equal(JSON.stringify(sync.status()).includes(TOKEN), false);
-  assert.deepEqual(Object.keys(sync.status()).sort(), ['lastSyncedAt', 'message', 'status']);
+  assert.deepEqual(Object.keys(sync.status()).sort(), ['lastSyncedAt', 'message', 'status', 'unsent']);
   assert.equal(logged.join('\n').includes(TOKEN), false);
 });
 
@@ -208,4 +208,116 @@ test('the desktop song code never reads or mentions the browser storage', () => 
   const source = fs.readFileSync(path.join(here, 'song-sync.js'), 'utf8');
   const code = source.split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*\*)/.test(line)).join('\n');
   assert.equal(/localStorage|sessionStorage/.test(code), false);
+});
+
+// ---- A hymn saved triggers one send, and the timer keeps the send going (point 4) ----
+
+/** A fake clock: timers are kept until the test runs them, and each run is let finish before the next. */
+function fakeClock() {
+  const timers = new Map();
+  let next = 1;
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  return {
+    setTimer: (fn, ms) => {
+      const id = next;
+      next += 1;
+      timers.set(id, { fn, ms });
+      return id;
+    },
+    clearTimer: (id) => timers.delete(id),
+    pending: () => [...timers.values()].map((t) => t.ms),
+    async fireAll() {
+      for (const [id, t] of [...timers]) {
+        if (!timers.has(id)) continue;
+        timers.delete(id);
+        t.fn();
+        await flush();
+        await flush();
+      }
+    },
+  };
+}
+
+test('five quick saves send the list once, about two seconds after the last save', async () => {
+  const clock = fakeClock();
+  const sent = [];
+  const sync = createSongSync({ readRows: () => [row({ uuid: 'a'.repeat(8) + '-0000-4000-8000-000000000001', title: 'Edited' })], push: async (songs) => { sent.push(songs); return { created: 0, updated: 1, unchanged: 0, removed: 0 }; }, setTimer: clock.setTimer, clearTimer: clock.clearTimer });
+  for (let i = 0; i < 5; i += 1) sync.notify();
+  assert.deepEqual(clock.pending(), [2000], 'one wait is pending, not five');
+  assert.equal(sync.status().unsent, true, 'the list is marked unsent while the wait runs');
+  await clock.fireAll();
+  assert.equal(sent.length, 1, 'one send for five saves');
+  assert.equal(sync.status().unsent, false, 'the send cleared the unsent mark');
+});
+
+test('a failed send, with no connection problem, is retried on the timer, and stays unsent until it succeeds', async () => {
+  const clock = fakeClock();
+  let calls = 0;
+  const sync = createSongSync({
+    readRows: () => [row()],
+    push: async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('The server could not save the song list.');
+      return { created: 1, updated: 0, unchanged: 0, removed: 0 };
+    },
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+  sync.start();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sync.status().status, 'error');
+  assert.equal(sync.status().unsent, true, 'the failed list is still unsent');
+  assert.ok(clock.pending().includes(SYNC_INTERVAL_MS), 'the timer is set for the next try');
+  await clock.fireAll();
+  assert.equal(calls, 2, 'the timer sent it again');
+  assert.equal(sync.status().status, 'synced');
+  assert.equal(sync.status().unsent, false);
+  sync.stop();
+});
+
+test('a list saved while offline is sent when the connection returns, on the backoff timer', async () => {
+  const clock = fakeClock();
+  let online = false;
+  const sent = [];
+  const sync = createSongSync({
+    readRows: () => [row({ uuid: 'b'.repeat(8) + '-0000-4000-8000-000000000002', title: 'Saved offline' })],
+    push: async (songs) => {
+      if (!online) throw offlineError();
+      sent.push(songs);
+      return { created: 1, updated: 0, unchanged: 0, removed: 0 };
+    },
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+  sync.notify();
+  await clock.fireAll();
+  assert.equal(sync.status().status, 'offline');
+  assert.equal(sync.status().unsent, true, 'still unsent while offline');
+  assert.ok(clock.pending().includes(30 * 1000), 'the first retry is 30 seconds away');
+  online = true;
+  await clock.fireAll();
+  assert.equal(sent.length, 1, 'sent when the connection returned');
+  assert.equal(sent[0][0].title, 'Saved offline');
+  assert.equal(sync.status().unsent, false);
+});
+
+test('a save made while a send is running is sent again afterwards, not lost', async () => {
+  const clock = fakeClock();
+  const sent = [];
+  let release;
+  const sync = createSongSync({
+    readRows: () => [row()],
+    push: (songs) => new Promise((resolve) => {
+      sent.push(songs);
+      release = () => resolve({ created: 0, updated: 0, unchanged: 1, removed: 0 });
+    }),
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+  const running = sync.runOnce();
+  sync.notify();
+  release();
+  await running;
+  await clock.fireAll();
+  assert.equal(sent.length, 2, 'the second save is sent once the first send is done');
 });

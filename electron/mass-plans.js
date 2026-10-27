@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { parseSourceId } from '../shared/bible-ref.js';
 import { GOSPEL_ACCLAMATION } from './lectionary.js';
+import { recordTombstone } from './plan-sync-schema.js';
 
 export const PLAN_BLOCKS = ['introductory', 'word', 'eucharist', 'communion', 'concluding'];
 export const PLAN_MODULES = ['lyrics', 'lectionary', 'announcements', 'media', 'mass_order', 'bible', 'custom', 'notes'];
@@ -140,6 +141,7 @@ export function createMassPlanService(db) {
     plan: db.prepare('SELECT id, name, liturgical_date AS liturgicalDate FROM mass_plans WHERE id = ?'),
     insertPlan: db.prepare('INSERT INTO mass_plans (name, liturgical_date) VALUES (?, ?)'),
     deletePlan: db.prepare('DELETE FROM mass_plans WHERE id = ?'),
+    planUuid: db.prepare('SELECT uuid FROM mass_plans WHERE id = ?'),
     items: db.prepare(`
       SELECT liturgical_block AS block, source_module AS module, source_id AS sourceId, label
       FROM mass_plan_items WHERE plan_id = ?
@@ -150,7 +152,9 @@ export function createMassPlanService(db) {
     insertItem: db.prepare(
       'INSERT INTO mass_plan_items (plan_id, liturgical_block, source_module, source_id, label, display_order) VALUES (?, ?, ?, ?, ?, ?)',
     ),
-    hymn: db.prepare('SELECT 1 FROM hymns WHERE id = ?'),
+    // A live hymn is in the library. A deleted one is kept for undo, and the plan shows it as deleted rather than as present.
+    liveHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NULL'),
+    deletedHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NOT NULL'),
     slide: db.prepare('SELECT 1 FROM announcement_slides WHERE id = ?'),
     note: db.prepare('SELECT display FROM notes WHERE id = ?'),
     media: db.prepare('SELECT 1 FROM media_assets WHERE id = ?'),
@@ -170,7 +174,7 @@ export function createMassPlanService(db) {
 
   /** Whether a plan item's source still exists. Mass Order parts are built in, so they always do. */
   const sourceExists = (module, sourceId) => {
-    if (module === 'lyrics') return Boolean(q.hymn.get(Number(sourceId)));
+    if (module === 'lyrics') return Boolean(q.liveHymn.get(Number(sourceId)));
     if (module === 'announcements') return Boolean(q.slide.get(Number(sourceId)));
     if (module === 'media') return Boolean(q.media.get(Number(sourceId)));
     if (module === 'lectionary') {
@@ -212,13 +216,24 @@ export function createMassPlanService(db) {
     },
 
     deletePlan(id) {
-      return q.deletePlan.run(id).changes > 0;
+      // The tombstone and the delete happen together, so a deleted plan is never pulled back on the next sync.
+      return db.transaction(() => {
+        const row = q.planUuid.get(id);
+        if (row) recordTombstone(db, { uuid: row.uuid, kind: 'mass' });
+        return q.deletePlan.run(id).changes > 0;
+      })();
     },
 
-    /** Items carry `stale: true` when their source was deleted after the plan was saved. */
+    /**
+     * Items carry `stale: true` when their source is gone. A hymn that was deleted but can still be undone is `deleted: true`, and is
+     * stale too while it is deleted, so the planner shows it as "deleted (undo available)" and does not drop it.
+     */
     getPlan(id) {
       const plan = requirePlan(id);
-      const items = q.items.all(id).map((item) => ({ ...item, stale: !sourceExists(item.module, item.sourceId) }));
+      const items = q.items.all(id).map((item) => {
+        const deleted = item.module === 'lyrics' && Boolean(q.deletedHymn.get(Number(item.sourceId)));
+        return { ...item, deleted, stale: !sourceExists(item.module, item.sourceId) };
+      });
       return { ...plan, items };
     },
 

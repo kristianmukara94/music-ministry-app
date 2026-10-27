@@ -53,5 +53,6 @@ export function queueFromPlan(items: PlanItem[]) {
     module: it.module,
     sourceId: it.sourceId,
     stale: it.stale ?? false,
+    deleted: it.deleted ?? false,
   }));
 }

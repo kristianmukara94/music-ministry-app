@@ -35,6 +35,7 @@ const STRINGS = {
     dropEnd: 'Drop at end',
     removeItem: 'Remove {label}',
     stale: 'No longer in the library',
+    deletedHymnStatus: 'Deleted (undo available)',
     staleBadge: 'Missing',
     createPlanFirst: 'Create a plan first, then add items to it.',
     block_introductory: 'Introductory Rites',
@@ -125,6 +126,8 @@ const STRINGS = {
     dropEnd: 'Ihulog sa dulo',
     removeItem: 'Alisin ang {label}',
     stale: 'Wala na sa aklatan',
+    // New in this release. Drafted without a native-speaker check; review before go-live.
+    deletedHymnStatus: 'Nabura (maaari pang ibalik)',
     staleBadge: 'Nawawala',
     createPlanFirst: 'Gumawa muna ng plano bago magdagdag ng item.',
     block_introductory: 'Pambungad na Rito',
@@ -215,6 +218,8 @@ const STRINGS = {
     dropEnd: 'Ihulog sa katapusan',
     removeItem: 'Tangtangon ang {label}',
     stale: 'Wala na sa librarya',
+    // New in this release. Drafted without a native-speaker check; review before go-live.
+    deletedHymnStatus: 'Gipapasa-a (mabalik pa)',
     staleBadge: 'Nawala',
     createPlanFirst: 'Maghimo una og plano sa dili pa magdugang og item.',
     block_introductory: 'Sinugdanang Rituwal',

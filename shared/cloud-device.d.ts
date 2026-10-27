@@ -63,5 +63,15 @@ export interface SongsSyncState {
   message?: string | null;
 }
 
+export interface PlansSyncState {
+  status: 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
+  lastSyncedAt?: string | null;
+  message?: string | null;
+  counts?: { sent: number; received: number; deleted: number; failed: number; held?: number } | null;
+}
+
 /** The line the Cloud sync screen shows for the song list. */
 export function songsStatusText(state: SongsSyncState | null | undefined, now?: number): string;
+
+/** The line the Cloud sync screen shows for plans. Read only. */
+export function plansStatusText(state: PlansSyncState | null | undefined, now?: number): string;

@@ -615,7 +615,7 @@ export function MassPlanner() {
                           <span className="shrink-0 rounded bg-canvas px-1.5 py-0.5 text-[10px] font-bold text-muted uppercase">{step ? t(KIND_KEY[step.kind]) : t(MODULE_KEY[row.module])}</span>
                           <span className="min-w-0 flex-1">
                             <span className={`block truncate text-sm font-semibold ${row.stale ? 'text-muted line-through' : ''}`}>{row.label}</span>
-                            {row.stale && <span className="block text-[11px] text-danger">{t('stale')}</span>}
+                            {row.stale && <span className="block text-[11px] text-danger">{row.deleted ? t('deletedHymnStatus') : t('stale')}</span>}
                             {step && <span className="block text-[11px] text-muted">{t('pendingStep')}</span>}
                           </span>
                           {row.stale && (

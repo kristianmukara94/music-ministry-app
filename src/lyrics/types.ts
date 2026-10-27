@@ -2,6 +2,13 @@ import type { TextStyle } from '../../shared/text-style';
 export type HymnCategory = 'Entrance' | 'Offertory' | 'Communion' | 'Recessional' | 'General';
 export type HymnLanguage = 'EN' | 'TL' | 'CEB';
 
+/** A hymn in the recycle bin: deleted, and kept for undo until the 30 days are up. */
+export interface DeletedHymn {
+  id: number;
+  title: string;
+  deletedAt: string;
+}
+
 export interface HymnSummary {
   id: number;
   title: string;
@@ -64,6 +71,8 @@ export interface Setlist {
 export interface SetlistEntry {
   position: number;
   hymnId: number;
+  /** The hymn was deleted but can still be undone. The setlist keeps it, marked. */
+  deleted?: boolean;
   title: string;
   composer: string;
   category: HymnCategory;
@@ -91,6 +100,10 @@ export interface LyricsApi {
   /** Updates the details and replaces the stanzas with a fresh parse of `input.raw`. */
   editHymn(id: number, input: NewHymn): Promise<{ id: number; warnings: string[] }>;
   deleteHymn(id: number): Promise<boolean>;
+  /** Hymns deleted in the last 30 days, newest first. */
+  listDeletedHymns(): Promise<DeletedHymn[]>;
+  /** Puts a deleted hymn back, with the same id. Returns false if it is not in the recycle bin. */
+  undoDeleteHymn(id: number): Promise<boolean>;
   listSetlists(): Promise<Setlist[]>;
   createSetlist(input: { name: string; date: string }): Promise<Setlist>;
   deleteSetlist(id: number): Promise<boolean>;

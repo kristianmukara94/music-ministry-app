@@ -31,8 +31,16 @@ const serverMessage = (res) => {
   return 'Something went wrong. Try again.';
 };
 
-export function createCloudDevice({ storage, file, fetchFn, baseUrl }) {
+export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () => Date.now() }) {
   const url = (name) => `${baseUrl.replace(/\/+$/, '')}/.netlify/functions/${name}`;
+  // How far the server's clock is ahead of this laptop's, from the Date header of the last reply. Edit times are compared on server
+  // time by correcting the laptop's stamps with this. It is zero until the first reply.
+  let serverOffsetMs = 0;
+  const observeServerDate = (res) => {
+    const date = res.headers?.get?.('date');
+    const parsed = date ? Date.parse(date) : NaN;
+    if (!Number.isNaN(parsed)) serverOffsetMs = parsed - now();
+  };
 
   /** Calls a Netlify function. Returns { ok, status, body } or throws the neutral network message. */
   async function call(name, { method = 'GET', body, token } = {}) {
@@ -47,6 +55,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl }) {
     } catch {
       throw new Error(MESSAGES.offline);
     }
+    observeServerDate(res);
     // The reply is read as text first, so a page that is not JSON is recognised, and its contents are never kept or shown.
     const text = await res.text().catch(() => '');
     let data = {};
@@ -248,5 +257,71 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl }) {
     return { created: res.body.created, updated: res.body.updated, unchanged: res.body.unchanged, removed: res.body.removed };
   }
 
-  return { link, status, unlink, createWebUser, createChurchAdmin, pushSongs };
+  /**
+   * Calls a plan function with this laptop's token. Rejects with `offline` when the cloud cannot be reached, and with `revoked` when
+   * the laptop was unlinked on the website. Other refusals come back in the result, for the sync to count.
+   */
+  async function planCall(name, { method = 'GET', body } = {}) {
+    const record = readRecord();
+    if (record === null) throw Object.assign(new Error(MESSAGES.notLinked), { revoked: true });
+    if (record === 'unreadable') throw Object.assign(new Error(MESSAGES.unreadable), { revoked: true });
+    let res;
+    try {
+      res = await call(name, { method, body, token: record.token });
+    } catch {
+      throw Object.assign(new Error(MESSAGES.offline), { offline: true });
+    }
+    if (res.status === 401) {
+      file.remove();
+      throw Object.assign(new Error(MESSAGES.revokedOnWeb), { revoked: true });
+    }
+    return res;
+  }
+
+  /** The changes since a cursor: the plans, the cursor to continue from, and whether more are waiting. */
+  async function pullPlans(cursor) {
+    const res = await planCall(cursor ? `plan-sync-pull?cursor=${encodeURIComponent(cursor)}` : 'plan-sync-pull');
+    if (!res.ok) throw new Error(serverMessage(res));
+    return { plans: res.body.plans ?? [], cursor: res.body.cursor ?? null, more: Boolean(res.body.more) };
+  }
+
+  /** Creates a plan the website does not have. A 409 means the id is already there, which the sync settles as a conflict. */
+  async function createPlan(plan) {
+    const res = await planCall('plan-create', { method: 'POST', body: plan });
+    if (res.status === 201) return { status: 'created', updatedAt: res.body.plan.updatedAt };
+    if (res.status === 409) return { status: 'exists' };
+    return { status: 'error', message: serverMessage(res) };
+  }
+
+  /** Sends one plan against its base version. Returns accepted, conflict (with the website's version) or error. */
+  async function pushPlan(plan) {
+    const res = await planCall('plan-sync-push', { method: 'POST', body: { plans: [plan] } });
+    if (!res.ok) return { status: 'error', message: serverMessage(res) };
+    const [result] = res.body.results ?? [];
+    if (result?.status === 'accepted') return { status: 'accepted', updatedAt: result.updatedAt };
+    if (result?.status === 'conflict') return { status: 'conflict', serverVersion: result.serverVersion };
+    return { status: 'error', message: typeof result?.message === 'string' ? result.message : 'Something went wrong. Try again.' };
+  }
+
+  /** Deletes a plan on the website. A plan already gone there counts as deleted, so a retry is safe. */
+  async function deletePlan(id) {
+    const res = await planCall('plan-delete', { method: 'POST', body: { id } });
+    if (res.status === 404) return { gone: true };
+    if (!res.ok) throw new Error(serverMessage(res));
+    return { deleted: true };
+  }
+
+  /** One plan from the website, for this laptop's church only. `missing` means the website does not show it to this church. */
+  async function getPlan(id) {
+    const res = await planCall(`plan-sync-get?id=${encodeURIComponent(id)}`);
+    if (res.status === 404) return { status: 'missing' };
+    if (!res.ok) throw new Error(serverMessage(res));
+    return { status: 'found', plan: res.body.plan };
+  }
+
+  return {
+    link, status, unlink, createWebUser, createChurchAdmin, pushSongs,
+    pullPlans, createPlan, pushPlan, deletePlan, getPlan,
+    serverOffset: () => serverOffsetMs,
+  };
 }

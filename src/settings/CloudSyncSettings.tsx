@@ -8,6 +8,7 @@ import {
   type NewChurchAdmin,
   type NewWebUser,
   type SongsSyncState,
+  type PlansSyncState,
 } from '../live/bridge';
 import {
   checkChurchSetup,
@@ -18,6 +19,7 @@ import {
   formatSetupKey,
   isCompleteLinkCode,
   songsStatusText,
+  plansStatusText,
 } from '../../shared/cloud-device.js';
 
 const cloud = bridge.cloud;
@@ -59,12 +61,16 @@ export function CloudSyncSettings() {
   const [createdChurch, setCreatedChurch] = useState<CreatedChurchAdmin | null>(null);
   const [copiedChurch, setCopiedChurch] = useState(false);
   const [songs, setSongs] = useState<SongsSyncState | null>(null);
+  const [plans, setPlans] = useState<PlansSyncState | null>(null);
   // What the operator has typed in the address field. Null until they type, so the field shows the current address.
   const [addressText, setAddressText] = useState<string | null>(null);
 
   // The song list's state, refreshed while the screen is open. It holds a status and a plain message, never a token.
   useEffect(() => {
-    const load = () => cloud.songsStatus().then(setSongs).catch(() => {});
+    const load = () => {
+      cloud.songsStatus().then(setSongs).catch(() => {});
+      cloud.plansStatus().then(setPlans).catch(() => {});
+    };
     void load();
     const timer = window.setInterval(load, 30000);
     return () => window.clearInterval(timer);
@@ -384,6 +390,8 @@ export function CloudSyncSettings() {
               <dd>{view.lastSynced}</dd>
               <dt className="text-muted">Songs</dt>
               <dd>{songsStatusText(songs)}</dd>
+              <dt className="text-muted">Plans</dt>
+              <dd>{plansStatusText(plans)}</dd>
             </dl>
             {view.offline && <p className="text-xs text-muted">Showing the last known link. The cloud could not be reached just now.</p>}
 

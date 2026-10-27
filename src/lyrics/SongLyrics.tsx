@@ -9,6 +9,7 @@ import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
 import { setUi, useUi } from '../state/ui';
 import { ShowAllVerses } from '../components/ShowAllVerses';
+import { RecentlyDeleted } from './RecentlyDeleted';
 import { useAnnT } from '../announcements/strings';
 import { CreateHymnModal } from './CreateHymnModal';
 import { SongCategoriesModal } from './SongCategoriesModal';
@@ -425,6 +426,7 @@ export function SongLyrics() {
               </li>
             ))}
           </ul>
+          <RecentlyDeleted onRestored={() => void reloadHymns()} />
         </section>
 
         {/* ── Sunday setlist ── */}
@@ -514,6 +516,7 @@ export function SongLyrics() {
                   <span className="w-6 shrink-0 font-mono text-xs text-faint">{i + 1}</span>
                   <button type="button" onClick={() => setSelected(i)} className="min-w-0 flex-1 text-left" aria-current={selected === i}>
                     <div className="truncate text-sm font-semibold">{entry.title}</div>
+                    {entry.deleted && <div className="text-[11px] text-danger">{t('deletedHymnStatus')}</div>}
                     <div className="truncate text-[11px] text-muted">{[entry.composer, t(`cat_${entry.category}`)].filter(Boolean).join(' · ')}</div>
                   </button>
                   <button type="button" onClick={() => removeFromSetlist(i)} aria-label={t('removeHymn', { title: entry.title })} className="grid size-7 shrink-0 place-items-center rounded text-muted hover:text-danger">

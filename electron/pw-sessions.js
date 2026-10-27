@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { DEFAULT_CUES, DEFAULT_TEMPLATE, MAX_SONGS, PW_TYPES, segmentFromTemplate } from '../shared/pw.js';
+import { recordTombstone } from './plan-sync-schema.js';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const KEY = /^[a-z][a-z0-9_]{0,39}$/;
@@ -176,6 +177,7 @@ export function createPwService(db) {
     insertSession: db.prepare('INSERT INTO pw_sessions (name, liturgical_date, groups) VALUES (?, ?, ?)'),
     updateSession: db.prepare('UPDATE pw_sessions SET name = ?, liturgical_date = ?, groups = ? WHERE id = ?'),
     deleteSession: db.prepare('DELETE FROM pw_sessions WHERE id = ?'),
+    sessionUuid: db.prepare('SELECT uuid FROM pw_sessions WHERE id = ?'),
     segments: db.prepare(`
       SELECT id, segment_key AS key, group_key AS "group", name, type, minutes, leader,
              content_ref AS content, arrangement, cues, notes
@@ -193,7 +195,9 @@ export function createPwService(db) {
     tags: db.prepare('SELECT hymn_id AS hymnId, segment_key AS segmentKey FROM pw_hymn_tags ORDER BY hymn_id'),
     addTag: db.prepare('INSERT OR IGNORE INTO pw_hymn_tags (hymn_id, segment_key) VALUES (?, ?)'),
     removeTag: db.prepare('DELETE FROM pw_hymn_tags WHERE hymn_id = ? AND segment_key = ?'),
-    hymn: db.prepare('SELECT 1 FROM hymns WHERE id = ?'),
+    // A live hymn is in the library. A deleted one is kept for undo, and the segment shows it as deleted.
+    liveHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NULL'),
+    deletedHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NOT NULL'),
     note: db.prepare('SELECT display FROM notes WHERE id = ?'),
   };
 
@@ -211,14 +215,14 @@ export function createPwService(db) {
 
   /** Whether everything a segment points at still exists. */
   const contentExists = (content) => {
-    if (content.kind === 'song') return content.hymnIds.every((id) => q.hymn.get(id));
+    if (content.kind === 'song') return content.hymnIds.every((id) => q.liveHymn.get(id));
     if (content.kind === 'prayer') return content.noteId == null || noteProjectable(content.noteId);
     return true;
   };
 
   /** The content with anything deleted from its library taken out. */
   const pruneContent = (content) => {
-    if (content.kind === 'song') return { ...content, hymnIds: content.hymnIds.filter((id) => q.hymn.get(id)) };
+    if (content.kind === 'song') return { ...content, hymnIds: content.hymnIds.filter((id) => q.liveHymn.get(id)) };
     if (content.kind === 'prayer' && content.noteId != null && !noteProjectable(content.noteId)) return { ...content, noteId: null };
     return content;
   };
@@ -291,7 +295,12 @@ export function createPwService(db) {
     },
 
     deleteSession(id) {
-      return q.deleteSession.run(id).changes > 0;
+      // The tombstone and the delete happen together, so a deleted session is never pulled back on the next sync.
+      return db.transaction(() => {
+        const row = q.sessionUuid.get(id);
+        if (row) recordTombstone(db, { uuid: row.uuid, kind: 'praise' });
+        return q.deleteSession.run(id).changes > 0;
+      })();
     },
 
     /** Segments carry `stale: true` when a song or prayer they point at was deleted after the session was saved. */
@@ -305,7 +314,9 @@ export function createPwService(db) {
           arrangement: parseJson(row.arrangement, {}),
           cues: { ...DEFAULT_CUES, ...parseJson(row.cues, {}) },
         };
-        return { ...segment, stale: !contentExists(content) };
+        // A segment with a deleted song shows it as deleted, not as missing, so the planner can undo the delete.
+        const deleted = content.kind === 'song' && (content.hymnIds ?? []).some((id) => q.deletedHymn.get(id));
+        return { ...segment, deleted, stale: !contentExists(content) };
       });
       return { ...session, segments };
     },
@@ -365,7 +376,7 @@ export function createPwService(db) {
     /** Tags or untags a hymn as suiting a segment. */
     setTag(hymnId, segmentKey, on) {
       const key = requireKey(segmentKey, 'Segment key');
-      if (!q.hymn.get(hymnId)) throw new Error('That hymn no longer exists.');
+      if (!q.liveHymn.get(hymnId)) throw new Error('That hymn no longer exists.');
       if (on) q.addTag.run(hymnId, key);
       else q.removeTag.run(hymnId, key);
       return this.listTags();

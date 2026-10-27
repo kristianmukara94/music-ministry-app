@@ -311,7 +311,11 @@ export function SegmentEditor() {
         </Tile>
       </div>
 
-      {segment.stale && <p className="rounded-xl border border-danger px-4 py-3 text-sm text-danger">{t('missingContent')}</p>}
+      {segment.stale && (
+        <p className="rounded-xl border border-danger px-4 py-3 text-sm text-danger">
+          {segment.deleted ? t('songDeleted') : t('missingContent')}
+        </p>
+      )}
       {replacing?.segment === i && <p className="text-sm text-accent" aria-live="polite">{t('replacing')}</p>}
 
       {/* What is assigned */}

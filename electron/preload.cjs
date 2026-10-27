@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld('apcc', {
     getHymn: (id) => ipcRenderer.invoke('lyrics:getHymn', id),
     createHymn: (input) => ipcRenderer.invoke('lyrics:createHymn', input),
     deleteHymn: (id) => ipcRenderer.invoke('lyrics:deleteHymn', id),
+    listDeletedHymns: () => ipcRenderer.invoke('lyrics:listDeletedHymns'),
+    undoDeleteHymn: (id) => ipcRenderer.invoke('lyrics:undoDeleteHymn', id),
     editHymn: (id, input) => ipcRenderer.invoke('lyrics:editHymn', id, input),
     listSetlists: () => ipcRenderer.invoke('lyrics:listSetlists'),
     createSetlist: (input) => ipcRenderer.invoke('lyrics:createSetlist', input),
@@ -125,6 +127,7 @@ contextBridge.exposeInMainWorld('apcc', {
     unlink: () => ipcRenderer.invoke('cloud:unlink'),
     createWebUser: ({ username, displayName, role }) => ipcRenderer.invoke('cloud:create-web-user', { username, displayName, role }),
     songsStatus: () => ipcRenderer.invoke('cloud:songs-status'),
+    plansStatus: () => ipcRenderer.invoke('cloud:plans-status'),
     syncSongsNow: () => ipcRenderer.invoke('cloud:songs-sync-now'),
     saveAddress: (address) => ipcRenderer.invoke('cloud:save-address', { address: String(address ?? '') }),
     createChurchAdmin: ({ setupKey, churchName, username, displayName, deviceLabel }) =>

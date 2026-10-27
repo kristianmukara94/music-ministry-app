@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { CATEGORIES, LANGUAGES, parseLyrics } from '../shared/lyrics-parser.js';
 import { parseTextStyle, sanitizeTextStyle } from '../shared/text-style.js';
+import { SONG_CATEGORY_REQUIRED_EN, isSongCategoryMissing } from '../shared/hymn-category.js';
 import { createSongCategoryService, resolveSongCategory } from './song-categories.js';
 
 const MAX_TITLE = 120;
@@ -59,6 +60,26 @@ export const LYRICS_STYLE_MIGRATIONS = [
    ALTER TABLE hymns ADD COLUMN style TEXT;`,
 ];
 
+// Deleted hymns are kept for this many days, so a delete can be undone. After that the laptop removes them for good (local only).
+export const RECYCLE_DAYS = 30;
+
+/** The earliest deletion time still kept, as the database stores times: ISO text, so text comparison orders them. */
+export const cutoffIso = (now) => new Date(now.getTime() - RECYCLE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+/**
+ * Permanently deletes the hymns deleted more than RECYCLE_DAYS ago. Local only: it takes only the database, so it cannot reach the
+ * cloud. The server keeps its own removed row; a later push simply does not list the song.
+ */
+export function purgeDeletedHymns(db, now = new Date()) {
+  return db.prepare('DELETE FROM hymns WHERE deleted_at IS NOT NULL AND deleted_at < ?').run(cutoffIso(now)).changes;
+}
+
+// A hymn deleted by the planner keeps its row, its lyrics and its id, with the time it was deleted. Nothing else changes.
+export const HYMN_DELETE_MIGRATIONS = [
+  `ALTER TABLE hymns ADD COLUMN deleted_at TEXT;
+   CREATE INDEX idx_hymns_deleted ON hymns (deleted_at);`,
+];
+
 /** Validates hymn metadata and parses the lyrics. Shared by create and edit so the rules cannot drift. */
 function checkedHymnInput(input) {
   const title = String(input.title ?? '').trim();
@@ -75,14 +96,26 @@ function checkedHymnInput(input) {
 }
 
 /** Data access and lyric parsing for Song Lyrics. Pure: takes a database handle. */
-export function createLyricsService(db) {
+/**
+ * `onHymnChanged` is called after a hymn is created or edited, so the song list can be sent soon. It is called only after the save
+ * is committed, and a failure in it never fails the save.
+ */
+export function createLyricsService(db, { onHymnChanged = () => {} } = {}) {
+  const changed = () => {
+    try {
+      onHymnChanged();
+    } catch {
+      // The save is already done. Sending the list is a later step, so a failure here is left for the timer to retry.
+    }
+  };
   const songCategories = createSongCategoryService(db);
   const q = {
     list: db.prepare(`
       SELECT h.id, h.title, h.composer, h.category, h.language, h.musical_key AS musicalKey, h.song_category AS songCategory,
              (SELECT COUNT(*) FROM hymn_stanzas s WHERE s.hymn_id = h.id) AS stanzaCount
       FROM hymns h
-      WHERE (@category IS NULL OR h.category = @category)
+      WHERE h.deleted_at IS NULL
+        AND (@category IS NULL OR h.category = @category)
         AND (@language IS NULL OR h.language = @language)
         AND (@songCategory IS NULL OR h.song_category = @songCategory COLLATE NOCASE)
         AND (@term IS NULL
@@ -91,14 +124,23 @@ export function createLyricsService(db) {
              OR h.musical_key LIKE @term ESCAPE '\\'
              OR EXISTS (SELECT 1 FROM hymn_stanzas s WHERE s.hymn_id = h.id AND s.lyrics_text LIKE @term ESCAPE '\\'))
       ORDER BY h.title COLLATE NOCASE`),
-    hymn: db.prepare('SELECT id, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory, style AS styleJson FROM hymns WHERE id = ?'),
+    hymn: db.prepare('SELECT id, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory, style AS styleJson, deleted_at AS deletedAt FROM hymns WHERE id = ?'),
+    // A hymn in the library: not deleted. Used by the plans, so a deleted hymn is shown as deleted rather than as present.
+    liveHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NULL'),
+    deletedHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NOT NULL'),
+    deletedList: db.prepare(`
+      SELECT id, title, deleted_at AS deletedAt FROM hymns
+      WHERE deleted_at IS NOT NULL AND deleted_at >= ?
+      ORDER BY deleted_at DESC, id DESC`),
+    softDelete: db.prepare('UPDATE hymns SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL'),
+    undoDelete: db.prepare('UPDATE hymns SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL'),
+    purgeOld: db.prepare('DELETE FROM hymns WHERE deleted_at IS NOT NULL AND deleted_at < ?'),
     setStyle: db.prepare('UPDATE hymns SET style = ? WHERE id = ?'),
     stanzas: db.prepare(`
       SELECT id, stanza_type AS stanzaType, lyrics_text AS lyricsText, display_order AS "order"
       FROM hymn_stanzas WHERE hymn_id = ? ORDER BY display_order, id`),
     insertHymn: db.prepare('INSERT INTO hymns (title, composer, category, language, musical_key, song_category) VALUES (?, ?, ?, ?, ?, ?)'),
     insertStanza: db.prepare('INSERT INTO hymn_stanzas (hymn_id, stanza_type, lyrics_text, display_order) VALUES (?, ?, ?, ?)'),
-    deleteHymn: db.prepare('DELETE FROM hymns WHERE id = ?'),
     updateHymn: db.prepare('UPDATE hymns SET title = ?, composer = ?, category = ?, language = ?, musical_key = ?, song_category = ? WHERE id = ?'),
     clearStanzas: db.prepare('DELETE FROM hymn_stanzas WHERE hymn_id = ?'),
     setlists: db.prepare('SELECT id, date, name FROM setlists ORDER BY date DESC, id DESC'),
@@ -106,7 +148,7 @@ export function createLyricsService(db) {
     insertSetlist: db.prepare('INSERT INTO setlists (name, date) VALUES (?, ?)'),
     deleteSetlist: db.prepare('DELETE FROM setlists WHERE id = ?'),
     entries: db.prepare(`
-      SELECT si.position, h.id AS hymnId, h.title, h.composer, h.category, h.language
+      SELECT si.position, h.id AS hymnId, h.title, h.composer, h.category, h.language, h.deleted_at IS NOT NULL AS deleted
       FROM setlist_items si
       JOIN hymns h ON h.id = si.hymn_id
       WHERE si.setlist_id = ?
@@ -162,19 +204,27 @@ export function createLyricsService(db) {
 
     /** Parses the pasted lyrics and stores the hymn with its stanzas in one transaction. */
     createHymn(input = {}) {
+      // Refused before anything is parsed or written: a hymn needs a song category.
+      if (isSongCategoryMissing(input.songCategory)) throw new Error(SONG_CATEGORY_REQUIRED_EN);
       const hymn = checkedHymnInput(input);
       const songCategory = resolveSongCategory(db, input.songCategory);
       const id = insertHymnWithStanzas(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, songCategory, hymn.stanzas);
+      changed();
       return { id, warnings: hymn.warnings };
     },
 
     /** Updates the hymn's details and replaces its stanzas with a fresh parse of `raw`. */
     editHymn(id, input = {}) {
+      // Refused before anything is written: saving an existing hymn needs a song category too. Hymns already saved without one are
+      // left as they are until they are next saved.
+      if (isSongCategoryMissing(input.songCategory)) throw new Error(SONG_CATEGORY_REQUIRED_EN);
       const current = q.hymn.get(id);
       if (!current) throw new Error('That hymn no longer exists.');
+      if (current.deletedAt) throw new Error('That hymn was deleted. Undo the delete to change it.');
       const hymn = checkedHymnInput(input);
       hymn.songCategory = resolveSongCategory(db, input.songCategory, current.songCategory);
       replaceHymn(id, hymn);
+      changed();
       return { id, warnings: hymn.warnings };
     },
 
@@ -186,8 +236,26 @@ export function createLyricsService(db) {
       return checked;
     },
 
-    deleteHymn(id) {
-      return q.deleteHymn.run(id).changes > 0;
+    /**
+     * Deletes a hymn in the library. Nothing is removed: the row, its lyrics and its id stay, marked with the time it was deleted, so
+     * it can be undone for RECYCLE_DAYS. The song list is sent after the delete is committed.
+     */
+    deleteHymn(id, now = new Date()) {
+      const deleted = q.softDelete.run(now.toISOString(), id).changes > 0;
+      if (deleted) changed();
+      return deleted;
+    },
+
+    /** Hymns deleted within the last RECYCLE_DAYS, newest first, with the time each was deleted. */
+    listDeletedHymns(now = new Date()) {
+      return q.deletedList.all(cutoffIso(now));
+    },
+
+    /** Puts a deleted hymn back. Same row and same id, so plans and setlists that point at it are whole again. */
+    undoDeleteHymn(id) {
+      const restored = q.undoDelete.run(id).changes > 0;
+      if (restored) changed();
+      return restored;
     },
 
     listSetlists() {
@@ -225,7 +293,8 @@ export function createLyricsService(db) {
 
     getSetlist(id) {
       requireSetlist(id);
-      return q.entries.all(id);
+      // A hymn deleted since it was added is kept in the setlist and marked deleted, so the planner can undo the delete.
+      return q.entries.all(id).map((e) => ({ ...e, deleted: Boolean(e.deleted) }));
     },
 
     /** Replaces the setlist's order. Hymns may appear more than once (e.g. a repeated Gloria). */
@@ -238,14 +307,16 @@ export function createLyricsService(db) {
 }
 
 /** Registers the `lyrics:*` IPC channels. Called once from the main process. */
-export function setupLyrics(db) {
-  const service = createLyricsService(db);
+export function setupLyrics(db, options = {}) {
+  const service = createLyricsService(db, options);
   const handle = (channel, fn) => ipcMain.handle(`lyrics:${channel}`, (_event, ...args) => fn(...args));
 
   handle('listHymns', (filter) => service.listHymns(filter));
   handle('getHymn', (id) => service.getHymn(Number(id)));
   handle('createHymn', (input) => service.createHymn(input));
   handle('deleteHymn', (id) => service.deleteHymn(Number(id)));
+  handle('listDeletedHymns', () => service.listDeletedHymns());
+  handle('undoDeleteHymn', (id) => service.undoDeleteHymn(Number(id)));
   handle('editHymn', (id, input) => service.editHymn(Number(id), input));
   handle('setStyle', (id, style) => service.setStyle(Number(id), style));
   handle('listSetlists', () => service.listSetlists());

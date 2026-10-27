@@ -46,6 +46,8 @@ export interface PwSegment {
   notes: string;
   /** Set when loading: assigned content was deleted from its library since the session was saved. */
   stale?: boolean;
+  /** A song this segment uses was deleted but can still be undone. It is also stale while it is deleted. */
+  deleted?: boolean;
 }
 
 export interface PwTemplateSegment {

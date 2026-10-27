@@ -177,7 +177,7 @@ export function collectLibrary(db, options, { laptop, exportedAt = new Date().to
   const hymns = db
     .prepare(
       `SELECT id, uuid, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory,
-              updated_at AS updatedAt FROM hymns ORDER BY id`,
+              updated_at AS updatedAt FROM hymns WHERE deleted_at IS NULL ORDER BY id`,
     )
     .all();
   const hymnById = new Map(hymns.map((h) => [h.id, h]));

@@ -1,12 +1,14 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen, shell } from 'electron';
 import { createCloudDevice } from './cloud-device.js';
 import { createSongSync, SONG_ROWS_SQL } from './song-sync.js';
+import { createPlanSync } from './plan-sync.js';
+import { createPlanSyncStore } from './plan-sync-store.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initialLiveState, liveReducer, OUTPUTS } from '../shared/live.js';
 import { setupAnnouncements } from './announcements.js';
-import { setupLyrics } from './lyrics.js';
+import { purgeDeletedHymns, setupLyrics } from './lyrics.js';
 import { registerLyricsImport } from './lyrics-import.js';
 import { setupNotes } from './notes.js';
 import { setupWhiteboard } from './whiteboard.js';
@@ -647,6 +649,9 @@ const songSync = createSongSync({
   push: (songs) => cloud().pushSongs(songs),
 });
 ipcMain.handle('cloud:songs-status', () => songSync.status());
+// The plan sync's state, for the read-only line on the Cloud sync screen. It is null until the database is open.
+let planSync = null;
+ipcMain.handle('cloud:plans-status', () => planSync?.status() ?? { status: 'idle', lastSyncedAt: null, message: null, counts: null });
 ipcMain.handle('cloud:songs-sync-now', async () => {
   await songSync.runOnce();
   return songSync.status();
@@ -746,9 +751,37 @@ app.whenReady().then(() => {
   state = liveReducer(state, { type: 'settings/welcome', value: readConfig(app.getPath('userData')).welcome });
   state = liveReducer(state, { type: 'lowerStyle/set', value: readConfig(app.getPath('userData')).lower_third });
   announcements = openConfiguredDatabase();
-  setupLyrics(announcements.db);
+  // A hymn saved here asks the song sync for a send soon, instead of waiting for its next timer tick.
+  setupLyrics(announcements.db, { onHymnChanged: () => songSync.notify() });
+  // Hymns deleted more than 30 days ago are removed from this laptop, at start and then once a day. Local only: nothing is sent.
+  const purgeRecycled = () => {
+    try {
+      purgeDeletedHymns(announcements.db);
+    } catch (err) {
+      console.error(`[lyrics] step=purge name=${err?.name ?? 'Error'}`);
+    }
+  };
+  purgeRecycled();
+  const purgeTimer = setInterval(purgeRecycled, 24 * 60 * 60 * 1000);
+  app.on('before-quit', () => clearInterval(purgeTimer));
   songSync.start();
   app.on('before-quit', () => songSync.stop());
+  // Plans sync in both directions in the background, after the database is open. There is no button for it.
+  // One cloud client for the plan sync, so the server clock offset it measures is kept between runs.
+  const planCloud = cloud();
+  planSync = createPlanSync({
+    store: createPlanSyncStore(announcements.db),
+    cloud: {
+      pullPlans: (cursor) => planCloud.pullPlans(cursor),
+      createPlan: (plan) => planCloud.createPlan(plan),
+      pushPlan: (plan) => planCloud.pushPlan(plan),
+      deletePlan: (id) => planCloud.deletePlan(id),
+      getPlan: (id) => planCloud.getPlan(id),
+      serverOffset: () => planCloud.serverOffset(),
+    },
+  });
+  planSync.start();
+  app.on('before-quit', () => planSync.stop());
   registerLyricsImport(announcements.convertPdf);
   setupLectionary(announcements.db);
   const planService = setupMassPlans(announcements.db);

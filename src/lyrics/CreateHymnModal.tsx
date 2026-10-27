@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from
 import { X } from 'lucide-react';
 import { CATEGORIES, LANGUAGES, parseLyrics, sectionHeader, toTaggedLyrics } from '../../shared/lyrics-parser.js';
 import { isMetadataLine, splitSongSheet } from '../../shared/lyrics-import.js';
+import { isSongCategoryMissing, isSongCategoryRefusal } from '../../shared/hymn-category.js';
 import { bridge } from '../live/bridge';
 import { useLyT } from './strings';
 import type { Hymn, HymnCategory, HymnLanguage, SongCategory } from './types';
@@ -44,6 +45,8 @@ export function CreateHymnModal({
   const [raw, setRaw] = useState(hymn ? toTaggedLyrics(hymn.stanzas) : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when a save is attempted with no song category. Cleared as soon as a category is chosen.
+  const [categoryPrompt, setCategoryPrompt] = useState(false);
   const [importing, setImporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const lyricsRef = useRef<HTMLTextAreaElement>(null);
@@ -109,6 +112,11 @@ export function CreateHymnModal({
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
+    // A hymn needs a song category. Nothing is sent and nothing typed is cleared: the prompt shows beside the field.
+    if (isSongCategoryMissing(songCategory)) {
+      setCategoryPrompt(true);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -117,7 +125,10 @@ export function CreateHymnModal({
       else await api.createHymn(input);
       onSaved();
     } catch (err) {
-      setError(errorText(err));
+      const message = errorText(err);
+      // The service refuses a save with no category too. The same prompt shows, and the form stays open with its text.
+      if (isSongCategoryRefusal(message)) setCategoryPrompt(true);
+      else setError(message);
     } finally {
       setBusy(false);
     }
@@ -178,10 +189,19 @@ export function CreateHymnModal({
             {notice && <p role="status" className="text-sm text-ok">{notice}</p>}
             <label className="flex flex-col gap-1.5">
               <span className="eyebrow">{t('songCategoryField')}</span>
-              <select value={songCategory} onChange={(e) => setSongCategory(e.target.value)} className={field}>
+              <select
+                value={songCategory}
+                onChange={(e) => {
+                  setSongCategory(e.target.value);
+                  if (e.target.value) setCategoryPrompt(false);
+                }}
+                aria-invalid={categoryPrompt || undefined}
+                className={field}
+              >
                 <option value="">{t('songCategoryNone')}</option>
                 {songCategoryOptions.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
+              {categoryPrompt && <span role="alert" className="text-sm text-danger">{t('chooseSongCategory')}</span>}
             </label>
 
             <label className="flex min-h-0 flex-1 flex-col gap-1.5">

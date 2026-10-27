@@ -10,6 +10,8 @@ export interface PlanItem {
   label: string;
   /** Set when loading a plan: the source was deleted after the plan was saved. */
   stale?: boolean;
+  /** A song or hymn that was deleted but can still be undone. It is also stale while it is deleted. */
+  deleted?: boolean;
 }
 
 export interface PlanSummary {

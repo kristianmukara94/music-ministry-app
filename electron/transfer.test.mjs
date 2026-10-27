@@ -7,7 +7,7 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } = await import('./lyrics.js');
+const { HYMN_DELETE_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } = await import('./lyrics.js');
 const { MASS_PLAN_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_NOTES_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS } = await import('./mass-plans.js');
 const { PW_MIGRATIONS } = await import('./pw-sessions.js');
 const { SONG_CATEGORY_MIGRATIONS } = await import('./song-categories.js');
@@ -25,6 +25,7 @@ const {
 // The migrations the library tables come from, in announcements.js order (the others do not touch these tables).
 const EARLIER = [
   ...LYRICS_MIGRATIONS,
+  ...HYMN_DELETE_MIGRATIONS,
   ...MASS_PLAN_MIGRATIONS,
   ...PLAN_BIBLE_MIGRATIONS,
   ...LYRICS_STYLE_MIGRATIONS,

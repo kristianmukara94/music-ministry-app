@@ -94,6 +94,24 @@ export function checkChurchSetup({ setupKey, churchName, username, displayName, 
  * The line the Cloud sync screen shows for the song list. `state` is what the sync reports: { status, lastSyncedAt, message }.
  * Plain words only. The message from a failure is shown as the sync gave it, and it never names the token or the address.
  */
+/**
+ * The plans line on the Cloud sync screen. Read only: there is no button. Plans that need attention are counted, not named.
+ */
+export function plansStatusText(state, now = Date.now()) {
+  if (!state) return 'Plans not synced yet';
+  if (state.status === 'syncing') return 'Syncing plans…';
+  if (state.status === 'offline') return "Offline. Plans will sync when you're back online.";
+  if (state.status === 'error') return state.message || 'Plans could not be synced. Try again.';
+  if (!state.lastSyncedAt) return 'Plans not synced yet';
+  const text = lastSyncedText(state.lastSyncedAt, now);
+  const parts = [`Plans synced ${text === 'Just now' ? 'just now' : text}`];
+  const held = state.counts?.held ?? 0;
+  const failed = state.counts?.failed ?? 0;
+  if (held) parts.push(`${held} ${held === 1 ? 'plan is' : 'plans are'} held: something in ${held === 1 ? 'it' : 'them'} cannot be shown on this laptop yet.`);
+  if (failed) parts.push(`${failed} ${failed === 1 ? 'plan' : 'plans'} could not be sent. Try again later.`);
+  return parts.join('. ');
+}
+
 export function songsStatusText(state, now = Date.now()) {
   if (!state) return 'Songs not synced yet';
   if (state.status === 'syncing') return 'Syncing…';

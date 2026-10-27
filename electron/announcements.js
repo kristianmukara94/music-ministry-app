@@ -8,7 +8,7 @@ import { parseTextStyle, sanitizeTextStyle } from '../shared/text-style.js';
 import { createPdfConverter } from './pdf-converter.js';
 import os from 'node:os';
 import { DOCUMENT_EXTENSIONS, findSoffice, pptxToPdf, readDocumentPages, readPptxSlides, renderWithPowerPoint } from './documents.js';
-import { LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } from './lyrics.js';
+import { HYMN_DELETE_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } from './lyrics.js';
 import { LECTIONARY_ACCLAMATION_MIGRATIONS, LECTIONARY_MIGRATIONS, LECTIONARY_STYLE_MIGRATIONS } from './lectionary.js';
 import { MEDIA_AUDIO_MIGRATIONS, MEDIA_MIGRATIONS } from './media.js';
 import { WHITEBOARD_MIGRATIONS } from './whiteboard.js';
@@ -20,6 +20,7 @@ import { ROSARY_MIGRATIONS } from './rosary.js';
 import { PW_MIGRATIONS } from './pw-sessions.js';
 import { SONG_CATEGORY_MIGRATIONS } from './song-categories.js';
 import { TRANSFER_MIGRATIONS } from './transfer.js';
+import { PLAN_SYNC_MIGRATIONS } from './plan-sync-schema.js';
 import { MEDIA_SCHEME, installMediaProtocol, registerMediaRoute } from './protocol.js';
 import { assetRootFor, migrateAbsolutePaths, relPath, resolveAsset, setActiveAssetRoot } from './assets.js';
 
@@ -124,6 +125,8 @@ const ALL_MIGRATIONS = [
   ...PLAN_COMMUNION_MIGRATIONS,
   ...SONG_CATEGORY_MIGRATIONS,
   ...TRANSFER_MIGRATIONS,
+  ...PLAN_SYNC_MIGRATIONS,
+  ...HYMN_DELETE_MIGRATIONS,
 ];
 
 const SLIDE_SELECT = `

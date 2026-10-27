@@ -74,6 +74,7 @@ const STRINGS = {
     emptyPrayer: 'No prayer yet. Pick a projectable prayer from Notes & Prayers in the library. Until then the projector shows [Approved prayer wording].',
     moreSongs: 'This segment takes up to {n} songs. Add more from the library.',
     missingContent: 'Something assigned here was deleted from its library. Replace it.',
+    songDeleted: 'This song was deleted. Undo the delete in Song Lyrics to restore it.',
     arrangement: 'Arrangement',
     arrangementHint: 'Order the sections as sung. Drag a chip, or focus it and press Alt+← / Alt+→ to move it and Delete to remove it.',
     addSection: '+ Section',
@@ -255,6 +256,8 @@ const STRINGS = {
     emptyPrayer: 'Wala pang panalangin. Pumili ng maipapakitang panalangin mula sa Tala at Panalangin sa library. Hanggang doon, [Approved prayer wording] ang ipapakita ng projector.',
     moreSongs: 'Hanggang {n} awit ang kasya sa bahaging ito. Magdagdag mula sa library.',
     missingContent: 'May nakatalaga rito na nabura sa library nito. Palitan ito.',
+    // New in this release. Drafted without a native-speaker check; review before go-live.
+    songDeleted: 'Nabura ang awit na ito. Ibalik ito sa Song Lyrics.',
     arrangement: 'Pagkakaayos',
     arrangementHint: 'Ayusin ang mga bahagi ayon sa pag-awit. I-drag ang chip, o i-focus ito at pindutin ang Alt+← / Alt+→ para ilipat at Delete para alisin.',
     addSection: '+ Bahagi',
@@ -366,6 +369,15 @@ const STRINGS = {
     previewNeedsLive: 'Mag-live sa session na ito para masilip sa projector.',
     resultKeys: 'Gumagalaw sa mga resulta ang arrow keys. Isinisingit ng Enter. Sinisilip sa projector ng Shift+Enter.',
   },
+};
+
+/*
+ * Cebuano for the praise module. Only the keys added in this release are here, so each one is Cebuano rather than English.
+ * The rest of the praise module has no Cebuano yet, and still shows English for Cebuano users (an existing gap, not new).
+ */
+STRINGS.ceb = {
+  // New in this release. Drafted without a native-speaker check; review before go-live.
+  songDeleted: 'Gipapasa-a kini nga kanta. Ibalik kini sa Song Lyrics.',
 };
 
 /** Looks up `key` in `lang`, falling back to English, and fills {placeholders}. */

@@ -388,8 +388,16 @@ export interface SongsSyncState {
   message?: string | null;
 }
 
+export interface PlansSyncState {
+  status: 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
+  lastSyncedAt?: string | null;
+  message?: string | null;
+  counts?: { sent: number; received: number; deleted: number; failed: number; held?: number } | null;
+}
+
 export interface CloudApi {
   songsStatus(): Promise<SongsSyncState>;
+  plansStatus(): Promise<PlansSyncState>;
   saveAddress(address: string): Promise<{ ok: boolean; address?: string; message?: string }>;
   syncSongsNow(): Promise<SongsSyncState>;
   status(): Promise<CloudLink>;
@@ -407,6 +415,7 @@ const offlineCloud: CloudApi = {
   createWebUser: async () => offlineError(),
   createChurchAdmin: async () => offlineError(),
   songsStatus: async () => ({ status: 'idle', lastSyncedAt: null, message: null }),
+  plansStatus: async () => ({ status: 'idle', lastSyncedAt: null, message: null, counts: null }),
   saveAddress: async () => ({ ok: false, message: 'Open the desktop app to change the cloud address.' }),
   syncSongsNow: async () => ({ status: 'idle', lastSyncedAt: null, message: null }),
   defaultLabel: async () => 'This computer',
@@ -439,6 +448,8 @@ const offlineLyrics: LyricsApi = {
   getHymn: async () => null,
   createHymn: async () => offlineError(),
   deleteHymn: async () => offlineError(),
+  listDeletedHymns: async () => [],
+  undoDeleteHymn: async () => offlineError(),
   listSetlists: async () => [],
   createSetlist: async () => offlineError(),
   deleteSetlist: async () => offlineError(),
