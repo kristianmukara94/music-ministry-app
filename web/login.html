@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en" data-base="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<title>Sign in · APCCMMA Web Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/planner.css">
+<script type="module" src="js/login.js"></script>
+</head>
+<body class="login">
+<div class="shell" style="display: flex; flex-wrap: wrap; background: #0f0407; color: #f7eef0; font-family: 'Archivo','Segoe UI',system-ui,sans-serif">
+
+  <main class="pad" style="flex: 1 1 480px; min-width: 0; padding: 56px 72px; display: flex; flex-direction: column; justify-content: center; gap: 36px">
+    <div style="display: flex; align-items: center; gap: 12px">
+      <div style="width: 44px; height: 44px; border-radius: 12px; background: #ecc98a; display: grid; place-items: center">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1c070d" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>
+      </div>
+      <div style="display: flex; flex-direction: column; line-height: 1.15">
+        <span style="font-weight: 800; font-size: 16px; letter-spacing: 0.04em">APCCMMA</span>
+        <span style="font-size: 12px; color: #b48d99">Web Planner</span>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px; max-width: 440px">
+      <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #ecc98a">ASSUMPTION PARISH · MUSIC MINISTRY</span>
+      <h1 style="margin: 0; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 56px; line-height: 1.02">Plan the Mass from anywhere</h1>
+      <p style="margin: 0; font-size: 16px; line-height: 1.55; color: #dbb3bf">Sign in to build Mass plans and Praise &amp; Worship nights. They appear in the app on the church laptop the next time it syncs.</p>
+    </div>
+
+    <form id="sign-in" style="display: flex; flex-direction: column; gap: 18px; max-width: 440px">
+      <label style="display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Email</span>
+        <input type="email" name="email" autocomplete="username" placeholder="name@example.com" style="height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 15px; outline: 0">
+      </label>
+      <label style="display: flex; flex-direction: column; gap: 8px">
+        <span style="display: flex; justify-content: space-between; align-items: baseline">
+          <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Password</span>
+          <a href="login.html" style="font-size: 13px; color: #ecc98a; font-weight: 600">Forgot password?</a>
+        </span>
+        <input type="password" name="password" autocomplete="current-password" placeholder="Your password" style="height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 15px; outline: 0">
+      </label>
+      <button type="submit" style="height: 50px; border-radius: 10px; border: 0; background: #ecc98a; color: #1c070d; font-size: 15px; font-weight: 700; cursor: pointer">Sign in</button>
+      <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #b48d99">Only parish ministry members can sign in. Ask the music ministry lead for an invite.</p>
+    </form>
+  </main>
+
+  <aside class="pad" style="flex: 1 1 480px; min-width: 0; padding: 56px 72px; background: #1a0a12; border-left: 1px solid #3a1523; display: flex; flex-direction: column; justify-content: center; gap: 28px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #ecc98a">HOW IT WORKS</span>
+      <h2 style="margin: 0; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 36px; line-height: 1.1">Plan on the web, present from the app</h2>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; align-items: stretch; gap: 12px">
+      <div style="flex: 1 1 140px; padding: 18px; border-radius: 14px; border: 1px solid #55202f; background: #22101a; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: #b48d99">1 · WEB PLANNER</span>
+        <span style="font-size: 15px; font-weight: 600; line-height: 1.35">Build the Mass flow and the song steps</span>
+      </div>
+      <div style="flex: 1 1 140px; padding: 18px; border-radius: 14px; border: 1px solid #55202f; background: #22101a; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: #b48d99">2 · SYNC</span>
+        <span style="font-size: 15px; font-weight: 600; line-height: 1.35">Saved securely, with a version check</span>
+      </div>
+      <div style="flex: 1 1 140px; padding: 18px; border-radius: 14px; border: 1px solid #ecc98a; background: #2a0c18; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: #ecc98a">3 · CHURCH LAPTOP</span>
+        <span style="font-size: 15px; font-weight: 600; line-height: 1.35">The app pulls the plan and runs the service</span>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 28px">
+      <div style="flex: 1 1 200px; display: flex; flex-direction: column; gap: 10px">
+        <span style="font-size: 13px; font-weight: 700; color: #8fd9ae">Syncs to the web</span>
+        <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #dbb3bf; line-height: 1.4">
+          <li>Mass plans</li>
+          <li>Praise &amp; Worship sessions</li>
+          <li>Song titles and categories</li>
+        </ul>
+      </div>
+      <div style="flex: 1 1 200px; display: flex; flex-direction: column; gap: 10px">
+        <span style="font-size: 13px; font-weight: 700; color: #ecc98a">Stays on the laptop</span>
+        <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #dbb3bf; line-height: 1.4">
+          <li>Lyrics</li>
+          <li>Bible text</li>
+          <li>Announcements and media</li>
+        </ul>
+      </div>
+    </div>
+  </aside>
+</div>
+</body>
+</html>

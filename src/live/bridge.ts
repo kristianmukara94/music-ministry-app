@@ -139,6 +139,7 @@ interface ElectronApi {
   welcome: WelcomeApi;
   lowerThird: LowerThirdApi;
   remoteView: RemoteViewApi;
+  library: LibraryApi;
   whiteboard: WhiteboardApi;
   config: ConfigApi;
   updates: UpdatesApi;
@@ -284,6 +285,57 @@ const offlineLowerThird: LowerThirdApi = {
 };
 
 const offlineRole: RemoteRoleStatus = { enabled: false, port: 0, pinSet: false, running: false, url: null, devices: 0, error: 'Open the desktop app to share the live view.' };
+/** Library export and import: the library lives in the desktop app's database, so the browser preview has none. */
+export type LibraryType = 'songs' | 'setlists' | 'plans' | 'praiseWorship';
+
+export interface LibraryExportOptions {
+  plans: boolean;
+  setlists: boolean;
+  praiseWorship: boolean;
+  songs: boolean;
+  lyrics: boolean;
+}
+
+export interface LibraryCounts {
+  new: number;
+  same: number;
+  changed: number;
+}
+
+export interface LibraryPreview {
+  laptop: string;
+  exportedAt: string;
+  includesLyrics: boolean;
+  counts: Record<LibraryType, LibraryCounts>;
+  totals: LibraryCounts;
+  /** Records that exist here with a different updated_at. The operator chooses for each. */
+  changed: { key: string; type: LibraryType; name: string; localUpdatedAt: string; importedUpdatedAt: string }[];
+  notes: string[];
+}
+
+export interface LibrarySummary {
+  added: Record<LibraryType, number>;
+  skipped: Record<LibraryType, number>;
+  changed: { kept: number; used: number };
+}
+
+export interface LibraryApi {
+  /** Null when the operator cancels the save dialog. */
+  export(options: LibraryExportOptions): Promise<{ path: string; counts: Record<LibraryType, number>; includesLyrics: boolean } | null>;
+  /** Null when the operator cancels the open dialog. Throws with the reason when the file is refused. */
+  open(): Promise<LibraryPreview | null>;
+  /** Writes the file that was last opened. Nothing is written before this. */
+  import(choices: Record<string, 'keep' | 'use'>): Promise<LibrarySummary>;
+  cancel(): Promise<void>;
+}
+
+const offlineLibrary: LibraryApi = {
+  export: async () => offlineError(),
+  open: async () => offlineError(),
+  import: async () => offlineError(),
+  cancel: async () => undefined,
+};
+
 const offlineRemoteView: RemoteViewApi = {
   get: async () => ({ primary: offlineRole, secondary: offlineRole, devices: 0, deviceLimit: 20, hotspot: false, hotspotWarnAbove: 8, activity: [] }),
   save: async () => offlineError(),
@@ -427,6 +479,7 @@ function createBrowserBridge(): LiveBridge {
     welcome: offlineWelcome,
     lowerThird: offlineLowerThird,
     remoteView: offlineRemoteView,
+    library: offlineLibrary,
     whiteboard: offlineWhiteboard,
     config: offlineConfig,
     updates: offlineUpdates,

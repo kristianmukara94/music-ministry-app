@@ -124,6 +124,13 @@ contextBridge.exposeInMainWorld('apcc', {
     save: (patch) => ipcRenderer.invoke('remoteView:save', patch),
   },
 
+  library: {
+    export: (options) => ipcRenderer.invoke('library:export', options),
+    open: () => ipcRenderer.invoke('library:open'),
+    import: (choices) => ipcRenderer.invoke('library:import', choices),
+    cancel: () => ipcRenderer.invoke('library:cancel'),
+  },
+
   whiteboard: {
     list: () => ipcRenderer.invoke('whiteboard:list'),
     save: (input) => ipcRenderer.invoke('whiteboard:save', input),

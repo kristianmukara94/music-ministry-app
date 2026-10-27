@@ -1,0 +1,3 @@
+# The APCCMMA Web Planner: a static site in web/. There is no build step.
+[build]
+  publish = "web"

@@ -34,6 +34,8 @@ import {
   validateRemoteViewPatch,
 } from '../shared/remote-view.js';
 import { setupUpdater } from './updater.js';
+import { applyImport, checkExportOptions, collectLibrary, decodeTransfer, defaultExportName, encodeTransfer, previewImport, TRANSFER_EXTENSION } from './transfer.js';
+import os from 'node:os';
 
 // Windows needs this to show notifications under the app's name. It must match build.appId in package.json.
 app.setAppUserModelId('com.apccmma.churchapp');
@@ -545,6 +547,50 @@ ipcMain.handle('lowerThird:info', () => ({
   local: `http://127.0.0.1:${LOWER_THIRD_PORT}/lower-third`,
   lan: lanAddress() ? `http://${lanAddress()}:${LOWER_THIRD_PORT}/lower-third` : null,
 }));
+
+// ---- Library export and import (plans, setlists, Praise & Worship sessions, songs) ----
+
+/** The file the operator chose to import, held until they confirm. Nothing is written before that. */
+let pendingLibraryImport = null;
+
+/** Saves the chosen parts of the library to one .apccmma file, after the operator picks where. */
+ipcMain.handle('library:export', async (event, input) => {
+  const options = checkExportOptions(input);
+  const picked = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+    title: 'Export the library',
+    defaultPath: defaultExportName(),
+    filters: [{ name: 'APCCMMA library', extensions: [TRANSFER_EXTENSION.slice(1)] }],
+  });
+  if (picked.canceled || !picked.filePath) return null;
+  const data = collectLibrary(announcements.db, options, { laptop: os.hostname() });
+  fs.writeFileSync(picked.filePath, encodeTransfer(data), 'utf8');
+  return { path: picked.filePath, counts: data.counts, includesLyrics: data.includesLyrics };
+});
+
+/** Reads a library file and returns the preview. A damaged or unknown file is refused here with the reason. */
+ipcMain.handle('library:open', async (event) => {
+  const picked = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
+    title: 'Choose a library file to import',
+    filters: [{ name: 'APCCMMA library', extensions: [TRANSFER_EXTENSION.slice(1)] }],
+    properties: ['openFile'],
+  });
+  if (picked.canceled || !picked.filePaths[0]) return null;
+  const data = decodeTransfer(fs.readFileSync(picked.filePaths[0], 'utf8'));
+  pendingLibraryImport = data;
+  return previewImport(announcements.db, data);
+});
+
+/** Writes the file the operator confirmed. `choices` maps `type:uuid` to 'keep' or 'use' for each changed record. */
+ipcMain.handle('library:import', (_event, choices) => {
+  if (!pendingLibraryImport) throw new Error('Choose a file to import first.');
+  const data = pendingLibraryImport;
+  pendingLibraryImport = null;
+  return applyImport(announcements.db, data, choices ?? {});
+});
+
+ipcMain.handle('library:cancel', () => {
+  pendingLibraryImport = null;
+});
 
 /** Remote view's status. Also starts the page if it is on and a network has appeared since the last check. */
 ipcMain.handle('remoteView:get', async () => {

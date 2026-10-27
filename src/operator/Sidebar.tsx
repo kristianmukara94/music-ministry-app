@@ -13,6 +13,7 @@ import { DatabaseStatus } from '../system/DatabaseStatus';
 import { LOGO_SRC } from '../brand/logo';
 import { useNow } from './useNow';
 import { FOOTER_TEXT } from '../legal/license';
+import { LibraryTransferDialog } from './LibraryTransfer';
 
 export const NAV: { key: ViewKey; icon: LucideIcon; label: StringKey }[] = [
   { key: 'dashboard', icon: LayoutGrid, label: 'nav.dashboard' },
@@ -89,6 +90,7 @@ export function Sidebar() {
   const now = useNow();
   const region = useRegion();
   const [ioOpen, setIoOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const outputRows = [
@@ -192,6 +194,7 @@ export function Sidebar() {
               <button type="button" onClick={() => fileInput.current?.click()} className="rounded-full border border-stone-700 px-3 py-1 text-xs text-stone-200 transition hover:border-amber-400/40 hover:bg-stone-800/60">{t('side.import')}</button>
               <input ref={fileInput} type="file" accept="application/json" hidden
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) importSettings(f).catch((err) => alert(err.message)); e.target.value = ''; }} />
+              <button type="button" onClick={() => setLibraryOpen(true)} className="rounded-full border border-stone-700 px-3 py-1 text-xs text-stone-200 transition hover:border-amber-400/40 hover:bg-stone-800/60">Library</button>
             </div>
           )}
 
@@ -228,6 +231,7 @@ export function Sidebar() {
           {collapsed ? '©' : FOOTER_TEXT}
         </p>
       </div>
+      {libraryOpen && <LibraryTransferDialog onClose={() => setLibraryOpen(false)} />}
     </aside>
   );
 }
