@@ -13,12 +13,13 @@ import {
   checkWebUser,
   cloudViewState,
   formatLinkCode,
+  plainErrorText,
   formatSetupKey,
   isCompleteLinkCode,
 } from '../../shared/cloud-device.js';
 
 const cloud = bridge.cloud;
-const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
+const errorText = (err: unknown) => plainErrorText(err instanceof Error ? err.message : String(err));
 const emptyUser: NewWebUser = { username: '', displayName: '', role: 'planner' };
 const emptySetup: NewChurchAdmin = { setupKey: '', churchName: '', username: '', displayName: '', deviceLabel: '' };
 

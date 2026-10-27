@@ -1,31 +1,62 @@
-// Mass plan editor: the 31 steps of the Mass, and the drawer that fills the selected step. A song step takes a song
-// from the list or a typed note; a reading takes a reference; a rite takes an optional note for the operator.
-import { LANGUAGE_CODE, MASS_PLAN, SONGS } from './sample-data.js';
+// Mass plan editor: the 31 steps of the Mass, and the drawer that fills the selected step. The steps come from the template. What
+// is chosen, typed and noted comes from the saved plan on the server, and Save sends the whole plan in one request. A song step
+// takes a song from the church's list or a typed note; a reading takes a reference; a rite takes an optional note for the operator.
+import { LANGUAGE_CODE, MASS_PLAN } from './sample-data.js';
 import { esc, mountSidebar } from './shell.js';
 import { guard } from './auth.js';
+import { getPlan, listSongs, savePlan } from './plan-api.js';
+import {
+  NO_SONGS,
+  VIEW_ONLY,
+  dateLabel,
+  massSteps,
+  payloadFor,
+  saveButton,
+  savedState,
+  songOptions,
+  statusText,
+  titleOf,
+  withChoice,
+} from './plan-model.js';
 
 mountSidebar();
-void guard();
 
-const STEPS = MASS_PLAN.sections.flatMap((section) =>
-  section.rows.map(([n, name, kind, cat, value, src, optional, hint]) => ({
-    n, name, kind, cat: cat || '', value: value || '', src: src || '', optional: !!optional, hint: hint || '',
-  })),
-);
+const planId = new URLSearchParams(location.search).get('id');
+const STEPS = massSteps(MASS_PLAN);
 const TOTAL = STEPS.length;
 
-const fresh = () => ({ sel: MASS_PLAN.firstSelected, mode: 'list', allSongs: false, query: '', values: {}, notes: {}, dirty: false, noteSaved: false });
-let state = fresh();
+let plan = null;
+let canEdit = false;
+let songs = [];
+let state = fresh(null);
 
-/** A step with any change made in this session. */
+function fresh(saved) {
+  return {
+    sel: MASS_PLAN.firstSelected,
+    mode: 'list',
+    allSongs: false,
+    query: '',
+    ...savedState(saved),
+    dirty: false,
+    noteSaved: false,
+    saving: false,
+    error: '',
+  };
+}
+
+/** A step with what is chosen for it in the saved plan. Nothing comes from the template's sample values. */
 function stepOf(n) {
   const base = STEPS.find((s) => s.n === n);
-  const over = state.values[n];
-  return over ? { ...base, value: over.value, src: over.src } : base;
+  const seg = state.segments[n] ?? {};
+  return {
+    ...base,
+    value: seg.songId ? titleOf(songs, seg.songId) : (seg.text ?? ''),
+    src: seg.songId ? 'list' : seg.text ? 'text' : '',
+  };
 }
 
 const subOf = (r) => {
-  const kind = r.kind === 'song' ? 'Song · ' + r.cat : r.kind === 'reading' ? 'Reading' : 'Rite';
+  const kind = r.kind === 'song' ? 'Song · ' + r.category : r.kind === 'reading' ? 'Reading' : 'Rite';
   return r.hint ? kind + ' · ' + r.hint : kind;
 };
 
@@ -33,18 +64,27 @@ const BTN_PRIMARY = 'border:0;background:#ecc98a;color:#1c070d';
 const BTN_QUIET = 'border:1px solid #6e2a3e;background:#2a0c18;color:#f7eef0';
 const TAB_ON = 'flex:1;height:40px;border-radius:10px;border:1px solid #ecc98a;background:#2a0c18;color:#ecc98a;font-size:14px;font-weight:700;cursor:pointer';
 const TAB_OFF = 'flex:1;height:40px;border-radius:10px;border:1px solid #3a1523;background:transparent;color:#dbb3bf;font-size:14px;font-weight:600;cursor:pointer';
+const DISABLED = canEditAttr => (canEditAttr ? '' : 'disabled');
 
 function renderHeader() {
   const steps = STEPS.map((s) => stepOf(s.n));
-  const songs = steps.filter((s) => s.kind === 'song');
+  const songSteps = steps.filter((s) => s.kind === 'song');
   const readings = steps.filter((s) => s.kind === 'reading');
-  document.getElementById('eyebrow').textContent = MASS_PLAN.eyebrow;
-  document.getElementById('title').textContent = MASS_PLAN.title;
-  document.title = `${MASS_PLAN.title} · APCCMMA Web Planner`;
-  document.getElementById('status').textContent = state.dirty ? 'Unsaved changes' : MASS_PLAN.status;
-  document.getElementById('songs-label').textContent = `${songs.filter((s) => s.value).length} of ${songs.length} chosen`;
+  document.getElementById('eyebrow').textContent = plan ? `MASS PLAN · ${dateLabel(plan.date)}` : 'MASS PLAN';
+  document.getElementById('title').textContent = plan ? plan.name : 'No plan open';
+  document.title = `${plan ? plan.name : 'Mass plan'} · APCCMMA Web Planner`;
+  document.getElementById('status').textContent = plan ? statusText({ dirty: state.dirty, error: state.error }) : state.error || 'Not loaded';
+  document.getElementById('songs-label').textContent = `${songSteps.filter((s) => s.value).length} of ${songSteps.length} chosen`;
   document.getElementById('readings-label').textContent = `${readings.filter((s) => s.value).length} of ${readings.length} entered`;
   document.getElementById('steps-label').textContent = `${TOTAL} steps`;
+  const save = saveButton(state.saving);
+  const saveEl = document.getElementById('save');
+  saveEl.disabled = !plan || !canEdit || save.disabled;
+  saveEl.textContent = save.label;
+  document.getElementById('discard').disabled = !plan || state.saving;
+  const note = document.getElementById('view-only');
+  note.textContent = VIEW_ONLY;
+  note.hidden = !plan || canEdit;
 }
 
 function renderSteps() {
@@ -80,7 +120,7 @@ function renderSteps() {
                   <span style="font-size:14px;line-height:1.4;${filled ? 'color:#f7eef0;font-weight:600' : 'color:#b48d99'}">${r.kind === 'rite' ? '' : esc(r.value || 'Nothing chosen yet')}</span>
                 </span>
                 <span style="flex: 0 0 auto; display: inline-flex">${chip}</span>
-                <button type="button" data-pick="${r.n}" aria-pressed="${selected}" style="height:36px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;${needs ? BTN_PRIMARY : BTN_QUIET}">${btnLabel}</button>
+                <button type="button" data-pick="${r.n}" aria-pressed="${selected}" ${DISABLED(canEdit)} style="height:36px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;${needs ? BTN_PRIMARY : BTN_QUIET}">${btnLabel}</button>
               </div>`;
     }).join('');
     return `
@@ -107,10 +147,10 @@ function songBody() {
               <div style="display: flex; flex-direction: column; gap: 12px">
                 <label style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border: 1px solid #55202f; border-radius: 10px; background: #150610">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b48d99" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                  <input id="song-search" type="search" aria-label="Search songs" placeholder="Search songs" value="${esc(state.query)}" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #f7eef0; font-size: 14px">
+                  <input id="song-search" type="search" aria-label="Search songs" placeholder="Search songs" value="${esc(state.query)}" ${DISABLED(canEdit)} style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #f7eef0; font-size: 14px">
                 </label>
                 <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px">
-                  <span style="font-size: 13px; color: #dbb3bf">${state.allSongs ? 'All songs' : 'Category: ' + esc(cur.cat)}</span>
+                  <span style="font-size: 13px; color: #dbb3bf">${state.allSongs ? 'All songs' : 'Category: ' + esc(cur.category)}</span>
                   <button type="button" data-action="toggle-all" style="height:32px;padding:0 12px;border-radius:9px;border:1px solid #3a1523;background:transparent;color:#ecc98a;font-size:13px;font-weight:600;cursor:pointer">${state.allSongs ? 'Show this category' : 'Show all songs'}</button>
                 </div>
                 <div id="song-options" style="display: flex; flex-direction: column; border: 1px solid #3a1523; border-radius: 12px; overflow: hidden"></div>
@@ -123,10 +163,10 @@ function songBody() {
               <div style="display: flex; flex-direction: column; gap: 12px">
                 <label style="display: flex; flex-direction: column; gap: 8px">
                   <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Song title or a short note</span>
-                  <textarea id="typed-text" rows="5" placeholder="e.g. Psalm 24 setting, sung by the cantor" style="padding: 12px 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 14px; line-height: 1.5; resize: vertical; outline: 0"></textarea>
+                  <textarea id="typed-text" rows="5" placeholder="e.g. Psalm 24 setting, sung by the cantor" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 14px; line-height: 1.5; resize: vertical; outline: 0"></textarea>
                 </label>
                 <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #b48d99">Typed text is a note for the operator on the laptop. It does not appear on the projector.</p>
-                <button type="button" data-action="use-text" style="height: 44px; border-radius: 10px; border: 0; background: #ecc98a; color: #1c070d; font-size: 14px; font-weight: 700; cursor: pointer">Use this text</button>
+                <button type="button" data-action="use-text" ${DISABLED(canEdit)} style="height: 44px; border-radius: 10px; border: 0; background: #ecc98a; color: #1c070d; font-size: 14px; font-weight: 700; cursor: pointer">Use this text</button>
               </div>
           </div>`;
 }
@@ -140,10 +180,10 @@ function readingBody(cur) {
             </div>
             <label style="display: flex; flex-direction: column; gap: 8px">
               <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Reading reference</span>
-              <input id="reading-ref" placeholder="e.g. Matthew 5:1-12a" style="height: 46px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 14px; outline: 0">
+              <input id="reading-ref" placeholder="e.g. Matthew 5:1-12a" ${DISABLED(canEdit)} style="height: 46px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 14px; outline: 0">
             </label>
             <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #b48d99">The web planner takes the reference as a note. To show the Bible text on the projector, pick the verses in the desktop app.</p>
-            <button type="button" data-action="use-ref" style="height: 44px; border-radius: 10px; border: 0; background: #ecc98a; color: #1c070d; font-size: 14px; font-weight: 700; cursor: pointer">Use this reference</button>
+            <button type="button" data-action="use-ref" ${DISABLED(canEdit)} style="height: 44px; border-radius: 10px; border: 0; background: #ecc98a; color: #1c070d; font-size: 14px; font-weight: 700; cursor: pointer">Use this reference</button>
           </div>`;
 }
 
@@ -153,16 +193,21 @@ function riteBody(cur) {
             <p style="margin: 0; font-size: 14px; line-height: 1.55; color: #dbb3bf">This part of the Mass needs no song or reading. You can leave a note for the operator.</p>
             <label style="display: flex; flex-direction: column; gap: 8px">
               <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Operator note (optional)</span>
-              <textarea id="rite-note" rows="4" placeholder="e.g. Incense at the Gospel" style="padding: 12px 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(state.notes[cur.n] ?? '')}</textarea>
+              <textarea id="rite-note" rows="4" placeholder="e.g. Incense at the Gospel" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(state.notes[cur.n] ?? '')}</textarea>
             </label>
-            <button type="button" data-action="save-note" style="height: 44px; border-radius: 10px; border: 1px solid #6e2a3e; background: #2a0c18; color: #f7eef0; font-size: 14px; font-weight: 600; cursor: pointer">${state.noteSaved ? 'Note saved' : 'Save note'}</button>
+            <button type="button" data-action="save-note" ${DISABLED(canEdit)} style="height: 44px; border-radius: 10px; border: 1px solid #6e2a3e; background: #2a0c18; color: #f7eef0; font-size: 14px; font-weight: 600; cursor: pointer">${state.noteSaved ? 'Note saved' : 'Save note'}</button>
           </div>`;
 }
 
 function renderDrawer() {
+  const drawer = document.getElementById('drawer');
+  if (!plan) {
+    drawer.innerHTML = `<p style="margin: 0; font-size: 14px; line-height: 1.5; color: #dbb3bf">${esc(state.error || 'Open a plan from your plan list to see its steps.')}</p>`;
+    return;
+  }
   const cur = stepOf(state.sel);
   const body = cur.kind === 'song' ? songBody() : cur.kind === 'reading' ? readingBody(cur) : riteBody(cur);
-  document.getElementById('drawer').innerHTML = `
+  drawer.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 6px">
           <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #b48d99">STEP ${cur.n} OF ${TOTAL}</span>
           <h2 style="margin: 0; font-size: 24px; font-weight: 800; line-height: 1.15">${esc(cur.name)}</h2>
@@ -175,45 +220,81 @@ function renderDrawer() {
 function renderOptions() {
   const box = document.getElementById('song-options');
   if (!box) return;
+  if (songs.length === 0) {
+    box.innerHTML = `<div style="padding: 18px 14px; font-size: 13px; color: #b48d99; background: #150610">${esc(NO_SONGS)}</div>`;
+    return;
+  }
   const cur = stepOf(state.sel);
-  const q = state.query.trim().toLowerCase();
-  const shown = SONGS.map((song, index) => ({ song, index }))
-    .filter(({ song }) => (state.allSongs || song[1] === cur.cat) && (!q || song[0].toLowerCase().includes(q)));
+  const shown = songOptions(songs, { category: cur.category, allSongs: state.allSongs, query: state.query });
   if (shown.length === 0) {
-    const message = q ? 'No songs match the search. Clear it, show all songs, or type text.' : 'No songs in this category yet. Show all songs, or type text.';
+    const message = state.query.trim() ? 'No songs match the search. Clear it, show all songs, or type text.' : 'No songs in this category yet. Show all songs, or type text.';
     box.innerHTML = `<div style="padding: 18px 14px; font-size: 13px; color: #b48d99; background: #150610">${message}</div>`;
     return;
   }
-  box.innerHTML = shown.map(({ song, index }) => {
-    const [title, cat, lang, key] = song;
-    const chosen = cur.value === title;
+  box.innerHTML = shown.map((song) => {
+    const chosen = state.segments[cur.n]?.songId === song.id;
+    const key = song.key ? ` · Key ${esc(song.key)}` : '';
     return `
                     <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #2b1019; background: #150610">
                       <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
-                        <span style="font-size: 14px; font-weight: 700">${esc(title)}</span>
-                        <span style="font-size: 12px; color: #b48d99">${state.allSongs ? esc(cat) + ' · ' : ''}${LANGUAGE_CODE[lang] ?? esc(lang)} · Key ${esc(key)}</span>
+                        <span style="font-size: 14px; font-weight: 700">${esc(song.title)}</span>
+                        <span style="font-size: 12px; color: #b48d99">${state.allSongs ? esc(song.category) + ' · ' : ''}${LANGUAGE_CODE[song.language] ?? esc(song.language)}${key}</span>
                       </span>
-                      <button type="button" data-song="${index}" aria-pressed="${chosen}" style="height:34px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;${chosen ? 'border:1px solid #8fd9ae;background:#12301f;color:#8fd9ae' : BTN_QUIET}">${chosen ? 'Selected' : 'Select'}</button>
+                      <button type="button" data-song="${esc(song.id)}" aria-pressed="${chosen}" ${DISABLED(canEdit)} style="height:34px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;${chosen ? 'border:1px solid #8fd9ae;background:#12301f;color:#8fd9ae' : BTN_QUIET}">${chosen ? 'Selected' : 'Select'}</button>
                     </div>`;
   }).join('');
 }
 
-function renderAll() {
+function render() {
   renderHeader();
   renderSteps();
   renderDrawer();
 }
 
-function setValue(value, src) {
-  state.values[state.sel] = { value, src };
+/** Changes the selected step's choice in this session. Nothing is saved until Save plan. */
+function choose(patch) {
+  state.segments = withChoice(state.segments, state.sel, patch);
   state.dirty = true;
+  state.error = '';
   renderHeader();
   renderSteps();
 }
 
+/** Reads the saved plan and the song list from the server. A failure keeps what was on screen and shows the plain message. */
+async function load() {
+  try {
+    const [saved, list] = await Promise.all([getPlan(planId), listSongs()]);
+    plan = saved.plan;
+    canEdit = saved.canEdit;
+    songs = list.songs;
+    state = fresh(plan);
+  } catch (err) {
+    if (plan) state.error = err.message;
+    else state = { ...fresh(null), error: err.message };
+  }
+  render();
+}
+
+async function save() {
+  if (!plan || !canEdit || state.saving) return;
+  state.saving = true;
+  state.error = '';
+  renderHeader();
+  try {
+    const payload = payloadFor({ planId: plan.id, segments: state.segments, notes: state.notes }, STEPS.map((s) => String(s.n)));
+    await savePlan(payload);
+    state.dirty = false;
+  } catch (err) {
+    state.error = err.message;
+  } finally {
+    state.saving = false;
+    renderHeader();
+  }
+}
+
 document.querySelector('main').addEventListener('click', (event) => {
   const target = event.target.closest('button');
-  if (!target) return;
+  if (!target || target.disabled) return;
   if (target.dataset.pick) {
     state.sel = Number(target.dataset.pick);
     state.query = '';
@@ -226,18 +307,18 @@ document.querySelector('main').addEventListener('click', (event) => {
     state.mode = target.dataset.mode;
     renderDrawer();
   } else if (target.dataset.song) {
-    setValue(SONGS[Number(target.dataset.song)][0], 'list');
+    choose({ songId: target.dataset.song, text: null });
     renderOptions();
   } else if (target.dataset.action === 'toggle-all') {
     state.allSongs = !state.allSongs;
     renderDrawer();
   } else if (target.dataset.action === 'use-text') {
     const text = document.getElementById('typed-text').value.trim();
-    if (text) setValue(text, 'text');
+    if (text) choose({ text, songId: null });
   } else if (target.dataset.action === 'use-ref') {
     const ref = document.getElementById('reading-ref').value.trim();
     if (ref) {
-      setValue(ref, 'text');
+      choose({ text: ref, songId: null });
       renderDrawer();
     }
   } else if (target.dataset.action === 'save-note') {
@@ -247,11 +328,9 @@ document.querySelector('main').addEventListener('click', (event) => {
     renderHeader();
     renderDrawer();
   } else if (target.id === 'discard') {
-    state = fresh();
-    renderAll();
+    if (planId) void load();
   } else if (target.id === 'save') {
-    state.dirty = false;
-    renderHeader();
+    void save();
   }
 });
 
@@ -261,4 +340,8 @@ document.getElementById('drawer').addEventListener('input', (event) => {
   renderOptions();
 });
 
-renderAll();
+const user = await guard();
+if (user) {
+  if (planId) await load();
+  else render();
+}

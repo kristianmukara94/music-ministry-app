@@ -39,6 +39,9 @@ export interface WebUserInput {
 /** The plain message for the first problem with a new web user, or null when it is fine. */
 export function checkWebUser(input: Partial<WebUserInput> | null | undefined): string | null;
 
+/** The text of an error from the main process, without Electron's "Error invoking remote method" prefix. */
+export function plainErrorText(text: string | null | undefined): string;
+
 export const SETUP_KEY_LENGTH: number;
 export function formatSetupKey(input: string): string;
 export function isCompleteSetupKey(input: string): boolean;

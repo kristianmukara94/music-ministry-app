@@ -17,6 +17,7 @@ import {
   formatSetupKey,
   isCompleteLinkCode,
   lastSyncedText,
+  plainErrorText,
 } from '../shared/cloud-device.js';
 
 const BASE = 'https://church.example';
@@ -514,6 +515,46 @@ test('the form, the key and the password are cleared when the result closes and 
   assert.match(screen, /setCreatedChurch\(null\);\s*setSetup\(emptySetup\);/, 'leaving the screen clears the password and the key');
   assert.match(screen, /finally \{\s*\/\/ The setup key is cleared whatever the outcome\.[\s\S]*?setSetup\(emptySetup\);/, 'the key is cleared after every attempt');
   assert.ok(screen.includes("Give this to the admin. It won't be shown again."), 'the one-time note is on the result panel');
+});
+
+// ---- Messages from the cloud, including replies that are not from the planner ----
+
+/** A reply whose body is not JSON, the way a site password page answers. */
+const htmlReply = (status) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  json: async () => {
+    throw new SyntaxError('Unexpected token <');
+  },
+});
+
+const setupWith = (reply) =>
+  createCloudDevice({ storage: realisticStorage(), file: memoryFile(), fetchFn: async () => reply, baseUrl: BASE }).createChurchAdmin(SETUP);
+
+test('a 401 page that is not from the planner names its status, and is not hidden behind the generic line', async () => {
+  await assert.rejects(setupWith(htmlReply(401)), (err) => /error 401/.test(err.message) && !/Something went wrong/.test(err.message));
+});
+
+test('a 403 page that is not from the planner names its status, on the link screen too', async () => {
+  const device = createCloudDevice({ storage: realisticStorage(), file: memoryFile(), fetchFn: async () => htmlReply(403), baseUrl: BASE });
+  await assert.rejects(device.link('K7QM-4XD2', 'Laptop'), (err) => /error 403/.test(err.message));
+});
+
+test('a server error with no plain message stays the generic line', async () => {
+  await assert.rejects(setupWith(htmlReply(500)), (err) => err.message === 'Something went wrong. Try again.');
+  await assert.rejects(setupWith(respond(500, {})), (err) => err.message === 'Something went wrong. Try again.');
+});
+
+test('a plain message from the server is shown as it is, whatever the status', async () => {
+  await assert.rejects(setupWith(respond(400, { error: 'That setup key is not valid or has already been used.' })), (err) => err.message === 'That setup key is not valid or has already been used.');
+});
+
+test("Electron's wrapper text is removed, so only the plain message reaches the screen", () => {
+  assert.equal(
+    plainErrorText("Error invoking remote method 'cloud:create-church-admin': Error: That setup key is not valid or has already been used."),
+    'That setup key is not valid or has already been used.',
+  );
+  assert.equal(plainErrorText('Enter a church name of up to 120 characters.'), 'Enter a church name of up to 120 characters.');
 });
 
 test('the setup key is checked on the screen the same way the main process checks it', () => {

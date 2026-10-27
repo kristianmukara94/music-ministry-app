@@ -58,6 +58,12 @@ export function checkWebUser({ username, displayName, role } = {}) {
   return null;
 }
 
+/**
+ * Electron wraps an error thrown in the main process, so the screen sees "Error invoking remote method '<name>': Error: <text>".
+ * This returns just the text, so the plain message reaches the screen.
+ */
+export const plainErrorText = (text) => String(text ?? '').replace(/^Error invoking remote method '[^']*': (Error: )?/, '');
+
 export const SETUP_KEY_LENGTH = 12;
 
 /** A setup key as the operator types it: upper case, with a dash after every four characters. */

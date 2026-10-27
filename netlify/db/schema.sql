@@ -87,8 +87,9 @@ CREATE TABLE audit_log (
   action          TEXT NOT NULL CHECK (action IN ('user.created', 'user.role_changed', 'user.disabled', 'user.enabled',
                                                   'user.password_reset', 'user.unlocked',
                                                   'device.link_code_created', 'device.linked', 'device.unlinked',
-                                                  'church.created')),
+                                                  'church.created', 'plan.saved')),
   target_user_id  UUID REFERENCES users(id) ON DELETE SET NULL,
+  target_plan_id  UUID REFERENCES plans(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX audit_log_church ON audit_log (church_id, created_at);

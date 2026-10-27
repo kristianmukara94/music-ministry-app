@@ -16,7 +16,15 @@ export const MESSAGES = {
 };
 
 /** The message the server sent, when it sent a plain one. Otherwise a neutral line that names no cause. */
-const serverMessage = (body) => (typeof body?.error === 'string' && body.error.length <= 200 ? body.error : 'Something went wrong. Try again.');
+// The server's own plain message when it sent one. Otherwise a refusal (4xx) names its status, so a page that is not from the
+// planner (a site password page, for example) is not hidden behind the generic line. Server errors and anything else stay generic.
+const serverMessage = (res) => {
+  if (typeof res.body?.error === 'string' && res.body.error.length <= 200) return res.body.error;
+  if (res.status >= 400 && res.status < 500) {
+    return `The cloud refused this request (error ${res.status}). Check the cloud address, or ask your technical helper.`;
+  }
+  return 'Something went wrong. Try again.';
+};
 
 export function createCloudDevice({ storage, file, fetchFn, baseUrl }) {
   const url = (name) => `${baseUrl.replace(/\/+$/, '')}/.netlify/functions/${name}`;
@@ -68,7 +76,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl }) {
     if (!baseUrl) throw new Error(MESSAGES.noCloudAddress);
     if (!storage.isEncryptionAvailable()) throw new Error(MESSAGES.noSafeStorage);
     const res = await call('link-redeem', { method: 'POST', body: { code, deviceLabel: label } });
-    if (!res.ok) throw new Error(serverMessage(res.body));
+    if (!res.ok) throw new Error(serverMessage(res));
     const record = {
       token: res.body.token,
       church: res.body.churchName,
@@ -92,7 +100,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl }) {
         file.remove();
         return { linked: false, error: MESSAGES.revokedOnWeb };
       }
-      if (!res.ok) return view(record, { offline: true, error: serverMessage(res.body) });
+      if (!res.ok) return view(record, { offline: true, error: serverMessage(res) });
       const updated = {
         ...record,
         church: res.body.churchName,
@@ -155,7 +163,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl }) {
       file.remove();
       throw new Error(MESSAGES.revokedOnWeb);
     }
-    if (!res.ok) throw new Error(serverMessage(res.body));
+    if (!res.ok) throw new Error(serverMessage(res));
     return { username: res.body.user.username, temporaryPassword: res.body.temporaryPassword };
   }
 
@@ -180,7 +188,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl }) {
     if (existing !== null && existing !== 'unreadable') throw new Error(MESSAGES.alreadyLinked);
     if (!storage.isEncryptionAvailable()) throw new Error(MESSAGES.noSafeStorage);
     const res = await call('setup-church-admin', { method: 'POST', body: clean });
-    if (!res.ok) throw new Error(serverMessage(res.body));
+    if (!res.ok) throw new Error(serverMessage(res));
     writeRecord({
       token: res.body.token,
       church: res.body.churchName,

@@ -15,6 +15,7 @@ import { tagFromQuery } from '../lib/db.js';
 import { createLinkingApi, REDEEM_LIMIT } from '../lib/linking.js';
 import { createDeviceUsersApi } from '../lib/device-users.js';
 import { createChurchSetupApi } from '../lib/church-setup.js';
+import { createPlanEditingApi } from '../lib/plan-editing.js';
 import { createRateLimiter } from '../lib/rules.js';
 import { hashPassword, hashToken, setupKey } from '../lib/auth.js';
 
@@ -39,7 +40,23 @@ for (const [username, role, mustChange] of [['planner', 'planner', false], ['vie
     [CHURCH, username, role, hash, mustChange],
   );
 }
-await db.query(`INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at) VALUES (gen_random_uuid(), $1, 'All Saints', '2026-11-01', '{}', now())`, [CHURCH]);
+// Two plans with fixed ids, and a few songs, so the web plan editor can be opened. The songs are test data only.
+export const MASS_PLAN_ID = '10000000-0000-4000-8000-000000000001';
+export const PRAISE_PLAN_ID = '10000000-0000-4000-8000-000000000002';
+await db.query(
+  `INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at) VALUES
+     ($1, $3, 'All Saints, Sunday Mass', '2026-11-01', '{"kind":"mass","segments":{},"notes":{}}', now()),
+     ($2, $3, 'Charismatic Prayer Night', '2026-11-06', '{"kind":"pw","segments":{},"notes":{}}', now())`,
+  [MASS_PLAN_ID, PRAISE_PLAN_ID, CHURCH],
+);
+await db.query(
+  `INSERT INTO songs (id, church_id, title, category, language, musical_key, updated_at) VALUES
+     (gen_random_uuid(), $1, 'Praise to the Lord, the Almighty', 'Entrance', 'English', 'D', now()),
+     (gen_random_uuid(), $1, 'Be Thou My Vision', 'Entrance', 'English', 'Eb', now()),
+     (gen_random_uuid(), $1, 'Psalm 24 setting', 'Responsorial Psalm', 'English', 'F', now()),
+     (gen_random_uuid(), $1, 'Our God is an awesome God', 'Praise & Worship', 'English', 'E', now())`,
+  [CHURCH],
+);
 
 // One setup key for this run, so a new church can be set up from the browser. Printed below, as the test password is.
 const SETUP_KEY = setupKey();
@@ -55,6 +72,7 @@ const admin = createAdminApi({ sql, transaction, secret: LOCAL_SECRET });
 const linking = createLinkingApi({ sql, transaction, secret: LOCAL_SECRET, redeemLimiter: createRateLimiter(REDEEM_LIMIT) });
 const deviceUsers = createDeviceUsersApi({ sql, secret: LOCAL_SECRET, addUser: admin.addUser });
 const churchSetup = createChurchSetupApi({ transaction, secret: LOCAL_SECRET });
+const planEditing = createPlanEditingApi({ sql, transaction, secret: LOCAL_SECRET });
 const routes = {
   login: api.login, logout: api.logout, me: api.me, 'change-password': api.changePassword, plans: api.plans,
   'users-list': admin.list, 'users-create': admin.create, 'users-update': admin.update,
@@ -62,6 +80,9 @@ const routes = {
   'link-code-create': linking.createCode, 'link-redeem': linking.redeem, 'device-status': linking.status, 'device-unlink': linking.unlink,
   'device-users-create': deviceUsers,
   'setup-church-admin': churchSetup,
+  'plan-get': planEditing.getPlan,
+  'plan-save': planEditing.savePlan,
+  'songs-list': planEditing.listSongs,
 };
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
@@ -75,7 +96,7 @@ http.createServer(async (req, res) => {
     const headers = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k.toLowerCase(), v]));
     const handler = routes[fn];
     const result = handler
-      ? await handler({ httpMethod: req.method, headers, body: Buffer.concat(chunks).toString('utf8') })
+      ? await handler({ httpMethod: req.method, headers, body: Buffer.concat(chunks).toString('utf8'), queryStringParameters: Object.fromEntries(url.searchParams) })
       : { statusCode: 404, headers: { 'Content-Type': 'application/json' }, body: '{"error":"Not found."}' };
     res.writeHead(result.statusCode, result.headers);
     res.end(result.body);
