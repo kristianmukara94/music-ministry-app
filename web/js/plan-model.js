@@ -8,8 +8,13 @@ export const VIEW_ONLY = 'View only. Ask a planner to make changes.';
 export const NO_SONGS = 'No songs yet. Songs are added from the church laptop.';
 
 /** The Mass steps from the template: number, name, kind, song category, and the hint. */
+// The group each Mass section belongs to, by section order. The laptop's blocks are introductory, word, eucharist and concluding;
+// the web's fifth section, Communion, is its own group.
+export const MASS_GROUPS = ['introductory', 'word', 'eucharist', 'communion', 'concluding'];
+export const PRAISE_GROUPS = ['opening', 'word', 'closing'];
+
 export function massSteps(template) {
-  return template.sections.flatMap((section) =>
+  return template.sections.flatMap((section, index) =>
     section.rows.map(([n, name, kind, category, , , optional, hint]) => ({
       n,
       name,
@@ -17,13 +22,14 @@ export function massSteps(template) {
       category: category || '',
       optional: !!optional,
       hint: hint || '',
+      group: MASS_GROUPS[index],
     })),
   );
 }
 
 /** The Praise & Worship segments from the template: id, name, kind, default minutes and hint. */
 export function praiseSegments(template) {
-  return template.sections.flatMap((section) =>
+  return template.sections.flatMap((section, index) =>
     section.rows.map(([id, name, kind, minutes, , hint]) => ({
       id,
       name,
@@ -31,6 +37,7 @@ export function praiseSegments(template) {
       defaultMinutes: minutes,
       hint: hint || '',
       optional: hint === 'Optional',
+      group: PRAISE_GROUPS[index],
     })),
   );
 }
@@ -65,7 +72,8 @@ export function withChoice(segments, id, patch) {
 export function titleOf(songs, songId) {
   if (!songId) return '';
   const song = songs.find((s) => s.id === songId);
-  return song ? song.title : 'Song no longer in the list';
+  if (!song) return 'Song no longer in the list';
+  return song.removed ? `${song.title} (removed)` : song.title;
 }
 
 /** The songs the picker offers: the step's category (or all of them), narrowed by the search text. */
@@ -77,26 +85,99 @@ export function songOptions(songs, { category = '', allSongs = false, query = ''
 }
 
 /**
- * The whole plan in the shape the save route takes: every listed segment with its song, text and minutes (when it has any),
- * and the notes that have text. Empty segments are left out. `defaults` gives the minutes to send for segments that have none
- * of their own (Praise & Worship sends every segment's minutes).
+ * Turns a saved Mass plan's items into the editor's state: the song or text for each step, the notes, and any items the editor
+ * does not show (for example, items the laptop added). Nothing here comes from the template's sample values.
  */
-export function payloadFor({ planId, segments, notes }, segmentIds, defaults = {}) {
-  const out = {};
-  for (const id of segmentIds) {
-    const current = segments[id] ?? {};
-    const segment = {};
-    if (current.songId) segment.songId = current.songId;
-    if (current.text) segment.text = current.text;
-    const minutes = current.minutes ?? defaults[id];
-    if (minutes !== undefined) segment.minutes = minutes;
-    if (Object.keys(segment).length) out[id] = segment;
+export function massFromItems(items, steps) {
+  const known = new Set(steps.map((s) => String(s.n)));
+  const segments = {};
+  const notes = {};
+  const extra = [];
+  for (const item of items) {
+    if (!known.has(item.key)) {
+      extra.push(item);
+      continue;
+    }
+    const seg = {};
+    if (item.songId) seg.songId = item.songId;
+    if (item.text) seg.text = item.text;
+    if (Object.keys(seg).length) segments[item.key] = seg;
+    if (item.note) notes[item.key] = item.note;
   }
-  const cleanNotes = {};
-  for (const [id, note] of Object.entries(notes)) {
-    if (note && note.trim() !== '') cleanNotes[id] = note.trim();
+  return { segments, notes, extra };
+}
+
+/**
+ * The items the server takes, for a Mass plan: one per step that has a choice or a note, in step order, then the items the editor
+ * does not show. The order is then renumbered from 1, so the two never clash.
+ */
+export function massToItems({ segments, notes, extra }, steps) {
+  const items = [];
+  for (const step of steps) {
+    const key = String(step.n);
+    const seg = segments[key] ?? {};
+    const note = (notes[key] ?? '').trim();
+    if (!seg.songId && !seg.text && !note) continue;
+    const kind = step.kind === 'reading' ? 'reading' : step.kind === 'rite' ? 'rite' : 'song';
+    const item = { key, group: step.group, order: 0, kind };
+    if (seg.songId) item.songId = seg.songId;
+    if (seg.text) item.text = seg.text;
+    if (note) item.note = note;
+    items.push(item);
   }
-  return { id: planId, segments: out, notes: cleanNotes };
+  return withOrders([...items, ...extra]);
+}
+
+/** Turns a saved Praise & Worship plan's items into the editor's state, with the minutes of each segment. */
+export function praiseFromItems(items, segs) {
+  const known = new Set(segs.map((s) => s.id));
+  const segments = {};
+  const notes = {};
+  const extra = [];
+  for (const item of items) {
+    if (!known.has(item.key)) {
+      extra.push(item);
+      continue;
+    }
+    const seg = {};
+    if (item.songId) seg.songId = item.songId;
+    if (item.text) seg.text = item.text;
+    if (item.minutes !== undefined) seg.minutes = item.minutes;
+    if (Object.keys(seg).length) segments[item.key] = seg;
+    if (item.note) notes[item.key] = item.note;
+  }
+  return { segments, notes, extra };
+}
+
+/** The items the server takes, for a Praise & Worship plan: every segment, with its minutes, then the items the editor does not show. */
+export function praiseToItems({ segments, notes, extra }, segs) {
+  const items = segs.map((seg, index) => {
+    const current = segments[seg.id] ?? {};
+    const kind = seg.kind === 'reading' ? 'reading' : seg.kind === 'rite' ? 'rite' : 'song';
+    const item = { key: seg.id, group: seg.group, order: index + 1, kind, minutes: current.minutes ?? seg.defaultMinutes };
+    if (current.songId) item.songId = current.songId;
+    if (current.text) item.text = current.text;
+    const note = (notes[seg.id] ?? '').trim();
+    if (note) item.note = note;
+    return item;
+  });
+  return withOrders([...items, ...extra]);
+}
+
+/** The same items in a fresh order, 1 upward, so no two items share an order number. */
+export function withOrders(items) {
+  return items.map((item, index) => ({ ...item, order: index + 1 }));
+}
+
+/** The body the plan-save route takes: the plan's id, the version the editor loaded, and the items. */
+export function savePayload(plan, items) {
+  return { id: plan.id, baseUpdatedAt: plan.updatedAt, items };
+}
+
+/** The songs the editor can show: the picker's songs, plus any song the plan refers to that has since been removed. */
+export function songsForEditor(pickerSongs, planSongs) {
+  const listed = new Set(pickerSongs.map((s) => s.id));
+  return [...pickerSongs, ...planSongs.filter((s) => s.removed && !listed.has(s.id))];
 }
 
 /** The Save plan button: disabled for the whole of a save, with a label that says so. */
@@ -154,4 +235,21 @@ export function editorControls({ plan, canEdit, saving }) {
     discard: Boolean(plan) && !saving,
     viewOnly: Boolean(plan) && !canEdit,
   };
+}
+
+/** Whether a user may create a plan: a planner or an admin. Viewers see no New plan button and cannot create. */
+export const canCreatePlans = (role) => role === 'planner' || role === 'admin';
+
+/**
+ * Checks the New plan form before anything is sent: a name of 1 to 120 characters, a real date, and Mass or Praise & Worship. Returns
+ * the plain message for the first problem, or null.
+ */
+export function checkNewPlan({ name, date, kind } = {}) {
+  const trimmed = String(name ?? '').trim();
+  if (trimmed === '') return 'Enter a name for the plan.';
+  if (trimmed.length > 120) return 'A plan name can be up to 120 characters.';
+  const day = String(date ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00Z`))) return 'Choose a date for the plan.';
+  if (kind !== 'mass' && kind !== 'pw') return 'Choose Mass or Praise & Worship.';
+  return null;
 }

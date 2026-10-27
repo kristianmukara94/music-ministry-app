@@ -204,5 +204,28 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl }) {
     };
   }
 
-  return { link, status, unlink, createWebUser, createChurchAdmin };
+  /**
+   * Sends the church's song list (metadata only) through this laptop's link. The list is the full list, and the server returns the
+   * counts. Rejects with an Error that is marked `offline` when the cloud cannot be reached, and `revoked` when the laptop was unlinked
+   * on the website. The token is never in the message.
+   */
+  async function pushSongs(songs) {
+    const record = readRecord();
+    if (record === null) throw Object.assign(new Error(MESSAGES.notLinked), { revoked: true });
+    if (record === 'unreadable') throw Object.assign(new Error(MESSAGES.unreadable), { revoked: true });
+    let res;
+    try {
+      res = await call('songs-sync-push', { method: 'POST', body: { songs }, token: record.token });
+    } catch {
+      throw Object.assign(new Error(MESSAGES.offline), { offline: true });
+    }
+    if (res.status === 401) {
+      file.remove();
+      throw Object.assign(new Error(MESSAGES.revokedOnWeb), { revoked: true });
+    }
+    if (!res.ok) throw new Error(serverMessage(res));
+    return { created: res.body.created, updated: res.body.updated, unchanged: res.body.unchanged, removed: res.body.removed };
+  }
+
+  return { link, status, unlink, createWebUser, createChurchAdmin, pushSongs };
 }

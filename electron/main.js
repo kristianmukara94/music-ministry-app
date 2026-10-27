@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen, shell } from 'electron';
 import { createCloudDevice } from './cloud-device.js';
+import { createSongSync, SONG_ROWS_SQL } from './song-sync.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -633,6 +634,17 @@ ipcMain.handle('cloud:create-church-admin', (_event, input) =>
 );
 ipcMain.handle('cloud:defaultLabel', () => os.hostname());
 
+// The song list sync: runs in the background and sends metadata only (see song-sync.js). The screen sees its state, never the token.
+const songSync = createSongSync({
+  readRows: () => announcements.db.prepare(SONG_ROWS_SQL).all(),
+  push: (songs) => cloud().pushSongs(songs),
+});
+ipcMain.handle('cloud:songs-status', () => songSync.status());
+ipcMain.handle('cloud:songs-sync-now', async () => {
+  await songSync.runOnce();
+  return songSync.status();
+});
+
 /** Remote view's status. Also starts the page if it is on and a network has appeared since the last check. */
 ipcMain.handle('remoteView:get', async () => {
   await syncRemoteView();
@@ -728,6 +740,8 @@ app.whenReady().then(() => {
   state = liveReducer(state, { type: 'lowerStyle/set', value: readConfig(app.getPath('userData')).lower_third });
   announcements = openConfiguredDatabase();
   setupLyrics(announcements.db);
+  songSync.start();
+  app.on('before-quit', () => songSync.stop());
   registerLyricsImport(announcements.convertPdf);
   setupLectionary(announcements.db);
   const planService = setupMassPlans(announcements.db);

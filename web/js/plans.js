@@ -3,7 +3,7 @@
 import { esc, mountSidebar } from './shell.js';
 import { guard } from './auth.js';
 import { listPlans } from './plan-api.js';
-import { dateLabel, editorPathFor, tabCounts, visiblePlans } from './plan-model.js';
+import { canCreatePlans, dateLabel, editorPathFor, tabCounts, visiblePlans } from './plan-model.js';
 
 mountSidebar();
 
@@ -82,6 +82,8 @@ document.getElementById('plan-search').addEventListener('input', (event) => {
 
 const user = await guard();
 if (user) {
+  // The New plan button is for planners and admins only.
+  document.getElementById('new-plan-actions').style.display = canCreatePlans(user.role) ? 'flex' : 'none';
   render();
   try {
     const body = await listPlans();

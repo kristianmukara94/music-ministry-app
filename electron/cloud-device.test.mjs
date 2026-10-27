@@ -563,3 +563,54 @@ test('the setup key is checked on the screen the same way the main process check
   assert.equal(formatSetupKey('abcdefghjklm'), 'ABCD-EFGH-JKLM');
   assert.equal(formatSetupKey('abcde'), 'ABCD-E');
 });
+
+// ---- Sending the song list (metadata only) ----
+
+const SONGS = [{ id: '6f1c2b3a-0000-4000-8000-000000000001', title: 'Praise to the Lord', category: 'Entrance Procession', language: 'English', key: 'D' }];
+
+test('the song list goes through the link with the token, and the counts come back', async () => {
+  const { device, server } = await linkedLaptop({
+    'songs-sync-push': () => respond(200, { created: 1, updated: 0, unchanged: 0, removed: 0 }),
+  });
+  const counts = await device.pushSongs(SONGS);
+  assert.deepEqual(counts, { created: 1, updated: 0, unchanged: 0, removed: 0 });
+  assert.equal(server.calls.find((c) => c.name === 'songs-sync-push').auth, `Bearer ${TOKEN}`, 'the token goes to the cloud only');
+});
+
+test('an unreachable cloud is marked offline, and the message names no network detail', async () => {
+  const file = memoryFile();
+  const storage = realisticStorage();
+  await createCloudDevice({ storage, file, fetchFn: fakeServer().fetchFn, baseUrl: BASE }).link('K7QM-4XD2', 'Laptop');
+  const offline = createCloudDevice({
+    storage,
+    file,
+    fetchFn: async () => {
+      throw new Error('getaddrinfo ENOTFOUND church.example');
+    },
+    baseUrl: BASE,
+  });
+  await assert.rejects(offline.pushSongs(SONGS), (err) => err.offline === true && err.message === MESSAGES.offline && !/ENOTFOUND/.test(err.message));
+});
+
+test('a link revoked on the website is marked revoked, and its stored token is removed', async () => {
+  const file = memoryFile();
+  const storage = realisticStorage();
+  await createCloudDevice({ storage, file, fetchFn: fakeServer().fetchFn, baseUrl: BASE }).link('K7QM-4XD2', 'Laptop');
+  const revoked = createCloudDevice({ storage, file, fetchFn: fakeServer({ 'songs-sync-push': () => respond(401, { error: 'Sign in first.' }) }).fetchFn, baseUrl: BASE });
+  await assert.rejects(revoked.pushSongs(SONGS), (err) => err.revoked === true && err.message === MESSAGES.revokedOnWeb);
+  assert.equal(file.raw, null);
+});
+
+test('a refusal from the cloud shows its plain message, and never the token', async () => {
+  const { device } = await linkedLaptop({
+    'songs-sync-push': () => respond(403, { error: 'Only a planner or admin can send the song list from this laptop.' }),
+  });
+  await assert.rejects(device.pushSongs(SONGS), (err) => err.message === 'Only a planner or admin can send the song list from this laptop.' && !err.message.includes(TOKEN));
+});
+
+test('a push with no link is refused without sending anything', async () => {
+  const server = fakeServer();
+  const device = createCloudDevice({ storage: realisticStorage(), file: memoryFile(), fetchFn: server.fetchFn, baseUrl: BASE });
+  await assert.rejects(device.pushSongs(SONGS), (err) => err.revoked === true && err.message === MESSAGES.notLinked);
+  assert.equal(server.calls.length, 0);
+});

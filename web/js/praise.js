@@ -11,10 +11,12 @@ import {
   NO_SONGS,
   VIEW_ONLY,
   dateLabel,
-  payloadFor,
+  praiseFromItems,
+  praiseToItems,
+  savePayload,
+  songsForEditor,
   praiseSegments,
   saveButton,
-  savedState,
   songOptions,
   statusText,
   titleOf,
@@ -33,7 +35,9 @@ let state = fresh(null);
 
 function fresh(saved) {
   return {
-    ...savedState(saved),
+    segments: saved?.segments ?? {},
+    notes: saved?.notes ?? {},
+    extra: saved?.extra ?? [],
     open: null,
     query: '',
     dirty: false,
@@ -157,8 +161,9 @@ function panelFor(row) {
 
 /** The songs offered in a segment's panel: the church's list, narrowed by the search box. */
 function optionsFor(row) {
-  if (songs.length === 0) return `<div style="padding:18px 14px;font-size:13px;color:#b48d99;background:#0f0407">${esc(NO_SONGS)}</div>`;
-  const shown = songOptions(songs, { query: state.query });
+  const picker = songs.filter((s) => !s.removed);
+  if (picker.length === 0) return `<div style="padding:18px 14px;font-size:13px;color:#b48d99;background:#0f0407">${esc(NO_SONGS)}</div>`;
+  const shown = songOptions(picker, { query: state.query });
   if (shown.length === 0) return `<div style="padding:18px 14px;font-size:13px;color:#b48d99;background:#0f0407">No songs match the search.</div>`;
   return shown.map((song) => {
     const chosen = row.songId === song.id;
@@ -262,8 +267,8 @@ async function load() {
     const [saved, list] = await Promise.all([getPlan(planId), listSongs()]);
     plan = saved.plan;
     canEdit = saved.canEdit;
-    songs = list.songs;
-    state = fresh(plan);
+    songs = songsForEditor(list.songs, saved.songs);
+    state = fresh(praiseFromItems(plan.items, SEGMENTS));
   } catch (err) {
     if (plan) state.error = err.message;
     else state = { ...fresh(null), error: err.message };
@@ -277,8 +282,8 @@ async function save() {
   state.error = '';
   renderHeader(compute());
   try {
-    const defaults = Object.fromEntries(SEGMENTS.map((s) => [s.id, s.defaultMinutes]));
-    await savePlan(payloadFor({ planId: plan.id, segments: state.segments, notes: state.notes }, SEGMENTS.map((s) => s.id), defaults));
+    const response = await savePlan(savePayload(plan, praiseToItems(state, SEGMENTS)));
+    plan.updatedAt = response.savedAt;
     state.dirty = false;
   } catch (err) {
     state.error = err.message;

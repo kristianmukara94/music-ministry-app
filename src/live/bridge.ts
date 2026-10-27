@@ -377,7 +377,16 @@ export interface CreatedChurchAdmin {
   link: CloudLink;
 }
 
+/** The song list sync as the Cloud sync screen may see it: a status, when it last synced, and a plain message. */
+export interface SongsSyncState {
+  status: 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
+  lastSyncedAt?: string | null;
+  message?: string | null;
+}
+
 export interface CloudApi {
+  songsStatus(): Promise<SongsSyncState>;
+  syncSongsNow(): Promise<SongsSyncState>;
   status(): Promise<CloudLink>;
   link(code: string, label: string): Promise<CloudLink>;
   unlink(): Promise<CloudLink>;
@@ -392,6 +401,8 @@ const offlineCloud: CloudApi = {
   unlink: async () => ({ linked: false, error: null }),
   createWebUser: async () => offlineError(),
   createChurchAdmin: async () => offlineError(),
+  songsStatus: async () => ({ status: 'idle', lastSyncedAt: null, message: null }),
+  syncSongsNow: async () => ({ status: 'idle', lastSyncedAt: null, message: null }),
   defaultLabel: async () => 'This computer',
 };
 

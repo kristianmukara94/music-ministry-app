@@ -1,18 +1,17 @@
-// The web plan editor's server side: read one plan, list the church's songs, and save a plan's structure. The church always comes
-// from the signed-in session, never from the request. Only the structure is stored: segments, minutes, chosen song ids, typed
-// text, notes. No lyrics, slides or song files. Viewers can read a plan; only planners and admins can save one.
+// The web plan editor's server side: read one plan, list the church's songs, and save a plan. The plan is one ordered list of items
+// (see plan-sync.js). The church always comes from the signed-in session, never from the request. Viewers can read a plan; only
+// planners and admins can save one. A save names the version the editor loaded, and a save over a newer version is refused with
+// the server's version, so nothing is overwritten silently.
 import { ApiError } from './admin.js';
 import { sessionFrom } from './session.js';
 import { EDITING_ROLES } from './rules.js';
+import { checkItems, dateText, planOut } from './plan-sync.js';
 
+export { dateText };
 export const MIN_MINUTES = 1;
 export const MAX_MINUTES = 60;
-const MAX_SEGMENTS = 60;
-const TEXT_MAX = 500;
-const NOTE_MAX = 1000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const SEGMENT_ID = /^\d{1,2}$/;
-const SEGMENT_KEYS = ['songId', 'text', 'minutes'];
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
 const json = (statusCode, body, extraHeaders = {}) => ({
   statusCode,
@@ -27,62 +26,6 @@ function parseJson(event) {
   } catch {
     return null;
   }
-}
-
-/** A plan's date as YYYY-MM-DD, whether the driver returns a Date or text. */
-export function dateText(value) {
-  if (value instanceof Date) {
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
-  }
-  return String(value).slice(0, 10);
-}
-
-/**
- * Checks a saved plan's segments and notes. Returns clean copies with only the allowed fields, or throws a plain ApiError.
- * `churchSongIds` is the set of song ids this church has; a chosen song must be one of them.
- */
-export function checkPlanBody(segmentsIn, notesIn, churchSongIds) {
-  if (!segmentsIn || typeof segmentsIn !== 'object' || Array.isArray(segmentsIn)) throw new ApiError(400, 'The plan could not be read. Reload it and try again.');
-  if (!notesIn || typeof notesIn !== 'object' || Array.isArray(notesIn)) throw new ApiError(400, 'The plan could not be read. Reload it and try again.');
-  const segmentIds = Object.keys(segmentsIn);
-  if (segmentIds.length > MAX_SEGMENTS) throw new ApiError(400, 'This plan has too many segments.');
-
-  const segments = {};
-  for (const id of segmentIds) {
-    if (!SEGMENT_ID.test(id)) throw new ApiError(400, 'A segment in this plan is not recognised. Reload the plan and try again.');
-    const seg = segmentsIn[id];
-    if (!seg || typeof seg !== 'object' || Array.isArray(seg)) throw new ApiError(400, 'A segment in this plan is not recognised. Reload the plan and try again.');
-    if (Object.keys(seg).some((k) => !SEGMENT_KEYS.includes(k))) throw new ApiError(400, 'A segment in this plan is not recognised. Reload the plan and try again.');
-    const clean = {};
-    if (seg.songId !== undefined && seg.songId !== null) {
-      if (typeof seg.songId !== 'string' || !UUID.test(seg.songId) || !churchSongIds.has(seg.songId)) {
-        throw new ApiError(400, "That song is not in your church's song list. Reload the song list and try again.");
-      }
-      clean.songId = seg.songId;
-    }
-    if (seg.text !== undefined && seg.text !== null && seg.text !== '') {
-      if (typeof seg.text !== 'string' || seg.text.length > TEXT_MAX) throw new ApiError(400, `Text for a segment can be up to ${TEXT_MAX} characters.`);
-      clean.text = seg.text;
-    }
-    if (clean.songId && clean.text) throw new ApiError(400, 'A segment holds a song or typed text, not both.');
-    if (seg.minutes !== undefined) {
-      if (!Number.isInteger(seg.minutes) || seg.minutes < MIN_MINUTES || seg.minutes > MAX_MINUTES) {
-        throw new ApiError(400, `Each segment needs between ${MIN_MINUTES} and ${MAX_MINUTES} minutes.`);
-      }
-      clean.minutes = seg.minutes;
-    }
-    if (Object.keys(clean).length) segments[id] = clean;
-  }
-
-  const notes = {};
-  for (const id of Object.keys(notesIn)) {
-    if (!SEGMENT_ID.test(id)) throw new ApiError(400, 'A segment in this plan is not recognised. Reload the plan and try again.');
-    const note = notesIn[id];
-    if (typeof note !== 'string' || note.length > NOTE_MAX) throw new ApiError(400, `A note can be up to ${NOTE_MAX} characters.`);
-    if (note.trim() !== '') notes[id] = note.trim();
-  }
-  return { segments, notes };
 }
 
 export function createPlanEditingApi({ sql, transaction, secret, now = () => new Date() }) {
@@ -108,7 +51,10 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
     }
   };
 
-  /** One plan of the signed-in church, with its structure. Every signed-in role can read it. */
+  /**
+   * One plan of the signed-in church, with its items. Every signed-in role can read it. `songs` lists the songs the plan refers to,
+   * removed ones included, so the editor can show a song that has since been removed as removed.
+   */
   const getPlan = safely(async (event) => {
     const gate = await signedIn(event, 'GET');
     if (gate.response) return gate.response;
@@ -117,37 +63,32 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
     const rows = await sql`
       SELECT id, name, liturgical_date, body, updated_at FROM plans WHERE id = ${id} AND church_id = ${gate.who.churchId}`;
     if (!rows.length) throw new ApiError(404, 'That plan is not in your church.');
-    const row = rows[0];
-    const body = row.body ?? {};
-    return json(200, {
-      plan: {
-        id: row.id,
-        name: row.name,
-        date: dateText(row.liturgical_date),
-        kind: body.kind ?? null,
-        segments: body.segments ?? {},
-        notes: body.notes ?? {},
-        updatedAt: new Date(row.updated_at).toISOString(),
-      },
-      canEdit: EDITING_ROLES.includes(gate.who.role),
-    });
+    const plan = planOut(rows[0]);
+    const referenced = new Set(plan.items.map((item) => item.songId).filter(Boolean));
+    const songRows = referenced.size
+      ? await sql`SELECT id, title, category, language, musical_key, removed_at FROM songs WHERE church_id = ${gate.who.churchId}`
+      : [];
+    const songs = songRows
+      .filter((s) => referenced.has(s.id))
+      .map((s) => ({ id: s.id, title: s.title, category: s.category, language: s.language, key: s.musical_key, removed: s.removed_at !== null }));
+    return json(200, { plan, songs, canEdit: EDITING_ROLES.includes(gate.who.role) });
   });
 
-  /** The church's songs, as the Change picker lists them. Songs come from the laptop; this only reads them. */
+  /** The church's songs for the picker. Removed songs are left out. Songs come from the laptop; this only reads them. */
   const listSongs = safely(async (event) => {
     const gate = await signedIn(event, 'GET');
     if (gate.response) return gate.response;
     const rows = await sql`
       SELECT id, title, category, language, musical_key FROM songs
-      WHERE church_id = ${gate.who.churchId} ORDER BY lower(title), id`;
+      WHERE church_id = ${gate.who.churchId} AND removed_at IS NULL ORDER BY lower(title), id`;
     return json(200, {
       songs: rows.map((r) => ({ id: r.id, title: r.title, category: r.category, language: r.language, key: r.musical_key })),
     });
   });
 
   /**
-   * Saves the whole plan's structure in one transaction. The plan row is locked, so two saves queue behind each other. Only
-   * planners and admins can save. The audit line names the plan and the actor, and nothing of the content.
+   * Saves the whole plan in one transaction. The editor names the version it loaded (baseUpdatedAt). If the plan has changed since,
+   * nothing is written and the server's version comes back with a 409. Only planners and admins can save.
    */
   const savePlan = safely(async (event) => {
     const gate = await signedIn(event, 'POST');
@@ -158,19 +99,29 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
     if (!body) throw new ApiError(400, 'The plan could not be read. Reload it and try again.');
     const planId = body.id;
     if (typeof planId !== 'string' || !UUID.test(planId)) throw new ApiError(400, 'Choose a plan.');
+    const base = body.baseUpdatedAt;
+    if (typeof base !== 'string' || !ISO.test(base)) throw new ApiError(400, 'The plan\'s last saved time is missing. Reload the plan and try again.');
 
     const at = now().toISOString();
-    const savedAt = await transaction(async (tx) => {
-      const rows = await tx`SELECT body FROM plans WHERE id = ${planId} AND church_id = ${who.churchId} FOR UPDATE`;
+    const result = await transaction(async (tx) => {
+      const rows = await tx`SELECT id, name, liturgical_date, body, updated_at FROM plans WHERE id = ${planId} AND church_id = ${who.churchId} FOR UPDATE`;
       if (!rows.length) throw new ApiError(404, 'That plan is not in your church.');
+      const row = rows[0];
+      if (new Date(base).getTime() !== new Date(row.updated_at).getTime()) return { conflict: planOut(row) };
       const songs = await tx`SELECT id FROM songs WHERE church_id = ${who.churchId}`;
-      const { segments, notes } = checkPlanBody(body.segments, body.notes, new Set(songs.map((s) => s.id)));
-      const stored = { kind: rows[0].body?.kind ?? null, segments, notes };
-      await tx`UPDATE plans SET body = ${JSON.stringify(stored)}::jsonb, updated_at = ${at} WHERE id = ${planId}`;
+      const items = checkItems(body.items, new Set(songs.map((s) => s.id)));
+      const kind = row.body?.kind ?? null;
+      await tx`UPDATE plans SET body = ${JSON.stringify({ kind, items })}::jsonb, updated_at = ${at} WHERE id = ${planId}`;
       await tx`INSERT INTO audit_log (church_id, actor_user_id, action, target_plan_id) VALUES (${who.churchId}, ${who.userId}, 'plan.saved', ${planId})`;
-      return at;
+      return { savedAt: at };
     });
-    return json(200, { ok: true, savedAt });
+    if (result.conflict) {
+      return json(409, {
+        error: 'This plan was changed on another device since you opened it. Reload it to see the latest version. Nothing was saved.',
+        serverVersion: result.conflict,
+      });
+    }
+    return json(200, { ok: true, savedAt: result.savedAt });
   });
 
   return { getPlan, listSongs, savePlan };

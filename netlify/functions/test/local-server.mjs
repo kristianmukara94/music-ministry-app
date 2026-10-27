@@ -16,6 +16,8 @@ import { createLinkingApi } from '../lib/linking.js';
 import { createDeviceUsersApi } from '../lib/device-users.js';
 import { createChurchSetupApi } from '../lib/church-setup.js';
 import { createPlanEditingApi } from '../lib/plan-editing.js';
+import { createSongsSyncApi } from '../lib/songs-sync.js';
+import { createPlanSyncApi } from '../lib/plan-sync.js';
 import { hashPassword, hashToken, setupKey } from '../lib/auth.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -40,20 +42,28 @@ for (const [username, role, mustChange] of [['planner', 'planner', false], ['vie
   );
 }
 // Two plans with fixed ids, and a few songs, so the web plan editor can be opened. The songs are test data only.
+// A song the church has removed, and a Mass plan that still uses it. The editor shows it as removed; the plan still saves.
+const RETIRED_SONG = '20000000-0000-4000-8000-0000000000ee';
+await db.query(`INSERT INTO songs (id, church_id, title, category, language, musical_key, updated_at, removed_at) VALUES ($1, $2, 'Retired hymn', 'Responsorial Psalm', 'English', 'C', now(), now())`, [RETIRED_SONG, CHURCH]);
+// A church with no plans or songs, for the empty state.
+const EMPTY_CHURCH = '00000000-0000-4000-8000-00000000000e';
+await db.query(`INSERT INTO churches (id, display_code, name) VALUES ($1, 'B8NW-3PL5', 'New Parish')`, [EMPTY_CHURCH]);
+await db.query(`INSERT INTO users (id, church_id, username, display_name, role, password_hash, must_change_password) VALUES (gen_random_uuid(), $1, 'emptyplanner', 'Empty Planner', 'planner', $2, false)`, [EMPTY_CHURCH, hash]);
+
 export const MASS_PLAN_ID = '10000000-0000-4000-8000-000000000001';
 export const PRAISE_PLAN_ID = '10000000-0000-4000-8000-000000000002';
 await db.query(
   `INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at) VALUES
-     ($1, $3, 'All Saints, Sunday Mass', '2026-11-01', '{"kind":"mass","segments":{},"notes":{}}', now()),
-     ($2, $3, 'Charismatic Prayer Night', '2026-11-06', '{"kind":"pw","segments":{},"notes":{}}', now())`,
+     ($1, $3, 'All Saints, Sunday Mass', '2026-11-01', '{"kind":"mass","items":[{"key":"8","group":"word","order":1,"kind":"song","songId":"${RETIRED_SONG}"}]}', now()),
+     ($2, $3, 'Charismatic Prayer Night', '2026-11-06', '{"kind":"pw","items":[]}', now())`,
   [MASS_PLAN_ID, PRAISE_PLAN_ID, CHURCH],
 );
 await db.query(
   `INSERT INTO songs (id, church_id, title, category, language, musical_key, updated_at) VALUES
-     (gen_random_uuid(), $1, 'Praise to the Lord, the Almighty', 'Entrance', 'English', 'D', now()),
-     (gen_random_uuid(), $1, 'Be Thou My Vision', 'Entrance', 'English', 'Eb', now()),
+     (gen_random_uuid(), $1, 'Praise to the Lord, the Almighty', 'Entrance Procession', 'English', 'D', now()),
+     (gen_random_uuid(), $1, 'Be Thou My Vision', 'Entrance Procession', 'English', 'Eb', now()),
      (gen_random_uuid(), $1, 'Psalm 24 setting', 'Responsorial Psalm', 'English', 'F', now()),
-     (gen_random_uuid(), $1, 'Our God is an awesome God', 'Praise & Worship', 'English', 'E', now())`,
+     (gen_random_uuid(), $1, 'Our God is an awesome God', '', 'English', 'E', now())`,
   [CHURCH],
 );
 
@@ -72,6 +82,8 @@ const linking = createLinkingApi({ sql, transaction, secret: LOCAL_SECRET });
 const deviceUsers = createDeviceUsersApi({ sql, secret: LOCAL_SECRET, addUser: admin.addUser });
 const churchSetup = createChurchSetupApi({ sql, transaction, secret: LOCAL_SECRET });
 const planEditing = createPlanEditingApi({ sql, transaction, secret: LOCAL_SECRET });
+const songsSync = createSongsSyncApi({ sql, transaction, secret: LOCAL_SECRET });
+const planSync = createPlanSyncApi({ sql, transaction, secret: LOCAL_SECRET });
 const routes = {
   login: api.login, logout: api.logout, me: api.me, 'change-password': api.changePassword, plans: api.plans,
   'users-list': admin.list, 'users-create': admin.create, 'users-update': admin.update,
@@ -82,6 +94,10 @@ const routes = {
   'plan-get': planEditing.getPlan,
   'plan-save': planEditing.savePlan,
   'songs-list': planEditing.listSongs,
+  'songs-sync-push': songsSync.pushSongs,
+  'plan-create': planSync.createPlan,
+  'plan-sync-pull': planSync.pullPlans,
+  'plan-sync-push': planSync.pushPlans,
 };
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };

@@ -13,39 +13,41 @@ export const SYNC = {
  * The song list from the church laptop: [title, category, language, key]. The Songs page shows all of them; the Mass
  * editor offers the ones in the step's category.
  */
+// The same names the church laptop files songs under (shared/mass-flow.js). A test keeps the two lists equal.
 export const SONG_CATEGORIES = [
-  'Entrance', 'Kyrie', 'Gloria', 'Responsorial Psalm', 'Gospel Acclamation', 'Offertory', 'Holy, Holy, Holy',
-  'Memorial Acclamation', 'Great Amen', 'Our Father', 'Lamb of God', 'Communion', 'Thanksgiving', 'Recessional', 'Praise & Worship',
+  'Entrance Procession', 'Kyrie', 'Gloria', 'Responsorial Psalm', 'Gospel Acclamation', 'Preparation of the Gifts',
+  'Holy, Holy, Holy', 'Memorial Acclamation', 'Great Amen', 'Our Father', 'Lamb of God', 'Communion Procession',
+  'Thanksgiving', 'Recessional',
 ];
 export const LANGUAGES = ['English', 'Tagalog', 'Cebuano'];
 export const LANGUAGE_CODE = { English: 'EN', Tagalog: 'TL', Cebuano: 'CEB' };
 export const SONGS_SYNCED = 'Synced 2 min ago';
 
 export const SONGS = [
-  ['Praise to the Lord, the Almighty', 'Entrance', 'English', 'D'],
-  ['Be Thou My Vision', 'Entrance', 'English', 'Eb'],
-  ['Tipunon Kita', 'Entrance', 'Cebuano', 'G'],
+  ['Praise to the Lord, the Almighty', 'Entrance Procession', 'English', 'D'],
+  ['Be Thou My Vision', 'Entrance Procession', 'English', 'Eb'],
+  ['Tipunon Kita', 'Entrance Procession', 'Cebuano', 'G'],
   ['Lord, have mercy (Mass setting)', 'Kyrie', 'English', 'G'],
   ['Gloria (Mass setting)', 'Gloria', 'English', 'C'],
   ['Psalm 24 setting', 'Responsorial Psalm', 'English', 'F'],
   ['Alleluia, alleluia', 'Gospel Acclamation', 'English', 'C'],
   ['Aleluya', 'Gospel Acclamation', 'Tagalog', 'D'],
-  ['Take my life and let it be', 'Offertory', 'English', 'G'],
+  ['Take my life and let it be', 'Preparation of the Gifts', 'English', 'G'],
   ['Holy, Holy, Holy (Mass setting)', 'Holy, Holy, Holy', 'English', 'D'],
   ['Christ has died (Mass setting)', 'Memorial Acclamation', 'English', 'Am'],
   ['Great Amen (Mass setting)', 'Great Amen', 'English', 'D'],
   ['Our Father (chant)', 'Our Father', 'English', 'G'],
   ['Ama Namin', 'Our Father', 'Tagalog', 'F'],
   ['Lamb of God (Mass setting)', 'Lamb of God', 'English', 'C'],
-  ['I am the Bread of Life', 'Communion', 'English', 'Bb'],
-  ['Taste and see', 'Communion', 'English', 'E'],
-  ['Tinapay sa Kinabuhi', 'Communion', 'Cebuano', 'D'],
+  ['I am the Bread of Life', 'Communion Procession', 'English', 'Bb'],
+  ['Taste and see', 'Communion Procession', 'English', 'E'],
+  ['Tinapay sa Kinabuhi', 'Communion Procession', 'Cebuano', 'D'],
   ['Now thank we all our God', 'Thanksgiving', 'English', 'F'],
   ['For All the Saints', 'Recessional', 'English', 'Bb'],
   ['Hail, Holy Queen enthroned above', 'Recessional', 'English', 'D'],
-  ['Lord, I lift your name on high', 'Praise & Worship', 'English', 'G'],
-  ['Our God is an awesome God', 'Praise & Worship', 'English', 'E'],
-  ['Be still and know', 'Praise & Worship', 'English', 'A'],
+  ['Lord, I lift your name on high', '', 'English', 'G'],
+  ['Our God is an awesome God', '', 'English', 'E'],
+  ['Be still and know', '', 'English', 'A'],
 ];
 
 /**
@@ -60,7 +62,7 @@ export const MASS_PLAN = {
   firstSelected: 10,
   sections: [
     { title: 'I · INTRODUCTORY RITES', rows: [
-      [1, 'Entrance Procession', 'song', 'Entrance', 'Praise to the Lord, the Almighty', 'list', false, ''],
+      [1, 'Entrance Procession', 'song', 'Entrance Procession', 'Praise to the Lord, the Almighty', 'list', false, ''],
       [2, 'Greeting', 'rite'],
       [3, 'Penitential Act', 'rite'],
       [4, 'Kyrie', 'song', 'Kyrie', 'Lord, have mercy (Mass setting)', 'text', false, ''],
@@ -78,7 +80,7 @@ export const MASS_PLAN = {
       [14, 'Prayer of the Faithful', 'rite'],
     ] },
     { title: 'III · LITURGY OF THE EUCHARIST', rows: [
-      [15, 'Preparation of the Gifts / Offertory', 'song', 'Offertory', '', '', false, ''],
+      [15, 'Preparation of the Gifts / Offertory', 'song', 'Preparation of the Gifts', '', '', false, ''],
       [16, 'Prayer over the Offerings', 'rite'],
       [17, 'Preface', 'rite'],
       [18, 'Holy, Holy, Holy (Sanctus)', 'song', 'Holy, Holy, Holy', 'Holy, Holy, Holy (Mass setting)', 'list', false, ''],
@@ -90,7 +92,7 @@ export const MASS_PLAN = {
       [22, 'Our Father', 'song', 'Our Father', '', '', true, 'If sung'],
       [23, 'Sign of Peace', 'rite'],
       [24, 'Lamb of God (Agnus Dei)', 'song', 'Lamb of God', 'Lamb of God (Mass setting)', 'list', false, ''],
-      [25, 'Communion Procession', 'song', 'Communion', 'I am the Bread of Life', 'list', false, ''],
+      [25, 'Communion Procession', 'song', 'Communion Procession', 'I am the Bread of Life', 'list', false, ''],
       [26, 'Thanksgiving / Meditation', 'song', 'Thanksgiving', '', '', true, 'Optional'],
       [27, 'Prayer after Communion', 'rite'],
     ] },

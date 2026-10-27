@@ -33,3 +33,6 @@ export const listSongs = () => request('songs-list');
 
 /** Saves the whole plan in one request. */
 export const savePlan = (payload) => request('plan-save', { method: 'POST', body: payload });
+
+/** Creates a plan with the UUID the browser made. Returns { plan } or throws the server's plain message. */
+export const createPlan = (plan) => request('plan-create', { method: 'POST', body: plan });

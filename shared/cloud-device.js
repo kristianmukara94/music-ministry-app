@@ -89,3 +89,17 @@ export function checkChurchSetup({ setupKey, churchName, username, displayName, 
   if (!laptop || laptop.length > 80) return 'Name this laptop, in up to 80 characters.';
   return null;
 }
+
+/**
+ * The line the Cloud sync screen shows for the song list. `state` is what the sync reports: { status, lastSyncedAt, message }.
+ * Plain words only. The message from a failure is shown as the sync gave it, and it never names the token or the address.
+ */
+export function songsStatusText(state, now = Date.now()) {
+  if (!state) return 'Songs not synced yet';
+  if (state.status === 'syncing') return 'Syncing…';
+  if (state.status === 'offline') return "Offline. Changes will send when you're back online.";
+  if (state.status === 'error') return state.message || 'Songs could not be synced. Try again.';
+  if (!state.lastSyncedAt) return 'Songs not synced yet';
+  const text = lastSyncedText(state.lastSyncedAt, now);
+  return `Songs synced ${text === 'Just now' ? 'just now' : text}`;
+}

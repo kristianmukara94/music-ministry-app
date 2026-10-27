@@ -56,3 +56,12 @@ export interface ChurchSetupInput {
 
 /** The plain message for the first problem with the Create church admin form, or null when it is fine. */
 export function checkChurchSetup(input: Partial<ChurchSetupInput> | null | undefined): string | null;
+
+export interface SongsSyncState {
+  status: 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
+  lastSyncedAt?: string | null;
+  message?: string | null;
+}
+
+/** The line the Cloud sync screen shows for the song list. */
+export function songsStatusText(state: SongsSyncState | null | undefined, now?: number): string;

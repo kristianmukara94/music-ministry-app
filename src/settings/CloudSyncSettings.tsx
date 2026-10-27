@@ -7,6 +7,7 @@ import {
   type CreatedWebUser,
   type NewChurchAdmin,
   type NewWebUser,
+  type SongsSyncState,
 } from '../live/bridge';
 import {
   checkChurchSetup,
@@ -16,6 +17,7 @@ import {
   plainErrorText,
   formatSetupKey,
   isCompleteLinkCode,
+  songsStatusText,
 } from '../../shared/cloud-device.js';
 
 const cloud = bridge.cloud;
@@ -56,6 +58,15 @@ export function CloudSyncSettings() {
   const [setup, setSetup] = useState<NewChurchAdmin>(emptySetup);
   const [createdChurch, setCreatedChurch] = useState<CreatedChurchAdmin | null>(null);
   const [copiedChurch, setCopiedChurch] = useState(false);
+  const [songs, setSongs] = useState<SongsSyncState | null>(null);
+
+  // The song list's state, refreshed while the screen is open. It holds a status and a plain message, never a token.
+  useEffect(() => {
+    const load = () => cloud.songsStatus().then(setSongs).catch(() => {});
+    void load();
+    const timer = window.setInterval(load, 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // The temporary password and the setup key live only in this screen's state. Both are cleared when the screen goes away.
   useEffect(
@@ -322,6 +333,8 @@ export function CloudSyncSettings() {
               <dd>{view.deviceLabel}</dd>
               <dt className="text-muted">Last synced</dt>
               <dd>{view.lastSynced}</dd>
+              <dt className="text-muted">Songs</dt>
+              <dd>{songsStatusText(songs)}</dd>
             </dl>
             {view.offline && <p className="text-xs text-muted">Showing the last known link. The cloud could not be reached just now.</p>}
 

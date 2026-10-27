@@ -150,7 +150,7 @@ test('a planner from church B cannot list or open church A\'s plans', async () =
 test('a viewer cannot save a plan, and the plan does not change', async () => {
   const before = JSON.stringify((await pg.query('SELECT body FROM plans WHERE id = $1', [ALPHA])).rows[0].body);
   const cookie = await cookieFor('viewer', 'K7QM-4XD2');
-  const res = await editing().savePlan(event({ method: 'POST', cookie, body: { id: ALPHA, segments: { 1: { minutes: 9 } }, notes: {} } }));
+  const res = await editing().savePlan(event({ method: 'POST', cookie, body: { id: ALPHA, baseUpdatedAt: '2026-10-27T09:00:00.000Z', items: [] } }));
   assert.equal(res.statusCode, 403);
   assert.equal(JSON.parse(res.body).error, 'Your account can view plans but not change them.');
   assert.equal(JSON.stringify((await pg.query('SELECT body FROM plans WHERE id = $1', [ALPHA])).rows[0].body), before);
@@ -158,6 +158,6 @@ test('a viewer cannot save a plan, and the plan does not change', async () => {
 
 test('a planner still saves a plan from the list', async () => {
   const cookie = await cookieFor('planner', 'K7QM-4XD2');
-  const res = await editing().savePlan(event({ method: 'POST', cookie, body: { id: ALPHA, segments: { 1: { minutes: 9 } }, notes: {} } }));
+  const res = await editing().savePlan(event({ method: 'POST', cookie, body: { id: ALPHA, baseUpdatedAt: '2026-10-27T09:00:00.000Z', items: [] } }));
   assert.equal(res.statusCode, 200);
 });

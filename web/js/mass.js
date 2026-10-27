@@ -10,9 +10,11 @@ import {
   VIEW_ONLY,
   dateLabel,
   massSteps,
-  payloadFor,
+  massFromItems,
+  massToItems,
+  savePayload,
+  songsForEditor,
   saveButton,
-  savedState,
   songOptions,
   statusText,
   titleOf,
@@ -36,7 +38,9 @@ function fresh(saved) {
     mode: 'list',
     allSongs: false,
     query: '',
-    ...savedState(saved),
+    segments: saved?.segments ?? {},
+    notes: saved?.notes ?? {},
+    extra: saved?.extra ?? [],
     dirty: false,
     noteSaved: false,
     saving: false,
@@ -220,12 +224,13 @@ function renderDrawer() {
 function renderOptions() {
   const box = document.getElementById('song-options');
   if (!box) return;
-  if (songs.length === 0) {
+  const picker = songs.filter((s) => !s.removed);
+  if (picker.length === 0) {
     box.innerHTML = `<div style="padding: 18px 14px; font-size: 13px; color: #b48d99; background: #150610">${esc(NO_SONGS)}</div>`;
     return;
   }
   const cur = stepOf(state.sel);
-  const shown = songOptions(songs, { category: cur.category, allSongs: state.allSongs, query: state.query });
+  const shown = songOptions(picker, { category: cur.category, allSongs: state.allSongs, query: state.query });
   if (shown.length === 0) {
     const message = state.query.trim() ? 'No songs match the search. Clear it, show all songs, or type text.' : 'No songs in this category yet. Show all songs, or type text.';
     box.innerHTML = `<div style="padding: 18px 14px; font-size: 13px; color: #b48d99; background: #150610">${message}</div>`;
@@ -266,8 +271,8 @@ async function load() {
     const [saved, list] = await Promise.all([getPlan(planId), listSongs()]);
     plan = saved.plan;
     canEdit = saved.canEdit;
-    songs = list.songs;
-    state = fresh(plan);
+    songs = songsForEditor(list.songs, saved.songs);
+    state = fresh(massFromItems(plan.items, STEPS));
   } catch (err) {
     if (plan) state.error = err.message;
     else state = { ...fresh(null), error: err.message };
@@ -281,8 +286,8 @@ async function save() {
   state.error = '';
   renderHeader();
   try {
-    const payload = payloadFor({ planId: plan.id, segments: state.segments, notes: state.notes }, STEPS.map((s) => String(s.n)));
-    await savePlan(payload);
+    const response = await savePlan(savePayload(plan, massToItems(state, STEPS)));
+    plan.updatedAt = response.savedAt;
     state.dirty = false;
   } catch (err) {
     state.error = err.message;

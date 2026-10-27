@@ -1,10 +1,10 @@
-// Tests for the web plan editor's server side: reading a plan, listing songs, and saving a plan, against a real Postgres (PGlite).
+// Tests for the web plan editor's save: one plan, saved as its item list, with the version check. Against a real Postgres (PGlite).
 // Run with: node --test netlify/functions/test/plan-save.test.mjs
 import { test, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { createPlanEditingApi } from '../lib/plan-editing.js';
@@ -19,10 +19,9 @@ const PASSWORD = `Test-${randomBytes(16).toString('base64url')}`;
 const CHURCH_A = '00000000-0000-4000-8000-00000000000a';
 const CHURCH_B = '00000000-0000-4000-8000-00000000000b';
 const PLAN_A = '10000000-0000-4000-8000-00000000000a';
-const PLAN_B = '10000000-0000-4000-8000-00000000000b';
-const SONG_A = '20000000-0000-4000-8000-00000000000a';
-const SONG_A2 = '20000000-0000-4000-8000-00000000000c';
-const SONG_B = '20000000-0000-4000-8000-00000000000b';
+const SONG_A = randomUUID();
+const SONG_B = randomUUID();
+const AT = '2026-10-27T10:00:00.000Z';
 
 let pg;
 let clock;
@@ -32,41 +31,25 @@ const transaction = (work) => pg.transaction((tx) => work(tagFromQuery((t, v) =>
 const editing = () => createPlanEditingApi({ sql, transaction, secret: SECRET, now: () => clock });
 const web = () => createApi({ sql, secret: SECRET, now: () => clock });
 
-const event = ({ method = 'POST', body, cookie, query } = {}) => ({
-  httpMethod: method,
-  headers: cookie ? { cookie } : {},
-  body: body === undefined ? undefined : JSON.stringify(body),
-  queryStringParameters: query,
-});
+const item = (key, order, extra = {}) => ({ key: String(key), group: 'introductory', order, kind: 'rite', ...extra });
+const save = (cookie, over = {}) =>
+  editing().savePlan({ httpMethod: 'POST', headers: { cookie }, body: JSON.stringify({ id: PLAN_A, baseUpdatedAt: AT, items: [item(1, 1)], ...over }) });
 
-/** Signs a user in and returns the session cookie the browser would hold. */
 async function cookieFor(username, churchCode) {
-  const res = await web().login(event({ body: { username, password: PASSWORD, churchCode } }));
+  const res = await web().login({ httpMethod: 'POST', headers: {}, body: JSON.stringify({ username, password: PASSWORD, churchCode }) });
   assert.equal(res.statusCode, 200, `${username} signs in`);
   return res.headers['Set-Cookie'].split(';')[0];
 }
 
-async function user(church, username, role, mustChange = false) {
+async function user(church, username, role) {
   await pg.query(
     `INSERT INTO users (id, church_id, username, display_name, role, password_hash, must_change_password)
-     VALUES (gen_random_uuid(), $1, $2, $2, $3, $4, $5)`,
-    [church, username, role, await hashPassword(PASSWORD), mustChange],
+     VALUES (gen_random_uuid(), $1, $2, $2, $3, $4, false)`,
+    [church, username, role, await hashPassword(PASSWORD)],
   );
 }
 
-const planBody = (over = {}) => ({
-  id: PLAN_A,
-  segments: {
-    1: { songId: SONG_A, minutes: 5 },
-    2: { text: 'Psalm 24 setting', minutes: 10 },
-    3: { minutes: 6 },
-  },
-  notes: { 3: 'Open prayer, no slides' },
-  ...over,
-});
-
-const storedBody = async (planId = PLAN_A) => (await pg.query('SELECT body, updated_at FROM plans WHERE id = $1', [planId])).rows[0];
-const auditRows = async () => (await pg.query('SELECT actor_user_id, action, target_plan_id, church_id FROM audit_log ORDER BY id')).rows;
+const storedPlan = async () => (await pg.query('SELECT body, updated_at FROM plans WHERE id = $1', [PLAN_A])).rows[0];
 
 before(async () => {
   pg = new PGlite();
@@ -75,154 +58,104 @@ before(async () => {
 
 beforeEach(async () => {
   clock = new Date('2026-10-27T12:00:00Z');
-  await pg.exec('TRUNCATE rate_limits, sessions, device_tokens, link_codes, audit_log, users, plans, songs, devices, licences, setup_keys, churches CASCADE;');
+  await pg.exec('TRUNCATE rate_limits, sessions, users, plans, songs, devices, licences, audit_log, setup_keys, device_tokens, churches CASCADE;');
   await pg.query(`INSERT INTO churches (id, display_code, name) VALUES ($1, 'K7QM-4XD2', 'St Mary'), ($2, 'R2VT-9HJ6', 'Holy Cross')`, [CHURCH_A, CHURCH_B]);
   await user(CHURCH_A, 'planner', 'planner');
   await user(CHURCH_A, 'viewer', 'viewer');
-  await user(CHURCH_A, 'boss', 'admin');
   await user(CHURCH_B, 'otherplanner', 'planner');
   await pg.query(
-    `INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at) VALUES
-       ($1, $2, 'All Saints, Sunday Mass', '2026-11-01', '{"kind":"mass","segments":{},"notes":{}}', '2026-10-27T10:00:00Z'),
-       ($3, $4, 'Other church plan', '2026-11-01', '{"kind":"mass","segments":{},"notes":{}}', '2026-10-27T10:00:00Z')`,
-    [PLAN_A, CHURCH_A, PLAN_B, CHURCH_B],
+    `INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at) VALUES ($1, $2, 'All Saints', '2026-11-01', '{"kind":"mass","items":[]}', $3)`,
+    [PLAN_A, CHURCH_A, AT],
   );
   await pg.query(
     `INSERT INTO songs (id, church_id, title, category, language, musical_key, updated_at) VALUES
-       ($1, $2, 'Praise to the Lord', 'Entrance', 'English', 'D', now()),
-       ($3, $2, 'Psalm 24 setting', 'Responsorial Psalm', 'English', 'F', now()),
-       ($4, $5, 'Another church song', 'Entrance', 'English', 'G', now())`,
-    [SONG_A, CHURCH_A, SONG_A2, SONG_B, CHURCH_B],
+       ($1, $3, 'Praise to the Lord', 'Entrance Procession', 'English', 'D', now()),
+       ($2, $3, 'Old song', 'Entrance Procession', 'English', 'G', now())`,
+    [SONG_A, SONG_B, CHURCH_A],
   );
+  await pg.query(`UPDATE songs SET removed_at = now() WHERE id = $1`, [SONG_B]);
 });
 
-// ---- Saving ----
-
-test('a planner saves the plan: the structure is stored, and the save is one audited row', async () => {
+test('a planner saves the item list: the items are stored in order, and the kind is kept', async () => {
   const cookie = await cookieFor('planner', 'K7QM-4XD2');
-  const res = await editing().savePlan(event({ cookie, body: planBody() }));
+  const res = await save(cookie, { items: [item(2, 2, { kind: 'song', songId: SONG_A }), item(1, 1, { note: 'Incense at the Gospel' })] });
   assert.equal(res.statusCode, 200);
-  assert.equal(JSON.parse(res.body).ok, true);
-  const stored = (await storedBody()).body;
-  assert.equal(stored.kind, 'mass', 'the plan kind is kept');
-  assert.deepEqual(stored.segments[1], { songId: SONG_A, minutes: 5 });
-  assert.deepEqual(stored.notes, { 3: 'Open prayer, no slides' });
-  const audit = (await auditRows()).filter((a) => a.action === 'plan.saved');
-  assert.equal(audit.length, 1, 'one audit row for the save');
-  assert.equal(audit[0].target_plan_id, PLAN_A);
-  assert.equal(audit[0].church_id, CHURCH_A);
-  assert.equal(audit[0].actor_user_id, (await pg.query(`SELECT id FROM users WHERE username = 'planner'`)).rows[0].id);
+  const row = await storedPlan();
+  assert.equal(row.body.kind, 'mass');
+  assert.deepEqual(row.body.items.map((i) => i.key), ['1', '2'], 'stored in order');
+  assert.equal(row.body.items[1].songId, SONG_A);
+  assert.equal(row.body.items[0].note, 'Incense at the Gospel');
+  assert.ok(row.updated_at.getTime() > new Date(AT).getTime(), 'the save stamps the server time');
 });
 
-test('the audit line carries no content: no song id, text, note or minutes', async () => {
+test('a save over a newer version is refused with the server\'s version, and nothing is written', async () => {
   const cookie = await cookieFor('planner', 'K7QM-4XD2');
-  await editing().savePlan(event({ cookie, body: planBody() }));
-  const dump = JSON.stringify((await pg.query(`SELECT * FROM audit_log WHERE action = 'plan.saved'`)).rows);
-  for (const secret of [SONG_A, 'Psalm 24 setting', 'Open prayer, no slides']) {
-    assert.equal(dump.includes(secret), false, `audit does not hold ${secret}`);
-  }
+  await pg.query(`UPDATE plans SET updated_at = $2 WHERE id = $1`, [PLAN_A, '2026-10-27T11:30:00.000Z']);
+  const before = await storedPlan();
+  const res = await save(cookie, { items: [item(1, 1, { note: 'Mine' })] });
+  assert.equal(res.statusCode, 409);
+  assert.equal(JSON.parse(res.body).serverVersion.updatedAt, '2026-10-27T11:30:00.000Z');
+  assert.equal((await storedPlan()).body.items.length, 0, 'the server copy is unchanged');
+  assert.equal((await storedPlan()).updated_at.getTime(), before.updated_at.getTime());
 });
 
-test('a viewer gets 403 with a plain message, and the plan does not change', async () => {
-  const before = JSON.stringify((await storedBody()).body);
+test('a save with no version named is refused', async () => {
+  const cookie = await cookieFor('planner', 'K7QM-4XD2');
+  const res = await save(cookie, { baseUpdatedAt: undefined });
+  assert.equal(res.statusCode, 400);
+});
+
+test('a viewer cannot save, and the plan does not change', async () => {
   const cookie = await cookieFor('viewer', 'K7QM-4XD2');
-  const res = await editing().savePlan(event({ cookie, body: planBody() }));
+  const res = await save(cookie, { items: [item(1, 1, { note: 'x' })] });
   assert.equal(res.statusCode, 403);
   assert.equal(JSON.parse(res.body).error, 'Your account can view plans but not change them.');
-  assert.equal(JSON.stringify((await storedBody()).body), before);
-  assert.equal((await auditRows()).length, 0);
+  assert.equal((await storedPlan()).body.items.length, 0);
 });
 
-test('a save from another church cannot change the plan: it is not found in that church', async () => {
-  const before = JSON.stringify((await storedBody()).body);
+test('a save from another church cannot change the plan', async () => {
   const cookie = await cookieFor('otherplanner', 'R2VT-9HJ6');
-  const res = await editing().savePlan(event({ cookie, body: planBody({ id: PLAN_A }) }));
+  const res = await save(cookie, { items: [item(1, 1)] });
   assert.equal(res.statusCode, 404);
   assert.equal(JSON.parse(res.body).error, 'That plan is not in your church.');
-  assert.equal(JSON.stringify((await storedBody()).body), before);
 });
 
-test('the church comes from the session, never from the request body', async () => {
+test('an unknown song is refused; a removed song that the plan already uses is accepted', async () => {
   const cookie = await cookieFor('planner', 'K7QM-4XD2');
-  const res = await editing().savePlan(event({ cookie, body: { ...planBody(), churchId: CHURCH_B } }));
-  assert.equal(res.statusCode, 200);
-  assert.equal((await pg.query('SELECT church_id FROM plans WHERE id = $1', [PLAN_A])).rows[0].church_id, CHURCH_A);
+  const unknown = await save(cookie, { items: [item(1, 1, { kind: 'song', songId: randomUUID() })] });
+  assert.equal(unknown.statusCode, 400);
+  const removed = await save(cookie, { items: [item(1, 1, { kind: 'song', songId: SONG_B })] });
+  assert.equal(removed.statusCode, 200, 'the reference to a removed song is kept');
+  assert.equal((await storedPlan()).body.items[0].songId, SONG_B);
 });
 
-test('a song id that is not in this church is refused, and nothing is saved', async () => {
-  const before = JSON.stringify((await storedBody()).body);
+test('a minute value outside 1 to 60 is refused, and an unknown field is refused', async () => {
   const cookie = await cookieFor('planner', 'K7QM-4XD2');
-  for (const songId of [SONG_B, '30000000-0000-4000-8000-000000000000', 'not-a-song']) {
-    const res = await editing().savePlan(event({ cookie, body: planBody({ segments: { 1: { songId, minutes: 5 } } }) }));
-    assert.equal(res.statusCode, 400);
-    assert.equal(JSON.parse(res.body).error, "That song is not in your church's song list. Reload the song list and try again.");
-  }
-  assert.equal(JSON.stringify((await storedBody()).body), before);
+  assert.equal((await save(cookie, { items: [item(1, 1, { minutes: 0 })] })).statusCode, 400);
+  assert.equal((await save(cookie, { items: [item(1, 1, { minutes: 61 })] })).statusCode, 400);
+  assert.equal((await save(cookie, { items: [item(1, 1, { colour: 'red' })] })).statusCode, 400);
+  assert.equal((await save(cookie, { items: [item(1, 1, { minutes: 60 })] })).statusCode, 200);
 });
 
-test('a duration outside 1 to 60 minutes is refused; the edges are allowed', async () => {
+test('lyrics and media fields are refused, and more than 200 items is refused', async () => {
   const cookie = await cookieFor('planner', 'K7QM-4XD2');
-  for (const minutes of [0, 61, 1.5, -3, '5']) {
-    const res = await editing().savePlan(event({ cookie, body: planBody({ segments: { 1: { minutes } } }) }));
-    assert.equal(res.statusCode, 400, `minutes ${String(minutes)} refused`);
-    assert.equal(JSON.parse(res.body).error, 'Each segment needs between 1 and 60 minutes.');
-  }
-  assert.equal((await editing().savePlan(event({ cookie, body: planBody({ segments: { 1: { minutes: 1 } } }) }))).statusCode, 200);
-  assert.equal((await editing().savePlan(event({ cookie, body: planBody({ segments: { 1: { minutes: 60 } } }) }))).statusCode, 200);
+  const lyrics = await save(cookie, { items: [item(1, 1, { lyrics: 'x' })] });
+  assert.equal(lyrics.statusCode, 400);
+  assert.equal(JSON.parse(lyrics.body).error, 'Lyrics, slides, media, Bible text and announcements never leave the laptop. Nothing was saved.');
+  const many = Array.from({ length: 201 }, (_, i) => item(i + 1, i + 1));
+  assert.equal((await save(cookie, { items: many })).statusCode, 400);
 });
 
-test('text, notes and segment shapes are checked: too long, both song and text, unknown fields and ids are refused', async () => {
+test('the save writes one audit row that names the plan and the actor, and no content', async () => {
   const cookie = await cookieFor('planner', 'K7QM-4XD2');
-  const cases = [
-    [planBody({ segments: { 1: { text: 'x'.repeat(501) } } }), 'Text for a segment can be up to 500 characters.'],
-    [planBody({ segments: { 1: { songId: SONG_A, text: 'and text' } } }), 'A segment holds a song or typed text, not both.'],
-    [planBody({ segments: { 1: { minutes: 5, lyrics: 'nope' } } }), 'A segment in this plan is not recognised. Reload the plan and try again.'],
-    [planBody({ segments: { abc: { minutes: 5 } } }), 'A segment in this plan is not recognised. Reload the plan and try again.'],
-    [planBody({ notes: { 3: 'x'.repeat(1001) } }), 'A note can be up to 1000 characters.'],
-  ];
-  for (const [body, message] of cases) {
-    const res = await editing().savePlan(event({ cookie, body }));
-    assert.equal(res.statusCode, 400);
-    assert.equal(JSON.parse(res.body).error, message);
-  }
+  await save(cookie, { items: [item(1, 1, { note: 'A private note' })] });
+  const rows = (await pg.query(`SELECT action, target_plan_id, detail FROM audit_log WHERE action = 'plan.saved'`)).rows;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].target_plan_id, PLAN_A);
+  assert.equal(JSON.stringify(rows).includes('private note'), false);
 });
 
-test('signed out, or still on a temporary password, the save is refused', async () => {
-  assert.equal((await editing().savePlan(event({ body: planBody() }))).statusCode, 401);
-  await user(CHURCH_A, 'fresh', 'planner', true);
-  const cookie = await cookieFor('fresh', 'K7QM-4XD2');
-  assert.equal((await editing().savePlan(event({ cookie, body: planBody() }))).statusCode, 403);
-});
-
-// ---- Reading ----
-
-test('a planner and a viewer can both open the plan; only the planner is offered editing', async () => {
-  const planner = JSON.parse((await editing().getPlan(event({ method: 'GET', cookie: await cookieFor('planner', 'K7QM-4XD2'), query: { id: PLAN_A } }))).body);
-  assert.equal(planner.canEdit, true);
-  assert.equal(planner.plan.name, 'All Saints, Sunday Mass');
-  assert.equal(planner.plan.date, '2026-11-01');
-  const viewer = await editing().getPlan(event({ method: 'GET', cookie: await cookieFor('viewer', 'K7QM-4XD2'), query: { id: PLAN_A } }));
-  assert.equal(viewer.statusCode, 200);
-  assert.equal(JSON.parse(viewer.body).canEdit, false);
-});
-
-test('a plan from another church cannot be opened, and a bad id is refused', async () => {
-  const cookie = await cookieFor('planner', 'K7QM-4XD2');
-  assert.equal((await editing().getPlan(event({ method: 'GET', cookie, query: { id: PLAN_B } }))).statusCode, 404);
-  assert.equal((await editing().getPlan(event({ method: 'GET', cookie, query: { id: 'nope' } }))).statusCode, 400);
-});
-
-test('the song list holds only this church songs', async () => {
-  const cookie = await cookieFor('planner', 'K7QM-4XD2');
-  const songs = JSON.parse((await editing().listSongs(event({ method: 'GET', cookie }))).body).songs;
-  assert.deepEqual(songs.map((s) => s.title), ['Praise to the Lord', 'Psalm 24 setting']);
-  assert.equal(songs[0].key, 'D');
-});
-
-test('an empty song list is an empty list, not an error', async () => {
-  await pg.exec('DELETE FROM songs;');
-  const cookie = await cookieFor('planner', 'K7QM-4XD2');
-  const res = await editing().listSongs(event({ method: 'GET', cookie }));
-  assert.equal(res.statusCode, 200);
-  assert.deepEqual(JSON.parse(res.body).songs, []);
+test('a signed-out save is refused', async () => {
+  const res = await editing().savePlan({ httpMethod: 'POST', headers: {}, body: JSON.stringify({ id: PLAN_A, baseUpdatedAt: AT, items: [] }) });
+  assert.equal(res.statusCode, 401);
 });

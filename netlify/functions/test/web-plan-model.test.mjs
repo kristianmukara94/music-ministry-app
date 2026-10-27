@@ -14,8 +14,8 @@ const SONG_B = '20000000-0000-4000-8000-00000000000b';
 const SONG_C = '20000000-0000-4000-8000-00000000000c';
 // Songs in the shape the server returns them.
 const SERVER_SONGS = [
-  { id: SONG_A, title: 'Praise to the Lord, the Almighty', category: 'Entrance', language: 'English', key: 'D' },
-  { id: SONG_B, title: 'Be Thou My Vision', category: 'Entrance', language: 'English', key: 'Eb' },
+  { id: SONG_A, title: 'Praise to the Lord, the Almighty', category: 'Entrance Procession', language: 'English', key: 'D' },
+  { id: SONG_B, title: 'Be Thou My Vision', category: 'Entrance Procession', language: 'English', key: 'Eb' },
   { id: SONG_C, title: 'Psalm 24 setting', category: 'Responsorial Psalm', language: 'English', key: 'F' },
 ];
 
@@ -23,7 +23,7 @@ test('the Mass steps come from the template structure, and their sample values a
   const steps = model.massSteps(sample.MASS_PLAN);
   assert.equal(steps.length, 31);
   assert.equal(steps[0].n, 1);
-  assert.equal(steps[0].category, 'Entrance');
+  assert.equal(steps[0].category, 'Entrance Procession');
   assert.equal('value' in steps[0], false, 'the sample value of step 1 is not carried into the steps');
   assert.equal(steps.find((s) => s.n === 2).kind, 'rite');
 });
@@ -39,12 +39,12 @@ test('the Praise segments come from the template, with their default minutes and
 
 test('the Change picker lists the church songs from the server, filtered by category and search', () => {
   assert.deepEqual(
-    model.songOptions(SERVER_SONGS, { category: 'Entrance' }).map((s) => s.title),
+    model.songOptions(SERVER_SONGS, { category: 'Entrance Procession' }).map((s) => s.title),
     ['Praise to the Lord, the Almighty', 'Be Thou My Vision'],
   );
-  assert.deepEqual(model.songOptions(SERVER_SONGS, { category: 'Entrance', query: 'vision' }).map((s) => s.id), [SONG_B]);
+  assert.deepEqual(model.songOptions(SERVER_SONGS, { category: 'Entrance Procession', query: 'vision' }).map((s) => s.id), [SONG_B]);
   assert.equal(model.songOptions(SERVER_SONGS, { allSongs: true }).length, 3, 'show all songs ignores the category');
-  assert.deepEqual(model.songOptions([], { category: 'Entrance' }), [], 'an empty list stays empty; nothing is invented');
+  assert.deepEqual(model.songOptions([], { category: 'Entrance Procession' }), [], 'an empty list stays empty; nothing is invented');
   assert.equal(model.NO_SONGS, 'No songs yet. Songs are added from the church laptop.');
 });
 
@@ -63,27 +63,7 @@ test('a song that is no longer in the list shows a plain line, not an invented t
   assert.equal(model.titleOf(SERVER_SONGS, null), '');
 });
 
-test('the save payload has every chosen segment with its minutes, and only notes that have text', () => {
-  const payload = model.payloadFor(
-    {
-      planId: 'plan-1',
-      segments: { 1: { songId: SONG_A }, 2: { minutes: 9 }, 3: {} },
-      notes: { 2: '  Open prayer  ', 3: '   ' },
-    },
-    ['1', '2', '3'],
-    { 1: 5, 2: 10, 3: 6 },
-  );
-  assert.deepEqual(payload, {
-    id: 'plan-1',
-    segments: { 1: { songId: SONG_A, minutes: 5 }, 2: { minutes: 9 }, 3: { minutes: 6 } },
-    notes: { 2: 'Open prayer' },
-  });
-});
 
-test('a Mass save sends no minutes, only what is chosen', () => {
-  const payload = model.payloadFor({ planId: 'p', segments: { 7: { text: 'Revelation 7:2-4' } }, notes: {} }, ['7', '8']);
-  assert.deepEqual(payload.segments, { 7: { text: 'Revelation 7:2-4' } });
-});
 
 test('Save is disabled for the whole of a save, and says so; it is enabled otherwise', () => {
   assert.deepEqual(model.saveButton(true), { disabled: true, label: 'Saving…' });
@@ -115,4 +95,80 @@ test('the minute limits are 1 and 60, and the date reads as a plain label', () =
 
 test('the view-only note is the design wording', () => {
   assert.equal(model.VIEW_ONLY, 'View only. Ask a planner to make changes.');
+});
+
+test('the web song categories are the laptop\'s song category names, in the same order', async () => {
+  const flow = await import(pathToFileURL(path.join(here, '..', '..', '..', 'shared', 'mass-flow.js')).href);
+  assert.deepEqual(sample.SONG_CATEGORIES, flow.SONG_CATEGORY_NAMES, 'the web picker offers exactly the laptop\'s categories');
+});
+
+test('every Mass step that names a category uses one the web picker offers', () => {
+  for (const step of model.massSteps(sample.MASS_PLAN)) {
+    if (step.kind === 'song' && step.category) assert.ok(sample.SONG_CATEGORIES.includes(step.category), `${step.category} is offered`);
+  }
+});
+
+// ---- The item list the editors read and save ----
+
+const STEPS = model.massSteps(sample.MASS_PLAN);
+const SEGS = model.praiseSegments(sample.PRAISE_PLAN);
+
+test('the Mass steps carry their group, by section', () => {
+  assert.equal(STEPS.find((s) => s.n === 1).group, 'introductory');
+  assert.equal(STEPS.find((s) => s.n === 7).group, 'word');
+  assert.equal(STEPS.find((s) => s.n === 15).group, 'eucharist');
+  assert.equal(STEPS.find((s) => s.n === 25).group, 'communion');
+  assert.equal(STEPS.find((s) => s.n === 31).group, 'concluding');
+});
+
+test('a saved Mass plan reads into the editor: the song or text per step, the notes, and items the editor does not show', () => {
+  const items = [
+    { key: '1', group: 'introductory', order: 1, kind: 'song', songId: SONG_A },
+    { key: '2', group: 'introductory', order: 2, kind: 'rite', note: 'Incense' },
+    { key: 'laptop-9', group: 'word', order: 40, kind: 'reading', text: 'Matthew 5' },
+  ];
+  const state = model.massFromItems(items, STEPS);
+  assert.deepEqual(state.segments, { 1: { songId: SONG_A } });
+  assert.deepEqual(state.notes, { 2: 'Incense' });
+  assert.deepEqual(state.extra, [items[2]], 'an item the editor does not show is kept, not dropped');
+});
+
+test('the editor saves a Mass plan as items in step order, with the unshown items last and renumbered', () => {
+  const state = { segments: { 7: { text: 'Revelation 7:2-4' }, 1: { songId: SONG_A } }, notes: { 2: 'Incense' }, extra: [{ key: 'laptop-9', group: 'word', order: 40, kind: 'reading', text: 'Matthew 5' }] };
+  const items = model.massToItems(state, STEPS);
+  assert.deepEqual(items.map((i) => i.key), ['1', '2', '7', 'laptop-9']);
+  assert.deepEqual(items.map((i) => i.order), [1, 2, 3, 4]);
+  assert.equal(items.find((i) => i.key === '7').kind, 'reading');
+  assert.equal(items.find((i) => i.key === '2').kind, 'rite');
+  assert.equal(items.find((i) => i.key === '2').note, 'Incense');
+});
+
+test('a Praise & Worship plan reads its minutes, and saves every segment with its minutes', () => {
+  const state = model.praiseFromItems([{ key: '3', group: 'opening', order: 3, kind: 'song', songId: SONG_A, minutes: 12 }], SEGS);
+  assert.equal(state.segments['3'].minutes, 12);
+  const items = model.praiseToItems({ ...state, extra: [] }, SEGS);
+  assert.equal(items.length, SEGS.length, 'every segment is saved');
+  assert.equal(items.find((i) => i.key === '3').minutes, 12);
+  assert.equal(items.find((i) => i.key === '1').minutes, 5, 'a segment with no change keeps its default minutes');
+});
+
+test('a song the plan uses that has been removed is shown as removed, and an unknown song as no longer in the list', () => {
+  const songs = [{ id: SONG_A, title: 'Praise to the Lord' }, { id: SONG_B, title: 'Old song', removed: true }];
+  assert.equal(model.titleOf(songs, SONG_A), 'Praise to the Lord');
+  assert.equal(model.titleOf(songs, SONG_B), 'Old song (removed)');
+  assert.equal(model.titleOf(songs, 'not-in-the-list'), 'Song no longer in the list');
+});
+
+test('the editor\'s song list is the picker\'s songs plus any removed song the plan refers to', () => {
+  const picker = [{ id: SONG_A, title: 'Praise to the Lord' }];
+  const planSongs = [{ id: SONG_A, title: 'Praise to the Lord' }, { id: SONG_B, title: 'Old song', removed: true }];
+  assert.deepEqual(model.songsForEditor(picker, planSongs).map((s) => s.id), [SONG_A, SONG_B]);
+});
+
+test('the save body carries the plan\'s id, the version the editor loaded, and the items', () => {
+  assert.deepEqual(model.savePayload({ id: 'p1', updatedAt: '2026-10-27T10:00:00.000Z' }, [{ key: '1' }]), {
+    id: 'p1',
+    baseUpdatedAt: '2026-10-27T10:00:00.000Z',
+    items: [{ key: '1' }],
+  });
 });

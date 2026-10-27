@@ -32,16 +32,21 @@ CREATE TABLE plans (
 );
 CREATE INDEX plans_church ON plans (church_id, liturgical_date);
 
+-- The church's song list, sent from the laptop as metadata only: no lyrics, slides, media or Bible text. `id` is the laptop's own
+-- song id (a UUID, stable across renames). A song the laptop no longer has is marked removed, not deleted, so plans that use it
+-- keep their reference.
 CREATE TABLE songs (
-  id            UUID PRIMARY KEY,
+  id            UUID NOT NULL,
   church_id     UUID NOT NULL REFERENCES churches(id) ON DELETE CASCADE,
-  title         TEXT NOT NULL,
-  category      TEXT NOT NULL,
-  language      TEXT NOT NULL,
-  musical_key   TEXT NOT NULL DEFAULT '',
-  updated_at    TIMESTAMPTZ NOT NULL
+  title         TEXT NOT NULL CHECK (char_length(title) BETWEEN 1 AND 200),
+  category      TEXT NOT NULL DEFAULT '' CHECK (char_length(category) <= 40),
+  language      TEXT NOT NULL CHECK (language IN ('English', 'Tagalog', 'Cebuano')),
+  musical_key   TEXT NOT NULL DEFAULT '' CHECK (char_length(musical_key) <= 10),
+  removed_at    TIMESTAMPTZ,
+  updated_at    TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (church_id, id)
 );
-CREATE INDEX songs_church ON songs (church_id, title);
+CREATE INDEX songs_church_active ON songs (church_id, removed_at, lower(title));
 
 CREATE TABLE devices (
   id            UUID PRIMARY KEY,
@@ -87,9 +92,10 @@ CREATE TABLE audit_log (
   action          TEXT NOT NULL CHECK (action IN ('user.created', 'user.role_changed', 'user.disabled', 'user.enabled',
                                                   'user.password_reset', 'user.unlocked',
                                                   'device.link_code_created', 'device.linked', 'device.unlinked',
-                                                  'church.created', 'plan.saved')),
+                                                  'church.created', 'plan.saved', 'songs.synced', 'plan.created', 'plan.synced')),
   target_user_id  UUID REFERENCES users(id) ON DELETE SET NULL,
   target_plan_id  UUID REFERENCES plans(id) ON DELETE SET NULL,
+  detail          JSONB,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX audit_log_church ON audit_log (church_id, created_at);
