@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en" data-base="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<title>Plans · APCCMMA Web Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/planner.css">
+<script type="module" src="js/plans.js"></script>
+</head>
+<body>
+<div class="shell" style="display: flex; flex-wrap: wrap; background: #0f0407; color: #f7eef0; font-family: 'Archivo','Segoe UI',system-ui,sans-serif">
+
+  <div data-sidebar="plans"></div>
+
+  <main class="main" style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; display: flex; flex-direction: column; gap: 28px">
+
+    <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #ecc98a">ASSUMPTION PARISH · MUSIC MINISTRY</span>
+        <h1 style="margin: 0; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 52px; line-height: 1">Plans</h1>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px">
+        <a href="plan/mass.html" style="height: 44px; padding: 0 18px; border-radius: 10px; border: 0; background: #ecc98a; color: #1c070d; font-size: 14px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; cursor: pointer">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          New Mass plan
+        </a>
+        <a href="plan/praise.html" style="height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid #6e2a3e; background: #2a0c18; color: #f7eef0; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; cursor: pointer">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          New Praise &amp; Worship
+        </a>
+      </div>
+    </header>
+
+    <section id="summary" aria-label="Summary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px"></section>
+
+    <section aria-label="Plan list" style="display: flex; flex-direction: column; gap: 16px">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+        <div id="tabs" role="tablist" aria-label="Plan type" style="display: flex; flex-wrap: wrap; gap: 8px"></div>
+        <label style="flex: 0 1 260px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border: 1px solid #55202f; border-radius: 10px; background: #150610; min-width: 0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b48d99" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="plan-search" type="search" aria-label="Search plans" placeholder="Search plans" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #f7eef0; font-size: 14px">
+        </label>
+      </div>
+
+      <div id="plan-rows" style="border: 1px solid #3a1523; border-radius: 16px; background: #1b0a13; overflow: hidden"></div>
+
+      <p style="margin: 0; font-size: 13px; color: #b48d99; line-height: 1.5; max-width: 720px">Plans sync with the church laptop automatically. Open the app and press Sync now to pull the latest. Lyrics, Bible text and media stay on the laptop.</p>
+    </section>
+  </main>
+</div>
+</body>
+</html>

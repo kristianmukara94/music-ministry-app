@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en" data-base="../">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<title>Praise &amp; Worship · APCCMMA Web Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/planner.css">
+<script type="module" src="../js/praise.js"></script>
+</head>
+<body>
+<div class="shell" style="display: flex; flex-wrap: wrap; background: #0f0407; color: #f7eef0; font-family: 'Archivo','Segoe UI',system-ui,sans-serif">
+
+  <div data-sidebar="plans"></div>
+
+  <main class="main" style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; display: flex; flex-direction: column; gap: 24px">
+
+    <header style="display: flex; flex-direction: column; gap: 16px">
+      <a href="../index.html" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #dbb3bf">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        All plans
+      </a>
+      <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px">
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span id="eyebrow" style="font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #ecc98a"></span>
+          <h1 id="title" style="margin: 0; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 48px; line-height: 1.02"></h1>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+          <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #f2bd6b; font-weight: 600"><span style="width: 7px; height: 7px; border-radius: 50%; background: #f2bd6b"></span><span id="status" aria-live="polite"></span></span>
+          <button id="discard" type="button" style="height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid #6e2a3e; background: #2a0c18; color: #f7eef0; font-size: 14px; font-weight: 600; cursor: pointer">Discard changes</button>
+          <button id="save" type="button" style="height: 44px; padding: 0 22px; border-radius: 10px; border: 0; background: #ecc98a; color: #1c070d; font-size: 14px; font-weight: 700; cursor: pointer">Save plan</button>
+        </div>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px">
+        <span style="display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 99px; background: #1b0a13; border: 1px solid #3a1523; font-size: 13px; font-weight: 600">Songs <span id="songs-label" style="font-family: 'JetBrains Mono', monospace; margin-left: 8px; color: #ecc98a"></span></span>
+        <span style="display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 99px; background: #1b0a13; border: 1px solid #3a1523; font-size: 13px; font-weight: 600">Total time <span id="total-label" aria-live="polite" style="font-family: 'JetBrains Mono', monospace; margin-left: 8px; color: #ecc98a"></span></span>
+        <span id="segments-label" style="display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 99px; background: #1b0a13; border: 1px solid #3a1523; font-size: 13px; font-weight: 600"></span>
+      </div>
+    </header>
+
+    <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px">
+      <section id="segments" aria-label="Segments" style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 22px"></section>
+      <aside id="readiness" aria-label="Readiness" style="flex: 1 1 320px; min-width: 0; position: sticky; top: 16px; display: flex; flex-direction: column; gap: 16px; padding: 22px; border: 1px solid #55202f; border-radius: 16px; background: #1b0a13"></aside>
+    </div>
+  </main>
+</div>
+</body>
+</html>
