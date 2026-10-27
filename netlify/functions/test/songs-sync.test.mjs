@@ -7,7 +7,7 @@ import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { createSongsSyncApi, SONGS_PUSH_LIMIT } from '../lib/songs-sync.js';
+import { createSongsSyncApi, failureLine, SONGS_PUSH_LIMIT } from '../lib/songs-sync.js';
 import { createPlanEditingApi } from '../lib/plan-editing.js';
 import { createApi } from '../lib/handlers.js';
 import { hashPassword, hashToken } from '../lib/auth.js';
@@ -237,4 +237,33 @@ test('the list and the push limits are kept apart: another laptop is not limited
   const api = songs();
   for (let i = 0; i < SONGS_PUSH_LIMIT.requests + 1; i += 1) await push(laptopA, { songs: [laptopSong(HYMN_1, 'Praise')] }, api);
   assert.equal((await push(laptopB, { songs: [laptopSong(HYMN_3, 'Other church song')] }, api)).statusCode, 200);
+});
+
+// ---- Logging ----
+
+test('a database failure is logged with its step, name, code and constraint, never the title or the token', async () => {
+  const titleText = 'A title that must never reach the log';
+  const dbError = Object.assign(new Error(`new row violates check: ${titleText}`), { name: 'error', code: '23514', constraint: 'songs_title_check' });
+  const failing = createSongsSyncApi({ sql, transaction: async () => { throw dbError; }, secret: SECRET, now: () => clock });
+  const logged = [];
+  const original = console.error;
+  console.error = (...args) => logged.push(args.join(' '));
+  let res;
+  try {
+    res = await push(laptopA, { songs: [laptopSong(HYMN_1, titleText)] }, failing);
+  } finally {
+    console.error = original;
+  }
+  assert.equal(res.statusCode, 500);
+  assert.deepEqual(JSON.parse(res.body), { error: 'Something went wrong. Try again.' }, 'the laptop gets the plain message');
+  assert.deepEqual(logged, ['[songs] step=transaction name=error code=23514 constraint=songs_title_check']);
+  const line = logged.join('\n');
+  for (const secret of [titleText, laptopA, SECRET, 'new row violates']) assert.equal(line.includes(secret), false, 'nothing private is logged');
+});
+
+test('the log line names the column for a missing-column error, and the step for anything else', () => {
+  assert.equal(failureLine('write', Object.assign(new Error('x'), { name: 'error', code: '42703', column: 'musical_key' })), '[songs] step=write name=error code=42703 column=musical_key');
+  assert.equal(failureLine('read', Object.assign(new Error('column "musical_key" does not exist'), { name: 'error', code: '42703' })), '[songs] step=read name=error code=42703 column=musical_key');
+  assert.equal(failureLine('validate', new TypeError('boom')), '[songs] step=validate name=TypeError');
+  assert.equal(failureLine('auth', undefined), '[songs] step=auth name=Error');
 });

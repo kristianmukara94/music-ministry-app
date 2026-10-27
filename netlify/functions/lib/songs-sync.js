@@ -31,6 +31,20 @@ function parseJson(event) {
   }
 }
 
+/**
+ * The log line for an unexpected failure: the step it happened in, the error's name, and for a database error its code and the
+ * constraint or column. Never the message, the request body, a song title, a token or a connection string.
+ */
+export function failureLine(step, err) {
+  const parts = [`[songs] step=${step}`, `name=${err?.name ?? 'Error'}`];
+  if (err?.code) parts.push(`code=${err.code}`);
+  if (err?.constraint) parts.push(`constraint=${err.constraint}`);
+  // A missing column carries its name only in the message. Only a plain identifier is taken from it, never the rest of the message.
+  const column = err?.column ?? /column "([a-z_]+)" does not exist/.exec(String(err?.message ?? ''))?.[1];
+  if (column) parts.push(`column=${column}`);
+  return parts.join(' ');
+}
+
 /** One song from the laptop, checked. Returns the clean fields, or throws a plain refusal. */
 export function checkSong(song) {
   if (!song || typeof song !== 'object' || Array.isArray(song)) throw new ApiError(400, 'A song in the list could not be read. Nothing was sent.');
@@ -52,20 +66,26 @@ export function checkSong(song) {
 }
 
 export function createSongsSyncApi({ sql, transaction, secret, now = () => new Date() }) {
-  /** Runs a handler: refusals go back with their message; anything else is a plain 500 that names no cause. */
+  /**
+   * Runs a handler: refusals go back with their message; anything else is a plain 500 that names no cause to the laptop, but logs
+   * the step and the error's code (see failureLine) so the cause can be found in the function logs.
+   */
   const safely = (handler) => async (event) => {
+    const step = { name: 'start' };
     try {
-      return await handler(event);
+      return await handler(event, step);
     } catch (err) {
       if (err instanceof ApiError) return json(err.status, { error: err.message });
-      console.error(`[songs] ${err.name}`);
+      console.error(failureLine(step.name, err));
       return json(500, { error: 'Something went wrong. Try again.' });
     }
   };
 
   /** Applies the laptop's full song list for its church and returns the counts. */
-  const pushSongs = safely(async (event) => {
+  const pushSongs = safely(async (event, step) => {
+    step.name = 'method';
     if (event.httpMethod !== 'POST') return json(405, { error: 'Use POST.' }, { Allow: 'POST' });
+    step.name = 'auth';
     const token = bearerToken(event.headers);
     if (!token) return json(401, { error: 'This laptop is not linked to a church.' });
     // Limited per laptop, by a keyed hash of its token, before anything is written.
@@ -76,6 +96,7 @@ export function createSongsSyncApi({ sql, transaction, secret, now = () => new D
     const device = await deviceFrom({ sql, secret }, token);
     if (!device) return json(401, { error: 'This laptop is not linked to a church.' });
 
+    step.name = 'validate';
     const body = parseJson(event);
     if (!body || !Array.isArray(body.songs)) throw new ApiError(400, 'The song list could not be read. Nothing was sent.');
     if (body.songs.length > MAX_SONGS) throw new ApiError(400, 'The song list is too long to send at once. Nothing was sent.');
@@ -84,11 +105,14 @@ export function createSongsSyncApi({ sql, transaction, secret, now = () => new D
 
     const churchId = device.church_id;
     const at = now().toISOString();
+    step.name = 'transaction';
     const counts = await transaction(async (tx) => {
+      step.name = 'role';
       const linked = await tx`SELECT role, disabled FROM users WHERE id = ${device.user_id} AND church_id = ${churchId}`;
       if (!linked.length || linked[0].disabled || !EDITING_ROLES.includes(linked[0].role)) {
         throw new ApiError(403, 'Only a planner or admin can send the song list from this laptop.');
       }
+      step.name = 'read';
       // Only this church's rows are read and written, so another church's songs are never touched.
       const existing = await tx`SELECT id, title, category, language, musical_key, removed_at FROM songs WHERE church_id = ${churchId}`;
       if (songs.length === 0 && existing.some((r) => !r.removed_at)) {
@@ -97,6 +121,7 @@ export function createSongsSyncApi({ sql, transaction, secret, now = () => new D
       const byId = new Map(existing.map((r) => [r.id, r]));
       const incoming = new Set(songs.map((s) => s.id));
       const counts = { created: 0, updated: 0, unchanged: 0, removed: 0 };
+      step.name = 'write';
       for (const s of songs) {
         const old = byId.get(s.id);
         const same = old && !old.removed_at && old.title === s.title && old.category === s.category && old.language === s.language && old.musical_key === s.musicalKey;
@@ -119,9 +144,11 @@ export function createSongsSyncApi({ sql, transaction, secret, now = () => new D
         counts.removed += 1;
       }
       // One audit row per sync: the counts and the actor. No song titles.
+      step.name = 'audit';
       await tx`INSERT INTO audit_log (church_id, actor_user_id, action, detail) VALUES (${churchId}, ${device.user_id}, 'songs.synced', ${JSON.stringify(counts)}::jsonb)`;
       return counts;
     });
+    step.name = 'respond';
     return json(200, counts);
   });
 
