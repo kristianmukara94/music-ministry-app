@@ -1,0 +1,7 @@
+{
+  "outputDirectory": "web",
+  "buildCommand": "true",
+  "rewrites": [
+    { "source": "/.netlify/functions/:name", "destination": "/api/:name" }
+  ]
+}
