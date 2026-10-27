@@ -6,11 +6,9 @@
 // a transaction that first locks the church's active admin rows, so two changes in the same church queue behind each other.
 import { hashPassword, temporaryPassword } from './auth.js';
 import { sessionFrom } from './session.js';
-import { ADMIN_ROLES, ROLES, isLocked } from './rules.js';
+import { ADMIN_ROLES, ROLES, checkDisplayName, checkUsername, isLocked } from './rules.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const USERNAME_MAX = 80;
-const NAME_MAX = 120;
 export const LAST_ADMIN_MESSAGE = 'A church must keep at least one active admin.';
 
 /** A refusal the caller turns into a plain response. Thrown inside a transaction, it rolls the whole change back. */
@@ -117,37 +115,43 @@ export function createAdminApi({ sql, transaction, secret, now = () => new Date(
     });
   });
 
-  /** A new user. Creating a user never removes an admin, so it needs no admin lock. */
+  /**
+   * Adds a user to a church. This is the one place that checks a new user's name, username and role, refuses a username
+   * already used in the church, and writes the account and its audit line. The web Users screen and the desktop app both come
+   * through here, so the rules are the same. `authorise(tx)`, when given, runs first inside the same transaction and may
+   * throw to refuse. Returns the new user and the temporary password, which is shown once and never stored in plain text.
+   */
+  const addUser = async ({ churchId, actorId, username, displayName, role, authorise }) => {
+    const temporary = temporaryPassword();
+    const created = await transaction(async (tx) => {
+      if (authorise) await authorise(tx);
+      const problem = checkUsername(username) ?? checkDisplayName(displayName);
+      if (problem) throw new ApiError(400, problem);
+      if (!ROLES.includes(role)) throw new ApiError(400, 'Choose a role: admin, planner or viewer.');
+      const taken = await tx`SELECT 1 FROM users WHERE church_id = ${churchId} AND lower(username) = lower(${username})`;
+      if (taken.length) throw new ApiError(409, 'That username is already used in this church.');
+      const rows = await tx`
+        INSERT INTO users (id, church_id, username, display_name, role, password_hash, must_change_password)
+        VALUES (gen_random_uuid(), ${churchId}, ${username}, ${displayName}, ${role}, ${await hashPassword(temporary)}, true)
+        RETURNING id`;
+      await audit(tx, churchId, actorId, 'user.created', rows[0].id);
+      return rows[0];
+    });
+    return {
+      user: { id: created.id, username, displayName, role, status: 'active', lastSignInAt: null },
+      temporaryPassword: temporary,
+    };
+  };
+
+  /** A new user from a signed-in admin. Creating a user never removes an admin, so it needs no admin lock. */
   const create = safely(async (event) => {
     const gate = await adminOnly(event, 'POST');
     if (gate.response) return gate.response;
     const body = parseJson(event);
     const username = typeof body?.username === 'string' ? body.username.trim() : '';
     const displayName = typeof body?.displayName === 'string' ? body.displayName.trim() : '';
-    const role = body?.role;
-    if (!username || username.length > USERNAME_MAX || /\s/.test(username)) {
-      return json(400, { error: `Enter a username of up to ${USERNAME_MAX} characters, with no spaces.` });
-    }
-    if (!displayName || displayName.length > NAME_MAX) return json(400, { error: `Enter a name of up to ${NAME_MAX} characters.` });
-    if (!ROLES.includes(role)) return json(400, { error: 'Choose a role: admin, planner or viewer.' });
-
     const { churchId, userId } = gate.session;
-    const taken = await sql`SELECT 1 FROM users WHERE church_id = ${churchId} AND lower(username) = lower(${username})`;
-    if (taken.length) return json(409, { error: 'That username is already used in this church.' });
-
-    const temporary = temporaryPassword();
-    const created = await transaction(async (tx) => {
-      const rows = await tx`
-        INSERT INTO users (id, church_id, username, display_name, role, password_hash, must_change_password)
-        VALUES (gen_random_uuid(), ${churchId}, ${username}, ${displayName}, ${role}, ${await hashPassword(temporary)}, true)
-        RETURNING id`;
-      await audit(tx, churchId, userId, 'user.created', rows[0].id);
-      return rows[0];
-    });
-    return json(201, {
-      user: { id: created.id, username, displayName, role, status: 'active', lastSignInAt: null },
-      temporaryPassword: temporary,
-    });
+    return json(201, await addUser({ churchId, actorId: userId, username, displayName, role: body?.role }));
   });
 
   /**
@@ -222,5 +226,5 @@ export function createAdminApi({ sql, transaction, secret, now = () => new Date(
     return json(200, { ok: true });
   });
 
-  return { list, create, update, resetPassword, unlock };
+  return { list, create, update, resetPassword, unlock, addUser };
 }

@@ -7,6 +7,7 @@ import { ProjectorSettingsPanel } from './ProjectorSettings';
 import { LowerThirdSettings } from './LowerThirdSettings';
 import { WelcomeScreenSettings } from './WelcomeScreenSettings';
 import { RemoteViewSettings } from './RemoteViewSettings';
+import { CloudSyncSettings } from './CloudSyncSettings';
 import { RegionSettings } from './RegionSettings';
 import { ThemeView } from './ThemeView';
 import { UpdatesPanel } from './UpdatesSettings';
@@ -27,6 +28,7 @@ type SectionKey =
   | 'projector' | 'lower3rd' | 'cast' | 'welcome'
   | 'rosary' | 'lectionary' | 'lyrics'
   | 'remote'
+  | 'cloud'
   | 'backup' | 'updates' | 'about';
 
 interface NavItem {
@@ -64,7 +66,10 @@ const NAV: { title: string; items: NavItem[] }[] = [
   },
   {
     title: 'Connections',
-    items: [{ key: 'remote', label: 'Remote view' }],
+    items: [
+      { key: 'remote', label: 'Remote view' },
+      { key: 'cloud', label: 'Cloud sync' },
+    ],
   },
   {
     title: 'System',
@@ -247,6 +252,9 @@ export function Settings() {
 
       case 'remote':
         return <RemoteViewSettings />;
+
+      case 'cloud':
+        return <CloudSyncSettings />;
 
       case 'backup':
         return (

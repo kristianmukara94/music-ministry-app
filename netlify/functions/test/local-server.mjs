@@ -12,6 +12,9 @@ import { PGlite } from '@electric-sql/pglite';
 import { createApi } from '../lib/handlers.js';
 import { createAdminApi } from '../lib/admin.js';
 import { tagFromQuery } from '../lib/db.js';
+import { createLinkingApi, REDEEM_LIMIT } from '../lib/linking.js';
+import { createDeviceUsersApi } from '../lib/device-users.js';
+import { createRateLimiter } from '../lib/rules.js';
 import { hashPassword } from '../lib/auth.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -44,10 +47,14 @@ const sql = async (strings, ...values) => {
 const api = createApi({ sql, secret: LOCAL_SECRET });
 const transaction = (work) => db.transaction((tx) => work(tagFromQuery((t, v) => tx.query(t, v))));
 const admin = createAdminApi({ sql, transaction, secret: LOCAL_SECRET });
+const linking = createLinkingApi({ sql, transaction, secret: LOCAL_SECRET, redeemLimiter: createRateLimiter(REDEEM_LIMIT) });
+const deviceUsers = createDeviceUsersApi({ sql, secret: LOCAL_SECRET, addUser: admin.addUser });
 const routes = {
   login: api.login, logout: api.logout, me: api.me, 'change-password': api.changePassword, plans: api.plans,
   'users-list': admin.list, 'users-create': admin.create, 'users-update': admin.update,
   'users-reset-password': admin.resetPassword, 'users-unlock': admin.unlock,
+  'link-code-create': linking.createCode, 'link-redeem': linking.redeem, 'device-status': linking.status, 'device-unlink': linking.unlink,
+  'device-users-create': deviceUsers,
 };
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };

@@ -138,6 +138,7 @@ interface ElectronApi {
   projector: ProjectorApi;
   welcome: WelcomeApi;
   lowerThird: LowerThirdApi;
+  cloud: CloudApi;
   remoteView: RemoteViewApi;
   library: LibraryApi;
   whiteboard: WhiteboardApi;
@@ -336,6 +337,46 @@ const offlineLibrary: LibraryApi = {
   cancel: async () => undefined,
 };
 
+/** Cloud sync: what the Settings screen may show. The device token never reaches the renderer. */
+export interface CloudLink {
+  linked: boolean;
+  church?: string;
+  admin?: string | null;
+  label?: string;
+  lastSeenAt?: string | null;
+  offline?: boolean;
+  error?: string | null;
+  serverConfirmed?: boolean;
+}
+
+/** A new web user, typed on this laptop. The temporary password comes back once, for the screen to show, and is never kept. */
+export interface NewWebUser {
+  username: string;
+  displayName: string;
+  role: 'admin' | 'planner' | 'viewer';
+}
+
+export interface CreatedWebUser {
+  username: string;
+  temporaryPassword: string;
+}
+
+export interface CloudApi {
+  status(): Promise<CloudLink>;
+  link(code: string, label: string): Promise<CloudLink>;
+  unlink(): Promise<CloudLink>;
+  createWebUser(input: NewWebUser): Promise<CreatedWebUser>;
+  defaultLabel(): Promise<string>;
+}
+
+const offlineCloud: CloudApi = {
+  status: async () => ({ linked: false, error: 'Open the desktop app to set up cloud sync.' }),
+  link: async () => offlineError(),
+  unlink: async () => ({ linked: false, error: null }),
+  createWebUser: async () => offlineError(),
+  defaultLabel: async () => 'This computer',
+};
+
 const offlineRemoteView: RemoteViewApi = {
   get: async () => ({ primary: offlineRole, secondary: offlineRole, devices: 0, deviceLimit: 20, hotspot: false, hotspotWarnAbove: 8, activity: [] }),
   save: async () => offlineError(),
@@ -478,6 +519,7 @@ function createBrowserBridge(): LiveBridge {
     projector: offlineProjector,
     welcome: offlineWelcome,
     lowerThird: offlineLowerThird,
+    cloud: offlineCloud,
     remoteView: offlineRemoteView,
     library: offlineLibrary,
     whiteboard: offlineWhiteboard,

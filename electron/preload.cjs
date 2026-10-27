@@ -119,6 +119,14 @@ contextBridge.exposeInMainWorld('apcc', {
     info: () => ipcRenderer.invoke('lowerThird:info'),
   },
 
+  cloud: {
+    status: () => ipcRenderer.invoke('cloud:status'),
+    link: (code, label) => ipcRenderer.invoke('cloud:link', { code, label }),
+    unlink: () => ipcRenderer.invoke('cloud:unlink'),
+    createWebUser: ({ username, displayName, role }) => ipcRenderer.invoke('cloud:create-web-user', { username, displayName, role }),
+    defaultLabel: () => ipcRenderer.invoke('cloud:defaultLabel'),
+  },
+
   remoteView: {
     get: () => ipcRenderer.invoke('remoteView:get'),
     save: (patch) => ipcRenderer.invoke('remoteView:save', patch),

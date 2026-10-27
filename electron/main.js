@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen, shell } from 'electron';
+import { createCloudDevice } from './cloud-device.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -591,6 +592,36 @@ ipcMain.handle('library:import', (_event, choices) => {
 ipcMain.handle('library:cancel', () => {
   pendingLibraryImport = null;
 });
+
+// ---- Cloud sync: linking this laptop with a one-time code. The token stays encrypted on this computer. ----
+const cloudFile = () => path.join(app.getPath('userData'), 'cloud-device.bin');
+// The cloud address comes from the environment first, then from config.json. Only http and https addresses are used.
+const cloudUrl = () => {
+  const value = process.env.APCCMMA_CLOUD_URL || readConfig(app.getPath('userData')).cloud_url || '';
+  return /^https?:\/\//.test(value) ? value : '';
+};
+const cloud = () =>
+  createCloudDevice({
+    storage: safeStorage,
+    file: {
+      read: () => (fs.existsSync(cloudFile()) ? fs.readFileSync(cloudFile()) : null),
+      write: (bytes) => fs.writeFileSync(cloudFile(), bytes),
+      remove: () => fs.rmSync(cloudFile(), { force: true }),
+    },
+    fetchFn: (...args) => fetch(...args),
+    baseUrl: cloudUrl(),
+  });
+
+/** Link state for the Settings screen. It holds display fields only, never the token. */
+ipcMain.handle('cloud:status', () => cloud().status());
+ipcMain.handle('cloud:link', (_event, input) => cloud().link(String(input?.code ?? ''), String(input?.label ?? '').slice(0, 80)));
+ipcMain.handle('cloud:unlink', () => cloud().unlink());
+// The input is checked in cloud-device.js, which runs here in the main process, before anything is sent. Only these three fields
+// are read, so nothing else from the screen reaches the cloud request.
+ipcMain.handle('cloud:create-web-user', (_event, input) =>
+  cloud().createWebUser({ username: input?.username, displayName: input?.displayName, role: input?.role }),
+);
+ipcMain.handle('cloud:defaultLabel', () => os.hostname());
 
 /** Remote view's status. Also starts the page if it is on and a network has appeared since the last check. */
 ipcMain.handle('remoteView:get', async () => {

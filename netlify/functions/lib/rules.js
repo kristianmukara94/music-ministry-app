@@ -58,3 +58,15 @@ export const lockMessage = (minutes) =>
 
 /** The roles that may manage users. Only admins. */
 export const ADMIN_ROLES = ['admin'];
+
+/** A username for a new account: 1 to 80 characters, no spaces. The same rule for the web planner and the desktop app. */
+export function checkUsername(username) {
+  if (!username || username.length > 80 || /\s/.test(username)) return 'Enter a username of up to 80 characters, with no spaces.';
+  return null;
+}
+
+/** A display name: 1 to 120 characters. */
+export function checkDisplayName(name) {
+  if (!name || name.length > 120) return 'Enter a name of up to 120 characters.';
+  return null;
+}

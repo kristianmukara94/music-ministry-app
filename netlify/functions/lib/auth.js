@@ -68,3 +68,28 @@ export function temporaryPassword() {
   const chars = [...randomBytes(12)].map((b) => TEMP_ALPHABET[b % TEMP_ALPHABET.length]).join('');
   return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
 }
+
+const LINK_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+/** A one-time link code in the display-code form, for example K7QM-4XD2. No 0, O, 1 or I. The alphabet has 32 characters,
+ *  so every byte maps evenly. */
+export function linkCode() {
+  const chars = [...randomBytes(8)].map((b) => LINK_ALPHABET[b % LINK_ALPHABET.length]).join('');
+  return `${chars.slice(0, 4)}-${chars.slice(4)}`;
+}
+
+/** The device token from an Authorization header (Bearer <token>), or null. */
+export function bearerToken(headers) {
+  const match = /^Bearer\s+(\S+)$/.exec(String(lowerHeaders(headers).authorization ?? ''));
+  return match ? match[1] : null;
+}
+
+/** A device token: shown to the laptop once, and stored on the server only as a keyed hash. */
+
+export const deviceToken = () => randomBytes(32).toString('base64url');
+
+/** A typed link code, tidied: case, spaces and dashes are ignored. Null when it cannot be a link code. */
+export function normaliseLinkCode(input) {
+  const compact = String(input ?? '').toUpperCase().replace(/[\s-]/g, '');
+  if (!/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/.test(compact)) return null;
+  return `${compact.slice(0, 4)}-${compact.slice(4)}`;
+}

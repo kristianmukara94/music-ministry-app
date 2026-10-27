@@ -1,0 +1,40 @@
+// Types for shared/cloud-device.js, so the Settings screen can import it with full checking.
+export const LINK_CODE_LENGTH: number;
+export function formatLinkCode(input: string): string;
+export function isCompleteLinkCode(input: string): boolean;
+export function lastSyncedText(iso: string | null | undefined, now?: number): string;
+
+export interface CloudLinkInput {
+  linked: boolean;
+  church?: string;
+  admin?: string | null;
+  label?: string;
+  lastSeenAt?: string | null;
+  offline?: boolean;
+  error?: string | null;
+}
+
+export type CloudViewState =
+  | { kind: 'unlinked'; error: string | null }
+  | {
+      kind: 'linked';
+      churchName: string;
+      adminName: string;
+      deviceLabel: string;
+      lastSynced: string;
+      offline: boolean;
+      error: string | null;
+    };
+
+export function cloudViewState(link: CloudLinkInput | null | undefined): CloudViewState;
+
+export const WEB_USER_ROLES: readonly ['admin', 'planner', 'viewer'];
+
+export interface WebUserInput {
+  username: string;
+  displayName: string;
+  role: string;
+}
+
+/** The plain message for the first problem with a new web user, or null when it is fine. */
+export function checkWebUser(input: Partial<WebUserInput> | null | undefined): string | null;

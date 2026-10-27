@@ -14,23 +14,6 @@ CREATE TABLE churches (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- A device or a web session. Each token belongs to exactly one church.
-CREATE TABLE device_tokens (
-  token_hash    TEXT PRIMARY KEY,                  -- a hash of the token, never the token itself
-  church_id     UUID NOT NULL REFERENCES churches(id) ON DELETE CASCADE,
-  device_name   TEXT NOT NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  revoked_at    TIMESTAMPTZ
-);
-CREATE INDEX device_tokens_church ON device_tokens (church_id);
-
--- One-time link codes an admin issues so another laptop can join.
-CREATE TABLE link_codes (
-  code_hash     TEXT PRIMARY KEY,
-  church_id     UUID NOT NULL REFERENCES churches(id) ON DELETE CASCADE,
-  expires_at    TIMESTAMPTZ NOT NULL,
-  used_at       TIMESTAMPTZ
-);
 
 -- The licence record names the church it was issued to. The app syncs only when the two match.
 CREATE TABLE licences (
@@ -102,8 +85,34 @@ CREATE TABLE audit_log (
   church_id       UUID NOT NULL REFERENCES churches(id) ON DELETE CASCADE,
   actor_user_id   UUID REFERENCES users(id) ON DELETE SET NULL,
   action          TEXT NOT NULL CHECK (action IN ('user.created', 'user.role_changed', 'user.disabled', 'user.enabled',
-                                                  'user.password_reset', 'user.unlocked')),
+                                                  'user.password_reset', 'user.unlocked',
+                                                  'device.link_code_created', 'device.linked', 'device.unlinked')),
   target_user_id  UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX audit_log_church ON audit_log (church_id, created_at);
+
+-- One-time link codes an admin issues so another laptop can join. Only a keyed hash of the code is stored. A code works once,
+-- expires after 10 minutes, and records the admin who created it.
+CREATE TABLE link_codes (
+  code_hash     TEXT PRIMARY KEY,
+  church_id     UUID NOT NULL REFERENCES churches(id) ON DELETE CASCADE,
+  created_by    UUID REFERENCES users(id) ON DELETE SET NULL,
+  expires_at    TIMESTAMPTZ NOT NULL,
+  used_at       TIMESTAMPTZ
+);
+
+-- A linked laptop. Each token belongs to exactly one church. user_id is the admin who linked the laptop, so the laptop
+-- can act for that admin when it creates web accounts. setup_until is set only for a laptop linked during church setup.
+CREATE TABLE device_tokens (
+  token_hash    TEXT PRIMARY KEY,                  -- a keyed hash of the token, never the token itself
+  device_id     UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),  -- a stable id the website can name when it unlinks a laptop
+  church_id     UUID NOT NULL REFERENCES churches(id) ON DELETE CASCADE,
+  user_id       UUID REFERENCES users(id) ON DELETE SET NULL,
+  device_name   TEXT NOT NULL,
+  setup_until   TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen_at  TIMESTAMPTZ,
+  revoked_at    TIMESTAMPTZ
+);
+CREATE INDEX device_tokens_church ON device_tokens (church_id);
