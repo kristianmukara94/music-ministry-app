@@ -117,3 +117,41 @@ export function dateLabel(isoDate) {
   const weekday = WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
   return `${weekday} ${day} ${MONTHS[month - 1]} ${year}`.toUpperCase();
 }
+
+/**
+ * The editor a plan opens in, with its id in the address. A Praise & Worship plan (kind 'pw') opens the Praise editor; a Mass
+ * plan, or one with no type recorded, opens the Mass editor.
+ */
+export function editorPathFor(plan) {
+  const page = plan.kind === 'pw' ? 'praise' : 'mass';
+  return `plan/${page}.html?id=${encodeURIComponent(plan.id)}`;
+}
+
+/** The plan-type tabs and how many plans each one holds. A plan with no type counts as a Mass plan, the editor it opens in. */
+export function tabCounts(plans) {
+  return {
+    all: plans.length,
+    mass: plans.filter((p) => p.kind !== 'pw').length,
+    pw: plans.filter((p) => p.kind === 'pw').length,
+  };
+}
+
+/** The rows the list shows: the chosen tab, then the search text matched against the name. */
+export function visiblePlans(plans, { tab = 'all', query = '' } = {}) {
+  const q = query.trim().toLowerCase();
+  return plans.filter(
+    (p) => (tab === 'all' || (tab === 'pw' ? p.kind === 'pw' : p.kind !== 'pw')) && (!q || p.name.toLowerCase().includes(q)),
+  );
+}
+
+/**
+ * The editor's controls. Save and Discard need a plan that is open; Save also needs a planner's or an admin's role and no save
+ * running. A plan a viewer has open shows the view-only note.
+ */
+export function editorControls({ plan, canEdit, saving }) {
+  return {
+    save: Boolean(plan) && Boolean(canEdit) && !saving,
+    discard: Boolean(plan) && !saving,
+    viewOnly: Boolean(plan) && !canEdit,
+  };
+}

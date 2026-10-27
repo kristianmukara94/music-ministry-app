@@ -22,6 +22,9 @@ async function request(name, { method = 'GET', query = '', body } = {}) {
   return data;
 }
 
+/** The church's plans for the list: name, date, updated time and type. The structure is not sent; open a plan to see it. */
+export const listPlans = () => request('plans');
+
 /** One plan with its structure, and whether this user may edit it. */
 export const getPlan = (id) => request('plan-get', { query: `?id=${encodeURIComponent(id)}` });
 

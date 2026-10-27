@@ -8,30 +8,6 @@ export const SYNC = {
   account: 'Church account',
 };
 
-/** The four summary cards at the top of the Plans page. `highlight` draws the card in the attention style. */
-export const SUMMARY = [
-  { label: 'NEXT MASS', value: 'Sun 1 Nov', detail: 'All Saints · 9 of 14 songs chosen' },
-  { label: 'NEXT PRAISE & WORSHIP', value: 'Fri 30 Oct', detail: '12 of 12 segments ready' },
-  { label: 'NEEDS ATTENTION', value: '2 plans', detail: '1 conflict · 1 waiting for the laptop', highlight: true },
-  { label: 'LAST SYNC', value: '2 min ago', detail: 'Church laptop · online' },
-];
-
-export const PLAN_STATUS = {
-  synced: { label: 'Synced', fg: '#8fd9ae', bg: '#12301f' },
-  pending: { label: 'Waiting for laptop', fg: '#f2bd6b', bg: '#33240c' },
-  conflict: { label: 'Conflict', fg: '#ff9a9a', bg: '#3a1114' },
-  draft: { label: 'Draft', fg: '#dbb3bf', bg: '#2a1019' },
-};
-
-/** The plan list. `kind` is 'mass' or 'pw'; it decides which editor a row opens. */
-export const PLANS = [
-  { kind: 'pw', name: 'Praise & Worship Night', date: 'Fri 30 Oct 2026', progress: '12 of 12 segments', pct: 100, status: 'synced', by: 'Edited on web · 1 hour ago' },
-  { kind: 'mass', name: 'All Saints, Sunday Mass', date: 'Sun 1 Nov 2026', progress: '9 of 14 songs', pct: 64, status: 'conflict', by: 'Edited in app · 9 min ago' },
-  { kind: 'pw', name: 'Praise & Worship Night', date: 'Fri 6 Nov 2026', progress: '5 of 12 segments', pct: 42, status: 'synced', by: 'Edited in app · 3 days ago' },
-  { kind: 'mass', name: '32nd Sunday in Ordinary Time', date: 'Sun 8 Nov 2026', progress: '2 of 14 songs', pct: 14, status: 'pending', by: 'Edited on web · 14 min ago' },
-  { kind: 'mass', name: '33rd Sunday in Ordinary Time', date: 'Sun 15 Nov 2026', progress: '0 of 14 songs', pct: 0, status: 'draft', by: 'Created on web · yesterday' },
-  { kind: 'mass', name: 'Christ the King, Sunday Mass', date: 'Sun 22 Nov 2026', progress: '0 of 14 songs', pct: 0, status: 'draft', by: 'Created on web · yesterday' },
-];
 
 /**
  * The song list from the church laptop: [title, category, language, key]. The Songs page shows all of them; the Mass
