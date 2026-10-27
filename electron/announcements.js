@@ -19,6 +19,7 @@ import { BIBLE_MIGRATIONS } from './bible-seed.js';
 import { ROSARY_MIGRATIONS } from './rosary.js';
 import { PW_MIGRATIONS } from './pw-sessions.js';
 import { SONG_CATEGORY_MIGRATIONS } from './song-categories.js';
+import { TRANSFER_MIGRATIONS } from './transfer.js';
 import { MEDIA_SCHEME, installMediaProtocol, registerMediaRoute } from './protocol.js';
 import { assetRootFor, migrateAbsolutePaths, relPath, resolveAsset, setActiveAssetRoot } from './assets.js';
 
@@ -122,6 +123,7 @@ const ALL_MIGRATIONS = [
   ...LECTIONARY_ACCLAMATION_MIGRATIONS,
   ...PLAN_COMMUNION_MIGRATIONS,
   ...SONG_CATEGORY_MIGRATIONS,
+  ...TRANSFER_MIGRATIONS,
 ];
 
 const SLIDE_SELECT = `
