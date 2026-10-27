@@ -340,6 +340,10 @@ const offlineLibrary: LibraryApi = {
 /** Cloud sync: what the Settings screen may show. The device token never reaches the renderer. */
 export interface CloudLink {
   linked: boolean;
+  /** The cloud address this laptop uses. Shown on the Cloud sync screen; never part of a message. */
+  address?: string;
+  /** The address the laptop was linked against. A change of address is shown on the screen; the link itself is not changed. */
+  linkedAddress?: string | null;
   church?: string;
   admin?: string | null;
   label?: string;
@@ -386,6 +390,7 @@ export interface SongsSyncState {
 
 export interface CloudApi {
   songsStatus(): Promise<SongsSyncState>;
+  saveAddress(address: string): Promise<{ ok: boolean; address?: string; message?: string }>;
   syncSongsNow(): Promise<SongsSyncState>;
   status(): Promise<CloudLink>;
   link(code: string, label: string): Promise<CloudLink>;
@@ -402,6 +407,7 @@ const offlineCloud: CloudApi = {
   createWebUser: async () => offlineError(),
   createChurchAdmin: async () => offlineError(),
   songsStatus: async () => ({ status: 'idle', lastSyncedAt: null, message: null }),
+  saveAddress: async () => ({ ok: false, message: 'Open the desktop app to change the cloud address.' }),
   syncSongsNow: async () => ({ status: 'idle', lastSyncedAt: null, message: null }),
   defaultLabel: async () => 'This computer',
 };

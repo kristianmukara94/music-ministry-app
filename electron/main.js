@@ -19,6 +19,7 @@ import { setupBible } from './bible.js';
 import { seedRosary, setupRosary } from './rosary.js';
 import { queueFromPlanItems, readQueueState, writeQueueState } from './queue-state.js';
 import { defaultDatabasePath, PREVIEW_MIN, readConfig, resolveDatabasePath, writeConfig } from './config.js';
+import { resolveCloudAddress, saveCloudAddress } from './cloud-address.js';
 import { setupSettings } from './settings.js';
 import { titleBarOverlayFor } from '../shared/title-bar.js';
 import { sanitizeProjectorSettings } from '../shared/projector-settings.js';
@@ -596,11 +597,15 @@ ipcMain.handle('library:cancel', () => {
 
 // ---- Cloud sync: linking this laptop with a one-time code. The token stays encrypted on this computer. ----
 const cloudFile = () => path.join(app.getPath('userData'), 'cloud-device.bin');
-// The cloud address comes from the environment first, then from config.json. Only http and https addresses are used.
-const cloudUrl = () => {
-  const value = process.env.APCCMMA_CLOUD_URL || readConfig(app.getPath('userData')).cloud_url || '';
-  return /^https?:\/\//.test(value) ? value : '';
-};
+// The cloud address: the environment variable if valid, then the address the operator saved, then the default (see cloud-address.js).
+const cloudUrl = () => resolveCloudAddress({ env: process.env.APCCMMA_CLOUD_URL, config: readConfig(app.getPath('userData')).cloud_url });
+// The operator changes the address here. It is written to config.json and nothing else; the link is not touched.
+ipcMain.handle('cloud:save-address', (_event, input) => {
+  const saved = saveCloudAddress(String(input?.address ?? ''));
+  if (!saved.ok) return { ok: false, message: saved.message };
+  writeConfig(app.getPath('userData'), saved.patch);
+  return { ok: true, address: cloudUrl() };
+});
 const cloud = () =>
   createCloudDevice({
     storage: safeStorage,
@@ -614,9 +619,11 @@ const cloud = () =>
   });
 
 /** Link state for the Settings screen. It holds display fields only, never the token. */
-ipcMain.handle('cloud:status', () => cloud().status());
-ipcMain.handle('cloud:link', (_event, input) => cloud().link(String(input?.code ?? ''), String(input?.label ?? '').slice(0, 80)));
-ipcMain.handle('cloud:unlink', () => cloud().unlink());
+// The cloud address is shown on the Cloud sync screen, so the user can see where the laptop is pointing. It is not part of any message.
+const withAddress = async (result) => ({ ...result, address: cloudUrl() });
+ipcMain.handle('cloud:status', async () => withAddress(await cloud().status()));
+ipcMain.handle('cloud:link', async (_event, input) => withAddress(await cloud().link(String(input?.code ?? ''), String(input?.label ?? '').slice(0, 80))));
+ipcMain.handle('cloud:unlink', async () => withAddress(await cloud().unlink()));
 // The input is checked in cloud-device.js, which runs here in the main process, before anything is sent. Only these three fields
 // are read, so nothing else from the screen reaches the cloud request.
 ipcMain.handle('cloud:create-web-user', (_event, input) =>

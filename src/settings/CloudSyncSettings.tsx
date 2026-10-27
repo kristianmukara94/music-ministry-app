@@ -59,6 +59,8 @@ export function CloudSyncSettings() {
   const [createdChurch, setCreatedChurch] = useState<CreatedChurchAdmin | null>(null);
   const [copiedChurch, setCopiedChurch] = useState(false);
   const [songs, setSongs] = useState<SongsSyncState | null>(null);
+  // What the operator has typed in the address field. Null until they type, so the field shows the current address.
+  const [addressText, setAddressText] = useState<string | null>(null);
 
   // The song list's state, refreshed while the screen is open. It holds a status and a plain message, never a token.
   useEffect(() => {
@@ -153,6 +155,28 @@ export function CloudSyncSettings() {
     }
   };
 
+  // Saves the address to config.json. The link is not touched: only the address the laptop talks to changes.
+  const saveAddress = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await cloud.saveAddress(addressText ?? link?.address ?? '');
+      if (!result.ok) {
+        setError(result.message ?? 'The address could not be saved.');
+        return;
+      }
+      setAddressText(null);
+      setLink(await cloud.status());
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Linked to an address other than the one now set: the link is kept, and the operator is told to check it.
+  const linkedElsewhere = Boolean(link?.linked && link.linkedAddress && link.address && link.linkedAddress !== link.address);
+
   const setupProblem = checkChurchSetup(setup);
   const setupTyped = setup.setupKey !== '' || setup.churchName !== '' || setup.username !== '' || setup.displayName !== '';
 
@@ -206,6 +230,29 @@ export function CloudSyncSettings() {
           Link this laptop to your church so it can share its plans and song titles with the planner on the web. Lyrics, Bible text,
           announcements and media stay on this laptop.
         </p>
+
+        <div className="flex flex-col gap-2">
+          <label className="flex flex-col gap-2">
+            <span className="eyebrow">Cloud address</span>
+            <input
+              value={addressText ?? link.address ?? ''}
+              onChange={(e) => setAddressText(e.target.value)}
+              spellCheck={false}
+              autoComplete="off"
+              className={`${field} w-full max-w-xl font-mono text-sm`}
+            />
+          </label>
+          <div>
+            <button type="button" onClick={saveAddress} disabled={busy} className={button}>
+              Save address
+            </button>
+          </div>
+          {linkedElsewhere && (
+            <p className="text-xs text-muted">
+              This laptop is linked to the address you had before. If you change it, check the link with Check now.
+            </p>
+          )}
+        </div>
 
         {view.kind === 'unlinked' && (
           <div className="flex flex-col gap-4">
@@ -325,6 +372,8 @@ export function CloudSyncSettings() {
         {view.kind === 'linked' && (
           <div className="flex flex-col gap-4 text-sm">
             <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+              <dt className="text-muted">Cloud address</dt>
+              <dd className="break-all font-mono text-xs">{link.address || 'Not set'}</dd>
               <dt className="text-muted">Church</dt>
               <dd className="font-semibold">{view.churchName || 'Not known yet'}</dd>
               <dt className="text-muted">Linked admin</dt>

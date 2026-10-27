@@ -57,7 +57,7 @@ function fetchToHandlers() {
             : name === 'setup-church-admin'
               ? await churchSetup(ev({ body }))
               : { statusCode: 404, body: '{"error":"Not found."}' };
-    return { ok: result.statusCode >= 200 && result.statusCode < 300, status: result.statusCode, json: async () => JSON.parse(result.body) };
+    return { ok: result.statusCode >= 200 && result.statusCode < 300, status: result.statusCode, json: async () => JSON.parse(result.body), text: async () => result.body };
   };
 }
 

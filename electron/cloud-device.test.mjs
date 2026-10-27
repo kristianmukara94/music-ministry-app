@@ -94,7 +94,7 @@ function fakeServer(overrides = {}) {
   return { fetchFn, calls };
 }
 
-const respond = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+const respond = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body, text: async () => JSON.stringify(body) });
 
 test('linking stores the token encrypted, and the stored bytes never contain the token', async () => {
   const storage = realisticStorage();
@@ -526,22 +526,22 @@ const htmlReply = (status) => ({
   json: async () => {
     throw new SyntaxError('Unexpected token <');
   },
+  text: async () => '<!doctype html><html><body>Password required</body></html>',
 });
 
 const setupWith = (reply) =>
   createCloudDevice({ storage: realisticStorage(), file: memoryFile(), fetchFn: async () => reply, baseUrl: BASE }).createChurchAdmin(SETUP);
 
-test('a 401 page that is not from the planner names its status, and is not hidden behind the generic line', async () => {
-  await assert.rejects(setupWith(htmlReply(401)), (err) => /error 401/.test(err.message) && !/Something went wrong/.test(err.message));
+test('a 401 page that is not JSON gives the address line, and not the status', async () => {
+  await assert.rejects(setupWith(htmlReply(401)), (err) => err.message === 'The cloud address did not respond as expected. Check the address shown above.');
 });
 
-test('a 403 page that is not from the planner names its status, on the link screen too', async () => {
+test('a 403 page that is not JSON gives the address line, on the link screen too', async () => {
   const device = createCloudDevice({ storage: realisticStorage(), file: memoryFile(), fetchFn: async () => htmlReply(403), baseUrl: BASE });
-  await assert.rejects(device.link('K7QM-4XD2', 'Laptop'), (err) => /error 403/.test(err.message));
+  await assert.rejects(device.link('K7QM-4XD2', 'Laptop'), (err) => err.message === 'The cloud address did not respond as expected. Check the address shown above.');
 });
 
-test('a server error with no plain message stays the generic line', async () => {
-  await assert.rejects(setupWith(htmlReply(500)), (err) => err.message === 'Something went wrong. Try again.');
+test('a server error with a JSON body and no plain message stays the generic line', async () => {
   await assert.rejects(setupWith(respond(500, {})), (err) => err.message === 'Something went wrong. Try again.');
 });
 
@@ -613,4 +613,83 @@ test('a push with no link is refused without sending anything', async () => {
   const device = createCloudDevice({ storage: realisticStorage(), file: memoryFile(), fetchFn: server.fetchFn, baseUrl: BASE });
   await assert.rejects(device.pushSongs(SONGS), (err) => err.revoked === true && err.message === MESSAGES.notLinked);
   assert.equal(server.calls.length, 0);
+});
+
+// ---- Clearer errors: the address, a reply that is not JSON, a 404 ----
+
+const ADDRESS_LINE = "The cloud address did not respond as expected. Check the address shown above.";
+const NOT_FOUND_LINE = "This cloud address does not have the sync service. Check the address shown above.";
+const BODY_SECRET = "a-body-detail-that-must-never-be-shown-9988";
+
+/** A reply whose body is text, not JSON, carrying a secret-looking detail that must never reach a message. */
+const textReply = (status, text) => ({ ok: status >= 200 && status < 300, status, json: async () => { throw new SyntaxError("Unexpected token"); }, text: async () => text });
+
+const onlyFor = (fetchFn) => createCloudDevice({ storage: realisticStorage(), file: memoryFile(), fetchFn, baseUrl: BASE });
+
+test("an unreachable cloud address gives the address line, and no network detail", async () => {
+  const device = onlyFor(async () => { throw new Error("getaddrinfo ENOTFOUND church.example"); });
+  await assert.rejects(device.link("K7QM-4XD2", "Laptop"), (err) => err.message === ADDRESS_LINE && !/ENOTFOUND/.test(err.message));
+});
+
+test("a reply that is not JSON gives the address line, whatever the status", async () => {
+  for (const status of [200, 401, 403, 500]) {
+    const device = onlyFor(async () => textReply(status, `<html>${BODY_SECRET}</html>`));
+    await assert.rejects(device.link("K7QM-4XD2", "Laptop"), (err) => err.message === ADDRESS_LINE, `status ${status}`);
+  }
+});
+
+test("a 404 gives the sync-service line, whether its body is JSON or not", async () => {
+  const asJson = onlyFor(async () => respond(404, { error: "Not found." }));
+  await assert.rejects(asJson.link("K7QM-4XD2", "Laptop"), (err) => err.message === NOT_FOUND_LINE);
+  const asText = onlyFor(async () => textReply(404, "<h1>Not Found</h1>"));
+  await assert.rejects(asText.link("K7QM-4XD2", "Laptop"), (err) => err.message === NOT_FOUND_LINE);
+});
+
+test("a server error with a JSON body but no plain message stays the generic line", async () => {
+  const device = onlyFor(async () => respond(500, {}));
+  await assert.rejects(device.link("K7QM-4XD2", "Laptop"), (err) => err.message === "Something went wrong. Try again.");
+});
+
+test("the token and the body of a reply are never in any message", async () => {
+  const secretBody = `${TOKEN} and ${BODY_SECRET}`;
+  const cases = [
+    () => onlyFor(async () => textReply(200, secretBody)).link("K7QM-4XD2", "Laptop"),
+    () => onlyFor(async () => textReply(401, secretBody)).link("K7QM-4XD2", "Laptop"),
+    () => onlyFor(async () => respond(404, { error: secretBody, token: TOKEN })).link("K7QM-4XD2", "Laptop"),
+    () => onlyFor(async () => respond(500, { error: "Something went wrong. Try again.", token: TOKEN, detail: BODY_SECRET })).link("K7QM-4XD2", "Laptop"),
+    () => onlyFor(async () => respond(500, { error: secretBody })).link("K7QM-4XD2", "Laptop"),
+    () => onlyFor(async () => respond(400, { error: "A plain refusal.", token: TOKEN, detail: BODY_SECRET })).link("K7QM-4XD2", "Laptop"),
+  ];
+  for (const attempt of cases) {
+    const err = await attempt().then(() => null, (e) => e);
+    assert.ok(err instanceof Error, "each case is refused");
+    assert.equal(err.message.includes(TOKEN), false, "the token is not in the message");
+    assert.equal(err.message.includes(BODY_SECRET), false, "the body is not in the message");
+  }
+});
+
+test("a plain server message is still shown as it is, and a 400 without one is refused neutrally", async () => {
+  const plain = onlyFor(async () => respond(400, { error: "That code has expired. Ask your admin for a new one." }));
+  await assert.rejects(plain.link("K7QM-4XD2", "Laptop"), (err) => err.message === "That code has expired. Ask your admin for a new one.");
+});
+
+test("the status shows the address line when the cloud does not respond as expected, and keeps the token out", async () => {
+  const file = memoryFile();
+  const storage = realisticStorage();
+  await createCloudDevice({ storage, file, fetchFn: fakeServer().fetchFn, baseUrl: BASE }).link("K7QM-4XD2", "Laptop");
+  const broken = createCloudDevice({ storage, file, fetchFn: async () => textReply(200, `<html>${TOKEN}</html>`), baseUrl: BASE });
+  const shown = await broken.status();
+  assert.equal(shown.linked, true, "the link is kept, the cloud just did not answer");
+  assert.equal(shown.error, ADDRESS_LINE);
+  assert.equal(JSON.stringify(shown).includes(TOKEN), false);
+});
+
+test('the Cloud sync screen shows the address the laptop uses, above any error, and the main process adds it to the link state', () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const screen = fs.readFileSync(path.join(here, '..', 'src', 'settings', 'CloudSyncSettings.tsx'), 'utf8');
+  assert.match(screen, /Cloud address/);
+  assert.match(screen, /link\.address/);
+  const main = fs.readFileSync(path.join(here, 'main.js'), 'utf8');
+  assert.match(main, /const withAddress = async \(result\) => \(\{ \.\.\.result, address: cloudUrl\(\) \}\)/);
+  assert.match(main, /ipcMain\.handle\('cloud:status', async \(\) => withAddress/);
 });

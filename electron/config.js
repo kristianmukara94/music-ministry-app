@@ -4,6 +4,7 @@ import { PROJECTOR_SETTINGS_DEFAULTS, sanitizeProjectorSettings } from '../share
 import { LOWER_THIRD_DEFAULTS, sanitizeLowerThirdStyle } from '../shared/lower-third-style.js';
 import { WELCOME_DEFAULTS, sanitizeWelcomeSettings } from '../shared/welcome-settings.js';
 import { REMOTE_VIEW_DEFAULTS, sanitizeRemoteView } from '../shared/remote-view.js';
+import { checkCloudAddress } from './cloud-address.js';
 
 // Preferences that must be known before the database opens, so they live in a plain file
 // in userData rather than in the database itself.
@@ -78,7 +79,7 @@ function sanitize(raw) {
     update_channel: UPDATE_CHANNELS.includes(raw.update_channel) ? raw.update_channel : DEFAULTS.update_channel,
     skipped_version: typeof raw.skipped_version === 'string' && raw.skipped_version.trim() ? raw.skipped_version.trim() : null,
     remind_after: Number.isFinite(raw.remind_after) ? raw.remind_after : null,
-    cloud_url: typeof raw.cloud_url === 'string' && /^https?:\/\//.test(raw.cloud_url.trim()) ? raw.cloud_url.trim() : '',
+    cloud_url: checkCloudAddress(raw.cloud_url).ok ? checkCloudAddress(raw.cloud_url).address : '',
     pause_on_metered: raw.pause_on_metered === true,
     eula_accepted: raw.eula_accepted === true,
     registered_church: typeof raw.registered_church === 'string' && raw.registered_church.trim() ? raw.registered_church.trim() : null,

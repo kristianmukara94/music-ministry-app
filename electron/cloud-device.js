@@ -10,7 +10,9 @@ export const MESSAGES = {
   alreadyLinked: 'This laptop is already linked to a church. Unlink it first to set up a new church.',
   noSafeStorage: 'This computer cannot protect the link key, so this laptop cannot be linked. Check that Windows is signed in to a user account, then try again.',
   noCloudAddress: 'The cloud address is not set on this computer. Ask your technical helper to set it.',
-  offline: 'Cannot reach the cloud. Check the internet connection and try again.',
+  // Used when the cloud cannot be reached, and when it answers with something that is not JSON. The address is shown on the screen.
+  offline: 'The cloud address did not respond as expected. Check the address shown above.',
+  notFound: 'This cloud address does not have the sync service. Check the address shown above.',
   unreadable: 'The saved link on this computer could not be read. Link this laptop again.',
   revokedOnWeb: 'This laptop was unlinked from the website. Link it again.',
 };
@@ -19,6 +21,9 @@ export const MESSAGES = {
 // The server's own plain message when it sent one. Otherwise a refusal (4xx) names its status, so a page that is not from the
 // planner (a site password page, for example) is not hidden behind the generic line. Server errors and anything else stay generic.
 const serverMessage = (res) => {
+  if (res.status === 404) return MESSAGES.notFound;
+  // A reply that is not JSON (a web page, a password page, a wrong address) is never shown: only the address line helps here.
+  if (res.notJson) return MESSAGES.offline;
   if (typeof res.body?.error === 'string' && res.body.error.length <= 200) return res.body.error;
   if (res.status >= 400 && res.status < 500) {
     return `The cloud refused this request (error ${res.status}). Check the cloud address, or ask your technical helper.`;
@@ -42,8 +47,21 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl }) {
     } catch {
       throw new Error(MESSAGES.offline);
     }
-    const data = await res.json().catch(() => ({}));
-    return { ok: res.ok, status: res.status, body: data };
+    // The reply is read as text first, so a page that is not JSON is recognised, and its contents are never kept or shown.
+    const text = await res.text().catch(() => '');
+    let data = {};
+    let notJson = false;
+    try {
+      data = JSON.parse(text);
+      if (!data || typeof data !== 'object' || Array.isArray(data)) notJson = true;
+    } catch {
+      notJson = true;
+    }
+    // The device token is never shown: an error text that carries it is dropped, so the neutral line is used instead.
+    // A device token is 32 random bytes in base64url, so a long run of those characters is treated as one and dropped.
+    if (typeof data.error === 'string' && (/[A-Za-z0-9_-]{40,}/.test(data.error) || (token && data.error.includes(token)))) data = { ...data, error: undefined };
+    // A reply that is not JSON is never a success, whatever its status.
+    return { ok: res.ok && !notJson, status: res.status, body: notJson ? {} : data, notJson };
   }
 
   const readRecord = () => {
@@ -66,6 +84,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl }) {
     admin: record.admin,
     label: record.label,
     lastSeenAt: record.lastSeenAt,
+    linkedAddress: record.linkedAddress ?? null,
     offline: false,
     error: null,
     ...extra,
@@ -83,6 +102,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl }) {
       admin: res.body.adminName,
       label: res.body.deviceLabel,
       lastSeenAt: null,
+      linkedAddress: baseUrl.replace(/\/+$/, ''),
     };
     writeRecord(record);
     return status();
@@ -195,6 +215,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl }) {
       admin: res.body.displayName,
       label: res.body.deviceLabel,
       lastSeenAt: null,
+      linkedAddress: baseUrl.replace(/\/+$/, ''),
     });
     return {
       username: res.body.username,

@@ -126,6 +126,7 @@ contextBridge.exposeInMainWorld('apcc', {
     createWebUser: ({ username, displayName, role }) => ipcRenderer.invoke('cloud:create-web-user', { username, displayName, role }),
     songsStatus: () => ipcRenderer.invoke('cloud:songs-status'),
     syncSongsNow: () => ipcRenderer.invoke('cloud:songs-sync-now'),
+    saveAddress: (address) => ipcRenderer.invoke('cloud:save-address', { address: String(address ?? '') }),
     createChurchAdmin: ({ setupKey, churchName, username, displayName, deviceLabel }) =>
       ipcRenderer.invoke('cloud:create-church-admin', { setupKey, churchName, username, displayName, deviceLabel }),
     defaultLabel: () => ipcRenderer.invoke('cloud:defaultLabel'),
