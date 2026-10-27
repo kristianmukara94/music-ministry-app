@@ -30,7 +30,7 @@ function parseJson(event) {
 }
 
 /** A plan's date as YYYY-MM-DD, whether the driver returns a Date or text. */
-function dateText(value) {
+export function dateText(value) {
   if (value instanceof Date) {
     const pad = (n) => String(n).padStart(2, '0');
     return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;

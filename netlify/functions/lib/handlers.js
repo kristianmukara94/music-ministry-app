@@ -4,9 +4,9 @@
 import { hashPassword, verifyPassword, newToken, hashToken, readCookie, sessionCookie, clearedCookie, SESSION_HOURS, lowerHeaders } from './auth.js';
 import { sessionFrom as loadSession } from './session.js';
 import { clientAddress } from './client-address.js';
+import { dateText } from './plan-editing.js';
 import { hit } from './rate-limit.js';
 import {
-  EDITING_ROLES,
   LOCK_MINUTES,
   LOGIN_LIMIT,
   afterFailedAttempt,
@@ -172,12 +172,20 @@ export function createApi({ sql, secret, now = () => new Date() }) {
     const session = await sessionFrom(event);
     if (!session) return json(401, { error: 'Sign in first.' });
     if (session.mustChangePassword) return json(403, { error: 'Change your password before using the planner.' });
-    if (!EDITING_ROLES.includes(session.role)) return json(403, { error: 'Your account can view but not edit plans.' });
+    // Every signed-in role can list the church's plans. The body is not sent, so the list stays light. `kind` says which editor
+    // a plan opens in, and is read from the body without sending it.
     const rows = await sql`
-      SELECT id, name, liturgical_date, updated_at FROM plans
+      SELECT id, name, liturgical_date, updated_at, body->>'kind' AS kind FROM plans
       WHERE church_id = ${session.churchId}
-      ORDER BY liturgical_date, id`;
-    return json(200, { plans: rows });
+      ORDER BY liturgical_date, name, id`;
+    const plans = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      liturgical_date: dateText(r.liturgical_date),
+      updated_at: new Date(r.updated_at).toISOString(),
+      kind: r.kind ?? null,
+    }));
+    return json(200, plans.length ? { plans } : { plans, message: 'No plans yet. Plans are created on the church laptop and appear here after sync.' });
   });
 
   return { login, logout, me, changePassword, plans, sessionFrom };

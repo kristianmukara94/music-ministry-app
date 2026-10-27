@@ -219,10 +219,10 @@ test('a disabled user is refused, and their sessions are deleted at once', async
 
 // ---- Roles ----
 
-test('a viewer\'s request to a planner-only function returns 403; a planner\'s returns only their own church\'s plans', async () => {
+test('a viewer and a planner both list the plans, and each sees only their own church\'s plans', async () => {
   const viewer = await signIn('viewer');
-  const denied = await build().plans(event({ method: 'GET', cookie: viewer }));
-  assert.equal(denied.statusCode, 403);
+  const seen = await build().plans(event({ method: 'GET', cookie: viewer }));
+  assert.equal(seen.statusCode, 200, 'a viewer can list plans');
 
   const planner = await signIn('planner');
   const res = await build().plans(event({ method: 'GET', cookie: planner }));
