@@ -5,3 +5,6 @@ out/
 .env
 *.log
 *.pfx
+.env.local
+.cer
+.vercel/
