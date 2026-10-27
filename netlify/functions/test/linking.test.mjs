@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { createLinkingApi, REDEEM_LIMIT } from '../lib/linking.js';
 import { createApi } from '../lib/handlers.js';
-import { createRateLimiter } from '../lib/rules.js';
+
 import { hashPassword, hashToken } from '../lib/auth.js';
 import { tagFromQuery } from '../lib/db.js';
 
@@ -23,10 +23,10 @@ const CODE_SHAPE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKMNPQRSTUVWX
 
 let pg;
 let clock;
-let redeemLimiter;
+
 const sql = tagFromQuery((text, params) => pg.query(text, params));
 const transaction = (work) => pg.transaction((tx) => work(tagFromQuery((t, v) => tx.query(t, v))));
-const linking = () => createLinkingApi({ sql, transaction, secret: SECRET, now: () => clock, redeemLimiter });
+const linking = () => createLinkingApi({ sql, transaction, secret: SECRET, now: () => clock });
 const web = () => createApi({ sql, secret: SECRET, now: () => clock });
 
 const event = ({ method = 'POST', body, bearer, cookie, ip = '198.51.100.7' } = {}) => ({
@@ -64,8 +64,7 @@ before(async () => {
 
 beforeEach(async () => {
   clock = new Date('2026-10-27T12:00:00Z');
-  redeemLimiter = createRateLimiter(REDEEM_LIMIT);
-  await pg.exec('TRUNCATE sessions, device_tokens, link_codes, audit_log, users, plans, songs, devices, licences, churches CASCADE;');
+  await pg.exec('TRUNCATE rate_limits, sessions, device_tokens, link_codes, audit_log, users, plans, songs, devices, licences, churches CASCADE;');
   await pg.query(`INSERT INTO churches (id, display_code, name) VALUES ($1, 'K7QM-4XD2', 'St Mary'), ($2, 'R2VT-9HJ6', 'Holy Cross')`, [CHURCH_A, CHURCH_B]);
   const hash = await hashPassword(PASSWORD);
   for (const [church, username, role] of [[CHURCH_A, 'boss', 'admin'], [CHURCH_A, 'planner', 'planner'], [CHURCH_B, 'otherboss', 'admin']]) {

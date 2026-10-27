@@ -7,10 +7,11 @@
 //  - Otherwise: the admin who linked this laptop must be an active admin of the church, and the new account gets the role
 //    asked for.
 // The account is written in one transaction that locks the church's active admins, so two setups cannot both succeed.
-import { hashPassword, temporaryPassword } from './auth.js';
+import { hashPassword, hashToken, temporaryPassword } from './auth.js';
 import { bearerToken, deviceFrom } from './device.js';
 import { ApiError } from './admin.js';
-import { checkDisplayName, checkNewPassword, checkUsername, createRateLimiter, ROLES } from './rules.js';
+import { checkDisplayName, checkNewPassword, checkUsername, ROLES } from './rules.js';
+import { hit } from './rate-limit.js';
 
 export const DEVICE_LIMIT = { requests: 10, windowMs: 60 * 1000 };
 
@@ -29,7 +30,7 @@ function parseJson(event) {
   }
 }
 
-export function createAppAdminApi({ sql, transaction, secret, now = () => new Date(), limiter = createRateLimiter(DEVICE_LIMIT) }) {
+export function createAppAdminApi({ sql, transaction, secret, now = () => new Date() }) {
   /** The linked laptop for this token, from the shared device lookup. */
   const deviceFor = (token) => deviceFrom({ sql, secret }, token);
 
@@ -39,9 +40,10 @@ export function createAppAdminApi({ sql, transaction, secret, now = () => new Da
       if (event.httpMethod !== 'POST') return json(405, { error: 'Use POST.' }, { Allow: 'POST' });
       const token = bearerToken(event.headers);
       if (!token) return json(401, { error: 'This laptop is not linked to a church.' });
-      // Limited per device, before the database is asked anything, so a stolen or guessed token cannot flood it.
-      if (!limiter.allow(token, now().getTime())) {
-        return json(429, { error: 'Too many requests from this laptop. Wait a minute and try again.' }, { 'Retry-After': '60' });
+      // Limited per laptop, by a keyed hash of its token, so a stolen or guessed token cannot flood the database.
+      const gate = await hit(sql, `device:${hashToken(token, secret)}`, DEVICE_LIMIT.requests, DEVICE_LIMIT.windowMs / 1000, now());
+      if (!gate.allowed) {
+        return json(429, { error: 'Too many requests from this laptop. Wait a minute and try again.' }, { 'Retry-After': String(gate.retryAfterSeconds) });
       }
       const device = await deviceFor(token);
       if (!device) return json(401, { error: 'This laptop is not linked to a church.' });

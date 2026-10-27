@@ -6,6 +6,8 @@ import { deviceFrom, bearerToken } from './device.js';
 import { ApiError } from './admin.js';
 import { sessionFrom } from './session.js';
 import { ADMIN_ROLES } from './rules.js';
+import { clientAddress } from './client-address.js';
+import { hit } from './rate-limit.js';
 
 export const LINK_CODE_MINUTES = 10;
 export const REDEEM_LIMIT = { requests: 10, windowMs: 60 * 1000 };
@@ -33,8 +35,6 @@ const json = (statusCode, body, extraHeaders = {}) => ({
   body: JSON.stringify(body),
 });
 
-const lowerHeaders = (headers = {}) => Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
-export const clientIp = (headers) => headers['x-nf-client-connection-ip'] ?? headers['x-forwarded-for']?.split(',')[0].trim() ?? 'unknown';
 
 function parseJson(event) {
   try {
@@ -56,7 +56,7 @@ const safely = (handler) => async (event) => {
   }
 };
 
-export function createLinkingApi({ sql, transaction, secret, now = () => new Date(), redeemLimiter }) {
+export function createLinkingApi({ sql, transaction, secret, now = () => new Date() }) {
   const session = (event) => sessionFrom({ sql, secret, now }, event);
 
   /** An admin's one-time link code. Shown once; only its hash is kept. */
@@ -82,8 +82,9 @@ export function createLinkingApi({ sql, transaction, secret, now = () => new Dat
   /** A laptop redeems a link code once. The code, the device row and the audit row are written in one transaction. */
   const redeem = safely(async (event) => {
     if (event.httpMethod !== 'POST') return json(405, { error: 'Use POST.' }, { Allow: 'POST' });
-    if (!redeemLimiter.allow(clientIp(lowerHeaders(event.headers)), now().getTime())) {
-      return json(429, { error: 'Too many attempts. Wait a minute and try again.' }, { 'Retry-After': '60' });
+    const gate = await hit(sql, `redeem:${clientAddress(event)}`, REDEEM_LIMIT.requests, REDEEM_LIMIT.windowMs / 1000, now());
+    if (!gate.allowed) {
+      return json(429, { error: 'Too many attempts. Wait a minute and try again.' }, { 'Retry-After': String(gate.retryAfterSeconds) });
     }
     const body = parseJson(event);
     const code = normaliseLinkCode(body?.code);

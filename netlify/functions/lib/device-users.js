@@ -5,7 +5,8 @@
 import { bearerToken, deviceFrom } from './device.js';
 import { ApiError } from './admin.js';
 import { DEVICE_LIMIT } from './app-admin.js';
-import { createRateLimiter } from './rules.js';
+import { hashToken } from './auth.js';
+import { hit } from './rate-limit.js';
 
 const NOT_ADMIN = 'Only an active admin can add web users from this laptop.';
 
@@ -25,15 +26,16 @@ function parseJson(event) {
 }
 
 /** `addUser` comes from createAdminApi, so the account rules are the same as on the web. */
-export function createDeviceUsersApi({ sql, secret, addUser, now = () => new Date(), limiter = createRateLimiter(DEVICE_LIMIT) }) {
+export function createDeviceUsersApi({ sql, secret, addUser, now = () => new Date() }) {
   return async function createWebUser(event) {
     try {
       if (event.httpMethod !== 'POST') return json(405, { error: 'Use POST.' }, { Allow: 'POST' });
       const token = bearerToken(event.headers);
       if (!token) return json(401, { error: 'This laptop is not linked to a church.' });
-      // Limited per laptop, before the database is asked anything, so a stolen or guessed token cannot flood it.
-      if (!limiter.allow(token, now().getTime())) {
-        return json(429, { error: 'Too many requests from this laptop. Wait a minute and try again.' }, { 'Retry-After': '60' });
+      // Limited per laptop, by a keyed hash of its token, so a stolen or guessed token cannot flood the database.
+      const gate = await hit(sql, `device:${hashToken(token, secret)}`, DEVICE_LIMIT.requests, DEVICE_LIMIT.windowMs / 1000, now());
+      if (!gate.allowed) {
+        return json(429, { error: 'Too many requests from this laptop. Wait a minute and try again.' }, { 'Retry-After': String(gate.retryAfterSeconds) });
       }
       const device = await deviceFrom({ sql, secret }, token);
       if (!device) return json(401, { error: 'This laptop is not linked to a church.' });

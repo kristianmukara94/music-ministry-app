@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { createAppAdminApi } from '../lib/app-admin.js';
 import { createApi } from '../lib/handlers.js';
-import { createRateLimiter } from '../lib/rules.js';
+
 import { hashPassword, hashToken } from '../lib/auth.js';
 import { tagFromQuery } from '../lib/db.js';
 
@@ -24,12 +24,12 @@ const TEMP = /^[abcdefghjkmnpqrstuvwxyz23456789]{4}-[abcdefghjkmnpqrstuvwxyz2345
 
 let pg;
 let clock;
-let limiter;
+
 
 const query = (text, params) => pg.query(text, params);
 const sql = tagFromQuery(query);
 const transaction = (work) => pg.transaction((tx) => work(tagFromQuery((t, v) => tx.query(t, v))));
-const appApi = () => createAppAdminApi({ sql, transaction, secret: SECRET, now: () => clock, limiter });
+const appApi = () => createAppAdminApi({ sql, transaction, secret: SECRET, now: () => clock });
 const webApi = () => createApi({ sql, secret: SECRET, now: () => clock });
 
 const event = ({ token, body } = {}) => ({
@@ -67,8 +67,7 @@ before(async () => {
 
 beforeEach(async () => {
   clock = new Date('2026-10-27T12:00:00Z');
-  limiter = createRateLimiter({ requests: 10, windowMs: 60 * 1000 });
-  await pg.exec('TRUNCATE sessions, device_tokens, audit_log, users, plans, songs, devices, link_codes, licences, churches CASCADE;');
+  await pg.exec('TRUNCATE rate_limits, sessions, device_tokens, audit_log, users, plans, songs, devices, link_codes, licences, churches CASCADE;');
   await query(`INSERT INTO churches (id, display_code, name) VALUES ($1, 'K7QM-4XD2', 'St Mary'), ($2, 'R2VT-9HJ6', 'St Mary'), ($3, 'B8NW-3PL5', 'St Mary')`, [CHURCH_A, CHURCH_B, CHURCH_C]);
 });
 

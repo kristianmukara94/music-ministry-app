@@ -10,7 +10,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { createAdminApi } from '../lib/admin.js';
 import { createDeviceUsersApi } from '../lib/device-users.js';
 import { createApi } from '../lib/handlers.js';
-import { createRateLimiter } from '../lib/rules.js';
+
 import { hashPassword, hashToken } from '../lib/auth.js';
 import { tagFromQuery } from '../lib/db.js';
 
@@ -25,12 +25,12 @@ const TEMP = /^[abcdefghjkmnpqrstuvwxyz23456789]{4}-[abcdefghjkmnpqrstuvwxyz2345
 
 let pg;
 let clock;
-let limiter;
+
 
 const sql = tagFromQuery((text, params) => pg.query(text, params));
 const transaction = (work) => pg.transaction((tx) => work(tagFromQuery((t, v) => tx.query(t, v))));
 const admin = () => createAdminApi({ sql, transaction, secret: SECRET, now: () => clock });
-const deviceApi = () => createDeviceUsersApi({ sql, secret: SECRET, addUser: admin().addUser, now: () => clock, limiter });
+const deviceApi = () => createDeviceUsersApi({ sql, secret: SECRET, addUser: admin().addUser, now: () => clock });
 const webApi = () => createApi({ sql, secret: SECRET, now: () => clock });
 
 const event = ({ token, body, method = 'POST' } = {}) => ({
@@ -68,8 +68,7 @@ before(async () => {
 
 beforeEach(async () => {
   clock = new Date('2026-10-27T12:00:00Z');
-  limiter = createRateLimiter({ requests: 10, windowMs: 60 * 1000 });
-  await pg.exec('TRUNCATE sessions, device_tokens, link_codes, audit_log, users, plans, songs, devices, licences, churches CASCADE;');
+  await pg.exec('TRUNCATE rate_limits, sessions, device_tokens, link_codes, audit_log, users, plans, songs, devices, licences, churches CASCADE;');
   await pg.query(`INSERT INTO churches (id, display_code, name) VALUES ($1, 'K7QM-4XD2', 'St Mary'), ($2, 'R2VT-9HJ6', 'St Mary')`, [CHURCH_A, CHURCH_B]);
 });
 

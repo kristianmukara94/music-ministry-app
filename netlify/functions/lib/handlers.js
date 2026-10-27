@@ -3,13 +3,14 @@
 // so every query here is parameterised. Nothing here logs a password, a token or a database string.
 import { hashPassword, verifyPassword, newToken, hashToken, readCookie, sessionCookie, clearedCookie, SESSION_HOURS, lowerHeaders } from './auth.js';
 import { sessionFrom as loadSession } from './session.js';
+import { clientAddress } from './client-address.js';
+import { hit } from './rate-limit.js';
 import {
   EDITING_ROLES,
   LOCK_MINUTES,
   LOGIN_LIMIT,
   afterFailedAttempt,
   checkNewPassword,
-  createRateLimiter,
   isLocked,
   lockMinutesLeft,
   lockMessage,
@@ -33,16 +34,11 @@ function parseJson(event) {
   }
 }
 
-/** The client's address as the Netlify edge reports it. Used only for the rate limit. */
-function clientIp(headers) {
-  return headers['x-nf-client-connection-ip'] ?? headers['x-forwarded-for']?.split(',')[0].trim() ?? 'unknown';
-}
-
 /**
- * Builds the API. `now` and `limiter` are injectable so the tests can move time and reset the limit. The rate limit is held
- * in memory, so it applies per function instance; the account lockout is kept in the database and applies everywhere.
+ * Builds the API. `now` is injectable so the tests can move time. The sign-in rate limit per address and the account lockout
+ * are both kept in the database, so they hold across every function instance.
  */
-export function createApi({ sql, secret, now = () => new Date(), limiter = createRateLimiter(LOGIN_LIMIT) }) {
+export function createApi({ sql, secret, now = () => new Date() }) {
   // A real hash of a made-up password, so an unknown or locked account takes as long to refuse as a wrong password.
   let dummyHash = null;
   const burnTime = async (password) => {
@@ -68,9 +64,9 @@ export function createApi({ sql, secret, now = () => new Date(), limiter = creat
 
   const login = safely(async (event) => {
     if (event.httpMethod !== 'POST') return json(405, { error: 'Use POST.' }, { Allow: 'POST' });
-    const headers = lowerHeaders(event.headers);
-    if (!limiter.allow(clientIp(headers), now().getTime())) {
-      return json(429, { error: 'Too many sign-in attempts. Wait a minute and try again.' }, { 'Retry-After': '60' });
+    const gate = await hit(sql, `login:${clientAddress(event)}`, LOGIN_LIMIT.requests, LOGIN_LIMIT.windowMs / 1000, now());
+    if (!gate.allowed) {
+      return json(429, { error: 'Too many sign-in attempts. Wait a minute and try again.' }, { 'Retry-After': String(gate.retryAfterSeconds) });
     }
     const body = parseJson(event);
     const username = typeof body?.username === 'string' ? body.username.trim() : '';

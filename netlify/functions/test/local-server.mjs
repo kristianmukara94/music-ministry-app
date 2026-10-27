@@ -12,11 +12,10 @@ import { PGlite } from '@electric-sql/pglite';
 import { createApi } from '../lib/handlers.js';
 import { createAdminApi } from '../lib/admin.js';
 import { tagFromQuery } from '../lib/db.js';
-import { createLinkingApi, REDEEM_LIMIT } from '../lib/linking.js';
+import { createLinkingApi } from '../lib/linking.js';
 import { createDeviceUsersApi } from '../lib/device-users.js';
 import { createChurchSetupApi } from '../lib/church-setup.js';
 import { createPlanEditingApi } from '../lib/plan-editing.js';
-import { createRateLimiter } from '../lib/rules.js';
 import { hashPassword, hashToken, setupKey } from '../lib/auth.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -69,9 +68,9 @@ const sql = async (strings, ...values) => {
 const api = createApi({ sql, secret: LOCAL_SECRET });
 const transaction = (work) => db.transaction((tx) => work(tagFromQuery((t, v) => tx.query(t, v))));
 const admin = createAdminApi({ sql, transaction, secret: LOCAL_SECRET });
-const linking = createLinkingApi({ sql, transaction, secret: LOCAL_SECRET, redeemLimiter: createRateLimiter(REDEEM_LIMIT) });
+const linking = createLinkingApi({ sql, transaction, secret: LOCAL_SECRET });
 const deviceUsers = createDeviceUsersApi({ sql, secret: LOCAL_SECRET, addUser: admin.addUser });
-const churchSetup = createChurchSetupApi({ transaction, secret: LOCAL_SECRET });
+const churchSetup = createChurchSetupApi({ sql, transaction, secret: LOCAL_SECRET });
 const planEditing = createPlanEditingApi({ sql, transaction, secret: LOCAL_SECRET });
 const routes = {
   login: api.login, logout: api.logout, me: api.me, 'change-password': api.changePassword, plans: api.plans,

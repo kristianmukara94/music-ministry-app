@@ -10,7 +10,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { createApi } from '../lib/handlers.js';
 import { createAdminApi } from '../lib/admin.js';
 import { tagFromQuery } from '../lib/db.js';
-import { createRateLimiter, LOGIN_LIMIT } from '../lib/rules.js';
+import { LOGIN_LIMIT } from '../lib/rules.js';
 import { hashPassword, hashToken } from '../lib/auth.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -26,7 +26,7 @@ const CODE_B = 'R2VT-9HJ6';
 
 let pg;
 let clock;
-let limiter;
+
 let api;
 
 /** Netlify's query tag over PGlite: the same `sql\`...\`` shape, with every value passed as a parameter. */
@@ -38,7 +38,7 @@ const tagFrom = (db) => async (strings, ...values) => {
 const sql = (...args) => pg.sql(...args);
 
 function build(opts = {}) {
-  api = createApi({ sql: tagFrom(pg), secret: opts.secret ?? SECRET, now: () => clock, limiter: opts.limiter ?? limiter });
+  api = createApi({ sql: tagFrom(pg), secret: opts.secret ?? SECRET, now: () => clock });
   return api;
 }
 
@@ -54,7 +54,7 @@ const cookieFrom = (res) => {
 };
 
 async function seed() {
-  await pg.exec(`TRUNCATE sessions, users, plans, songs, devices, churches CASCADE;`);
+  await pg.exec(`TRUNCATE rate_limits, sessions, users, plans, songs, devices, churches CASCADE;`);
   await pg.query(`INSERT INTO churches (id, display_code, name) VALUES ($1, $2, 'St Mary'), ($3, $4, 'St Mary')`, [CHURCH_A, CODE_A, CHURCH_B, CODE_B]);
   const hash = await hashPassword(GOOD);
   const user = (church, username, role, extra = {}) =>
@@ -89,7 +89,6 @@ before(async () => {
 
 beforeEach(async () => {
   clock = new Date('2026-10-27T12:00:00Z');
-  limiter = createRateLimiter(LOGIN_LIMIT);
   await seed();
 });
 
@@ -274,7 +273,7 @@ test('login is limited to 10 requests a minute per IP', async () => {
 });
 
 test('a missing TOKEN_SECRET fails closed with a plain 500 that reveals nothing', async () => {
-  const broken = createApi({ sql: tagFrom(pg), secret: undefined, now: () => clock, limiter: createRateLimiter(LOGIN_LIMIT) });
+  const broken = createApi({ sql: tagFrom(pg), secret: undefined, now: () => clock });
   const res = await broken.login(event({ body: { username: 'planner', password: GOOD } }));
   assert.equal(res.statusCode, 500);
   assert.equal(JSON.parse(res.body).error, 'Something went wrong. Try again.');

@@ -27,25 +27,6 @@ export function checkNewPassword(password) {
   return null;
 }
 
-/** A fixed-window limit per key (the client's IP). Returns false once the key uses up its requests in the window. */
-export function createRateLimiter({ requests, windowMs }) {
-  const hits = new Map();
-  return {
-    allow(key, now = Date.now()) {
-      const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
-      if (recent.length >= requests) {
-        hits.set(key, recent);
-        return false;
-      }
-      recent.push(now);
-      hits.set(key, recent);
-      return true;
-    },
-    reset() {
-      hits.clear();
-    },
-  };
-}
 
 /** Whole minutes left on a lock, rounded up, and never less than one while the lock lasts. */
 export function lockMinutesLeft(lockedUntil, now) {

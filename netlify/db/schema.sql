@@ -128,3 +128,11 @@ CREATE TABLE setup_keys (
   used_at     TIMESTAMPTZ,
   church_id   UUID REFERENCES churches(id) ON DELETE SET NULL  -- set when the key is used
 );
+
+-- Request counts for the rate limits, shared by every function instance. One row per bucket (a limit name and a client
+-- address or keyed token). The window restarts when window_start is older than the window.
+CREATE TABLE rate_limits (
+  bucket_key    TEXT PRIMARY KEY,
+  window_start  TIMESTAMPTZ NOT NULL,
+  hits          INTEGER NOT NULL
+);

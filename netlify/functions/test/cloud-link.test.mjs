@@ -11,7 +11,7 @@ import { createLinkingApi, REDEEM_LIMIT } from '../lib/linking.js';
 import { createApi } from '../lib/handlers.js';
 import { createAdminApi } from '../lib/admin.js';
 import { createDeviceUsersApi } from '../lib/device-users.js';
-import { createRateLimiter } from '../lib/rules.js';
+
 import { hashPassword, hashToken, setupKey } from '../lib/auth.js';
 import { createChurchSetupApi } from '../lib/church-setup.js';
 import { tagFromQuery } from '../lib/db.js';
@@ -102,12 +102,12 @@ before(async () => {
 
 beforeEach(async () => {
   clock = new Date('2026-10-27T12:00:00Z');
-  linking = createLinkingApi({ sql, transaction, secret: SECRET, now: () => clock, redeemLimiter: createRateLimiter(REDEEM_LIMIT) });
+  linking = createLinkingApi({ sql, transaction, secret: SECRET, now: () => clock });
   webApi = createApi({ sql, secret: SECRET, now: () => clock });
   const admin = createAdminApi({ sql, transaction, secret: SECRET, now: () => clock });
   deviceUsers = createDeviceUsersApi({ sql, secret: SECRET, addUser: admin.addUser, now: () => clock });
-  churchSetup = createChurchSetupApi({ transaction, secret: SECRET, now: () => clock });
-  await pg.exec('TRUNCATE sessions, device_tokens, link_codes, setup_keys, audit_log, users, plans, songs, devices, licences, churches CASCADE;');
+  churchSetup = createChurchSetupApi({ sql, transaction, secret: SECRET, now: () => clock });
+  await pg.exec('TRUNCATE rate_limits, sessions, device_tokens, link_codes, setup_keys, audit_log, users, plans, songs, devices, licences, churches CASCADE;');
   await pg.query(`INSERT INTO churches (id, display_code, name) VALUES ($1, 'K7QM-4XD2', 'St Mary')`, [CHURCH]);
   await pg.query(
     `INSERT INTO users (id, church_id, username, display_name, role, password_hash, must_change_password)

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { createChurchSetupApi, KEY_MESSAGE, SETUP_LIMIT } from '../lib/church-setup.js';
 import { createLinkingApi } from '../lib/linking.js';
-import { createRateLimiter } from '../lib/rules.js';
+
 import { hashToken, setupKey, temporaryPassword } from '../lib/auth.js';
 import { tagFromQuery } from '../lib/db.js';
 
@@ -24,8 +24,8 @@ let clock;
 
 const sql = tagFromQuery((text, params) => pg.query(text, params));
 const transaction = (work) => pg.transaction((tx) => work(tagFromQuery((t, v) => tx.query(t, v))));
-const setupApi = () => createChurchSetupApi({ transaction, secret: SECRET, now: () => clock });
-const linkingApi = () => createLinkingApi({ sql, transaction, secret: SECRET, now: () => clock, redeemLimiter: createRateLimiter({ requests: 10, windowMs: 60000 }) });
+const setupApi = () => createChurchSetupApi({ sql, transaction, secret: SECRET, now: () => clock });
+const linkingApi = () => createLinkingApi({ sql, transaction, secret: SECRET, now: () => clock });
 
 let ipCounter = 0;
 const event = ({ body, method = 'POST', ip = `203.0.113.${(ipCounter += 1)}` } = {}) => ({
@@ -60,7 +60,7 @@ before(async () => {
 
 beforeEach(async () => {
   clock = new Date('2026-10-27T12:00:00Z');
-  await pg.exec('TRUNCATE sessions, device_tokens, link_codes, audit_log, users, plans, songs, devices, licences, setup_keys, churches CASCADE;');
+  await pg.exec('TRUNCATE rate_limits, sessions, device_tokens, link_codes, audit_log, users, plans, songs, devices, licences, setup_keys, churches CASCADE;');
 });
 
 // ---- The happy path, and the key is single-use ----
