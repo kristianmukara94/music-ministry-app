@@ -72,17 +72,18 @@ function ControlButton({
   );
 }
 
-/** The master gatekeeper: the projector switch, flush right. Green dot and LIVE when on, muted grey and OFF when off. */
-function ProjectorMaster() {
-  const on = useLive((s) => s.state.outputs.projector);
-  const t = useT();
+/**
+ * A master switch: a pill with a dot, green and LIVE when on, muted grey and OFF when off. The Projector and Remote switches
+ * both use it, so they look the same.
+ */
+function MasterSwitch({ on, label, title, onClick }: { on: boolean; label: string; title: string; onClick: () => void }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={on}
-      title={on ? 'Projector is live. Click to turn off.' : 'Projector is off. Click to turn on.'}
-      onClick={() => dispatch({ type: 'output/toggle', output: 'projector' })}
+      title={title}
+      onClick={onClick}
       className={`${BASE} ${NO_DRAG} rounded-full border px-3.5 py-1.5 tracking-wide ${
         on
           ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 shadow-[0_0_14px_rgba(16,185,129,0.3)]'
@@ -93,8 +94,39 @@ function ProjectorMaster() {
         className={`size-2 shrink-0 rounded-full ${on ? 'animate-pulse bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]' : 'bg-zinc-500'}`}
         aria-hidden
       />
-      {t('top.projector')} · {on ? 'LIVE' : 'OFF'}
+      {label} · {on ? 'LIVE' : 'OFF'}
     </button>
+  );
+}
+
+/** The projector switch: turning it on opens the local Projector window. */
+function ProjectorMaster() {
+  const on = useLive((s) => s.state.outputs.projector);
+  const t = useT();
+  return (
+    <MasterSwitch
+      on={on}
+      label={t('top.projector')}
+      title={on ? 'Projector is live. Click to turn off.' : 'Projector is off. Click to turn on.'}
+      onClick={() => dispatch({ type: 'output/toggle', output: 'projector' })}
+    />
+  );
+}
+
+/**
+ * The Remote switch: starts and stops the Secondary stream that TV and phone viewers on the network see. It never opens or closes
+ * the local Projector window.
+ */
+function RemoteMaster() {
+  const on = useLive((s) => s.state.display.targets.secondary.live);
+  const t = useT();
+  return (
+    <MasterSwitch
+      on={on}
+      label={t('top.remote')}
+      title={on ? 'Remote is live on the network. Click to stop.' : 'Remote is off. Click to send the screen to TV and phone viewers.'}
+      onClick={() => dispatch({ type: 'display/live', value: !on })}
+    />
   );
 }
 
@@ -164,7 +196,8 @@ export function TopBar() {
         </div>
       </div>
 
-      <div className="ml-auto shrink-0">
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        <RemoteMaster />
         <ProjectorMaster />
       </div>
     </header>

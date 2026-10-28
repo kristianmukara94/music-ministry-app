@@ -1,9 +1,11 @@
 import crypto from 'node:crypto';
+import { Readable } from 'node:stream';
 import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { snapshotForRole } from '../shared/remote-view.js';
+import { MIME_BY_EXT, rangeResponse } from './media-range.js';
 
 /** Wrong PIN entries allowed before the unlock pauses. A PIN has few digits, so this stops guessing. */
 const PIN_TRIES = 5;
@@ -23,6 +25,18 @@ const SECURITY_HEADERS = {
   'Referrer-Policy': 'no-referrer',
   // Everything comes from this laptop. No outside scripts, styles, fonts, or connections.
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'",
+};
+
+/** The file types the built TV page and its assets are served as. */
+const TV_TYPE_BY_EXT = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.woff2': 'font/woff2',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.json': 'application/json; charset=utf-8',
 };
 
 /** The page each viewer opens at its address, and the only files each viewer's folder may serve. */
@@ -66,12 +80,13 @@ export function deviceLabel(userAgent = '') {
  * Secondary port is refused whatever the page sends. `/api/remote/stream` sends the live screen as the laptop changes it.
  * When a PIN is set, every route needs an unlocked session, and each viewer has its own session cookie.
  */
-export function createRemoteViewServer({ distDir, role = 'primary', canConnect = () => true, onControl = () => ({ ok: false, status: 409, error: 'Control is not set up.' }) }) {
+export function createRemoteViewServer({ distDir, role = 'primary', canConnect = () => true, onControl = () => ({ ok: false, status: 409, error: 'Control is not set up.' }), mediaFile = () => null }) {
   let server = null;
   let bound = null;
   let starting = null;
   let pin = null;
   let latest = null;
+  let lastScreen = null;
   let heartbeat = null;
   const streams = new Set();
   const sessions = new Set();
@@ -182,6 +197,68 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
     });
   }
 
+  /**
+   * A library picture or video for the TV screen, on the Secondary port only, behind the PIN. Only a library id is accepted, never a path, so
+   * the request cannot reach any file except the ones in the Media Library. Byte ranges are answered, so a video can seek and loop.
+   */
+  function media(req, res, pathname) {
+    if (role !== 'secondary') return sendJson(res, 404, { ok: false, error: 'Not found' });
+    if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { ok: false }, { Allow: 'GET, HEAD' });
+    if (!unlocked(req)) return sendJson(res, 401, { ok: false, error: 'Enter the PIN first.' });
+    let id;
+    try {
+      id = decodeURIComponent(pathname.slice('/api/remote/media/'.length));
+    } catch {
+      return sendJson(res, 400, { ok: false, error: 'The request was not understood.' });
+    }
+    if (!/^\d{1,12}$/.test(id)) return sendJson(res, 404, { ok: false, error: 'Not found' });
+    const file = mediaFile(id);
+    if (!file || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return sendJson(res, 404, { ok: false, error: 'Not found' });
+    const type = MIME_BY_EXT[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
+    const headers = { ...SECURITY_HEADERS, 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-cache' };
+    if (req.headers.range) {
+      const part = rangeResponse(file, req.headers.range);
+      part.headers.delete('Access-Control-Allow-Origin');
+      res.writeHead(part.status, { ...headers, ...Object.fromEntries(part.headers) });
+      if (!part.body || req.method === 'HEAD') return res.end();
+      return Readable.fromWeb(part.body).pipe(res);
+    }
+    const size = fs.statSync(file).size;
+    res.writeHead(200, { ...headers, 'Content-Length': String(size) });
+    if (req.method === 'HEAD') return res.end();
+    fs.createReadStream(file).pipe(res);
+  }
+
+  /**
+   * The TV page and its built files: `/tv`, and `/assets/<file>` from the app's build. Served on the Secondary port only, read-only. A request
+   * is answered only for a file inside the build folder, so no other file can be reached.
+   */
+  function serveTv(req, res, pathname) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { ok: false }, { Allow: 'GET, HEAD' });
+    let file;
+    if (pathname === '/tv') {
+      file = path.join(distDir, 'tv.html');
+    } else {
+      let name;
+      try {
+        name = decodeURIComponent(pathname.slice('/assets/'.length));
+      } catch {
+        return res.writeHead(400).end();
+      }
+      if (!/^[\w.-]+$/.test(name)) return res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
+      file = path.join(distDir, 'assets', name);
+    }
+    const root = path.resolve(distDir);
+    const resolved = path.resolve(file);
+    if (!resolved.startsWith(root + path.sep) || !fs.existsSync(resolved) || fs.statSync(resolved).isDirectory()) {
+      return res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
+    }
+    const type = TV_TYPE_BY_EXT[path.extname(resolved).toLowerCase()] ?? 'application/octet-stream';
+    res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': type, 'Cache-Control': 'no-cache' });
+    if (req.method === 'HEAD') res.end();
+    else fs.createReadStream(resolved).pipe(res);
+  }
+
   function servePage(req, res, pathname) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { ok: false }, { Allow: 'GET, HEAD' });
     if (!fs.existsSync(distDir)) {
@@ -223,6 +300,9 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
       res.writeHead(400).end();
       return;
     }
+    if (pathname.startsWith('/api/remote/media/')) return media(req, res, pathname);
+    // The TV screen is read-only, so its page and files are served only on the Secondary port.
+    if (role === 'secondary' && (pathname === '/tv' || pathname.startsWith('/assets/'))) return serveTv(req, res, pathname);
     if (pathname === '/api/remote/status') {
       if (req.method !== 'GET') return sendJson(res, 405, { ok: false }, { Allow: 'GET' });
       return sendJson(res, 200, { role, pinRequired: pinRequired(), unlocked: unlocked(req) });
@@ -305,9 +385,16 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
       });
     },
 
-    /** Sends the live screen to every connected phone, shaped for this viewer. The latest is sent to a phone that connects later. */
+    /**
+     * Sends the live screen to every connected phone, shaped for this viewer. The latest is sent to a phone that connects later.
+     * A state change that leaves this screen as it was sends nothing. The timestamp is left out of the comparison, since it changes on every change.
+     */
     push(payload) {
       latest = payload;
+      const { updatedAt, ...screen } = payload;
+      const key = JSON.stringify(screen);
+      if (key === lastScreen) return;
+      lastScreen = key;
       const data = `data: ${JSON.stringify(snapshotForRole(payload, role))}\n\n`;
       for (const s of streams) s.res.write(data);
     },

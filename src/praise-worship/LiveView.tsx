@@ -11,6 +11,7 @@ import { useT } from '../i18n/strings';
 import { pad2, STATUS_TONE } from './LineupRail';
 import { endSession, goLive, jumpTo, liveDeck, otherSourceOnAir, showPosition, stepLive, type LiveStep } from './live';
 import { CurrentNextPreview, type Shown } from './CurrentNextPreview';
+import { SecondaryControls } from './SecondaryControls';
 import { ShowAllVerses } from '../components/ShowAllVerses';
 import { useUi } from '../state/ui';
 import { setPwState, usePw } from './store';
@@ -285,6 +286,8 @@ export function LiveView() {
               {live.lowerThird.live && <LowerThirdStage value={live.lowerThird.live} lyricBottomShare={lyricBottomOf(live.projector.live)} />}
             </div>
           </section>
+
+          <SecondaryControls />
 
           <section aria-labelledby="pw-next-up" className="flex flex-col gap-1 rounded-2xl border border-line bg-panel p-4">
             <h2 id="pw-next-up" className="eyebrow !text-accent">{t('nextUp')}</h2>

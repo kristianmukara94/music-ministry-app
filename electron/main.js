@@ -29,12 +29,14 @@ import { sanitizeWelcomeSettings } from '../shared/welcome-settings.js';
 import { sanitizeLowerThirdStyle } from '../shared/lower-third-style.js';
 import { createLowerThirdServer, LOWER_THIRD_PORT, lanAddress } from './lower-third-server.js';
 import { createRemoteViewServer, localNetworkAddress } from './remote-view-server.js';
+import { mediaFileFor } from './protocol.js';
 import {
   REMOTE_DEVICE_LIMIT,
   REMOTE_HOTSPOT_WARN_ABOVE,
   REMOTE_ROLES,
   controlAction,
   remoteViewSnapshot,
+  secondaryViewSnapshot,
   sanitizeRemoteView,
   validateRemoteViewPatch,
 } from '../shared/remote-view.js';
@@ -298,7 +300,7 @@ const ACTIVITY_LIMIT = 30;
 /** The two viewers' pages. Each is its own server on its own port: Primary controls the output, Secondary only watches. */
 const remoteViews = {
   primary: createRemoteViewServer({ distDir: path.join(__dirname, '../dist'), role: 'primary', canConnect: canAcceptPhone, onControl: controlFromPhone }),
-  secondary: createRemoteViewServer({ distDir: path.join(__dirname, '../dist'), role: 'secondary', canConnect: canAcceptPhone }),
+  secondary: createRemoteViewServer({ distDir: path.join(__dirname, '../dist'), role: 'secondary', canConnect: canAcceptPhone, mediaFile: mediaFileFor }),
 };
 // Why each viewer is not running when it is turned on. Null when it runs, or when it is off.
 const remoteViewErrors = { primary: null, secondary: null };
@@ -343,6 +345,11 @@ function controlFromPhone(request, device) {
  * Makes one viewer's page match its settings. It starts when it is on and a network is found, and stops when it is off
  * or when the laptop's network address has changed, so it never serves an address phones cannot reach.
  */
+/** What a Remote view port shows: the Secondary port follows the secondary display, the Primary port the projector. */
+function snapshotFor(role, live) {
+  return role === 'secondary' ? secondaryViewSnapshot(live) : remoteViewSnapshot(live);
+}
+
 async function syncRemoteViewRole(role, wanted, address) {
   const view = remoteViews[role];
   if (view.running() && view.address() !== address) await view.stop();
@@ -357,7 +364,7 @@ async function syncRemoteViewRole(role, wanted, address) {
   if (view.running()) return;
   const result = await view.start({ host: address, port: wanted.port, pin: wanted.pin });
   remoteViewErrors[role] = result.ok ? null : result.error;
-  if (result.ok) view.push(remoteViewSnapshot(state));
+  if (result.ok) view.push(snapshotFor(role, state));
 }
 
 /** Brings both viewers in line with the saved settings. Each one is checked on its own. */
@@ -406,7 +413,7 @@ function stopRemoteViews() {
 function broadcast() {
   lowerThirdServer?.push({ lowerThird: state.lowerThird.live, lowerStyle: state.lowerStyle });
   for (const role of REMOTE_ROLES) {
-    if (remoteViews[role].running()) remoteViews[role].push(remoteViewSnapshot(state));
+    if (remoteViews[role].running()) remoteViews[role].push(snapshotFor(role, state));
   }
   for (const win of Object.values(windows)) {
     if (win && !win.isDestroyed()) win.webContents.send('live:state', state);

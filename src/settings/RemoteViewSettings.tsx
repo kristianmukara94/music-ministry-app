@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import qrcode from 'qrcode-generator';
-import { Copy, KeyRound, Smartphone, WifiOff } from 'lucide-react';
+import { Copy, KeyRound, Smartphone, Tv, WifiOff } from 'lucide-react';
 import { bridge, type RemoteActivity, type RemoteRole, type RemoteRoleStatus, type RemoteViewPatch, type RemoteViewStatus } from '../live/bridge';
 import { formatDayAndClock } from '../state/region';
 import { useRegion } from '../state/useRegion';
@@ -74,7 +74,12 @@ function ViewerCard({ role, status, busy, onSave }: ViewerProps) {
   const [portDraft, setPortDraft] = useState(String(status.port));
   const [pinDraft, setPinDraft] = useState('');
   const [copied, setCopied] = useState(false);
-  const qr = useMemo(() => (status.url ? qrDataUrl(status.url) : null), [status.url]);
+  const [tvCopied, setTvCopied] = useState(false);
+  const [qrOpensTv, setQrOpensTv] = useState(true);
+  // The TV page is the same address with /tv on the end, so it follows the laptop's IP and port as they change.
+  const tvUrl = status.url && role === 'secondary' ? new URL('/tv', status.url).toString() : null;
+  const qrTarget = qrOpensTv && tvUrl ? tvUrl : status.url;
+  const qr = useMemo(() => (qrTarget ? qrDataUrl(qrTarget) : null), [qrTarget]);
 
   useEffect(() => {
     setPortDraft(String(status.port));
@@ -85,15 +90,20 @@ function ViewerCard({ role, status, busy, onSave }: ViewerProps) {
   const pinValid = PIN_PATTERN.test(pinDraft);
   const text = ROLE_TEXT[role];
 
-  const copy = () => {
-    if (!status.url) return;
+  const copyTo = (value: string, flag: (on: boolean) => void) => {
     navigator.clipboard
-      ?.writeText(status.url)
+      ?.writeText(value)
       .then(() => {
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 2000);
+        flag(true);
+        window.setTimeout(() => flag(false), 2000);
       })
       .catch(() => undefined);
+  };
+  const copy = () => {
+    if (status.url) copyTo(status.url, setCopied);
+  };
+  const copyTv = () => {
+    if (tvUrl) copyTo(tvUrl, setTvCopied);
   };
 
   return (
@@ -115,9 +125,9 @@ function ViewerCard({ role, status, busy, onSave }: ViewerProps) {
         </div>
       )}
 
-      {status.running && status.url && qr && (
+      {status.running && status.url && qr && qrTarget && (
         <div className="flex flex-wrap items-center gap-6">
-          <img src={qr} alt={`QR code for ${text.title} at ${status.url}`} className="size-40 rounded-md bg-white p-2" />
+          <img src={qr} alt={`QR code for ${text.title} at ${qrTarget}`} className="size-40 rounded-md bg-white p-2" />
           <div className="flex min-w-0 flex-1 flex-col gap-3">
             <p className="text-xs text-muted">Open this address in a phone's browser on the same WiFi, or scan the code with the camera.</p>
             <code aria-label={`${text.title} address`} className="block break-all rounded-md border border-line-strong bg-canvas px-3 py-2 font-mono text-lg font-bold">
@@ -131,6 +141,24 @@ function ViewerCard({ role, status, busy, onSave }: ViewerProps) {
                 <Smartphone size={15} aria-hidden /> {status.devices === 1 ? '1 phone connected' : `${status.devices} phones connected`}
               </span>
             </div>
+            {tvUrl && (
+              <div className="flex flex-col gap-3 border-t border-line pt-3">
+                <span className="eyebrow">TV address</span>
+                <code aria-label="TV address" className="block break-all rounded-md border border-line-strong bg-canvas px-3 py-2 font-mono text-lg font-bold">
+                  {tvUrl}
+                </code>
+                <p className="text-xs text-muted">
+                  Open this address on a Smart TV or large screen browser connected to the same Wi-Fi to render the 16:9 Remote View.
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button type="button" onClick={copyTv} className={button}>
+                    <Tv size={14} aria-hidden /> {tvCopied ? 'Copied!' : 'Copy TV address'}
+                  </button>
+                  <Switch label="QR code opens the TV page" on={qrOpensTv} disabled={false} onChange={setQrOpensTv} />
+                  <span className="text-sm">{qrOpensTv ? 'QR code opens the TV page' : 'QR code opens the phone page'}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

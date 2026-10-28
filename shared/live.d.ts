@@ -6,6 +6,18 @@ import type { WhiteboardDesign } from './whiteboard';
 import type { PwSlide, PwType } from './pw';
 export type Lang = 'en' | 'tl' | 'ceb';
 
+export type DisplayMode = 'dual' | 'independent';
+export interface DisplayTarget {
+  live: boolean;
+  frame: Frame;
+  staged: Frame;
+  layout: 'screen-16x9';
+}
+export interface DisplayState {
+  mode: DisplayMode;
+  targets: { secondary: DisplayTarget };
+}
+
 export type OutputKey = 'projector' | 'lowerThird' | 'preview';
 
 /** How a line is styled on the projector (e.g. congregation responses stand out). */
@@ -151,6 +163,8 @@ export interface LiveState {
   };
   /** The operator's last choice for the Lower 3rd: 'on' or 'off' once pressed, null before. Slide cues do not change it. */
   lowerThird: { live: LowerThird | null; staged: LowerThird | null; paused: boolean; choice: 'on' | 'off' | null };
+  /** The secondary display (the TV). `mode` dual mirrors the projector; independent shows the secondary's own frame. */
+  display: DisplayState;
   queue: QueueItem[];
   /** The Mass plan the queue was loaded from; persisted so the queue survives a restart. */
   queuePlanId: number | null;
@@ -175,6 +189,9 @@ export type LiveAction =
   | { type: 'projector/blackout' }
   | { type: 'projector/pause'; paused?: boolean }
   | { type: 'projector/step'; delta: number }
+  | { type: 'display/mode'; value: DisplayState['mode'] }
+  | { type: 'display/live'; value: boolean }
+  | { type: 'display/show'; frame: Frame }
   | { type: 'lowerThird/show'; value: LowerThird }
   | { type: 'lowerThird/clear' }
   | { type: 'lowerThird/toggle' }

@@ -53,6 +53,7 @@ const en = {
   'top.preview': 'Preview',
   'top.stop': 'Stop',
   'top.projector': 'Projector',
+  'top.remote': 'Remote',
 
   // Shared status words
   'status.on': 'On',

@@ -12,6 +12,17 @@ import { sanitizeLowerThirdStyle, LOWER_THIRD_DEFAULTS } from './lower-third-sty
 
 export const OUTPUTS = ['projector', 'lowerThird', 'preview'];
 
+/** The two display targets. `primary` is the projector (the `projector` output); `secondary` is the TV and the Secondary port's viewers. */
+export const DISPLAY_MODES = ['dual', 'independent'];
+
+/**
+ * What the secondary display shows. In dual mode it mirrors the primary (the projector's frame). In independent mode it shows its own frame,
+ * pushed with display/show, and its own live switch decides whether it is on air.
+ */
+export function secondaryFrame(state) {
+  return state.display.mode === 'dual' ? state.projector.live : state.display.targets.secondary.frame;
+}
+
 const IDLE = { kind: 'idle' };
 const NO_BACKGROUND = { live: null, staged: null };
 
@@ -31,6 +42,8 @@ export function initialLiveState() {
     projector: { live: IDLE, staged: IDLE, paused: false, beforeBlackout: null, background: NO_BACKGROUND, source: null },
     // `choice` is the operator's last On or Off (null until the operator presses the toggle). Only the operator changes it.
     lowerThird: { live: null, staged: null, paused: false, choice: null },
+    // The secondary display. Dual mirrors the projector; independent shows its own frame. Its live switch is separate from the projector's.
+    display: { mode: 'dual', targets: { secondary: { live: false, frame: IDLE, staged: IDLE, layout: 'screen-16x9' } } },
     queue: [],
     queuePlanId: null,
     queueCursor: -1,
@@ -198,6 +211,22 @@ function reduce(s, a) {
     // Shows or hides the calibration grid on the projector.
     case 'calibration/toggle':
       return { ...s, calibration: !s.calibration };
+
+    // The secondary display's mode: dual (mirror the projector) or independent (its own frame).
+    case 'display/mode':
+      return DISPLAY_MODES.includes(a.value) ? { ...s, display: { ...s.display, mode: a.value } } : s;
+
+    // The secondary display's own live switch. It does not change the projector.
+    case 'display/live': {
+      const secondary = s.display.targets.secondary;
+      return { ...s, display: { ...s.display, targets: { ...s.display.targets, secondary: { ...secondary, live: a.value === true } } } };
+    }
+
+    // Pushes a frame to the secondary display alone (independent mode). The projector is not changed.
+    case 'display/show': {
+      const secondary = s.display.targets.secondary;
+      return { ...s, display: { ...s.display, targets: { ...s.display.targets, secondary: { ...secondary, frame: a.frame, staged: a.frame } } } };
+    }
 
     case 'lowerThird/stage':
       return { ...s, lowerThird: { ...s.lowerThird, staged: a.value } };

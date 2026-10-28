@@ -1,6 +1,8 @@
+import { secondaryFrame } from './live.js';
+import { welcomeBackground } from './welcome-settings.js';
 // Remote view: the settings for the two phone viewers, the snapshot of the live screen they show, and the control requests
 // the Primary viewer may send. Shared by the main process (saved to config.json, sent to phones) and tested without
-// Electron. Pure: no imports.
+// Electron. Pure: its only import is the live state's secondary display selector.
 
 /** Primary can control the output. Secondary only watches. */
 export const REMOTE_ROLES = ['primary', 'secondary'];
@@ -133,6 +135,48 @@ export function sectionsOf(frame) {
  * is where this slide sits in its set. `paused` says the operator has paused the projector. Nothing else is included.
  */
 export function remoteViewSnapshot(state, now = Date.now()) {
+  return snapshotOf(state, { live: state.outputs.projector, frame: state.projector.live, paused: state.projector.paused }, now);
+}
+
+/** The secondary display's snapshot: what the Secondary port shows, the TV and the viewers on it. */
+export function secondaryViewSnapshot(state, now = Date.now()) {
+  const live = state.display.targets.secondary.live;
+  const frame = secondaryFrame(state);
+  const base = snapshotOf(state, { live, frame, paused: false }, now);
+  return { ...base, live, frame: frameSnapshot(state, frame, base) };
+}
+
+/** The Media Library id in a library address (`apcc-media://media/<id>`), or null for anything else. */
+export function mediaIdOf(src) {
+  const match = /^apcc-media:\/\/media\/(\d+)$/.exec(String(src ?? ''));
+  return match ? match[1] : null;
+}
+
+/**
+ * The frame the secondary display draws, in plain terms: its kind, its text, and the background behind it. The background is the Welcome
+ * background for a welcome frame and the Live slide background for a slide; the media is named by its library id, which the TV fetches
+ * from the Secondary port.
+ */
+function frameSnapshot(state, frame, base) {
+  const kind = base.screen === 'live' ? 'slide' : base.screen === 'blackout' ? 'blackout' : base.screen === 'idle' ? 'idle' : 'off';
+  if (kind !== 'slide') return { kind, title: '', lines: [], mediaId: null };
+  const settings = frame.kind === 'welcome' ? state.welcome : frame.kind === 'pw' ? state.welcome.slideBackground : null;
+  const bg = settings ? welcomeBackground(settings) : { color: null, media: null, shade: false };
+  return {
+    kind,
+    title: base.title,
+    lines: base.lines,
+    color: bg.color,
+    mediaId: bg.media ? mediaIdOf(bg.media.src) : null,
+    mediaKind: bg.media ? bg.media.kind : null,
+    fit: bg.media ? bg.media.fit : null,
+    loop: bg.media ? bg.media.loop : null,
+    shade: bg.shade,
+  };
+}
+
+/** The snapshot of one display's target: its live switch, the frame it shows, and whether it is paused. */
+function snapshotOf(state, target, now) {
   const current = state.queueCursor >= 0 ? state.queue[state.queueCursor] : null;
   const next = state.queue[state.queueCursor + 1] ?? null;
   const base = {
@@ -143,12 +187,12 @@ export function remoteViewSnapshot(state, now = Date.now()) {
     lines: [],
     nextLines: [],
     sections: null,
-    paused: state.projector.paused,
+    paused: target.paused,
     updatedAt: now,
   };
-  if (!state.outputs.projector) return base;
+  if (!target.live) return base;
 
-  const frame = state.projector.live;
+  const frame = target.frame;
   if (frame.kind === 'idle') return { ...base, screen: 'idle' };
   if (frame.kind === 'blackout') return { ...base, screen: 'blackout' };
 
