@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { hymnAfterChange, withHymn } from '../../shared/hymn-cache.js';
 import { persist } from 'zustand/middleware';
 import { groupOrdered, type PwHymnTag, type PwResolved, type PwSegment } from '../../shared/pw.js';
 import { bridge } from '../live/bridge';
@@ -32,6 +33,12 @@ interface PwState {
   error: string | null;
   /** Set by Replace: the next Add from the library replaces this song instead of adding one. */
   replacing: { segment: number; hymnId: number | null } | null;
+  /** The song being dragged from the Song List, while it is dragged. Lineup slots read it to show where it can go. */
+  songDrag: number | null;
+  /** Bumped when a song changes in Song Lyrics, so the song list reloads. */
+  libraryRevision: number;
+  /** The lineup slot whose item is being dragged within the lineup, or null. */
+  slotDrag: number | null;
 }
 
 export const usePw = create<PwState>()(
@@ -50,6 +57,9 @@ export const usePw = create<PwState>()(
       saveState: 'idle',
       error: null,
       replacing: null,
+      songDrag: null,
+      libraryRevision: 0,
+      slotDrag: null,
     }),
     { name: 'apccmma.pw', partialize: ({ tab, sessionId }) => ({ tab, sessionId }) },
   ),
@@ -59,6 +69,23 @@ const setPw = usePw.setState;
 const api = bridge.pw;
 export const errorText = (err: unknown) => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(err));
 
+/**
+ * A song changed in Song Lyrics, in any window. A song the planner has loaded is read again, so the lineup and the projector use
+ * the new lyrics, and a deleted song leaves the cache. The song list reloads either way.
+ */
+async function songChanged(id: number) {
+  if (usePw.getState().hymns[id]) {
+    try {
+      const fresh = await bridge.lyrics.getHymn(id);
+      setPw((s) => ({ hymns: withHymn(s.hymns, id, hymnAfterChange(fresh)) }));
+    } catch {
+      // Left as it was. The next change, or a restart, reads it again.
+    }
+  }
+  setPw((s) => ({ libraryRevision: s.libraryRevision + 1 }));
+}
+bridge.lyrics.onChanged((id) => void songChanged(id));
+
 /** Loads the hymns these segments use and are not cached yet. */
 async function loadHymns(segments: PwSegment[]) {
   const have = usePw.getState().hymns;
@@ -66,13 +93,6 @@ async function loadHymns(segments: PwSegment[]) {
   if (ids.length === 0) return;
   const loaded = await Promise.all(ids.map((id) => bridge.lyrics.getHymn(id)));
   setPw((s) => ({ hymns: { ...s.hymns, ...Object.fromEntries(loaded.filter((h): h is Hymn => Boolean(h)).map((h) => [h.id, h])) } }));
-}
-
-/** Loads one hymn's stanzas if they are not cached yet, for the library's preview. */
-export async function ensureHymn(id: number) {
-  if (usePw.getState().hymns[id]) return;
-  const hymn = await bridge.lyrics.getHymn(id);
-  if (hymn) setPw((s) => ({ hymns: { ...s.hymns, [hymn.id]: hymn } }));
 }
 
 async function loadDay(date: string) {
@@ -210,12 +230,12 @@ export function resolvedFor(segment: PwSegment, state: Pick<PwState, 'hymns' | '
       hymns: c.hymnIds
         .map((id) => state.hymns[id])
         .filter((h): h is Hymn => Boolean(h))
-        .map((h) => ({ id: h.id, title: h.title, category: h.category, stanzas: h.stanzas })),
+        .map((h) => ({ id: h.id, title: h.title, category: h.category, stanzas: h.stanzas, style: h.style ?? null })),
     };
   }
   if (c.kind === 'prayer') {
     const note = state.prayers.find((n) => n.id === c.noteId);
-    return { prayer: note ? { title: note.title, body: note.body } : null };
+    return { prayer: note ? { title: note.title, body: note.body, split: note.split ?? null, align: note.style?.textAlign ?? 'center' } : null };
   }
   if (c.kind === 'lectionary') {
     const row = state.day?.readings.find((r) => r.readingType === c.readingType);

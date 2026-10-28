@@ -1,5 +1,6 @@
 // Operator notes and projectable prayers, shared by the main process (validation) and the renderer.
 import { sanitizeTextStyle } from './text-style.js';
+import { stampSplit } from './prayer-split.js';
 
 /**
  * Where a note is shown. `operator` never leaves the operator's screens. `full` is a full-screen slide and
@@ -31,5 +32,6 @@ export function cleanNote(input = {}) {
   if (!NOTE_DISPLAYS.includes(display)) throw new Error('Choose where this note is shown.');
   const body = String(input.body ?? '');
   if (body.length > MAX_NOTE_BODY) throw new Error(`The body must be at most ${MAX_NOTE_BODY} characters.`);
-  return { title, category, body, display, style: sanitizeTextStyle(input.style) };
+  // A split is checked against the body it was placed in, so a stored break never points past the text.
+  return { title, category, body, display, style: sanitizeTextStyle(input.style), split: stampSplit(input.split, body) };
 }

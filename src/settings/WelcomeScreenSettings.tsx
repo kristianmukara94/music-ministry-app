@@ -6,12 +6,14 @@ import {
   WELCOME_FONT_MIN,
   WELCOME_MESSAGE_MAX,
   WELCOME_STYLE_DEFAULTS,
+  type ImageFit,
   type WelcomeSettings,
 } from '../../shared/welcome-settings.js';
 import { bridge } from '../live/bridge';
 import { useLive } from '../live/store';
 import type { MediaAsset } from '../media/types';
 import { WelcomeCanvas } from '../output/WelcomeScreen';
+import { BackgroundControls } from './BackgroundControls';
 
 const CARD = 'flex flex-col gap-5 rounded-xl border border-stone-800 bg-stone-900 p-6 shadow-lg';
 const CARD_TITLE = 'text-base font-black tracking-wide text-stone-100 uppercase';
@@ -22,6 +24,12 @@ const RESET = 'flex shrink-0 items-center gap-1.5 text-[11px] font-bold tracking
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/** The two ways a welcome image fits the output. Fill is the default. */
+const IMAGE_FIT_OPTIONS: { id: ImageFit; label: string }[] = [
+  { id: 'FILL', label: 'Fill screen' },
+  { id: 'FIT', label: 'Show whole picture' },
+];
 
 /**
  * A value the operator types or drags. It shows at once, and saves a moment after the last change, so a save coming back
@@ -146,12 +154,17 @@ export function WelcomeScreenSettings() {
   const welcome = useLive((s) => s.state.welcome);
   const [images, setImages] = useState<MediaAsset[]>([]);
   const [busy, setBusy] = useState(false);
+  // Set when the preview could not load the chosen background file (it is then shown in colour, and the warning says so).
+  const [previewMissing, setPreviewMissing] = useState(false);
+  useEffect(() => setPreviewMissing(false), [welcome.backgroundUrl, welcome.backgroundType]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     bridge.media
       .list()
-      .then((list) => setImages(list.filter((a) => a.mediaType === 'image')))
+      .then((list) => {
+        setImages(list.filter((a) => a.mediaType === 'image'));
+      })
       .catch(() => undefined);
   }, []);
 
@@ -242,7 +255,30 @@ export function WelcomeScreenSettings() {
               <div className="flex flex-col gap-3">
                 <div>
                   <div className={LABEL}>Welcome image</div>
-                  <p className={`mt-0.5 ${SUB}`}>The picture fills the screen, with the background colour behind it.</p>
+                  <p className={`mt-0.5 ${SUB}`}>
+                    {welcome.imageFit === 'FIT'
+                      ? 'The whole picture shows, with the background colour in the bars.'
+                      : 'The picture covers the whole screen. Its edges are cropped, and the background colour is not seen.'}
+                  </p>
+                </div>
+                <div role="radiogroup" aria-label="Fit on screen" className="inline-flex w-fit flex-wrap gap-1 rounded-lg border border-stone-800 bg-stone-950 p-1">
+                  {IMAGE_FIT_OPTIONS.map(({ id, label }) => {
+                    const on = welcome.imageFit === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        onClick={() => update({ imageFit: id })}
+                        className={`rounded-md px-3 py-1.5 text-[11px] font-bold tracking-wider transition-colors ${
+                          on ? 'bg-amber-500 text-stone-950 shadow-md shadow-amber-950/40' : 'text-stone-400 hover:text-stone-100'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
                 <button
                   type="button"
@@ -280,17 +316,21 @@ export function WelcomeScreenSettings() {
             )}
           </section>
 
+          <section className={CARD} aria-labelledby="welcome-background-heading">
+            <CardHeader
+              title="Background"
+              subtitle="The colour, picture or video behind the welcome text and the slides. The same setting as the Live screen."
+              onReset={() => update({ backgroundType: WELCOME_STYLE_DEFAULTS.backgroundType, backgroundColor: WELCOME_STYLE_DEFAULTS.backgroundColor })}
+            />
+            {/* The Welcome background: used only by the Welcome screen. */}
+            <BackgroundControls value={welcome} save={(patch) => bridge.welcome.save(patch)} previewMissing={previewMissing} />
+          </section>
+
           <section className={CARD} aria-labelledby="welcome-style-heading">
             <CardHeader
               title="Welcome style"
               subtitle="Set the colours and text size used by the welcome screen."
               onReset={() => update(WELCOME_STYLE_DEFAULTS)}
-            />
-            <ColorRow
-              label="Background colour"
-              hint="The solid colour behind welcome text and empty areas."
-              value={welcome.backgroundColor}
-              onSave={(backgroundColor) => update({ backgroundColor })}
             />
             <ColorRow
               label="Text colour"
@@ -313,7 +353,7 @@ export function WelcomeScreenSettings() {
             {/* The frame is the same size on any window; the text scales with it, as it does on the projector. */}
             <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl border border-stone-800 bg-stone-950 p-4 [container-type:inline-size]">
               <div className="relative h-full w-full overflow-hidden">
-                <WelcomeCanvas settings={welcome} />
+                <WelcomeCanvas settings={welcome} onBackgroundMissing={() => setPreviewMissing(true)} />
               </div>
             </div>
           </section>
@@ -322,3 +362,4 @@ export function WelcomeScreenSettings() {
     </div>
   );
 }
+

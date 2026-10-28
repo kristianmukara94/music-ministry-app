@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { charsPerLine, slideLine, slideText } from '../../shared/text-wrap.js';
 import { ChevronLeft, ChevronRight, ImagePlus, Scissors, Sparkles, Type, X } from 'lucide-react';
 import { BACKGROUND_COLORS, customSizes, fontCss, sanitizeTextStyle } from '../../shared/text-style.js';
 import type { TextAlign, TextStyle } from '../../shared/text-style';
@@ -24,18 +25,23 @@ export function SlidePreview({
   headline = null,
   bgSrc,
   className = '',
+  top = null,
   style = null,
 }: {
   text: string;
   headline?: string | null;
   bgSrc: string | null;
   className?: string;
+  /** A prayer's page: the block starts at this share of the height (the shared top, or centred when short). Other text is centred. */
+  top?: number | null;
   style?: TextStyle | null;
 }) {
   const align = style?.textAlign ?? 'center';
   const sizes = customSizes(style);
   const bodySize = sizes ? cqw(sizes.body) : headline ? '3.2cqw' : '4.1cqw';
   const headSize = sizes ? cqw(sizes.headline) : '5.2cqw';
+  const headChars = charsPerLine(0.86, sizes ? sizes.headline : 5.2 * 19.2);
+  const bodyChars = charsPerLine(0.86, sizes ? sizes.body : (headline ? 3.2 : 4.1) * 19.2);
   const color = style?.textColor ?? '#FFFFFF';
   const family = fontCss(style);
 
@@ -50,15 +56,19 @@ export function SlidePreview({
           <div className="absolute inset-0 bg-black/60" />
         </>
       )}
-      <div className={`absolute inset-[7%] flex flex-col justify-center gap-[3cqw] ${ALIGN_ITEMS[align]}`} style={{ textAlign: align }}>
+      {/* A prayer's page starts at its top, as the lineup and the projector place it. Other text is centred. */}
+      <div
+        className={`absolute flex flex-col gap-[3cqw] ${top != null ? 'inset-x-[7%]' : 'inset-[7%] justify-center'} ${ALIGN_ITEMS[align]}`}
+        style={{ textAlign: align, ...(top != null ? { top: `${top * 100}%` } : {}) }}
+      >
         {headline && (
           <p className="leading-tight font-bold" style={{ color, fontFamily: family, fontSize: headSize }}>
-            {headline}
+            {slideLine(headline, headChars)}
           </p>
         )}
         {text && (
           <p className="whitespace-pre-line leading-[1.22] font-medium" style={{ color, fontFamily: family, fontSize: bodySize }}>
-            {text}
+            {slideText(text, bodyChars)}
           </p>
         )}
       </div>

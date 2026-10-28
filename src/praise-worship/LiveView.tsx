@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import { AlertTriangle, Check, Play } from 'lucide-react';
 import { livePosition, readiness, segmentStatus, step, visibleSlideIndexes } from '../../shared/pw.js';
 import { dispatch, useLive } from '../live/store';
 import { ProjectorView } from '../output/ProjectorView';
 import { LowerThirdStage } from '../output/LowerThirdView';
+import { lyricBottomOf } from '../../shared/lyric-area.js';
 import { useNow } from '../operator/useNow';
+import { BackgroundPanel } from '../operator/BackgroundPanel';
+import { useT } from '../i18n/strings';
 import { pad2, STATUS_TONE } from './LineupRail';
 import { endSession, goLive, jumpTo, liveDeck, otherSourceOnAir, showPosition, stepLive, type LiveStep } from './live';
 import { CurrentNextPreview, type Shown } from './CurrentNextPreview';
@@ -15,10 +19,11 @@ import type { PwSession } from './types';
 
 const BTN = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line-strong px-5 text-sm font-semibold transition hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40';
 const BTN_ACCENT = 'inline-flex min-h-14 items-center justify-center gap-2 rounded-xl bg-accent px-8 text-base font-bold text-on-accent transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40';
-const TOGGLE = (on: boolean) =>
-  `inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-5 text-sm font-semibold transition ${
-    on ? 'border-accent bg-accent/15 text-accent' : 'border-line-strong hover:bg-panel-2'
-  }`;
+// The bottom row's buttons: the same look, with tighter side padding, so the five fit one line in a narrow Live panel (see the row's comment).
+const ROW_BTN = 'inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-line-strong px-3 text-sm font-semibold transition hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40';
+const ROW_NEXT = 'inline-flex min-h-14 shrink-0 items-center justify-center gap-2 rounded-xl bg-accent px-5 text-base font-bold text-on-accent transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40';
+const ROW_TOGGLE = (on: boolean) =>
+  `inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-semibold transition ${on ? 'border-accent bg-accent/15 text-accent' : 'border-line-strong hover:bg-panel-2'}`;
 
 /** One step as the preview shows it: its slide, or a black screen for the end-of-segment step. */
 function shownAt(session: PwSession, deck: LiveStep[][], at: { segment: number; slide: number }): Shown {
@@ -91,6 +96,9 @@ function LiveLineup({ session, segment }: { session: PwSession; segment: number 
 /** Praise & Worship's live console. Drives the real projector and lower third through the shared live state. */
 export function LiveView() {
   const t = usePwT();
+  const tMain = useT();
+  // The Live slide background panel opens inside this panel, above the bottom row.
+  const [backgroundOpen, setBackgroundOpen] = useState(false);
   const session = usePw((s) => s.session);
   // Subscribed so the deck is rebuilt when songs, prayers or the day's readings finish loading.
   const hymns = usePw((s) => s.hymns);
@@ -241,18 +249,24 @@ export function LiveView() {
               </ol>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">
-              <button type="button" className={BTN} disabled={atStart} onClick={() => void stepLive(-1)}>
+            {backgroundOpen && <BackgroundPanel onClose={() => setBackgroundOpen(false)} />}
+
+            {/* One line, never wrapping: the five buttons keep their size, and a panel too narrow for them scrolls sideways rather than overlapping. */}
+            <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto border-t border-line pt-4">
+              <button type="button" className={ROW_BTN} disabled={atStart} onClick={() => void stepLive(-1)}>
                 {t('back')}
               </button>
-              <button type="button" className={BTN_ACCENT} disabled={atEnd} onClick={() => void stepLive(1)}>
+              <button type="button" className={ROW_NEXT} disabled={atEnd} onClick={() => void stepLive(1)}>
                 {t('next')}
               </button>
               <span className="flex-1" />
-              <button type="button" aria-pressed={lowerOn} className={TOGGLE(lowerOn)} onClick={() => dispatch({ type: 'lowerThird/toggle' })}>
+              <button type="button" aria-pressed={backgroundOpen} aria-expanded={backgroundOpen} className={ROW_TOGGLE(backgroundOpen)} onClick={() => setBackgroundOpen((open) => !open)}>
+                {tMain('top.background')}
+              </button>
+              <button type="button" aria-pressed={lowerOn} className={ROW_TOGGLE(lowerOn)} onClick={() => dispatch({ type: 'lowerThird/toggle' })}>
                 {t('lowerThirdToggle')}: {lowerOn ? t('on') : t('off')}
               </button>
-              <button type="button" aria-pressed={blackout} className={TOGGLE(blackout)} onClick={() => dispatch({ type: 'projector/blackout' })}>
+              <button type="button" aria-pressed={blackout} className={ROW_TOGGLE(blackout)} onClick={() => dispatch({ type: 'projector/blackout' })}>
                 {t('blackoutToggle')}: {blackout ? t('on') : t('off')}
               </button>
             </div>
@@ -268,7 +282,7 @@ export function LiveView() {
             </div>
             <span className="text-sm text-muted">{t('livestream')}</span>
             <div data-theme="default" className="relative aspect-video overflow-hidden rounded-xl border border-line bg-canvas [container-type:size]">
-              {live.lowerThird.live && <LowerThirdStage value={live.lowerThird.live} />}
+              {live.lowerThird.live && <LowerThirdStage value={live.lowerThird.live} lyricBottomShare={lyricBottomOf(live.projector.live)} />}
             </div>
           </section>
 

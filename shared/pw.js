@@ -1,3 +1,8 @@
+import { normalizeSplit } from './prayer-split.js';
+import { pageTops, prayerSlidesFor } from './prayer-slides.js';
+import { LINEUP_PRAYER_FIT, prayerPages } from './prayer-fit.js';
+import { lyricPagesFor } from './lyric-area.js';
+
 // Praise & Worship: the lineup model, shared by the main process (validation, seeding) and the renderer
 // (planner, live console). Plain JS with no React, so both sides run the same rules. Types live in pw.d.ts.
 //
@@ -32,7 +37,8 @@ export const DEFAULT_TEMPLATE = {
     { key: 'prayer_authority', group: 'opening', name: 'Prayer to Take Authority', type: 'prayer', minutes: 3, content: { kind: 'prayer', noteId: null } },
     { key: 'consecration_mary', group: 'opening', name: 'Consecration to Mary, Our Lady of Nazareth', type: 'prayer', minutes: 3, content: { kind: 'prayer', noteId: null } },
     { key: 'marian_song', group: 'opening', name: 'Marian Song', type: 'song', minutes: 5, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: null } },
-    { key: 'bible_enthronement', group: 'opening', name: 'Bible Enthronement', type: 'scripture', minutes: 4, content: { kind: 'title' } },
+    // The title slide is the default. The slot can also hold a song, so `types` lists both.
+    { key: 'bible_enthronement', group: 'opening', name: 'Bible Enthronement', type: 'scripture', types: ['scripture', 'song'], minutes: 4, content: { kind: 'title' } },
     { key: 'joyful_song', group: 'praise', name: 'Joyful Song', type: 'song', minutes: 8, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: null } },
     { key: 'worship', group: 'praise', name: 'Worship', type: 'song', minutes: 15, content: { kind: 'song', hymnIds: [], maxSongs: 3, category: null } },
     { key: 'repentance', group: 'praise', name: 'Repentance', type: 'song', minutes: 8, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: null } },
@@ -110,6 +116,46 @@ export function fitsSegment(hymn, segment, tags) {
   return segment.content.kind === 'song' && segment.content.category != null && hymn.category === segment.content.category;
 }
 
+/**
+ * The segment types a slot may hold. The template decides, by the segment's key, so a saved session that predates the `types`
+ * field still follows the lineup. A segment the template does not list holds only its own type.
+ */
+export function typesFor(segment) {
+  return DEFAULT_TEMPLATE.segments.find((t) => t.key === segment.key)?.types ?? [segment.type];
+}
+
+/** Whether items from a library tab (song, prayer or scripture) may go into this segment. */
+export function acceptsTab(segment, tab) {
+  return typesFor(segment).includes(tab);
+}
+
+/**
+ * The segment fields that put a song into it, or null when nothing should change. A song slot fills, replaces or adds as before.
+ * A slot that holds something else (the title slide) takes its first song only if its types allow songs. Its minutes stay as they
+ * are, since songs carry no duration.
+ */
+export function songAssignment(segment, hymnId, replacing) {
+  const c = segment.content;
+  if (c.kind !== 'song') {
+    if (!acceptsTab(segment, 'song')) return null;
+    return { type: 'song', content: { kind: 'song', hymnIds: [hymnId], maxSongs: 1, category: null }, arrangement: {} };
+  }
+  let hymnIds;
+  if (replacing != null && c.hymnIds.includes(replacing)) hymnIds = c.hymnIds.map((id) => (id === replacing ? hymnId : id));
+  else if (c.maxSongs === 1) hymnIds = [hymnId];
+  else if (c.hymnIds.includes(hymnId) || c.hymnIds.length >= c.maxSongs) return null;
+  else hymnIds = [...c.hymnIds, hymnId];
+  // An arrangement belongs to the song it was made for, so a replaced song's arrangement goes with it.
+  const arrangement = Object.fromEntries(Object.entries(segment.arrangement).filter(([id]) => hymnIds.includes(Number(id))));
+  return { type: 'song', content: { ...c, hymnIds }, arrangement };
+}
+
+/** The segment fields that put a scripture item (a title slide or a reading) into it, or null when its types do not allow scripture. */
+export function scriptureAssignment(segment, content) {
+  if (!acceptsTab(segment, 'scripture')) return null;
+  return { type: 'scripture', content, arrangement: {} };
+}
+
 /** Short chip label for a stanza, in the lyrics parser's own tags: "Verse 2" → V2, "Chorus" → C. */
 export function sectionChip(stanzaType) {
   const m = String(stanzaType).match(/^(Verse|Chorus|Bridge|Tag|Outro)\s*(\d*)$/);
@@ -135,6 +181,18 @@ export function pagesOf(text, maxLines = 5) {
   return pages;
 }
 
+export {
+  PRAYER_STAGE,
+  prayerFit,
+  LINEUP_PRAYER_FIT,
+  PRAYER_FIT_CHARS,
+  PRAYER_FIT_LINES,
+  visualLinesOf,
+  prayerTextHeight,
+  fitsPrayerSlide,
+  prayerPages,
+} from './prayer-fit.js';
+
 /**
  * The slides a segment shows, in order. `resolved` carries the content already loaded from the libraries:
  * `{ hymns: Hymn[], prayer: { title, body } | null, reading: { citation, rawText } | null }`.
@@ -142,7 +200,9 @@ export function pagesOf(text, maxLines = 5) {
  * Slide kinds: `title` (segment title slide), `lyrics` (one song section), `prayer` (one page of prayer or reading).
  * A segment always has at least one slide, so the projector never goes blank mid-lineup.
  */
-export function slidesFor(segment, resolved = {}) {
+export function slidesFor(segment, resolved = {}, options = {}) {
+  // The lower third on screen, if any: a page leaves room for it, so the split can change. Without one, the layout is the lineup's own.
+  const band = options.band ?? null;
   const c = segment.content;
   const title = { kind: 'title', label: segment.name, subtitle: '' };
   const slides = [];
@@ -153,9 +213,24 @@ export function slidesFor(segment, resolved = {}) {
     if (hymns.length === 0) return [title];
     if (segment.cues.titleFirst) slides.push({ ...title, subtitle: hymns.map((h) => h.title).join(' · ') });
     for (const hymn of c.hymnIds.map((id) => hymns.find((h) => h.id === id)).filter(Boolean)) {
+      // The song's slides are one group: its normal slides share one top, and a short one is centred (see shared/text-area.js).
+      const entries = [];
       for (const sectionId of sectionOrder(hymn, segment.arrangement)) {
         const stanza = hymn.stanzas.find((s) => String(s.id) === sectionId);
-        slides.push({ kind: 'lyrics', label: stanza.stanzaType, chip: sectionChip(stanza.stanzaType), text: stanza.lyricsText, hymnId: hymn.id, hymnTitle: hymn.title, sectionId });
+        // The stanza's position in the song, and the song's stanza count, let the projector follow an edit while this slide is live.
+        // A stanza longer than a lineup slide is split under the same rule as a prayer. Each page keeps the stanza's text, in order.
+        // The band, when it is on, only changes how the stanza is split: the text and its size stay the same.
+        const pages = lyricPagesFor(stanza.lyricsText, band);
+        entries.push({ sectionId, stanza, list: pages.length ? pages : [''] });
+      }
+      const tops = pageTops(entries.flatMap((e) => e.list));
+      let k = 0;
+      for (const { sectionId, stanza, list } of entries) {
+        for (const [part, text] of list.entries()) {
+          const { top, centred } = tops[k];
+          k += 1;
+          slides.push({ kind: 'lyrics', label: stanza.stanzaType, chip: sectionChip(stanza.stanzaType), text, hymnId: hymn.id, hymnTitle: hymn.title, sectionId, position: hymn.stanzas.indexOf(stanza), stanzaCount: hymn.stanzas.length, part, parts: list.length, fontPx: 96, top, centred, align: hymn.style?.textAlign ?? 'center' });
+        }
       }
     }
     return slides;
@@ -163,9 +238,27 @@ export function slidesFor(segment, resolved = {}) {
 
   if (c.kind === 'prayer') {
     if (segment.cues.titleFirst) slides.push(title);
-    const body = resolved.prayer?.body?.trim();
-    const pages = body ? pagesOf(body) : [PRAYER_PLACEHOLDER];
-    pages.forEach((text) => slides.push({ kind: 'prayer', label: segment.name, text, placeholder: !body }));
+    if (!resolved.prayer?.body?.trim()) {
+      slides.push({ kind: 'prayer', label: segment.name, text: PRAYER_PLACEHOLDER, placeholder: true });
+      return slides;
+    }
+    // The same split on every surface, at one size; each slide's text block is centred in the shared text area (see shared/prayer-slides.js).
+    const laidOut = prayerSlidesFor(resolved.prayer.body, normalizeSplit(resolved.prayer.split, resolved.prayer.body));
+    laidOut.pages.forEach((page, part) =>
+      slides.push({
+        kind: 'prayer',
+        label: segment.name,
+        text: page.text,
+        fontPx: page.fontPx,
+        top: page.top,
+        centred: page.centred,
+        align: resolved.prayer.align ?? 'center',
+        part,
+        parts: laidOut.pages.length,
+        placeholder: false,
+        ...(laidOut.mode === 'stale' ? { notice: 'stale' } : {}),
+      }),
+    );
     return slides;
   }
 

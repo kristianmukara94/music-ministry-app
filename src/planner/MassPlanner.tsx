@@ -17,6 +17,7 @@ import { openQueueItem } from './routing';
 import { usePlannerT, type PlannerT } from './strings';
 import { SEASONS, SEASON_KEY, seasonItems, type Season } from './templates';
 import { songCategoryOf, stepFor, type MassStep } from '../../shared/mass-flow.js';
+import { overlayLyricsItems } from '../../shared/hymn-cache.js';
 import { BLOCKS, type LibraryItem, type LiturgicalBlock, type PlanItem, type PlanSummary, type SourceModule } from './types';
 
 const api = bridge.plans;
@@ -169,6 +170,10 @@ export function MassPlanner() {
   const [plans, setPlans] = useState<PlanSummary[]>([]);
   const [planId, setPlanId] = useState<number | null>(null);
   const [items, setItems] = useState<PlanItem[]>([]);
+  // Bumped when a song changes in Song Lyrics; the library search and the plan's song rows read the song again.
+  const [lyricsRevision, setLyricsRevision] = useState(0);
+  // The current title and deleted state of each song in the plan, from the library.
+  const [hymnNow, setHymnNow] = useState<Record<number, { title?: string; deleted: boolean }>>({});
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDate, setNewDate] = useState(upcomingSunday);
@@ -222,7 +227,30 @@ export function MassPlanner() {
       loadLibrary(tab, query, readingDate, lang, t, bibleTranslation, songFilter || undefined).then(setLibrary).catch(fail);
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [tab, query, readingDate, lang, bibleTranslation, songFilter]);
+  }, [tab, query, readingDate, lang, bibleTranslation, songFilter, lyricsRevision]);
+
+  useEffect(() => bridge.lyrics.onChanged(() => setLyricsRevision((n) => n + 1)), []);
+
+  // A song's title, and whether it was deleted, come from the library now, not from the title saved with the plan.
+  useEffect(() => {
+    const ids = [...new Set(items.filter((it) => it.module === 'lyrics').map((it) => Number(it.sourceId)))];
+    let cancelled = false;
+    Promise.all(
+      ids.map(async (id) => {
+        try {
+          const hymn = await bridge.lyrics.getHymn(id);
+          return [id, hymn ? { title: hymn.title, deleted: Boolean(hymn.deletedAt) } : { deleted: true }] as const;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((pairs) => {
+      if (!cancelled) setHymnNow(Object.fromEntries(pairs.filter((p): p is NonNullable<typeof p> => p !== null)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [items, lyricsRevision]);
 
   /** Saves the plan's items. On failure the stored plan is reloaded, so the screen never disagrees with the database. */
   const persist = async (next: PlanItem[]) => {
@@ -574,7 +602,7 @@ export function MassPlanner() {
             <p className="rounded-lg border border-line-strong p-6 text-sm text-muted">{t('createFirst')}</p>
           ) : (
             BLOCKS.map((block) => {
-              const rows = blockRows(items, block.id);
+              const rows = blockRows(overlayLyricsItems(items, hymnNow), block.id);
               return (
                 <section key={block.id} aria-label={t(block.titleKey)} className="rounded-xl border border-line bg-panel p-4">
                   <header className="mb-3 border-b border-line pb-2">

@@ -45,6 +45,7 @@ const en = {
   'top.announcements': 'Announcements',
   'top.welcome': 'Welcome',
   'top.lowerThird': 'Lower 3rd',
+  'top.background': 'Background',
   'top.pauseProjector': 'Pause Projector',
   'top.resumeProjector': 'Resume Projector',
   'top.pauseLowerThird': 'Pause Lower 3rd',

@@ -1,4 +1,5 @@
 import type { TextStyle } from './text-style';
+import type { PrayerSplit } from './prayer-screen';
 
 export const NOTE_DISPLAYS: readonly ['operator', 'full', 'lower'];
 export const NOTE_CATEGORIES: readonly string[];
@@ -11,4 +12,5 @@ export function cleanNote(input: {
   body?: unknown;
   display?: unknown;
   style?: unknown;
-}): { title: string; category: string; body: string; display: 'operator' | 'full' | 'lower'; style: TextStyle | null };
+  split?: unknown;
+}): { title: string; category: string; body: string; display: 'operator' | 'full' | 'lower'; style: TextStyle | null; split: PrayerSplit | null };

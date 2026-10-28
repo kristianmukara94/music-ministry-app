@@ -16,8 +16,10 @@ export type LiveStep = { kind: 'slide'; slide: PwSlide; index: number; total: nu
 /** Every segment's live steps, from the content loaded in the planner store. */
 export function liveDeck(session: PwSession): LiveStep[][] {
   const state = usePw.getState();
+  // The lower third on screen, if any: a lyric or prayer page leaves room for it, so the split follows the band.
+  const band = useLive.getState().state.lowerThird.live;
   return session.segments.map((segment) => {
-    const slides = slidesFor(segment, resolvedFor(segment, state));
+    const slides = slidesFor(segment, resolvedFor(segment, state), { band });
     const steps: LiveStep[] = slides.map((slide, index) => ({ kind: 'slide', slide, index, total: slides.length }));
     if (segment.cues.fadeOut) steps.push({ kind: 'black' });
     return steps;
@@ -84,11 +86,9 @@ export function showPosition(session: PwSession, deck: LiveStep[][], pos: PwPosi
     if (leavingBlackStep) dispatch({ type: 'projector/blackout' });
     if (!before?.onAir || before.segmentKey !== segment.key) {
       const value = lowerThirdFor(session, segment);
+      // A segment with no Lower 3rd cue does not change the Lower 3rd on or off: its value is only staged, for the operator to take live.
       if (segment.cues.lowerThird) dispatch({ type: 'lowerThird/show', value });
-      else {
-        dispatch({ type: 'lowerThird/clear' });
-        dispatch({ type: 'lowerThird/stage', value });
-      }
+      else dispatch({ type: 'lowerThird/stage', value });
     }
   };
   if (!live.outputs.projector) {

@@ -1,7 +1,9 @@
 import { useRef, useState, type DragEvent } from 'react';
 import { BookOpen, Cross, GripVertical, Music } from 'lucide-react';
 import { groupMinutes, moveSegment, nudgeSegment, segmentStatus, type PwSegment, type PwStatus } from '../../shared/pw.js';
-import { commitSegments, setPwState, usePw } from './store';
+import { songDrop } from '../../shared/pw-drop.js';
+import { exchangeSlots, itemOf } from '../../shared/pw-slots.js';
+import { commitSegments, setPwState, updateSegment, usePw } from './store';
 import { usePwT, type PwT } from './strings';
 
 export const TYPE_ICON = { prayer: Cross, song: Music, scripture: BookOpen } as const;
@@ -34,11 +36,31 @@ export function LineupRail() {
   const prayers = usePw((s) => s.prayers);
   const [drag, setDrag] = useState<{ from: number; group: string; slot: number } | null>(null);
   const [announce, setAnnounce] = useState('');
+  const [refused, setRefused] = useState<string | null>(null);
+  const songDrag = usePw((s) => s.songDrag);
+  const slotDrag = usePw((s) => s.slotDrag);
   const grips = useRef<(HTMLButtonElement | null)[]>([]);
   const { segments, groups } = session;
   const names = { hymn: (id: number) => hymns[id]?.title, prayer: (id: number) => prayers.find((p) => p.id === id)?.title };
 
   const groupName = (key: string) => groups.find((g) => g.key === key)?.name ?? key;
+
+  /** A song dragged from the Song List lands in the slot at `index`. A refused drop changes nothing and says why. */
+  const dropSong = (index: number) => {
+    const hymnId = usePw.getState().songDrag;
+    setPwState({ songDrag: null });
+    if (hymnId == null) return;
+    const result = songDrop(segments[index], hymnId);
+    if ('refused' in result) {
+      if (result.refused === 'type') setRefused(t('wrongType', { type: t('type_song').toLowerCase() }));
+      else if (result.refused === 'full') setRefused(t('full'));
+      return;
+    }
+    setRefused(null);
+    updateSegment(index, result.patch);
+    setPwState({ replacing: null, selected: index });
+    setAnnounce(t('addsTo', { n: pad2(index + 1) }));
+  };
 
   const nudge = (index: number, delta: 1 | -1) => {
     const result = nudgeSegment(segments, groups, index, delta);
@@ -50,6 +72,21 @@ export function LineupRail() {
     setAnnounce(t('moved', { name: moved.name, n: result.index + 1, group: groupName(moved.group) }));
     // Focus stays on the moved row's grip, so the arrow keys keep moving it.
     requestAnimationFrame(() => grips.current[result.index]?.focus());
+  };
+
+  /** An item dragged from one slot onto another of its type: swapped, or moved into an empty slot. A refused drop changes nothing. */
+  const dropSlot = (to: number) => {
+    const from = usePw.getState().slotDrag;
+    setPwState({ slotDrag: null });
+    if (from == null) return;
+    const result = exchangeSlots(segments, from, to);
+    if ('refused' in result) {
+      if (result.refused === 'limit') setRefused(t('full'));
+      else if (result.refused !== 'empty') setRefused(t('wrongType', { type: t(`type_${result.refused === 'segment4' ? 'song' : segments[from].type}`).toLowerCase() }));
+      return;
+    }
+    setRefused(null);
+    commitSegments(result.segments, to);
   };
 
   const drop = () => {
@@ -77,6 +114,7 @@ export function LineupRail() {
         <h2 id="pw-lineup-heading" className="text-lg font-bold">{t('lineup')}</h2>
       </div>
       <p className="sr-only" aria-live="polite">{announce}</p>
+      {refused && <p role="alert" className="mb-2 px-1 text-sm text-danger">{refused}</p>}
 
       {groups.map((group) => {
         const rows = segments.filter((s) => s.group === group.key);
@@ -109,18 +147,38 @@ export function LineupRail() {
                 const active = i === selected;
                 const dropBefore = drag && drag.group === group.key && drag.slot === slot && drag.from !== i;
                 const dropAfter = drag && drag.group === group.key && drag.slot === rows.length && slot === rows.length - 1;
+                // While a song is dragged from the Song List: the slots it can go into are outlined, the rest fade.
+                const songTakes = songDrag != null && 'patch' in songDrop(segment, songDrag);
+                const songBlocked = songDrag != null && !songTakes;
+                // While an item is dragged within the lineup: the slots it can swap or move into are outlined, the rest fade.
+                const slotTakes = slotDrag != null && slotDrag !== i && 'segments' in exchangeSlots(segments, slotDrag, i);
+                const slotBlocked = slotDrag != null && slotDrag !== i && !slotTakes;
                 return (
                   <li
                     key={`${segment.key}-${i}`}
-                    onDragOver={(e) => overRow(e, group.key, slot)}
+                    onDragOver={(e) => {
+                      if (slotDrag != null) {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        return;
+                      }
+                      if (songDrag != null) {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'copy';
+                        return;
+                      }
+                      overRow(e, group.key, slot);
+                    }}
                     onDrop={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      drop();
+                      if (slotDrag != null) dropSlot(i);
+                      else if (songDrag != null) dropSong(i);
+                      else drop();
                     }}
                     className={`relative flex items-center rounded-xl border transition ${
                       active ? 'border-accent bg-panel-2' : 'border-transparent hover:bg-panel-2'
-                    } ${drag?.from === i ? 'opacity-50' : ''}`}
+                    } ${drag?.from === i ? 'opacity-50' : ''} ${songTakes || slotTakes ? 'border-ok' : ''} ${songBlocked || slotBlocked ? 'opacity-50' : ''}`}
                   >
                     {dropBefore && <span aria-hidden className="absolute inset-x-2 -top-1 h-0.5 rounded bg-accent" />}
                     {dropAfter && <span aria-hidden className="absolute inset-x-2 -bottom-1 h-0.5 rounded bg-accent" />}
@@ -150,6 +208,13 @@ export function LineupRail() {
                     </button>
                     <button
                       type="button"
+                      draggable={itemOf(segment) !== null}
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', segment.name);
+                        setPwState({ slotDrag: i });
+                      }}
+                      onDragEnd={() => setPwState({ slotDrag: null })}
                       onClick={() => setPwState({ selected: i, replacing: null })}
                       aria-current={active ? 'true' : undefined}
                       className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-r-xl py-2 pr-3 text-left"

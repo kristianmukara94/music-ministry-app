@@ -6,6 +6,7 @@ import { LOGO_SRC } from '../brand/logo';
 import { getSlideImageUrl, onSlideImageError } from './slideImage';
 import { LowerThirdOverlay } from './LowerThirdView';
 import { customSizes, fontCss } from '../../shared/text-style.js';
+import { charsPerLine, slideLine, slideText } from '../../shared/text-wrap.js';
 import { aspectRatioOf, type ProjectorSettings } from '../../shared/projector-settings.js';
 import { NoteCallout } from './NoteCallout';
 import { WelcomeFrame } from './WelcomeScreen';
@@ -13,6 +14,10 @@ import { SlideCanvas } from '../whiteboard/SlideCanvas';
 import type { NoteOverlay } from '../../shared/live.js';
 import type { TextStyle } from '../../shared/text-style';
 import { PwSlideFace } from '../praise-worship/PwSlideFace';
+import { lyricBottomOf } from '../../shared/lyric-area.js';
+import { textAreaShare } from '../../shared/text-area.js';
+import { welcomeBackground } from '../../shared/welcome-settings.js';
+import { SlideBackgroundLayer } from './BackgroundMedia';
 
 /** How long clearing the foreground takes to fade out. Keep in step with `duration-300` below. */
 export const FOREGROUND_FADE_MS = 300;
@@ -52,6 +57,7 @@ const BACKING = 'pointer-events-none absolute -top-[3cqh] -bottom-[3cqh] -left-[
 function TextLines({ lines, serif = false, style = null }: { lines: string[]; serif?: boolean; style?: TextStyle | null }) {
   // A chosen style replaces the default size, face, colour and alignment. Without one, the default classes apply.
   const sizes = customSizes(style);
+  const chars = charsPerLine(0.86, sizes ? sizes.body : 4.1 * 19.2);
   return (
     <div className="relative shrink-0">
       <div aria-hidden className={BACKING} />
@@ -68,7 +74,7 @@ function TextLines({ lines, serif = false, style = null }: { lines: string[]; se
       >
         {lines.map((line, i) => (
           <p key={i} className={LEGIBLE}>
-            {line || ' '}
+            {slideLine(line, chars) || ' '}
           </p>
         ))}
       </div>
@@ -82,6 +88,8 @@ function TextLines({ lines, serif = false, style = null }: { lines: string[]; se
  */
 function HeadedText({ headline, body, style = null }: { headline: string; body: string; style?: TextStyle | null }) {
   const sizes = customSizes(style);
+  const chars = charsPerLine(0.86, sizes ? sizes.body : 3.6 * 19.2);
+  const headlineChars = charsPerLine(0.86, sizes ? sizes.headline : 4.6 * 19.2);
   const look = { color: style?.textColor, fontFamily: fontCss(style), textAlign: style?.textAlign ?? undefined };
   return (
     <div className="relative flex max-w-[86cqw] flex-col items-center gap-[3cqh] text-center" style={{ textAlign: look.textAlign }}>
@@ -90,7 +98,7 @@ function HeadedText({ headline, body, style = null }: { headline: string; body: 
         className={`relative leading-[1.1] font-bold text-white ${sizes ? '' : 'text-[clamp(36px,4.6cqw,96px)]'} ${LEGIBLE}`}
         style={{ ...look, fontSize: sizes ? `${sizes.headline / 19.2}cqw` : undefined }}
       >
-        {headline}
+        {slideLine(headline, headlineChars)}
       </h2>
       {body && (
         <div
@@ -99,7 +107,7 @@ function HeadedText({ headline, body, style = null }: { headline: string; body: 
         >
           {body.split('\n').map((line, i) => (
             <p key={i} className={LEGIBLE}>
-              {line || ' '}
+              {slideLine(line, chars) || ' '}
             </p>
           ))}
         </div>
@@ -114,6 +122,7 @@ function HeadedText({ headline, body, style = null }: { headline: string; body: 
  */
 function Slide({ lines, style = null }: { lines: SlideLine[]; style?: TextStyle | null }) {
   const sizes = customSizes(style);
+  const chars = charsPerLine(0.86, sizes ? sizes.body : 4.1 * 19.2);
   return (
     <div className="relative shrink-0">
       <div aria-hidden className={BACKING} />
@@ -126,7 +135,7 @@ function Slide({ lines, style = null }: { lines: SlideLine[]; style?: TextStyle 
           return (
             <p key={i} className={`${LINE_STYLE[line.role]} ${LEGIBLE}`} style={color ? { color } : undefined}>
               {line.role === 'response' && <span className="mr-[0.4em]">℟</span>}
-              {line.text || ' '}
+              {slideLine(line.text, chars) || ' '}
             </p>
           );
         })}
@@ -173,12 +182,14 @@ function FittedPrayer({ label, text, className, style = null }: { label: string;
   return (
     <div ref={boxRef} className="flex min-h-0 w-full flex-1 flex-col items-center justify-center">
       <div ref={labelRef} className="shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase">{label}</div>
-      <p ref={textRef} className={`mt-[1.5cqh] ${className}`} style={look}>{text}</p>
+      <p ref={textRef} className={`mt-[1.5cqh] ${className}`} style={look}>{slideText(text, charsPerLine(0.84, 4.5 * 19.2))}</p>
     </div>
   );
 }
 
 function FrameView({ frame }: { frame: Frame }) {
+  // The background behind the Live set's slides: its own saved setting, separate from the Welcome background.
+  const pwBackground = welcomeBackground(useOutput((s) => s.welcome.slideBackground));
   switch (frame.kind) {
     case 'idle':
     case 'blackout':
@@ -208,7 +219,7 @@ function FrameView({ frame }: { frame: Frame }) {
             <div className="font-mono text-[1cqw] font-bold tracking-[0.25em] text-gold/80 uppercase">Congregation response</div>
             <p className={`mt-[1.5cqh] max-w-[88cqw] font-serif text-[clamp(28px,3.6cqw,76px)] leading-[1.2] font-bold text-gold ${LEGIBLE}`}>
               <span className="mr-[0.4em]">℟</span>
-              {frame.response}
+              {slideLine(frame.response, charsPerLine(0.86, 3.6 * 19.2))}
             </p>
           </div>
           <div className="absolute inset-x-0 top-[34cqh] bottom-0 flex items-center justify-center px-[6cqw]">
@@ -238,7 +249,7 @@ function FrameView({ frame }: { frame: Frame }) {
               textAlign: frame.style?.textAlign ?? 'center',
             }}
           >
-            {frame.text}
+            {slideText(frame.text, charsPerLine(0.88, sizes ? sizes.body : 4.6 * 19.2))}
           </p>
         </div>
       );
@@ -255,18 +266,28 @@ function FrameView({ frame }: { frame: Frame }) {
             // A chosen background colour fills the slide when there is no background image.
             frame.style?.bgColor && <div className="absolute inset-0" style={{ backgroundColor: frame.style.bgColor }} />
           )}
-          <div className="relative flex items-center justify-center">
+          {/* A prayer's page (a Notes & Prayers slide) starts at its top, the same rule as the lineup: a shared top, or centred when short. Other text is centred on the frame. */}
+          <div
+            className={frame.key?.startsWith('prayer:') ? 'absolute inset-x-0 flex flex-col items-center' : 'relative flex items-center justify-center'}
+            style={frame.key?.startsWith('prayer:') ? { top: `${(frame.top ?? textAreaShare().top) * 100}%` } : undefined}
+          >
             {frame.headline ? (
               <HeadedText headline={frame.headline} body={frame.text} style={frame.style} />
             ) : (
               <TextLines lines={frame.text.split('\n')} style={frame.style} />
             )}
           </div>
+          {/* A prayer split into slides shows its place, as the psalm pages do. */}
+          {frame.page && frame.page.total > 1 && (
+            <div className="absolute right-[4cqw] bottom-[3cqh] font-mono text-[1cqw] text-white/40">
+              {frame.page.index + 1} / {frame.page.total}
+            </div>
+          )}
         </>
       );
     case 'pw':
       // A Praise & Worship slide. It draws its own background, so it fills the stage.
-      return <PwSlideFace slide={frame.slide} segmentName={frame.segmentName} type={frame.type} index={frame.index} total={frame.total} footer={frame.footer} />;
+      return <PwSlideFace slide={frame.slide} segmentName={frame.segmentName} type={frame.type} index={frame.index} total={frame.total} footer={frame.footer} background={pwBackground} />;
     case 'whiteboard':
       // Sized to the space the screen leaves, so the lower-third clearance on the parent shortens it too.
       return (
@@ -471,6 +492,8 @@ export function ProjectorView({ mirror = false, embedded = false }: { mirror?: b
 
   // Blackout hides the background as well as the foreground, and keeps it queued for when it lifts.
   const blackedOut = picture.kind === 'blackout';
+  // The Live set's background picture or video: one layer for the whole slide sequence, kept outside the slides so a slide change never restarts it.
+  const slideMedia = welcomeBackground(useOutput((s) => s.welcome.slideBackground)).media;
   // The projector output shows nothing while its master switch is OFF, whatever the live buffer holds.
   // The operator mirror is a separate monitor with its own toggle, so it is not gated by this switch.
   const outputShowing = mirror || projectorOn;
@@ -510,6 +533,7 @@ export function ProjectorView({ mirror = false, embedded = false }: { mirror?: b
     {/* Every size inside the stage is a share of the stage, so text keeps its proportions in any window. */}
     <div className="relative isolate overflow-hidden [container-type:size]" style={stageStyle}>
       {background && <BackgroundLayer media={background} />}
+      {slideMedia && <SlideBackgroundLayer media={slideMedia} visible={outputShowing && !blackedOut && shownFrame.kind === 'pw'} />}
       {/* A song's or prayer's background colour fills the screen only when no motion background is playing, so it never covers the media. */}
       {!background && shownFrame.kind === 'idle' && <IdleScreen mode={settings.idle} media={settings.idleMedia} />}
       {!background && (shownFrame.kind === 'lyrics' || shownFrame.kind === 'rosary') && shownFrame.style?.bgColor && (
@@ -527,7 +551,7 @@ export function ProjectorView({ mirror = false, embedded = false }: { mirror?: b
         <FrameView frame={shownFrame} />
       </div>
 
-      <LowerThirdOverlay value={lowerThirdValue} />
+      <LowerThirdOverlay value={lowerThirdValue} lyricBottomShare={lyricBottomOf(shownFrame)} />
 
       {calibration && <CalibrationGrid />}
 

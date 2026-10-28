@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { cleanNote } from '../shared/notes.js';
 import { parseTextStyle } from '../shared/text-style.js';
+import { normalizeSplit } from '../shared/prayer-screen.js';
 
 /**
  * Notes and prayers. One table holds both: `display` decides whether a note is private (`operator`) or
@@ -21,10 +22,21 @@ export const PRAYER_NOTES_MIGRATIONS = [
   `,
 ];
 
-const SELECT = 'SELECT id, title, category, body, display, style FROM notes';
+/** Where a prayer is split into slides, as JSON. Added after the table existed, so it is its own migration. */
+export const PRAYER_NOTES_SPLIT_MIGRATIONS = ['ALTER TABLE notes ADD COLUMN split TEXT'];
+
+const SELECT = 'SELECT id, title, category, body, display, style, split FROM notes';
+
+function parseSplit(json, body) {
+  try {
+    return normalizeSplit(JSON.parse(json), body);
+  } catch {
+    return null;
+  }
+}
 
 function toNote(row) {
-  return { id: row.id, title: row.title, category: row.category, body: row.body, display: row.display, style: parseTextStyle(row.style) };
+  return { id: row.id, title: row.title, category: row.category, body: row.body, display: row.display, style: parseTextStyle(row.style), split: parseSplit(row.split, row.body) };
 }
 
 /** Notes data access. Pure: takes a database handle, so it can be tested without Electron. */
@@ -32,16 +44,16 @@ export function createNotesService(db) {
   const list = db.prepare(`${SELECT} ORDER BY title COLLATE NOCASE`);
   const get = db.prepare(`${SELECT} WHERE id = ?`);
   const insert = db.prepare(`
-    INSERT INTO notes (title, category, body, display, style)
-    VALUES (@title, @category, @body, @display, @style)`);
+    INSERT INTO notes (title, category, body, display, style, split)
+    VALUES (@title, @category, @body, @display, @style, @split)`);
   const update = db.prepare(`
     UPDATE notes SET title = @title, category = @category, body = @body, display = @display,
-      style = @style, updated_at = datetime('now')
+      style = @style, split = @split, updated_at = datetime('now')
     WHERE id = @id`);
   const remove = db.prepare('DELETE FROM notes WHERE id = ?');
 
   /** The style is stored as JSON text, or NULL when there is none. */
-  const bind = (note) => ({ ...note, style: note.style ? JSON.stringify(note.style) : null });
+  const bind = (note) => ({ ...note, style: note.style ? JSON.stringify(note.style) : null, split: note.split ? JSON.stringify(note.split) : null });
 
   return {
     list: () => list.all().map(toNote),

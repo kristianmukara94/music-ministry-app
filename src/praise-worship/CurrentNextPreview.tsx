@@ -4,7 +4,10 @@
 // PwSlideFace draws and the projector draws too. Merging the two would change one of those looks. Don't merge them.
 import type { ReactNode } from 'react';
 import type { PwSlide, PwType } from '../../shared/pw.js';
+import { useLive } from '../live/store';
+import { welcomeBackground, type WelcomeBackground } from '../../shared/welcome-settings.js';
 import { PwSlideFace } from './PwSlideFace';
+import { SlideBackgroundLayer } from '../output/BackgroundMedia';
 import { slideFooter } from './SlideThumb';
 import { usePwT } from './strings';
 
@@ -20,7 +23,7 @@ export interface Shown {
 const STAGE = 'relative aspect-video w-full overflow-hidden rounded-xl border border-line-strong [container-type:size]';
 
 /** A slide, drawn with the projector's own design, or a black screen when the step is blank. */
-function Face({ shown, blackLabel }: { shown: Shown; blackLabel: string }) {
+function Face({ shown, blackLabel, background }: { shown: Shown; blackLabel: string; background: WelcomeBackground }) {
   const t = usePwT();
   if (!shown.slide) {
     return (
@@ -37,6 +40,7 @@ function Face({ shown, blackLabel }: { shown: Shown; blackLabel: string }) {
       index={shown.index}
       total={shown.total}
       footer={slideFooter(shown.slide, t('prayTogether'))}
+      background={background}
     />
   );
 }
@@ -56,6 +60,8 @@ export function CurrentNextPreview({
   endLabel: string;
 }) {
   const t = usePwT();
+  // The same background as the projector: the Live slide background, so the preview matches the output.
+  const background = welcomeBackground(useLive((s) => s.state.welcome.slideBackground));
   const panel = (heading: string, body: ReactNode) => (
     <figure className="flex min-w-0 flex-col gap-1.5">
       <figcaption className="eyebrow !text-accent">{heading}</figcaption>
@@ -69,14 +75,17 @@ export function CurrentNextPreview({
       {panel(
         t('previewCurrent'),
         <div className={STAGE}>
-          <Face shown={current} blackLabel={t('previewBlack')} />
+          {/* Each panel keeps its own background layer, so a slide change never restarts the video. */}
+          {background.media && <SlideBackgroundLayer media={background.media} visible={current.slide !== null} />}
+          <Face shown={current} blackLabel={t('previewBlack')} background={background} />
         </div>,
       )}
       {panel(
         t('previewNext'),
         next ? (
           <div className={STAGE}>
-            <Face shown={next} blackLabel={t('previewBlack')} />
+            {background.media && <SlideBackgroundLayer media={background.media} visible={next.slide !== null} />}
+            <Face shown={next} blackLabel={t('previewBlack')} background={background} />
           </div>
         ) : (
           <div className="grid aspect-video w-full place-items-center rounded-xl border border-dashed border-line-strong p-3 text-center text-sm text-muted">

@@ -41,6 +41,8 @@ export interface Hymn {
   /** How the song is set on the projector. Null keeps the default look. */
   style: TextStyle | null;
   stanzas: Stanza[];
+  /** Set while the song is in Recently deleted. Null or missing for a song in the library. */
+  deletedAt?: string | null;
 }
 
 export interface HymnFilter {
@@ -94,6 +96,8 @@ export interface SongCategory {
 }
 
 export interface LyricsApi {
+  /** Calls the handler with a song's id after that song changes, in any window. Returns a function that stops listening. */
+  onChanged(handler: (id: number) => void): () => void;
   listHymns(filter: HymnFilter): Promise<HymnSummary[]>;
   getHymn(id: number): Promise<Hymn | null>;
   createHymn(input: NewHymn): Promise<{ id: number; warnings: string[] }>;

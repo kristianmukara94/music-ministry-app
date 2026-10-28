@@ -5,6 +5,9 @@ import type { LowerThirdStyle } from '../../shared/lower-third-style';
 import { useLive } from '../live/store';
 import { LOGO_SRC } from '../brand/logo';
 import { useOutput } from './outputState';
+import { slideText } from '../../shared/text-wrap.js';
+import { LOWER_THIRD_BAND, bandComposerChars, bandTitleChars, composerFor } from '../../shared/lower-third-layout.js';
+import { bandSizesBelow, lyricBottomOf } from '../../shared/lyric-area.js';
 
 /** How long a lower third takes to fade in or out. Keep in step with `duration-300` in LowerThirdStage's callers. */
 export const LOWER_THIRD_FADE_MS = 300;
@@ -39,16 +42,18 @@ function textEffects(style: LowerThirdStyle): CSSProperties {
  * beneath it, a smaller line. Drawn in the default palette whatever the operator theme (decision D), so the stream
  * never gets a light bar. Sizes are in container widths, as the other lower thirds are.
  */
-export function SegmentLowerThird({ value }: { value: LowerThird }) {
+export function SegmentLowerThird({ value, sizes }: { value: LowerThird; sizes?: { titlePx: number; composerPx: number } }) {
+  const titlePx = sizes?.titlePx ?? LOWER_THIRD_BAND.titlePx;
+  const composerPx = sizes?.composerPx ?? composerFor(LOWER_THIRD_BAND.titlePx);
   return (
-    <div data-theme="default" className="flex max-w-[80cqw] flex-col items-start">
+    <div data-theme="default" className="flex w-full min-w-0 flex-col items-start">
       {value.tag && (
         <div
           className="font-sans font-extrabold tracking-[0.18em] uppercase"
           style={{
             background: 'var(--color-accent)',
             color: 'var(--color-on-accent)',
-            fontSize: cq(19),
+            fontSize: cq(LOWER_THIRD_BAND.tagPx),
             padding: `${cq(6)} ${cq(14)}`,
             borderRadius: `${cq(3)} ${cq(3)} 0 0`,
           }}
@@ -66,12 +71,12 @@ export function SegmentLowerThird({ value }: { value: LowerThird }) {
           boxShadow: `0 ${cq(4)} ${cq(14)} rgba(0, 0, 0, 0.45)`,
         }}
       >
-        <div className="font-serif font-semibold" style={{ fontSize: cq(56), lineHeight: 1.1 }}>
-          {value.line1}
+        <div className="font-serif font-semibold" style={{ fontSize: cq(titlePx), lineHeight: 1.1 }}>
+          {slideText(value.line1, bandTitleChars(titlePx))}
         </div>
         {value.line2 && (
-          <div className="font-sans" style={{ fontSize: cq(24), color: 'var(--color-muted)', marginTop: cq(4) }}>
-            {value.line2}
+          <div className="font-sans" style={{ fontSize: cq(composerPx), lineHeight: 1.2, color: 'var(--color-muted)', marginTop: cq(4) }}>
+            {slideText(value.line2, bandComposerChars(composerPx))}
           </div>
         )}
       </div>
@@ -163,8 +168,30 @@ export function LowerThirdCard({ value, style }: { value: LowerThird; style: Low
  * The response prompt sits centred at the bottom, so it reads across the whole sanctuary. The stage never takes clicks.
  * The parent needs `container-type` so the sizes scale.
  */
-export function LowerThirdStage({ value, className = '' }: { value: LowerThird; className?: string }) {
+export function LowerThirdStage({
+  value,
+  className = '',
+  lyricBottomShare = null,
+}: {
+  value: LowerThird;
+  className?: string;
+  /** The bottom of the lyrics or prayer on screen, as a share of the height. The band takes the room below it. Null: no text on screen. */
+  lyricBottomShare?: number | null;
+}) {
   const style = useOutput((s) => s.lowerStyle);
+
+  // The Praise & Worship lower third sits in the lower band, on the lyrics' margins. The operator's look for the other lower thirds does
+  // not move it, so the live preview, the projector and the livestream all draw it in the same place and size.
+  if (value.template === 'segment') {
+    return (
+      <div
+        className={'pointer-events-none absolute z-50 ' + className}
+        style={{ left: LOWER_THIRD_BAND.left + '%', right: LOWER_THIRD_BAND.left + '%', bottom: LOWER_THIRD_BAND.bottom + '%' }}
+      >
+        <SegmentLowerThird value={value} sizes={bandSizesBelow(value, lyricBottomShare)} />
+      </div>
+    );
+  }
 
   if (value.template === 'response') {
     return (
@@ -224,12 +251,13 @@ export function useFadedLowerThird(live: LowerThird | null) {
 }
 
 /** The lower third drawn over a projector screen. Pass null to fade it out. It sits above slides, lyrics and backgrounds. */
-export function LowerThirdOverlay({ value }: { value: LowerThird | null }) {
+export function LowerThirdOverlay({ value, lyricBottomShare = null }: { value: LowerThird | null; lyricBottomShare?: number | null }) {
   const { shown, visible } = useFadedLowerThird(value);
   if (!shown) return null;
   return (
     <LowerThirdStage
       value={shown}
+      lyricBottomShare={lyricBottomShare}
       className={`z-50 transition-opacity duration-300 ease-in-out ${visible ? 'opacity-100' : 'opacity-0'}`}
     />
   );
@@ -241,6 +269,8 @@ export function LowerThirdOverlay({ value }: { value: LowerThird | null }) {
  */
 export function LowerThirdView() {
   const live = useLive((s) => s.state.lowerThird.live);
+  // The livestream draws the same band as the projector: it takes the room the lyrics on the projector leave below them.
+  const onScreen = useLive((s) => s.state.projector.live);
   const { shown, visible } = useFadedLowerThird(live);
 
   useEffect(() => {
@@ -253,6 +283,7 @@ export function LowerThirdView() {
       {shown && (
         <LowerThirdStage
           value={shown}
+          lyricBottomShare={lyricBottomOf(onScreen)}
           className={`transition-opacity duration-300 ease-in-out ${visible ? 'opacity-100' : 'opacity-0'}`}
         />
       )}

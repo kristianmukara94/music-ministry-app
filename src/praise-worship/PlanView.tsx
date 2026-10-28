@@ -170,11 +170,16 @@ export function PlanView() {
         </div>
       </header>
 
-      {/* Three columns when there is room; the library drops below, then everything stacks. Sized by the module's width, not the window's. */}
-      <div className="grid grid-cols-1 items-start gap-5 @4xl/pw:grid-cols-[minmax(280px,340px)_minmax(0,1fr)] @6xl/pw:grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(260px,300px)]">
+      {/*
+        Song List on the left, Lineup on the right, the segment editor across the bottom. Narrower than that, everything stacks
+        with the Lineup first. Sized by the module's width, not the window's.
+      */}
+      <div className="grid grid-cols-1 items-start gap-5 @4xl/pw:grid-cols-2">
         <LineupRail />
-        <SegmentEditor />
-        <div className="@4xl/pw:col-span-2 @6xl/pw:col-span-1">
+        <div className="@4xl/pw:col-span-2">
+          <SegmentEditor />
+        </div>
+        <div className="@4xl/pw:order-first">
           <Library />
         </div>
       </div>

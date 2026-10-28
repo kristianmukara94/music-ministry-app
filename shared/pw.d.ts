@@ -55,6 +55,8 @@ export interface PwTemplateSegment {
   group: string;
   name: string;
   type: PwType;
+  /** Every type the slot may hold. Omitted means only `type`. */
+  types?: PwType[];
   minutes: number;
   content: PwContent;
   leader?: string;
@@ -87,14 +89,15 @@ export interface PwHymnTag {
 
 export interface PwResolved {
   hymns?: PwHymn[];
-  prayer?: { title: string; body: string } | null;
+  /** The prayer's saved split from Notes & Prayers, if any. */
+  prayer?: { title: string; body: string; align?: 'left' | 'center' | 'right'; split?: { mode: 'auto'; of?: string } | { mode: 'manual'; at: number[]; of?: string } | null } | null;
   reading?: { citation: string; rawText: string } | null;
 }
 
 export type PwSlide =
   | { kind: 'title'; label: string; subtitle: string }
-  | { kind: 'lyrics'; label: string; chip: string; text: string; hymnId: number; hymnTitle: string; sectionId: string }
-  | { kind: 'prayer'; label: string; text: string; placeholder?: boolean };
+  | { kind: 'lyrics'; label: string; chip: string; text: string; hymnId: number; hymnTitle: string; sectionId: string; position?: number; stanzaCount?: number; part?: number; parts?: number; fontPx?: number; top?: number; centred?: boolean; align?: 'left' | 'center' | 'right' }
+  | { kind: 'prayer'; label: string; text: string; placeholder?: boolean; fontPx?: number; notice?: 'stale' | 'too-long'; part?: number; parts?: number; top?: number; centred?: boolean; align?: 'left' | 'center' | 'right' };
 
 export interface PwPosition {
   segment: number;
@@ -108,10 +111,21 @@ export function totalMinutes(segments: { minutes: number }[]): number;
 export function groupMinutes(segments: PwSegment[], groupKey: string): number;
 export function formatRunTime(minutes: number): string;
 export function fitsSegment(hymn: { id: number; category?: string }, segment: PwSegment, tags: PwHymnTag[]): boolean;
+export function typesFor(segment: PwSegment): PwType[];
+export function acceptsTab(segment: PwSegment, tab: PwType): boolean;
+export function songAssignment(segment: PwSegment, hymnId: number, replacing: number | null): Pick<PwSegment, 'type' | 'content' | 'arrangement'> | null;
+export function scriptureAssignment(segment: PwSegment, content: PwContent): Pick<PwSegment, 'type' | 'content' | 'arrangement'> | null;
 export function sectionChip(stanzaType: string): string;
 export function sectionOrder(hymn: PwHymn, arrangement: Record<string, string[]> | undefined): string[];
 export function pagesOf(text: string, maxLines?: number): string[];
-export function slidesFor(segment: PwSegment, resolved?: PwResolved): PwSlide[];
+export const PRAYER_STAGE: { width: number; height: number };
+/** How many characters a prayer line holds on the slide, and how many lines a slide holds. */
+export const PRAYER_FIT_CHARS: number;
+export const PRAYER_FIT_LINES: number;
+export function fitsPrayerSlide(text: string): boolean;
+export function prayerPages(text: string): string[];
+/** `band` is the lower third on screen, if any: the lyric and prayer pages leave room for it. */
+export function slidesFor(segment: PwSegment, resolved?: PwResolved, options?: { band?: import('./live.js').LowerThird | null }): PwSlide[];
 export function step(counts: number[], pos: PwPosition, delta: 1 | -1): PwPosition | null;
 export function visibleSlideIndexes(count: number, liveIndex: number | null | undefined): number[];
 export function livePosition(segments: PwSegment[], pw: { segmentKey: string | null; slide: number } | null): PwPosition | null;

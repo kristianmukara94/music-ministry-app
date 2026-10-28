@@ -752,7 +752,15 @@ app.whenReady().then(() => {
   state = liveReducer(state, { type: 'lowerStyle/set', value: readConfig(app.getPath('userData')).lower_third });
   announcements = openConfiguredDatabase();
   // A hymn saved here asks the song sync for a send soon, instead of waiting for its next timer tick.
-  setupLyrics(announcements.db, { onHymnChanged: () => songSync.notify() });
+  setupLyrics(announcements.db, {
+    onHymnChanged: () => songSync.notify(),
+    // Every window reloads the song, so the planners and the lineup show the new lyrics without a restart.
+    onLyricsChanged: (id) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send('lyrics:changed', id);
+      }
+    },
+  });
   // Hymns deleted more than 30 days ago are removed from this laptop, at start and then once a day. Local only: nothing is sent.
   const purgeRecycled = () => {
     try {

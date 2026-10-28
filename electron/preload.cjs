@@ -27,6 +27,12 @@ contextBridge.exposeInMainWorld('apcc', {
   },
 
   lyrics: {
+    /** Calls `callback(id)` when a song changes in any window. Returns a function that stops listening. */
+    onChanged: (callback) => {
+      const handler = (_event, id) => callback(id);
+      ipcRenderer.on('lyrics:changed', handler);
+      return () => ipcRenderer.removeListener('lyrics:changed', handler);
+    },
     listHymns: (filter) => ipcRenderer.invoke('lyrics:listHymns', filter),
     getHymn: (id) => ipcRenderer.invoke('lyrics:getHymn', id),
     createHymn: (input) => ipcRenderer.invoke('lyrics:createHymn', input),

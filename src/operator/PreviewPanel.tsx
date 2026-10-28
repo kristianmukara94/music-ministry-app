@@ -209,38 +209,26 @@ export function PreviewPanel() {
   }, []);
 
   const frame: CSSProperties = { left: rect.x, top: rect.y, width: rect.w, height: rect.h };
-  const showHeader = headerPinned || collapsed;
 
   return (
     <section
       aria-label="Live preview"
       style={frame}
-      className="group fixed z-50 overflow-hidden rounded-xl border border-stone-800/80 bg-stone-950 shadow-2xl shadow-amber-950/40"
+      className="group fixed z-50 flex flex-col overflow-hidden rounded-xl border border-stone-800/80 bg-stone-950 shadow-2xl shadow-amber-950/40"
     >
-      {/* The picture fills the panel. Its 16:9 shape is kept and it is centred, so it never stretches. It stays live. */}
-      {!collapsed && (
-        <div className="absolute inset-0 flex items-center justify-center [container-type:size]">
-          <div className="relative overflow-hidden" style={{ width: 'min(100cqw, calc(100cqh * 16 / 9))', height: 'min(100cqh, calc(100cqw * 9 / 16))' }}>
-            <ProjectorView mirror embedded />
-          </div>
-        </div>
-      )}
-
-      {/* The header: an overlay across the top. Pinned, it stays up; unpinned, it shows while the pointer is over the panel. */}
+      {/* The header is a band of its own, above the picture, so the picture (and its text) never sits under it. */}
       <header
         onPointerDown={startDrag}
         onPointerMove={moveDrag}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        className={`absolute top-0 right-0 left-0 z-20 flex cursor-move select-none items-center justify-between gap-3 bg-gradient-to-b from-stone-950/90 via-stone-950/60 to-transparent p-3 pointer-events-auto transition-opacity duration-300 ${
-          showHeader ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-        }`}
+        className="flex h-14 shrink-0 cursor-move select-none items-center justify-between gap-3 border-b border-stone-800 bg-stone-950 px-3"
       >
         <div className="flex min-w-0 items-center gap-2.5">
           <Eye size={16} className="shrink-0 text-amber-400" aria-hidden />
           <div className="flex min-w-0 flex-col">
             <h2 className="text-sm font-black tracking-widest text-stone-100 uppercase">Preview</h2>
-            <span className="text-[11px] text-stone-400">{headerPinned ? 'Pinned: header always visible' : 'Live preview'}</span>
+            <span className="text-[11px] text-stone-400">Live preview</span>
           </div>
         </div>
 
@@ -268,8 +256,8 @@ export function PreviewPanel() {
             type="button"
             onClick={() => setHeaderPinned((pinned) => !pinned)}
             aria-pressed={headerPinned}
-            aria-label={headerPinned ? 'Unpin header: auto-hide on hover out' : 'Pin header: keep toolbar visible'}
-            title={headerPinned ? 'Unpin header: auto-hide on hover out' : 'Pin header: keep toolbar visible'}
+            aria-label="Pin the header"
+            title="The header stays above the picture"
             className={headerPinned ? PINNED_ICON : ICON}
           >
             {headerPinned ? <Lock size={15} aria-hidden /> : <Unlock size={15} aria-hidden />}
@@ -282,6 +270,15 @@ export function PreviewPanel() {
           </button>
         </div>
       </header>
+
+      {/* The picture sits under the header and keeps its 16:9 shape, centred. It is the projector itself, live, so it matches the output. */}
+      {!collapsed && (
+        <div className="relative flex min-h-0 flex-1 items-center justify-center [container-type:size]">
+          <div className="relative overflow-hidden" style={{ width: 'min(100cqw, calc(100cqh * 16 / 9))', height: 'min(100cqh, calc(100cqw * 9 / 16))' }}>
+            <ProjectorView mirror embedded />
+          </div>
+        </div>
+      )}
 
       {/* One grip per corner: each resizes from that corner, with the edges opposite it held in place. */}
       {(['nw', 'ne', 'sw', 'se'] as const).map((corner) => (

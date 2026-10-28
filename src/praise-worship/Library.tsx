@@ -1,15 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { MonitorUp, Search, Tag } from 'lucide-react';
-import { fitsSegment, GOSPEL_ACCLAMATION, slidesFor, type PwContent, type PwSegment, type PwType } from '../../shared/pw.js';
+import { Search, Tag } from 'lucide-react';
+import { acceptsTab, fitsSegment, GOSPEL_ACCLAMATION, scriptureAssignment, songAssignment, type PwContent, type PwSegment, type PwType } from '../../shared/pw.js';
 import { bridge } from '../live/bridge';
-import { useLive } from '../live/store';
 import type { HymnSummary } from '../lyrics/types';
 import { pad2 } from './LineupRail';
-import { livePosition } from '../../shared/pw.js';
-import { confirmTakeover, frameFor, liveDeck, liveSession, showPosition } from './live';
-import { PwSlideFace } from './PwSlideFace';
-import { slideFooter } from './SlideThumb';
-import { ensureHymn, errorText, resolvedFor, setPwState, setTag, updateSegment, usePw } from './store';
+import { commitSegments, errorText, setPwState, setTag, updateSegment, usePw } from './store';
+import { addTicked, toggleTick } from '../../shared/library-ticks.js';
 import { usePwT, type PwT } from './strings';
 
 type LibTab = 'song' | 'prayer' | 'scripture';
@@ -21,28 +17,21 @@ const TABS: { id: LibTab; key: string }[] = [
 const TYPE_FOR_TAB: Record<LibTab, PwType> = { song: 'song', prayer: 'prayer', scripture: 'scripture' };
 
 const ADD = 'grid min-h-11 min-w-16 shrink-0 place-items-center rounded-xl border border-line-strong px-4 text-sm font-bold transition hover:border-accent hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40';
-const PANE_BTN = 'inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-line-strong px-3 text-sm font-semibold transition hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40';
+const INSERT_BTN = 'inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-line-strong px-3 text-sm font-semibold transition hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40';
 const SEARCH_DELAY_MS = 200;
 
 /** Puts a song into the selected segment: replacing the one marked for Replace, filling a single slot, or adding the next one. */
 function assignSong(index: number, segment: PwSegment, hymnId: number, replacing: number | null) {
-  const c = segment.content;
-  if (c.kind !== 'song') return;
-  let hymnIds: number[];
-  if (replacing != null && c.hymnIds.includes(replacing)) hymnIds = c.hymnIds.map((id) => (id === replacing ? hymnId : id));
-  else if (c.maxSongs === 1) hymnIds = [hymnId];
-  else if (c.hymnIds.includes(hymnId) || c.hymnIds.length >= c.maxSongs) return;
-  else hymnIds = [...c.hymnIds, hymnId];
-  // An arrangement belongs to the song it was made for, so a replaced song's arrangement goes with it.
-  const arrangement = Object.fromEntries(Object.entries(segment.arrangement).filter(([id]) => hymnIds.includes(Number(id))));
-  updateSegment(index, { content: { ...c, hymnIds }, arrangement });
+  const patch = songAssignment(segment, hymnId, replacing);
+  if (!patch) return;
+  updateSegment(index, patch);
   setPwState({ replacing: null });
 }
 
 /** Why Add is disabled for this tab, or null when it can add. */
 function blockedReason(segment: PwSegment | undefined, tab: LibTab, t: PwT, replacing: boolean): string | null {
   if (!segment) return null;
-  if (segment.type !== TYPE_FOR_TAB[tab]) return t('wrongType', { type: t(`type_${TYPE_FOR_TAB[tab]}`).toLowerCase() });
+  if (!acceptsTab(segment, TYPE_FOR_TAB[tab])) return t('wrongType', { type: t(`type_${TYPE_FOR_TAB[tab]}`).toLowerCase() });
   const c = segment.content;
   if (c.kind === 'song' && c.maxSongs > 1 && c.hymnIds.length >= c.maxSongs && !replacing) return t('full');
   return null;
@@ -65,57 +54,13 @@ interface Row {
   title: string;
   sub: string;
   fits?: boolean;
-  /** The segment as it would be with this item in it, for the preview. */
-  candidate: (segment: PwSegment) => PwSegment;
+  /** Set on a song row: the row can be dragged onto a lineup slot. */
+  songId?: number;
+  /** Set on a song or prayer row: the row has a tick box for multi-add. */
+  tickable?: boolean;
   insert: () => void;
   added: boolean;
-  /** Loads what the preview needs (a song's stanzas). */
-  prepare?: () => Promise<unknown>;
   extra?: ReactNode;
-}
-
-/**
- * The local preview of the result under the pointer or focus: its first slide, drawn here only. Nothing is dispatched
- * until the operator presses Preview on projector.
- */
-function PreviewPane({ row, segment, canInsert, onInsert, onProject, canProject }: {
-  row: Row | null;
-  segment: PwSegment | undefined;
-  canInsert: boolean;
-  onInsert: () => void;
-  onProject: () => void;
-  canProject: boolean;
-}) {
-  const t = usePwT();
-  const hymns = usePw((s) => s.hymns);
-  const prayers = usePw((s) => s.prayers);
-  const day = usePw((s) => s.day);
-  if (!row || !segment) {
-    return <p className="rounded-xl border border-dashed border-line-strong p-3 text-sm text-muted">{t('previewEmpty')}</p>;
-  }
-  const candidate = row.candidate(segment);
-  // Skip the title slide: the first lines of the item are what the operator wants to check.
-  const slides = slidesFor({ ...candidate, cues: { ...candidate.cues, titleFirst: false } }, resolvedFor(candidate, { hymns, prayers, day }));
-  const slide = slides[0];
-  return (
-    <section aria-label={t('previewPane')} className="flex flex-col gap-2 rounded-xl border border-line bg-canvas/30 p-3">
-      <div className="flex items-baseline justify-between gap-2">
-        <h3 className="truncate text-sm font-bold">{t('previewPane')} · {row.title}</h3>
-      </div>
-      <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-line [container-type:size]">
-        {slide && <PwSlideFace slide={slide} segmentName={segment.name} type={segment.type} index={0} total={slides.length} footer={slideFooter(slide, t('prayTogether'))} />}
-      </div>
-      <p className="text-xs text-muted">{t('previewLocal')}</p>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className={PANE_BTN} disabled={!canInsert} onClick={onInsert}>
-          {t('insertInto')}
-        </button>
-        <button type="button" className={PANE_BTN} disabled={!canProject} title={canProject ? undefined : t('previewNeedsLive')} onClick={onProject}>
-          <MonitorUp size={16} aria-hidden /> {t('previewOnProjector')}
-        </button>
-      </div>
-    </section>
-  );
 }
 
 export function Library() {
@@ -125,13 +70,15 @@ export function Library() {
   const prayers = usePw((s) => s.prayers);
   const tags = usePw((s) => s.tags);
   const replacing = usePw((s) => s.replacing);
-  const liveId = useLive((s) => s.state.pw?.sessionId ?? null);
+  const libraryRevision = usePw((s) => s.libraryRevision);
   const segment = session.segments[selected];
   const [tab, setTab] = useState<LibTab>('song');
   const [query, setQuery] = useState('');
   const [songs, setSongs] = useState<HymnSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [ticked, setTicked] = useState<string[]>([]);
+  const [addNote, setAddNote] = useState<string | null>(null);
   const rowButtons = useRef<(HTMLButtonElement | null)[]>([]);
 
   // The tab follows the selected segment's type, so Add is ready for it.
@@ -152,7 +99,7 @@ export function Library() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, libraryRevision]);
 
   const fail = (err: unknown) => setError(errorText(err));
   const replacingHere = replacing?.segment === selected;
@@ -170,10 +117,10 @@ export function Library() {
           title: h.title,
           sub: [h.category, h.language, h.musicalKey].filter(Boolean).join(' · '),
           fits,
-          candidate: (seg) => ({ ...seg, type: 'song', content: { kind: 'song', hymnIds: [h.id], maxSongs: 1, category: null }, arrangement: {} }),
+          songId: h.id,
+          tickable: true,
           insert: () => segment && assignSong(selected, segment, h.id, replacingHere ? replacing!.hymnId : null),
           added: segment?.content.kind === 'song' && segment.content.hymnIds.includes(h.id),
-          prepare: () => ensureHymn(h.id),
           extra: segment && (
             <button
               type="button"
@@ -196,9 +143,9 @@ export function Library() {
         .filter((p) => !q || `${p.title} ${p.body}`.toLowerCase().includes(q))
         .map((p): Row => ({
           key: `prayer-${p.id}`,
+          tickable: true,
           title: p.title,
           sub: p.category,
-          candidate: (seg) => ({ ...seg, type: 'prayer', content: { kind: 'prayer', noteId: p.id } }),
           insert: () => {
             updateSegment(selected, { content: { kind: 'prayer', noteId: p.id } });
             setPwState({ replacing: null });
@@ -216,8 +163,10 @@ export function Library() {
         key: `scripture-${o.content.kind}`,
         title: o.label,
         sub: o.sub,
-        candidate: (seg) => ({ ...seg, type: 'scripture', content: o.content }),
-        insert: () => updateSegment(selected, { content: o.content }),
+        insert: () => {
+          const patch = segment && scriptureAssignment(segment, o.content);
+          if (patch) updateSegment(selected, patch);
+        },
         added: JSON.stringify(segment?.content) === JSON.stringify(o.content),
       }));
     // `t` changes identity every render, so it is left out; the language switch re-renders the rows anyway.
@@ -225,35 +174,26 @@ export function Library() {
 
   const active = rows.find((r) => r.key === activeKey) ?? null;
   const canInsert = (row: Row | null) => Boolean(row && segment && !blocked && !row.added);
-  // Preview on projector needs this session to be the live one. Whether it may take the projector is asked on press.
-  const canProject = (row: Row | null) => Boolean(row && segment && liveId === session.id && liveSession());
 
-  const activate = (row: Row) => {
-    setActiveKey(row.key);
-    row.prepare?.().catch(fail);
-  };
+  const activate = (row: Row) => setActiveKey(row.key);
 
-  /** Shows the previewed slide on the projector, at the live position, as Praise & Worship. */
-  const project = (row: Row) => {
-    const live = liveSession();
-    const pw = useLive.getState().state.pw;
-    if (!live || !pw || !segment || !confirmTakeover()) return;
-    const candidate = row.candidate(segment);
-    const { hymns, prayers: notes, day } = usePw.getState();
-    const slides = slidesFor({ ...candidate, cues: { ...candidate.cues, titleFirst: false } }, resolvedFor(candidate, { hymns, prayers: notes, day }));
-    if (!slides[0]) return;
-    const frame = frameFor(candidate, { kind: 'slide', slide: slides[0], index: 0, total: slides.length });
-    const at = livePosition(live.segments, pw);
-    if (at) showPosition(live, liveDeck(live), at, frame);
+
+  /** Adds this tab's ticked items to the empty slots of their type, in the order they were ticked. Ticks of this tab are cleared. */
+  const addSelected = () => {
+    if (!segment) return;
+    const result = addTicked(session.segments, ticked, tab);
+    commitSegments(result.segments);
+    setTicked(ticked.filter((k) => !k.startsWith(`${tab}-`)));
+    const parts = [`${result.added} added.`];
+    if (result.skipped) parts.push(`${result.skipped} already in the lineup.`);
+    if (result.left) parts.push(`${result.left} not added: no empty slot left.`);
+    setAddNote(parts.join(' '));
   };
 
   const onRowKey = (e: KeyboardEvent<HTMLButtonElement>, row: Row, i: number) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       rowButtons.current[i + (e.key === 'ArrowDown' ? 1 : -1)]?.focus();
-    } else if (e.key === 'Enter' && e.shiftKey) {
-      e.preventDefault();
-      if (canProject(row)) project(row);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (canInsert(row)) row.insert();
@@ -309,15 +249,20 @@ export function Library() {
         ))}
       </div>
 
-      <PreviewPane
-        row={active}
-        segment={segment}
-        canInsert={canInsert(active)}
-        onInsert={() => active?.insert()}
-        canProject={canProject(active)}
-        onProject={() => active && project(active)}
-      />
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className={INSERT_BTN} disabled={!canInsert(active)} onClick={() => active?.insert()}>
+          {t('insertInto')}
+        </button>
+      </div>
 
+      {(tab === 'song' || tab === 'prayer') && (
+        <div className="flex flex-wrap items-center gap-3 px-1">
+          <button type="button" className={INSERT_BTN} disabled={!segment || ticked.every((k) => !k.startsWith(`${tab}-`))} onClick={addSelected}>
+            Add selected
+          </button>
+          {addNote && <p role="status" className="text-sm text-muted">{addNote}</p>}
+        </div>
+      )}
       {blocked && <p className="px-1 text-sm text-muted">{blocked}</p>}
       {error && <p role="alert" className="px-1 text-sm text-danger">{error}</p>}
 
@@ -330,6 +275,15 @@ export function Library() {
             onMouseEnter={() => activate(row)}
             className={`flex items-center gap-2 rounded-xl border p-2 ${row.key === activeKey ? 'border-accent bg-panel-2' : 'border-line bg-canvas/30'}`}
           >
+            {row.tickable && (
+              <input
+                type="checkbox"
+                checked={ticked.includes(row.key)}
+                onChange={() => setTicked(toggleTick(ticked, row.key))}
+                aria-label={`Select ${row.title}`}
+                className="size-5 shrink-0"
+              />
+            )}
             <button
               ref={(el) => {
                 rowButtons.current[i] = el;
@@ -338,6 +292,15 @@ export function Library() {
               onFocus={() => activate(row)}
               onClick={() => activate(row)}
               onKeyDown={(e) => onRowKey(e, row, i)}
+              draggable={row.songId != null}
+              onDragStart={(e) => {
+                if (row.songId == null) return;
+                // A song is copied into a slot, not moved out of the list.
+                e.dataTransfer.effectAllowed = 'copy';
+                e.dataTransfer.setData('text/plain', row.title);
+                setPwState({ songDrag: row.songId });
+              }}
+              onDragEnd={() => setPwState({ songDrag: null })}
               aria-describedby="pw-lib-keys"
               className="flex min-h-11 min-w-0 flex-1 flex-col rounded-lg px-2 py-1 text-left"
             >

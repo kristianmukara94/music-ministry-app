@@ -444,6 +444,7 @@ const offlineMedia: MediaApi = {
 };
 
 const offlineLyrics: LyricsApi = {
+  onChanged: () => () => undefined,
   listHymns: async () => [],
   getHymn: async () => null,
   createHymn: async () => offlineError(),

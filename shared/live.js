@@ -29,7 +29,8 @@ export function initialLiveState() {
     noteOverlay: null,
     lowerStyle: LOWER_THIRD_DEFAULTS,
     projector: { live: IDLE, staged: IDLE, paused: false, beforeBlackout: null, background: NO_BACKGROUND, source: null },
-    lowerThird: { live: null, staged: null, paused: false },
+    // `choice` is the operator's last On or Off (null until the operator presses the toggle). Only the operator changes it.
+    lowerThird: { live: null, staged: null, paused: false, choice: null },
     queue: [],
     queuePlanId: null,
     queueCursor: -1,
@@ -51,8 +52,10 @@ function showFrame(p, frame) {
   return { ...p, staged: frame, live: frame };
 }
 
+// A slide's own cue shows its lower third, unless the operator has turned it Off: then it is only staged, and stays Off until the operator turns it On.
 function showLowerThird(l, value) {
-  return l.paused ? { ...l, staged: value } : { ...l, staged: value, live: value };
+  if (l.paused || l.choice === 'off') return { ...l, staged: value };
+  return { ...l, staged: value, live: value };
 }
 
 // The Mass Queue's CURRENT selection ends whenever the projector stops showing queue content. Spread into a reducer result.
@@ -92,6 +95,18 @@ function reduce(s, a) {
       }
       const ended = a.source === 'DIRECT_DECK' ? { ...endQueueSelection(s), ...endPwAir(s) } : {};
       return { ...s, ...ended, projector: showFrame(s.projector, a.frame) };
+    }
+
+    // A live slide whose song or prayer was edited. The new frame replaces the one on screen, and the one staged or held for after a
+    // blackout, when it is the same slide. Nothing else changes: the source, the queue and the lower third stay as they are.
+    case 'projector/refresh': {
+      const p = s.projector;
+      const swap = (f) => (f && f.key === a.key ? a.frame : f);
+      const live = swap(p.live);
+      const staged = swap(p.staged);
+      const beforeBlackout = swap(p.beforeBlackout);
+      if (live === p.live && staged === p.staged && beforeBlackout === p.beforeBlackout) return s;
+      return { ...s, projector: { ...p, live, staged, beforeBlackout } };
     }
 
     // Clear touches only the foreground: the background keeps playing.
@@ -193,8 +208,8 @@ function reduce(s, a) {
     // The header button: on, it shows the staged lower third; off, it clears it. Nothing is shown if nothing was staged.
     case 'lowerThird/toggle': {
       const l = s.lowerThird;
-      if (l.live) return { ...s, lowerThird: { ...l, live: null } };
-      return l.staged ? { ...s, lowerThird: { ...l, live: l.staged } } : s;
+      if (l.live) return { ...s, lowerThird: { ...l, live: null, choice: 'off' } };
+      return l.staged ? { ...s, lowerThird: { ...l, live: l.staged, choice: 'on' } } : s;
     }
 
     case 'lowerThird/pause': {
@@ -211,7 +226,7 @@ function reduce(s, a) {
         ...endQueueSelection(s),
         ...endPwAir(s),
         projector: { live: IDLE, staged: IDLE, paused: false, beforeBlackout: null, background: NO_BACKGROUND, source: null },
-        lowerThird: { live: null, staged: null, paused: false },
+        lowerThird: { live: null, staged: null, paused: false, choice: s.lowerThird.choice },
       };
 
     // Loading a different plan resets the position to before the first item. Re-sending the same plan

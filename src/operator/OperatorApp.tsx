@@ -31,6 +31,8 @@ import { Dashboard } from './Dashboard';
 import { PreviewPanel } from './PreviewPanel';
 import { NAV, Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
+import { startLiveSongWatch } from '../live/liveSongs';
+import { LiveNoticeBanner } from '../live/LiveNoticeBanner';
 
 function useGlobalHotkeys() {
   useEffect(() => {
@@ -212,6 +214,8 @@ function QueueDrawer() {
 export function OperatorApp() {
   // Keeps the projector-prompt choice in step with the projector and the loaded queue or session.
   useEffect(() => watchProjectorPromptChoice(), []);
+  // A song or prayer on the projector follows its edits, and the operator is told when it was deleted.
+  useEffect(() => startLiveSongWatch(), []);
   const view = useUi((s) => s.view);
   const previewOpen = useUi((s) => s.previewOpen);
   const lang = useUi((s) => s.lang);
@@ -237,6 +241,7 @@ export function OperatorApp() {
       <div className="relative z-20 w-full shrink-0">
         <TopBar />
       </div>
+      <LiveNoticeBanner />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
         <Sidebar />

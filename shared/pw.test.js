@@ -1,7 +1,7 @@
 // Praise & Worship model and live-state tests. Run with: node --test shared/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_TEMPLATE, livePosition, moveSegment, segmentFromTemplate, step, visibleSlideIndexes } from './pw.js';
+import { acceptsTab, DEFAULT_TEMPLATE, livePosition, moveSegment, readiness, scriptureAssignment, segmentFromTemplate, segmentStatus, songAssignment, step, typesFor, visibleSlideIndexes } from './pw.js';
 import { initialLiveState, liveReducer } from './live.js';
 
 const lineup = () => DEFAULT_TEMPLATE.groups.flatMap((g) => DEFAULT_TEMPLATE.segments.filter((s) => s.group === g.key)).map(segmentFromTemplate);
@@ -79,4 +79,78 @@ test('"Show all verses" off lists the live slide and the next one, or the first 
   assert.deepEqual(visibleSlideIndexes(6, 4), [4, 5]);
   assert.deepEqual(visibleSlideIndexes(6, 5), [5], 'the last slide has no next one');
   assert.deepEqual(visibleSlideIndexes(0, -1), []);
+});
+
+// Insert rules for the lineup slots. The helpers apply a patch the way the desktop Library does.
+const slot = (key) => segmentFromTemplate(DEFAULT_TEMPLATE.segments.find((s) => s.key === key));
+const applied = (segment, patch) => (patch ? { ...segment, ...patch } : segment);
+
+test('segment 4 holds a title slide by default and also takes a song', () => {
+  const seg = slot('bible_enthronement');
+  assert.equal(seg.type, 'scripture');
+  assert.deepEqual(seg.content, { kind: 'title' });
+  assert.deepEqual(typesFor(seg), ['scripture', 'song']);
+  assert.equal(acceptsTab(seg, 'song'), true);
+  assert.equal(acceptsTab(seg, 'scripture'), true);
+  assert.equal(acceptsTab(seg, 'prayer'), false);
+});
+
+test('a song can be assigned to segment 4, which then holds that song and keeps its minutes', () => {
+  const seg = slot('bible_enthronement');
+  const patch = songAssignment(seg, 7, null);
+  assert.ok(patch, 'the song is accepted');
+  const after = applied(seg, patch);
+  assert.equal(after.type, 'song');
+  assert.deepEqual(after.content, { kind: 'song', hymnIds: [7], maxSongs: 1, category: null });
+  assert.deepEqual(after.arrangement, {});
+  assert.equal(segmentStatus(after), 'ready');
+  assert.equal(after.minutes, 4, 'songs carry no duration, so the slot keeps its minutes');
+  assert.equal(Object.hasOwn(patch, 'minutes'), false);
+});
+
+test('the title slide can still be assigned to segment 4 after a song', () => {
+  const seg = slot('bible_enthronement');
+  const withSong = applied(seg, songAssignment(seg, 7, null));
+  const patch = scriptureAssignment(withSong, { kind: 'title' });
+  assert.ok(patch, 'the title slide is accepted');
+  const back = applied(withSong, patch);
+  assert.equal(back.type, 'scripture');
+  assert.deepEqual(back.content, { kind: 'title' });
+  assert.deepEqual(back.arrangement, {});
+  assert.equal(segmentStatus(back), 'ready');
+  assert.equal(back.minutes, 4);
+});
+
+test('the title slide is still assignable on its own, before any song', () => {
+  const seg = slot('bible_enthronement');
+  assert.deepEqual(scriptureAssignment(seg, { kind: 'title' }), { type: 'scripture', content: { kind: 'title' }, arrangement: {} });
+});
+
+test('segments 3 and 5 keep their song-only rules', () => {
+  for (const key of ['marian_song', 'joyful_song']) {
+    const seg = slot(key);
+    assert.deepEqual(typesFor(seg), ['song'], key);
+    assert.equal(acceptsTab(seg, 'scripture'), false, key);
+    assert.equal(scriptureAssignment(seg, { kind: 'title' }), null, `${key} still refuses a title slide`);
+    const filled = applied(seg, songAssignment(seg, 7, null));
+    assert.deepEqual(filled.content, { kind: 'song', hymnIds: [7], maxSongs: 1, category: null }, key);
+    assert.equal(filled.type, 'song', key);
+  }
+  assert.equal(DEFAULT_TEMPLATE.segments.find((s) => s.key === 'marian_song').types, undefined);
+  assert.equal(DEFAULT_TEMPLATE.segments.find((s) => s.key === 'joyful_song').types, undefined);
+});
+
+test('a multi-song slot still stops at its limit and refuses a repeat', () => {
+  const worship = slot('worship');
+  let seg = worship;
+  for (const id of [1, 2, 3]) seg = applied(seg, songAssignment(seg, id, null));
+  assert.deepEqual(seg.content.hymnIds, [1, 2, 3]);
+  assert.equal(songAssignment(seg, 4, null), null, 'a fourth song is refused');
+  assert.equal(songAssignment(seg, 2, null), null, 'a song already in the slot is refused');
+});
+
+test('a segment the template does not list holds only its own type', () => {
+  const seg = { key: 'not_in_template', type: 'prayer' };
+  assert.deepEqual(typesFor(seg), ['prayer']);
+  assert.equal(acceptsTab(seg, 'song'), false);
 });

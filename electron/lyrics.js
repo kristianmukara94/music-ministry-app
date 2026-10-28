@@ -3,6 +3,7 @@ import { CATEGORIES, LANGUAGES, parseLyrics } from '../shared/lyrics-parser.js';
 import { parseTextStyle, sanitizeTextStyle } from '../shared/text-style.js';
 import { SONG_CATEGORY_REQUIRED_EN, isSongCategoryMissing } from '../shared/hymn-category.js';
 import { createSongCategoryService, resolveSongCategory } from './song-categories.js';
+import { matchStanzaIds } from '../shared/stanza-ids.js';
 
 const MAX_TITLE = 120;
 const MAX_COMPOSER = 80;
@@ -99,14 +100,25 @@ function checkedHymnInput(input) {
 /**
  * `onHymnChanged` is called after a hymn is created or edited, so the song list can be sent soon. It is called only after the save
  * is committed, and a failure in it never fails the save.
+ *
+ * `onLyricsChanged(id)` is called after any change an open window may be showing: a create, edit, delete, undo, or a projector style
+ * change. Windows use it to reload the song, so the planners do not keep the lyrics they loaded at startup.
  */
-export function createLyricsService(db, { onHymnChanged = () => {} } = {}) {
-  const changed = () => {
+export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChanged = () => {} } = {}) {
+  const notifyLyrics = (id) => {
+    try {
+      onLyricsChanged(id);
+    } catch {
+      // The save is already done. A window that misses this reloads the song the next time it opens it.
+    }
+  };
+  const changed = (id) => {
     try {
       onHymnChanged();
     } catch {
       // The save is already done. Sending the list is a later step, so a failure here is left for the timer to retry.
     }
+    notifyLyrics(id);
   };
   const songCategories = createSongCategoryService(db);
   const q = {
@@ -141,6 +153,11 @@ export function createLyricsService(db, { onHymnChanged = () => {} } = {}) {
       FROM hymn_stanzas WHERE hymn_id = ? ORDER BY display_order, id`),
     insertHymn: db.prepare('INSERT INTO hymns (title, composer, category, language, musical_key, song_category) VALUES (?, ?, ?, ?, ?, ?)'),
     insertStanza: db.prepare('INSERT INTO hymn_stanzas (hymn_id, stanza_type, lyrics_text, display_order) VALUES (?, ?, ?, ?)'),
+    // An edit keeps each stanza's id, so an id is passed in; null gives the stanza a new one.
+    insertStanzaWithId: db.prepare('INSERT INTO hymn_stanzas (id, hymn_id, stanza_type, lyrics_text, display_order) VALUES (?, ?, ?, ?, ?)'),
+    stanzaIds: db.prepare(`
+      SELECT id, stanza_type AS stanzaType, lyrics_text AS lyricsText, display_order AS position
+      FROM hymn_stanzas WHERE hymn_id = ? ORDER BY display_order, id`),
     updateHymn: db.prepare('UPDATE hymns SET title = ?, composer = ?, category = ?, language = ?, musical_key = ?, song_category = ? WHERE id = ?'),
     clearStanzas: db.prepare('DELETE FROM hymn_stanzas WHERE hymn_id = ?'),
     setlists: db.prepare('SELECT id, date, name FROM setlists ORDER BY date DESC, id DESC'),
@@ -163,10 +180,43 @@ export function createLyricsService(db, { onHymnChanged = () => {} } = {}) {
     return Number(lastInsertRowid);
   });
 
+  /**
+   * Takes the id out of every saved lineup arrangement that names it, so a lineup never points at a stanza that no longer exists. Other
+   * stanzas keep their place in the arrangement. Returns how many lineup segments changed. A database without the lineup tables has none.
+   */
+  const dropStanzaIdsFromLineups = (hymnId, droppedIds) => {
+    const gone = new Set(droppedIds.map(String));
+    let rows;
+    try {
+      rows = db.prepare('SELECT id, arrangement FROM pw_segments WHERE arrangement LIKE ?').all(`%"${hymnId}":%`);
+    } catch {
+      return 0;
+    }
+    let changed = 0;
+    for (const row of rows) {
+      const arrangement = JSON.parse(row.arrangement || '{}');
+      const key = String(hymnId);
+      if (!Array.isArray(arrangement[key])) continue;
+      const kept = arrangement[key].filter((sid) => !gone.has(String(sid)));
+      if (kept.length === arrangement[key].length) continue;
+      if (kept.length) arrangement[key] = kept;
+      else delete arrangement[key];
+      db.prepare('UPDATE pw_segments SET arrangement = ? WHERE id = ?').run(JSON.stringify(arrangement), row.id);
+      changed += 1;
+    }
+    return changed;
+  };
+
+  /** Replaces a hymn's details and stanzas. Each stanza keeps its id where it has a counterpart; only the removed ones lose theirs. */
   const replaceHymn = db.transaction((id, hymn) => {
+    const before = q.stanzaIds.all(id);
+    const ids = matchStanzaIds(before, hymn.stanzas);
+    const dropped = before.filter((o) => !ids.includes(o.id));
     q.updateHymn.run(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, hymn.songCategory, id);
     q.clearStanzas.run(id);
-    hymn.stanzas.forEach((s, i) => q.insertStanza.run(id, s.stanzaType, s.lyricsText, i + 1));
+    hymn.stanzas.forEach((s, i) => q.insertStanzaWithId.run(ids[i], id, s.stanzaType, s.lyricsText, i + 1));
+    const lineupsChanged = dropped.length ? dropStanzaIdsFromLineups(id, dropped.map((d) => d.id)) : 0;
+    return { dropped, lineupsChanged };
   });
 
   const replaceSetlist = db.transaction((setlistId, hymnIds) => {
@@ -209,7 +259,7 @@ export function createLyricsService(db, { onHymnChanged = () => {} } = {}) {
       const hymn = checkedHymnInput(input);
       const songCategory = resolveSongCategory(db, input.songCategory);
       const id = insertHymnWithStanzas(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, songCategory, hymn.stanzas);
-      changed();
+      changed(id);
       return { id, warnings: hymn.warnings };
     },
 
@@ -223,9 +273,11 @@ export function createLyricsService(db, { onHymnChanged = () => {} } = {}) {
       if (current.deletedAt) throw new Error('That hymn was deleted. Undo the delete to change it.');
       const hymn = checkedHymnInput(input);
       hymn.songCategory = resolveSongCategory(db, input.songCategory, current.songCategory);
-      replaceHymn(id, hymn);
-      changed();
-      return { id, warnings: hymn.warnings };
+      const { dropped, lineupsChanged } = replaceHymn(id, hymn);
+      // Each removed stanza is reported, so the operator knows its place in a lineup arrangement was taken out.
+      const removed = dropped.map((d) => `${d.stanzaType} (stanza ${d.position}) was removed by this edit, and taken out of ${lineupsChanged} saved lineup arrangement${lineupsChanged === 1 ? '' : 's'}.`);
+      changed(id);
+      return { id, warnings: [...hymn.warnings, ...removed] };
     },
 
     /** Saves how this song is set on the projector. Null returns it to the default look. */
@@ -233,6 +285,7 @@ export function createLyricsService(db, { onHymnChanged = () => {} } = {}) {
       if (!q.hymn.get(id)) throw new Error('That hymn no longer exists.');
       const checked = sanitizeTextStyle(style);
       q.setStyle.run(checked ? JSON.stringify(checked) : null, id);
+      notifyLyrics(id);
       return checked;
     },
 
@@ -242,7 +295,7 @@ export function createLyricsService(db, { onHymnChanged = () => {} } = {}) {
      */
     deleteHymn(id, now = new Date()) {
       const deleted = q.softDelete.run(now.toISOString(), id).changes > 0;
-      if (deleted) changed();
+      if (deleted) changed(id);
       return deleted;
     },
 
@@ -254,7 +307,7 @@ export function createLyricsService(db, { onHymnChanged = () => {} } = {}) {
     /** Puts a deleted hymn back. Same row and same id, so plans and setlists that point at it are whole again. */
     undoDeleteHymn(id) {
       const restored = q.undoDelete.run(id).changes > 0;
-      if (restored) changed();
+      if (restored) changed(id);
       return restored;
     },
 

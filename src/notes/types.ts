@@ -1,4 +1,5 @@
 import type { TextStyle } from '../../shared/text-style';
+import type { PrayerSplit } from '../../shared/prayer-screen';
 
 /** `operator` is private. `full` is a full-screen slide and `lower` is a lower-third banner. */
 export type NoteDisplay = 'operator' | 'full' | 'lower';
@@ -10,6 +11,8 @@ export interface Note {
   body: string;
   display: NoteDisplay;
   style: TextStyle | null;
+  /** Where a full-screen prayer is split into slides. Null shows the whole prayer as one slide. */
+  split: PrayerSplit | null;
 }
 
 export interface NoteInput {
@@ -19,6 +22,8 @@ export interface NoteInput {
   body: string;
   display: NoteDisplay;
   style: TextStyle | null;
+  /** Omitted or null: the prayer is one slide. */
+  split?: PrayerSplit | null;
 }
 
 export interface NotesApi {

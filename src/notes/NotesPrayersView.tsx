@@ -9,7 +9,9 @@ import { LowerThirdStage } from '../output/LowerThirdView';
 import { addToQueue } from '../planner/plan-api';
 import { BLOCKS, type LiturgicalBlock } from '../planner/types';
 import { usePlannerT } from '../planner/strings';
-import { lowerThirdOf, stagePrayer, takePrayer } from './present';
+import { lowerThirdOf, prayerRemovedWhileLive, refreshLivePrayer, stagePrayer, takePrayer } from './present';
+import { fitsScreen, normalizeSplit, placeBreak, screenPagesOf, splitSummaryOf, type PrayerSplit } from '../../shared/prayer-screen.js';
+import { useLive } from '../live/store';
 import type { Note, NoteDisplay, NoteInput } from './types';
 
 const api = bridge.notes;
@@ -65,11 +67,25 @@ export function NotesPrayersView() {
 
   const current = visible.find((n) => n.id === selectedId) ?? visible[0] ?? null;
   const projectable = current !== null && current.display !== 'operator';
+  // A prayer on the screen is shown slide by slide. Previous and Next move the screen too, when this prayer is the one on it.
+  const onAir = useLive((s) => s.state.projector.live);
+  const [page, setPage] = useState(0);
+  useEffect(() => setPage(0), [current?.id]);
+  const screen = useMemo(() => (current && current.display === 'full' ? screenPagesOf(current) : []), [current]);
+  const shown = Math.min(page, Math.max(screen.length - 1, 0));
+  const shownHere = current !== null && onAir.kind === 'text' && onAir.title === current.title && onAir.page !== undefined;
+  const tooLong = current !== null && screen.some((p) => !fitsScreen(p.text, current.title, p.fontPx));
+  const goTo = (index: number) => {
+    if (!current) return;
+    setPage(index);
+    if (shownHere) takePrayer(current, undefined, index);
+  };
 
   const save = async (input: NoteInput) => {
     setError(null);
     try {
       const saved = await api.save(input);
+      refreshLivePrayer(saved);
       setEditing(null);
       await reload(saved.id);
     } catch (err) {
@@ -80,6 +96,7 @@ export function NotesPrayersView() {
   const remove = async (note: Note) => {
     if (!window.confirm(`Delete "${note.title}"? This cannot be undone.`)) return;
     try {
+      prayerRemovedWhileLive(note);
       await api.remove(note.id);
       await reload(null);
     } catch (err) {
@@ -90,7 +107,12 @@ export function NotesPrayersView() {
   /** A style change is saved on the note, so the next stage or take uses it. */
   const changeStyle = (note: Note, patch: TextStyle) => {
     const style = sanitizeTextStyle({ ...note.style, ...patch }) ?? null;
-    void save({ id: note.id, title: note.title, category: note.category, body: note.body, display: note.display, style });
+    void save({ id: note.id, title: note.title, category: note.category, body: note.body, display: note.display, style, split: note.split });
+  };
+
+  /** The split is saved on the note, so the next stage or take uses it. */
+  const changeSplit = (note: Note, split: PrayerSplit | null) => {
+    void save({ id: note.id, title: note.title, category: note.category, body: note.body, display: note.display, style: note.style, split });
   };
 
   const pushToQueue = async (note: Note) => {
@@ -218,10 +240,11 @@ export function NotesPrayersView() {
 
                 {current.display === 'full' ? (
                   <SlidePreview
-                    text={current.body}
+                    text={screen[shown]?.text ?? current.body}
                     headline={current.title}
+                    top={screen[shown]?.top ?? null}
                     bgSrc={null}
-                    style={sanitizeTextStyle(current.style)}
+                    style={{ ...sanitizeTextStyle(current.style), fontSize: screen[shown]?.fontPx }}
                     className="aspect-video w-full rounded-lg border border-line"
                   />
                 ) : (
@@ -230,11 +253,25 @@ export function NotesPrayersView() {
                   </div>
                 )}
 
+                {current.display === 'full' && (
+                  <>
+                    {screen.length > 1 && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button type="button" onClick={() => goTo(shown - 1)} disabled={shown === 0} className={PILL}>Previous slide</button>
+                        <span className="font-mono text-sm">{shown + 1} / {screen.length}</span>
+                        <button type="button" onClick={() => goTo(shown + 1)} disabled={shown >= screen.length - 1} className={PILL}>Next slide</button>
+                      </div>
+                    )}
+                    {tooLong && <p role="alert" className="text-sm text-danger">A slide is too long for the screen, even at the smallest size. Split it further.</p>}
+                    <SlideSplit note={current} onSplit={(split) => changeSplit(current, split)} />
+                  </>
+                )}
+
                 <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
-                  <button type="button" onClick={() => stagePrayer(current)} className={PILL}>
+                  <button type="button" onClick={() => stagePrayer(current, shown)} className={PILL}>
                     Stage
                   </button>
-                  <button type="button" onClick={() => takePrayer(current)} className={PRIMARY}>
+                  <button type="button" onClick={() => takePrayer(current, undefined, shown)} className={PRIMARY}>
                     <Presentation size={14} aria-hidden /> Take live
                   </button>
                   <span className="mx-1 h-6 w-px bg-line" aria-hidden />
@@ -283,7 +320,9 @@ function NoteEditor({ note, tab, onSave, onCancel }: {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
-    onSave({ id: note?.id, title, category, body, display, style: note?.style ?? null });
+    // The split marks lines, so an edited text starts again as one slide rather than keeping breaks in the wrong places.
+    const split = note && body === note.body ? note.split ?? null : null;
+    onSave({ id: note?.id, title, category, body, display, style: note?.style ?? null, split });
   };
 
   return (
@@ -344,6 +383,59 @@ function NoteEditor({ note, tab, onSave, onCancel }: {
           <button type="submit" disabled={!title.trim()} className={PRIMARY}>Save</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/** Where a full-screen prayer is split into slides: automatically, by hand between lines, or not at all. */
+function SlideSplit({ note, onSplit }: { note: Note; onSplit: (split: PrayerSplit | null) => void }) {
+  const [message, setMessage] = useState<string | null>(null);
+  const split = normalizeSplit(note.split, note.body);
+  const placed = split?.mode === 'manual' ? split.at : [];
+  const lines = note.body.split('\n');
+  const textAfter = (k: number) => lines.slice(k + 1).some((line) => line.trim());
+
+  const breakAfter = (k: number) => {
+    setMessage(null);
+    onSplit(placeBreak(note.body, note.split, k).split);
+  };
+
+  const summary = splitSummaryOf(note);
+  const automatic = summary.automaticSlides > 0 ? `${summary.automaticSlides} more` : 'none needed';
+  const label =
+    summary.mode === 'stale'
+      ? `Automatic · ${summary.slides} slides`
+      : summary.manualBreaks > 0
+        ? `Manual: ${summary.manualBreaks} · Automatic: ${automatic} · ${summary.slides} slides`
+        : summary.slides > 1
+          ? `Automatic: ${summary.slides} slides`
+          : 'One slide';
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-line p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-bold tracking-wider text-muted uppercase">Slides · {label}</p>
+        <button type="button" onClick={() => { setMessage(null); onSplit(null); }} disabled={placed.length === 0} className={PILL}>
+          Clear manual splits
+        </button>
+      </div>
+      <p className="text-xs text-muted">
+        Split here starts a new slide after a line, and that break is kept. A section between your breaks that is too long for one slide is split automatically.
+      </p>
+      {summary.mode === 'stale' && <p className="text-xs text-danger">The breaks were made for an earlier version of this text, so the automatic split is shown. Place them again.</p>}
+      <ol className="flex max-h-72 flex-col overflow-y-auto rounded-md border border-line p-3 text-sm leading-relaxed">
+        {lines.map((line, k) => (
+          <li key={k} className={`flex flex-wrap items-baseline gap-2 ${placed.includes(k) ? 'mb-2 border-b-2 border-accent pb-1' : ''}`}>
+            <span className="min-w-0 flex-1 whitespace-pre-wrap">{line || ' '}</span>
+            {line.trim() && textAfter(k) && (
+              <button type="button" onClick={() => breakAfter(k)} className="shrink-0 rounded border border-line-strong px-2 py-0.5 text-[11px] font-bold uppercase hover:bg-panel-2">
+                {placed.includes(k) ? 'Remove split' : 'Split here'}
+              </button>
+            )}
+          </li>
+        ))}
+      </ol>
+      {message && <p role="alert" className="text-sm text-danger">{message}</p>}
     </div>
   );
 }

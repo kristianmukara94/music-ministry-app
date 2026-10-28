@@ -37,8 +37,8 @@ export type Frame =
   | { kind: 'image'; title: string; src: string; notes?: string }
   /** `notes` are the presenter's cues. Only the operator's windows show them. The projector never renders them. */
   /** `headline` is the large title above the body. Absent for manual text slides, which show `text` alone. */
-  | { kind: 'text'; title: string; headline?: string; text: string; bg: string | null; notes?: string; style?: TextStyle | null }
-  | { kind: 'lyrics'; title: string; label: string; text: string; style?: TextStyle | null }
+  | { kind: 'text'; title: string; headline?: string; text: string; bg: string | null; notes?: string; style?: TextStyle | null; page?: { index: number; total: number }; key?: string; top?: number; centred?: boolean }
+  | { kind: 'lyrics'; title: string; label: string; text: string; style?: TextStyle | null; key?: string; song?: { hymnId: number; position: number; count: number } }
   /** Responsorial psalm: the congregation response stays pinned while the verses change. */
   | { kind: 'psalm'; title: string; response: string; pages: string[]; index: number; style?: TextStyle | null }
   /**
@@ -149,7 +149,8 @@ export interface LiveState {
     /** Where the frame on the projector came from. Null when nothing is live. */
     source: ProjectionSource | null;
   };
-  lowerThird: { live: LowerThird | null; staged: LowerThird | null; paused: boolean };
+  /** The operator's last choice for the Lower 3rd: 'on' or 'off' once pressed, null before. Slide cues do not change it. */
+  lowerThird: { live: LowerThird | null; staged: LowerThird | null; paused: boolean; choice: 'on' | 'off' | null };
   queue: QueueItem[];
   /** The Mass plan the queue was loaded from; persisted so the queue survives a restart. */
   queuePlanId: number | null;
@@ -163,6 +164,8 @@ export type LiveAction =
   | { type: 'output/set'; output: OutputKey; on: boolean }
   /** A direct show ends the Mass Queue's selection. Overlays from the operator's buttons pass DIRECT_DECK. */
   | { type: 'projector/show'; frame: Frame; source?: ProjectionSource }
+  /** Replaces the live (and staged) slide whose `key` matches, when its song or prayer was edited. Nothing else changes. */
+  | { type: 'projector/refresh'; key: string; frame: Frame }
   | { type: 'projector/stage'; frame: Frame }
   | { type: 'projector/take'; source?: ProjectionSource }
   | { type: 'background/stage'; media: MediaFrame }
