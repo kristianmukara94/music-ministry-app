@@ -90,6 +90,19 @@ export function fontCss(style) {
 }
 
 /**
+ * A font size with the operator's slide scale applied. `size` is any CSS length. At a scale of 1 the size is returned unchanged,
+ * so the look is the same as before the control existed.
+ */
+export function scaledSize(size, scale) {
+  return scale == null || scale === 1 ? size : `calc(${size} * ${scale})`;
+}
+
+/** The CSS font stack for the slide font the operator chose for every slide, or undefined to keep each slide's own face. */
+export function slideFontCss(key) {
+  return key && Object.prototype.hasOwnProperty.call(TEXT_FONTS, key) ? TEXT_FONTS[key].css : undefined;
+}
+
+/**
  * The body and headline sizes (pixels on the 1920 slide) when the operator has chosen a size, or null for the
  * projector's default sizes. The headline is 30% larger than the body.
  */

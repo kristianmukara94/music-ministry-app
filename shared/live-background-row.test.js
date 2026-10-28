@@ -16,7 +16,7 @@ test('the Background button is in the Live panel, not in the top toolbar', () =>
 
 test('the bottom row order is Back, Next slide, Background, Lower third, Blackout', () => {
   const live = LIVE();
-  const row = live.slice(live.indexOf('<div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto border-t border-line pt-4">'));
+  const row = live.slice(live.indexOf('<div className="flex w-full min-w-0 flex-nowrap items-center justify-between gap-1.5 overflow-hidden border-t border-line pt-4">'));
   const order = ["t('back')", "t('next')", "tMain('top.background')", "t('lowerThirdToggle')", "t('blackoutToggle')"];
   const at = order.map((s) => row.indexOf(s));
   assert.ok(at.every((i) => i >= 0), 'every button is in the row');
@@ -26,7 +26,7 @@ test('the bottom row order is Back, Next slide, Background, Lower third, Blackou
 test('the Background panel opens inside the Live panel, above the bottom row, and closes with its × or the Background button', () => {
   const live = LIVE();
   const panelAt = live.indexOf('{backgroundOpen && <BackgroundPanel onClose={() => setBackgroundOpen(false)} />}');
-  const rowAt = live.indexOf('<div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto border-t border-line pt-4">');
+  const rowAt = live.indexOf('<div className="flex w-full min-w-0 flex-nowrap items-center justify-between gap-1.5 overflow-hidden border-t border-line pt-4">');
   assert.ok(panelAt > 0, 'the panel is rendered when open');
   assert.ok(panelAt < rowAt, 'and sits above the bottom row');
   assert.match(live, /const \[backgroundOpen, setBackgroundOpen\] = useState\(false\);/);
@@ -44,12 +44,14 @@ test('the panel content is the same: Colour, Image, Video clip, the file picker,
   assert.match(controls, /Choose a video file|Choose an image file/, 'the file picker');
 });
 
-test('the bottom row is one line that does not wrap or overlap: the buttons keep their size, and the row scrolls if it is too narrow', () => {
+test('the bottom row is one line with no scrollbar: it spans the panel, the buttons keep their size, and nothing wraps', () => {
   const live = LIVE();
-  assert.match(live, /className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto border-t border-line pt-4"/, 'no wrapping; sideways scroll only if needed');
+  assert.match(live, /className="flex w-full min-w-0 flex-nowrap items-center justify-between gap-1\.5 overflow-hidden border-t border-line pt-4"/, 'one line, no scrollbar');
+  assert.doesNotMatch(live, /overflow-x-auto|overflow-x-scroll/, 'no horizontal scrollbar on the bar');
   const rowStyles = live.slice(live.indexOf('const ROW_BTN'), live.indexOf('const ROW_TOGGLE'));
   assert.match(rowStyles, /shrink-0/, 'the buttons do not shrink into each other');
-  assert.match(rowStyles, /px-3/, 'the tighter padding that makes the row fit a narrow panel');
+  assert.match(rowStyles, /h-8/, 'the buttons share one compact height');
+  assert.match(rowStyles, /px-2\.5/, 'the compact padding that fits a narrow panel');
 });
 
 test('Lower 3rd and Blackout still work from the Live panel', () => {

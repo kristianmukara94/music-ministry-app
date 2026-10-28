@@ -230,6 +230,12 @@ export function PreviewPanel() {
             <h2 className="text-sm font-black tracking-widest text-stone-100 uppercase">Preview</h2>
             <span className="text-[11px] text-stone-400">Live preview</span>
           </div>
+          {/* While the projector is paused, the audience keeps the frame on air. Edits show here only, until the projector resumes. */}
+          {paused && (
+            <span role="status" className="shrink-0 rounded-md border border-amber-500 bg-amber-500/15 px-2 py-1 text-[10px] font-extrabold tracking-wider text-amber-300 uppercase">
+              Projector paused · editing staged
+            </span>
+          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-2">

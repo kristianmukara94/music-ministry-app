@@ -11,6 +11,8 @@ import { useT } from '../i18n/strings';
 import { pad2, STATUS_TONE } from './LineupRail';
 import { endSession, goLive, jumpTo, liveDeck, otherSourceOnAir, showPosition, stepLive, type LiveStep } from './live';
 import { CurrentNextPreview, type Shown } from './CurrentNextPreview';
+import { IntroSlideToggle } from './IntroSlideToggle';
+import { SlideTypography } from './SlideTypography';
 import { SecondaryControls } from './SecondaryControls';
 import { ShowAllVerses } from '../components/ShowAllVerses';
 import { useUi } from '../state/ui';
@@ -21,10 +23,12 @@ import type { PwSession } from './types';
 const BTN = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line-strong px-5 text-sm font-semibold transition hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40';
 const BTN_ACCENT = 'inline-flex min-h-14 items-center justify-center gap-2 rounded-xl bg-accent px-8 text-base font-bold text-on-accent transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40';
 // The bottom row's buttons: the same look, with tighter side padding, so the five fit one line in a narrow Live panel (see the row's comment).
-const ROW_BTN = 'inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-line-strong px-3 text-sm font-semibold transition hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40';
-const ROW_NEXT = 'inline-flex min-h-14 shrink-0 items-center justify-center gap-2 rounded-xl bg-accent px-5 text-base font-bold text-on-accent transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40';
+// Every control in the bottom row is h-9 and holds one line, so the row keeps one height and no label wraps. The palette is the dark
+// presentation theme: zinc surfaces, zinc text, and amber-500 for the active state.
+const ROW_BTN = 'inline-flex h-8 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40';
+const ROW_NEXT = 'inline-flex h-8 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg bg-amber-500 px-3 text-xs font-bold text-zinc-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40';
 const ROW_TOGGLE = (on: boolean) =>
-  `inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-semibold transition ${on ? 'border-accent bg-accent/15 text-accent' : 'border-line-strong hover:bg-panel-2'}`;
+  `inline-flex h-8 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border px-2 text-xs font-semibold transition ${on ? 'border-amber-500 bg-amber-500/15 text-amber-400' : 'border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800'}`;
 
 /** One step as the preview shows it: its slide, or a black screen for the end-of-segment step. */
 function shownAt(session: PwSession, deck: LiveStep[][], at: { segment: number; slide: number }): Shown {
@@ -155,6 +159,7 @@ export function LiveView() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-end gap-4">
+        <IntroSlideToggle />
         <span
           className={`inline-flex min-h-9 items-center gap-2 rounded-full border px-4 text-sm font-extrabold tracking-[0.18em] uppercase ${
             pw.onAir ? 'border-danger text-danger' : 'border-line-strong text-muted'
@@ -252,8 +257,9 @@ export function LiveView() {
 
             {backgroundOpen && <BackgroundPanel onClose={() => setBackgroundOpen(false)} />}
 
-            {/* One line, never wrapping: the five buttons keep their size, and a panel too narrow for them scrolls sideways rather than overlapping. */}
-            <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto border-t border-line pt-4">
+            {/* One line, no scrollbar: the controls share the panel's full width and never wrap. Nothing is scrolled to; a panel too narrow for
+                every control clips the last one rather than showing a scrollbar. */}
+            <div className="flex w-full min-w-0 flex-nowrap items-center justify-between gap-1.5 overflow-hidden border-t border-line pt-4">
               <button type="button" className={ROW_BTN} disabled={atStart} onClick={() => void stepLive(-1)}>
                 {t('back')}
               </button>
@@ -262,14 +268,18 @@ export function LiveView() {
               </button>
               <span className="flex-1" />
               <button type="button" aria-pressed={backgroundOpen} aria-expanded={backgroundOpen} className={ROW_TOGGLE(backgroundOpen)} onClick={() => setBackgroundOpen((open) => !open)}>
-                {tMain('top.background')}
+                <span className="hidden @3xl/pw:inline">{tMain('top.background')}</span>
+                <span className="@3xl/pw:hidden">BG</span>
               </button>
               <button type="button" aria-pressed={lowerOn} className={ROW_TOGGLE(lowerOn)} onClick={() => dispatch({ type: 'lowerThird/toggle' })}>
-                {t('lowerThirdToggle')}: {lowerOn ? t('on') : t('off')}
+                <span className="hidden @3xl/pw:inline">{t('lowerThirdToggle')}</span>
+                <span className="@3xl/pw:hidden">L3</span>: {lowerOn ? t('on') : t('off')}
               </button>
               <button type="button" aria-pressed={blackout} className={ROW_TOGGLE(blackout)} onClick={() => dispatch({ type: 'projector/blackout' })}>
-                {t('blackoutToggle')}: {blackout ? t('on') : t('off')}
+                <span className="hidden @3xl/pw:inline">{t('blackoutToggle')}</span>
+                <span className="@3xl/pw:hidden">BLK</span>: {blackout ? t('on') : t('off')}
               </button>
+              <SlideTypography />
             </div>
           </section>
         )}

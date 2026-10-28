@@ -136,6 +136,9 @@ const SLIDE_SELECT = `
          s.notes AS notes, s.title_text AS headline, s.style AS styleJson, s.display_order AS "order"
   FROM announcement_slides s`;
 
+/** The newest schema this app knows. A backup from a newer version of the app has a higher number, and is refused. */
+export const SCHEMA_VERSION = ALL_MIGRATIONS.length;
+
 /** Opens (or creates) the database, runs pending migrations, and seeds the parish folders. */
 export function openDatabase(dbPath) {
   const db = new Database(dbPath);

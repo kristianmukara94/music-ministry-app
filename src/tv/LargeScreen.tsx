@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { SecondaryFrame } from './types';
 import { resolveMediaUrl } from './resolveMediaUrl';
+import { scaledSize, slideFontCss } from '../../shared/text-style.js';
 
 /** The screen's colour when a slide has none set: the design canvas, as the projector draws it. */
 const CANVAS = '#100306';
@@ -23,6 +24,10 @@ export function LargeScreen({ frame, mediaBase = '' }: { frame: SecondaryFrame; 
   useEffect(() => setFailed(false), [src]);
   const fit = frame.fit === 'contain' ? 'object-contain' : 'object-cover';
   const live = frame.kind === 'slide';
+  // The operator's slide font. Undefined keeps the default face, so the look is unchanged until a font is chosen.
+  const fontFamily = slideFontCss(frame.font);
+  // The operator's size scale. Lines wrap inside the 16:9 frame, which has its own bounds, so a larger scale wraps rather than spills.
+  const scale = frame.fontScale ?? 1;
   return (
     <div className="relative h-full w-full overflow-hidden text-white [container-type:size]" style={{ backgroundColor: live ? (frame.color ?? CANVAS) : '#000' }}>
       {src && frame.mediaKind === 'image' && (
@@ -45,8 +50,12 @@ export function LargeScreen({ frame, mediaBase = '' }: { frame: SecondaryFrame; 
 
       {live ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center px-[6cqw] text-center">
-          {frame.title && <p className="absolute top-[7cqh] left-[6cqw] text-[1.6cqw] font-bold tracking-[0.2em] text-[#d6a94f] uppercase">{frame.title}</p>}
-          <div className="font-serif text-[5cqw] leading-[1.25] font-semibold whitespace-pre-line">
+          {frame.title && (
+            <p className="absolute top-[7cqh] left-[6cqw] font-bold tracking-[0.2em] text-[#d6a94f] uppercase" style={{ fontFamily, fontSize: scaledSize('1.6cqw', scale) }}>
+              {frame.title}
+            </p>
+          )}
+          <div className="font-serif leading-[1.25] font-semibold whitespace-pre-line" style={{ fontFamily, fontSize: scaledSize('5cqw', scale) }}>
             {frame.lines.map((line, i) => (
               <p key={i} className="m-0">
                 {line || ' '}

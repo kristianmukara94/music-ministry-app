@@ -37,11 +37,20 @@ test('dropping a song on segment 4 (Bible Enthronement) is accepted, as the titl
   assert.equal(after.minutes, seg.minutes, 'the slot keeps its minutes');
 });
 
-test('dropping a song on a scripture slot that is not segment 4 is refused and changes nothing', () => {
+test('dropping a song on the Gospel Acclamation slot attaches it, in place of the lectionary reading', () => {
   const seg = slot('gospel_acclamation');
-  const before = snapshot(seg);
   const drop = songDrop(seg, 7);
-  assert.deepEqual(drop, { refused: 'type' });
+  assert.equal(drop.refused, undefined, 'the slot accepts a song');
+  const attached = applied(seg, drop.patch);
+  assert.equal(attached.content.kind, 'song');
+  assert.deepEqual(attached.content.hymnIds, [7]);
+});
+
+test('dropping a song on a scripture slot the template does not list is refused, so only listed slots take songs', () => {
+  // A slot the template does not know holds only its own type, which is scripture.
+  const seg = { ...slot('gospel_acclamation'), key: 'unlisted_scripture' };
+  const before = snapshot(seg);
+  assert.deepEqual(songDrop(seg, 7), { refused: 'type' });
   assert.deepEqual(seg, before, 'the slot is unchanged');
 });
 

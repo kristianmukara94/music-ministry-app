@@ -5,7 +5,7 @@ import { PRAYER_WIDTH_SHARE } from '../../shared/prayer-slides.js';
 import { textAreaShare, textAreaStyle } from '../../shared/text-area.js';
 import type { WelcomeBackground } from '../../shared/welcome-settings.js';
 import { charsPerLine, slideLine, slideText } from '../../shared/text-wrap.js';
-import { TEXT_FONTS } from '../../shared/text-style.js';
+import { TEXT_FONTS, scaledSize } from '../../shared/text-style.js';
 import { BackgroundShade } from '../output/BackgroundMedia';
 
 const TYPE_ICON = { prayer: Cross, song: Music, scripture: BookOpen } as const;
@@ -31,6 +31,8 @@ export function PwSlideFace({
   total,
   footer,
   background = null,
+  slideFont,
+  slideScale,
 }: {
   slide: PwSlide;
   segmentName: string;
@@ -41,6 +43,10 @@ export function PwSlideFace({
   footer?: string;
   /** The background behind the slide: colour, picture or video, and the shade. Null keeps the slide's own look. */
   background?: WelcomeBackground | null;
+  /** The font the operator chose for slides, as CSS. Undefined keeps the face each part of the slide already uses. */
+  slideFont?: string;
+  /** The operator's slide text size, as a share of normal (0.7 to 1.5). Undefined keeps the normal size. */
+  slideScale?: number;
 }) {
   const position = total > 1 ? `${index + 1} / ${total}` : '';
   // The colour is painted only when the type is Colour. With a picture or a video selected, the slide must not paint over the layer behind it,
@@ -59,7 +65,7 @@ export function PwSlideFace({
         {layers}
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-[3cqh] px-[8cqw] text-center">
           <Icon aria-hidden className="size-[6cqw] text-gold" strokeWidth={1.25} />
-          <h2 className="text-[6.2cqw] leading-[1.15] tracking-[0.08em] uppercase" style={{ fontFamily: TEXT_FONTS.display.css, fontWeight: 700 }}>
+          <h2 className="text-[6.2cqw] leading-[1.15] tracking-[0.08em] uppercase" style={{ fontFamily: slideFont ?? TEXT_FONTS.display.css, fontWeight: 700, fontSize: scaledSize('6.2cqw', slideScale) }}>
             {slideLine(slide.label, charsPerLine(0.84, 6.2 * 19.2))}
           </h2>
           <div aria-hidden className="h-[0.35cqh] w-[12cqw] bg-gold" />
@@ -83,7 +89,8 @@ export function PwSlideFace({
             top: `${(slide.top ?? textAreaShare().top) * 100}%`,
             textAlign: slide.align ?? 'center',
             lineHeight: LINEUP_LINE_HEIGHT,
-            fontSize: `${(slide.fontPx ?? 96) / 19.2}cqw`,
+            fontFamily: slideFont,
+            fontSize: scaledSize(`${(slide.fontPx ?? 96) / 19.2}cqw`, slideScale),
           }}
         >
           {slideText(slide.text, charsPerLine(PRAYER_WIDTH_SHARE, slide.fontPx ?? 96))}
@@ -100,7 +107,7 @@ export function PwSlideFace({
       <div className="absolute top-[7cqh] left-[6cqw] text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{slideLine(slide.label, charsPerLine(0.88, 1.6 * 19.2))}</div>
       <div className="absolute top-[7cqh] right-[6cqw] text-[1.6cqw] text-muted">{segmentName}</div>
       {/* Lyrics: the same rule as the prayer, at the slide's top. */}
-      <p className="absolute inset-x-[6cqw] font-serif text-[5cqw] font-semibold whitespace-pre-line" style={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slide.align ?? 'center', lineHeight: LINEUP_LINE_HEIGHT }}>
+      <p className="absolute inset-x-[6cqw] font-serif text-[5cqw] font-semibold whitespace-pre-line" style={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slide.align ?? 'center', lineHeight: LINEUP_LINE_HEIGHT, fontFamily: slideFont, fontSize: scaledSize('5cqw', slideScale) }}>
         {slideText(slide.text, charsPerLine(0.88, 5 * 19.2))}
       </p>
       <div className="absolute bottom-[7cqh] left-[6cqw] text-[1.6cqw] text-muted">{footer}</div>

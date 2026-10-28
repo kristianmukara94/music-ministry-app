@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import type { PwSlide, PwType } from '../../shared/pw.js';
 import { useLive } from '../live/store';
 import { welcomeBackground, type WelcomeBackground } from '../../shared/welcome-settings.js';
+import { slideFontCss } from '../../shared/text-style.js';
 import { PwSlideFace } from './PwSlideFace';
 import { SlideBackgroundLayer } from '../output/BackgroundMedia';
 import { slideFooter } from './SlideThumb';
@@ -25,6 +26,9 @@ const STAGE = 'relative aspect-video w-full overflow-hidden rounded-xl border bo
 /** A slide, drawn with the projector's own design, or a black screen when the step is blank. */
 function Face({ shown, blackLabel, background }: { shown: Shown; blackLabel: string; background: WelcomeBackground }) {
   const t = usePwT();
+  // The thumbnails follow the font and size the operator picks, so the change shows in the preview as it is made.
+  const slideFont = useLive((s) => slideFontCss(s.state.settings.slideFont));
+  const slideScale = useLive((s) => s.state.settings.slideFontScale);
   if (!shown.slide) {
     return (
       <div data-theme="default" className="absolute inset-0 grid place-items-center bg-canvas text-muted">
@@ -41,6 +45,8 @@ function Face({ shown, blackLabel, background }: { shown: Shown; blackLabel: str
       total={shown.total}
       footer={slideFooter(shown.slide, t('prayTogether'))}
       background={background}
+      slideFont={slideFont}
+      slideScale={slideScale}
     />
   );
 }

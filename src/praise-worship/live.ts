@@ -1,5 +1,6 @@
 import { livePosition, slidesFor, step, type PwPosition, type PwSegment, type PwSlide } from '../../shared/pw.js';
 import { pwT } from '../../shared/pw-i18n.js';
+import { isAnyOutputLive } from '../../shared/live.js';
 import type { Frame, LiveState, LowerThird } from '../../shared/live.js';
 import { dispatch, useLive } from '../live/store';
 import { turnOnProjectorAndGo } from '../live/startup';
@@ -18,12 +19,61 @@ export function liveDeck(session: PwSession): LiveStep[][] {
   const state = usePw.getState();
   // The lower third on screen, if any: a lyric or prayer page leaves room for it, so the split follows the band.
   const band = useLive.getState().state.lowerThird.live;
+  // The operator's text size: a larger size makes more pages, so the lineup is paged at the size the text is drawn at.
+  const scale = useLive.getState().state.settings.slideFontScale;
   return session.segments.map((segment) => {
-    const slides = slidesFor(segment, resolvedFor(segment, state), { band });
+    const slides = slidesFor(segment, resolvedFor(segment, state), { band, scale });
     const steps: LiveStep[] = slides.map((slide, index) => ({ kind: 'slide', slide, index, total: slides.length }));
     if (segment.cues.fadeOut) steps.push({ kind: 'black' });
     return steps;
   });
+}
+
+/** The words a lyric or prayer slide shows, or an empty string for a slide with none. */
+function textOf(slide: PwSlide): string {
+  return slide.kind === 'lyrics' || slide.kind === 'prayer' ? slide.text ?? '' : '';
+}
+
+/**
+ * When the text size changes, the item on air is paged again at the new size. The slide on screen moves to the page that holds its first
+ * line, and the cursor follows, so the place in the lineup is kept. A title slide or a black step has no pages, so it stays as it is.
+ */
+export function watchSlideScale(): () => void {
+  let scale = useLive.getState().state.settings.slideFontScale;
+  return useLive.subscribe((next) => {
+    const now = next.state.settings.slideFontScale;
+    if (now === scale) return;
+    scale = now;
+    repaginateOnAir();
+  });
+}
+
+function repaginateOnAir() {
+  const state = useLive.getState().state;
+  const session = usePw.getState().session;
+  if (!state.pw?.onAir || !session) return;
+  const onScreen = state.projector.live;
+  if (onScreen.kind !== 'pw') return;
+  const old = onScreen.slide;
+  if (old.kind !== 'lyrics' && old.kind !== 'prayer') return;
+  const at = livePosition(session.segments, state.pw);
+  if (!at) return;
+  const segment = session.segments[at.segment];
+  const steps = liveDeck(session)[at.segment] ?? [];
+  const firstLine = textOf(old).split('\n')[0].trim();
+  if (!firstLine) return;
+  // The pages of the same song section, or of the same prayer, in the new paging.
+  const sameSource = (slide: PwSlide) =>
+    slide.kind === old.kind && (old.kind !== 'lyrics' || (slide.kind === 'lyrics' && slide.hymnId === old.hymnId && slide.sectionId === old.sectionId));
+  const candidates = steps.flatMap((step, index) => (step.kind === 'slide' && sameSource(step.slide) ? [{ step, index }] : []));
+  if (candidates.length === 0) return;
+  const holding = candidates.find(({ step }) => step.kind === 'slide' && textOf(step.slide).includes(firstLine));
+  const nearest = [...candidates].sort((a, b) => Math.abs(a.index - at.slide) - Math.abs(b.index - at.slide))[0];
+  const target = holding ?? nearest;
+  if (target.step.kind !== 'slide') return;
+  if (target.index === at.slide && textOf(target.step.slide) === textOf(old)) return;
+  dispatch({ type: 'projector/show', frame: frameFor(segment, target.step), source: 'PW_SESSION' });
+  dispatch({ type: 'pw/cursor', segmentKey: segment.key, slide: target.index, now: Date.now() });
 }
 
 const lang = () => useUi.getState().lang;
@@ -91,7 +141,7 @@ export function showPosition(session: PwSession, deck: LiveStep[][], pos: PwPosi
       else dispatch({ type: 'lowerThird/stage', value });
     }
   };
-  if (!live.outputs.projector) {
+  if (!isAnyOutputLive(live)) {
     // The operator chose to skip for this session: go live in the app only, with no prompt and no projector window.
     if (useUi.getState().projectorPromptChoice === 'skip') {
       go();

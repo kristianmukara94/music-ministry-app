@@ -10,9 +10,12 @@ import { blockTopShare, textAreaShare } from './text-area.js';
 /** Lyrics and prayer text are centred in the shared text area (see shared/text-area.js), as a share of the height. */
 export const TEXT_CENTRE = textAreaShare().centre;
 
-/** The lineup text column: 88% of the width, at the lineup line height. `maxHeightPx` is the tallest block the fit allows. */
-export function lineupFitAt(fontPx = LYRIC_PX, maxHeightPx = STAGE_H * 0.7) {
-  return prayerFit({ widthPx: STAGE_W * 0.88, fontPx, lineHeight: LINEUP_LINE_HEIGHT, maxHeightPx });
+/**
+ * The lineup text column: 88% of the width, at the lineup line height. `maxHeightPx` is the tallest block the fit allows. `scale` is the
+ * operator's size scale: the text is measured at its scaled size, so a larger scale holds fewer lines on a page and splits sooner.
+ */
+export function lineupFitAt(fontPx = LYRIC_PX, maxHeightPx = STAGE_H * 0.7, scale = 1) {
+  return prayerFit({ widthPx: STAGE_W * 0.88, fontPx: fontPx * scale, lineHeight: LINEUP_LINE_HEIGHT, maxHeightPx });
 }
 
 /** The height a page's text takes on the stage, in pixels, at its size. */
@@ -47,24 +50,24 @@ export function maxBlockPx(value) {
  * text would leave too little room for even the smallest band is split again, at its own size, so each part leaves room. The text keeps its
  * size: only the lines on each slide change.
  */
-export function fitPagesToBand(pages, value) {
+export function fitPagesToBand(pages, value, scale = 1) {
   if (!value) return pages;
   const limit = maxBlockPx(value);
   const out = [];
   for (const page of pages) {
     const fontPx = page.fontPx ?? LYRIC_PX;
-    if (blockHeightPx(page.text, fontPx) <= limit) {
+    if (prayerTextHeight(page.text, lineupFitAt(fontPx, undefined, scale)) <= limit) {
       out.push(page);
       continue;
     }
-    for (const text of prayerPages(page.text, lineupFitAt(fontPx, limit))) out.push({ ...page, text, fontPx });
+    for (const text of prayerPages(page.text, lineupFitAt(fontPx, limit, scale))) out.push({ ...page, text, fontPx });
   }
   return out;
 }
 
-/** The pages of one stanza, as text, with the band taken into account. */
-export function lyricPagesFor(text, value) {
-  return fitPagesToBand(prayerPages(text, lineupFitAt(LYRIC_PX)).map((t) => ({ text: t })), value).map((p) => p.text);
+/** The pages of one stanza, as text, with the band taken into account and the operator's size scale applied. */
+export function lyricPagesFor(text, value, scale = 1) {
+  return fitPagesToBand(prayerPages(text, lineupFitAt(LYRIC_PX, undefined, scale)).map((t) => ({ text: t })), value, scale).map((p) => p.text);
 }
 
 /**

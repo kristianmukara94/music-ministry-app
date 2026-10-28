@@ -1,3 +1,4 @@
+import { isAnyOutputLive } from '../../shared/live.js';
 import type { Frame, QueueItem } from '../../shared/live.js';
 import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
@@ -96,13 +97,14 @@ export async function takeQueueItem(item: QueueItem, index: number): Promise<voi
 
 /**
  * Plays the queue item at `index` on the projector: the entry point for the row buttons, the row itself and the steppers.
- * With the projector off, nothing goes live. The operator is asked to turn it on, and that prompt does the take.
+ * With no output live (the projector or the Remote view), the operator is asked to turn the projector on, and that prompt does the take.
+ * A live Remote view is enough to go straight ahead.
  */
 export async function playQueueAt(index: number): Promise<void> {
-  const { queue, outputs } = useLive.getState().state;
-  const item = queue[index];
+  const state = useLive.getState().state;
+  const item = state.queue[index];
   if (!item) return;
-  if (!outputs.projector) {
+  if (!isAnyOutputLive(state)) {
     // The operator chose to skip for this session: go live in the app only, with no prompt and no projector window.
     if (useUi.getState().projectorPromptChoice === 'skip') {
       await takeQueueItem(item, index);

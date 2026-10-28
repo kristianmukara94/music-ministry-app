@@ -106,10 +106,14 @@ export function createLowerThirdServer({ distDir, port = LOWER_THIRD_PORT, host 
       for (const client of clients) client.write(data);
     },
 
+    /** Resolves once the port is free, so a restarted app can take it straight away. */
     stop() {
       for (const client of clients) client.end();
       clients.clear();
-      server.close();
+      return new Promise((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections?.();
+      });
     },
   };
 }

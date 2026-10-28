@@ -1,5 +1,5 @@
 import { normalizeSplit } from './prayer-split.js';
-import { pageTops, prayerSlidesFor } from './prayer-slides.js';
+import { PRAYER_MAX_PX, pageTops, prayerSlidesFor } from './prayer-slides.js';
 import { LINEUP_PRAYER_FIT, prayerPages } from './prayer-fit.js';
 import { lyricPagesFor } from './lyric-area.js';
 
@@ -43,7 +43,8 @@ export const DEFAULT_TEMPLATE = {
     { key: 'worship', group: 'praise', name: 'Worship', type: 'song', minutes: 15, content: { kind: 'song', hymnIds: [], maxSongs: 3, category: null } },
     { key: 'repentance', group: 'praise', name: 'Repentance', type: 'song', minutes: 8, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: null } },
     { key: 'holy_spirit', group: 'praise', name: 'Holy Spirit', type: 'song', minutes: 8, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: null } },
-    { key: 'gospel_acclamation', group: 'word', name: 'Gospel Acclamation', type: 'scripture', minutes: 3, content: { kind: 'lectionary', readingType: GOSPEL_ACCLAMATION } },
+    // The slot fills from the lectionary by default. A song from the library replaces that reading for the session.
+    { key: 'gospel_acclamation', group: 'word', name: 'Gospel Acclamation', type: 'scripture', types: ['scripture', 'song'], minutes: 3, content: { kind: 'lectionary', readingType: GOSPEL_ACCLAMATION } },
     { key: 'offertory', group: 'word', name: 'Offertory', type: 'song', minutes: 6, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: 'Offertory' } },
     { key: 'thanksgiving', group: 'word', name: 'Thanksgiving', type: 'song', minutes: 6, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: null } },
     { key: 'finale', group: 'word', name: 'Finale', type: 'song', minutes: 5, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: null } },
@@ -203,6 +204,8 @@ export {
 export function slidesFor(segment, resolved = {}, options = {}) {
   // The lower third on screen, if any: a page leaves room for it, so the split can change. Without one, the layout is the lineup's own.
   const band = options.band ?? null;
+  // The operator's size scale: every page is laid out for the text at that size, so a larger scale makes more pages.
+  const scale = options.scale ?? 1;
   const c = segment.content;
   const title = { kind: 'title', label: segment.name, subtitle: '' };
   const slides = [];
@@ -220,10 +223,10 @@ export function slidesFor(segment, resolved = {}, options = {}) {
         // The stanza's position in the song, and the song's stanza count, let the projector follow an edit while this slide is live.
         // A stanza longer than a lineup slide is split under the same rule as a prayer. Each page keeps the stanza's text, in order.
         // The band, when it is on, only changes how the stanza is split: the text and its size stay the same.
-        const pages = lyricPagesFor(stanza.lyricsText, band);
+        const pages = lyricPagesFor(stanza.lyricsText, band, scale);
         entries.push({ sectionId, stanza, list: pages.length ? pages : [''] });
       }
-      const tops = pageTops(entries.flatMap((e) => e.list));
+      const tops = pageTops(entries.flatMap((e) => e.list), PRAYER_MAX_PX * scale);
       let k = 0;
       for (const { sectionId, stanza, list } of entries) {
         for (const [part, text] of list.entries()) {
@@ -243,7 +246,7 @@ export function slidesFor(segment, resolved = {}, options = {}) {
       return slides;
     }
     // The same split on every surface, at one size; each slide's text block is centred in the shared text area (see shared/prayer-slides.js).
-    const laidOut = prayerSlidesFor(resolved.prayer.body, normalizeSplit(resolved.prayer.split, resolved.prayer.body));
+    const laidOut = prayerSlidesFor(resolved.prayer.body, normalizeSplit(resolved.prayer.split, resolved.prayer.body), scale);
     laidOut.pages.forEach((page, part) =>
       slides.push({
         kind: 'prayer',

@@ -39,4 +39,5 @@ export interface PrayerSlides {
   automaticSlides: number;
 }
 
-export function prayerSlidesFor(text: string, split: PrayerSplit | { mode: string; at?: number[]; of?: string } | null | undefined): PrayerSlides;
+/** `scale` is the operator's text size (0.7 to 1.5). The pages are fitted at that size; each page's fontPx stays the normal size. */
+export function prayerSlidesFor(text: string, split: PrayerSplit | { mode: string; at?: number[]; of?: string } | null | undefined, scale?: number): PrayerSlides;

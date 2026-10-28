@@ -143,6 +143,7 @@ interface ElectronApi {
   library: LibraryApi;
   whiteboard: WhiteboardApi;
   config: ConfigApi;
+  database: DatabaseApi;
   updates: UpdatesApi;
   /** Used only by the hidden `thumbnailer` window. */
   thumb: {
@@ -193,6 +194,12 @@ const offlineAnnouncements: AnnouncementApi = {
 };
 
 const offlinePdf = { onConvert: () => () => undefined, finish: () => undefined };
+
+/** Browser preview: no database to back up or restore. */
+const offlineDatabase: DatabaseApi = {
+  exportBackup: async () => offlineError(),
+  importBackup: async () => offlineError(),
+};
 
 /** Browser preview: no database, so the badge reports it as not connected. */
 const offlineConfig: ConfigApi = {
@@ -288,6 +295,20 @@ const offlineLowerThird: LowerThirdApi = {
 const offlineRole: RemoteRoleStatus = { enabled: false, port: 0, pinSet: false, running: false, url: null, devices: 0, error: 'Open the desktop app to share the live view.' };
 /** Library export and import: the library lives in the desktop app's database, so the browser preview has none. */
 export type LibraryType = 'songs' | 'setlists' | 'plans' | 'praiseWorship';
+
+/** A backup is saved with a dialog, and a restore asks for a file with a dialog. A restore restarts the app. */
+export interface DatabaseBackupResult {
+  success: boolean;
+  /** True when the operator closed the dialog. Nothing changed. */
+  cancelled?: boolean;
+  filePath?: string;
+  error?: string;
+}
+
+export interface DatabaseApi {
+  exportBackup(): Promise<DatabaseBackupResult>;
+  importBackup(): Promise<DatabaseBackupResult>;
+}
 
 export interface LibraryExportOptions {
   plans: boolean;
@@ -571,6 +592,7 @@ function createBrowserBridge(): LiveBridge {
     library: offlineLibrary,
     whiteboard: offlineWhiteboard,
     config: offlineConfig,
+    database: offlineDatabase,
     updates: offlineUpdates,
     thumb: { onJob: () => () => undefined, finish: () => undefined },
   };

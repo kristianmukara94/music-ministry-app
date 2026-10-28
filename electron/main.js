@@ -4,10 +4,14 @@ import { createSongSync, SONG_ROWS_SQL } from './song-sync.js';
 import { createPlanSync } from './plan-sync.js';
 import { createPlanSyncStore } from './plan-sync-store.js';
 import fs from 'node:fs';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initialLiveState, liveReducer, OUTPUTS } from '../shared/live.js';
-import { setupAnnouncements } from './announcements.js';
+import Database from 'better-sqlite3';
+import { SCHEMA_VERSION, openDatabase, setupAnnouncements } from './announcements.js';
+import { DB_FILTERS, backupFileName, exportBackup, importBackup } from './database-backup.js';
+import { databaseCounts } from './db-check.js';
 import { purgeDeletedHymns, setupLyrics } from './lyrics.js';
 import { registerLyricsImport } from './lyrics-import.js';
 import { setupNotes } from './notes.js';
@@ -48,7 +52,16 @@ import os from 'node:os';
 app.setAppUserModelId('com.apccmma.churchapp');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEV_URL = process.env.VITE_DEV_SERVER_URL;
+// In development the windows load the Vite dev server. The URL comes from the environment the dev script sets, and falls back to Vite's default
+// port when the app is unpackaged and there is no built copy to load, so a relaunch still finds the server.
+const DEV_URL =
+  process.env.VITE_DEV_SERVER_URL ||
+  (!app.isPackaged && !fs.existsSync(path.join(__dirname, '../dist/index.html')) ? 'http://localhost:5173' : null);
+
+// Failures that mean the page is not reachable yet (the dev server still starting, a network not up). A missing file is not retried.
+const RETRY_ERRORS = new Set([-102, -105, -106, -109]); // connection refused, name not resolved, internet disconnected, address unreachable
+const RETRY_LIMIT = 15;
+const RETRY_MS = 1000;
 
 // The parish logo. Windows uses the .ico (taskbar and window frame); elsewhere the .png.
 // Missing files fall back to Electron's default icon rather than failing to start.
@@ -73,9 +86,18 @@ const webPreferences = {
 };
 
 function load(win, route) {
-  // A window that fails to load says so in the console, so a blank screen can be traced to its cause.
-  win.webContents.on('did-fail-load', (_event, code, description, url) => {
+  const target = DEV_URL ? `${DEV_URL}#/${route}` : null;
+  let retries = 0;
+  // A window that fails to load says so in the console, so a blank screen can be traced to its cause. A dev server that is not up yet is
+  // tried again each second, for a while, so the window fills in once the server answers.
+  win.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
     console.error(`[window ${route}] failed to load ${url}: ${description} (${code})`);
+    if (!target || !isMainFrame || !RETRY_ERRORS.has(code) || retries >= RETRY_LIMIT) return;
+    retries += 1;
+    console.warn(`[Window Load Warning]: ${description} (${code}) at ${url}. Retrying in ${RETRY_MS / 1000}s (${retries} of ${RETRY_LIMIT})...`);
+    setTimeout(() => {
+      if (!win.isDestroyed()) win.loadURL(target);
+    }, RETRY_MS);
   });
   win.webContents.on('render-process-gone', (_event, details) => {
     console.error(`[window ${route}] its renderer stopped: ${details.reason}`);
@@ -744,6 +766,103 @@ ipcMain.handle('welcome:save', (_event, patch) => {
   return merged;
 });
 ipcMain.on('live:dispatch', (_event, action) => apply(action));
+
+// Database backup and restore, from Settings. The live database is never copied while it is open: the export uses SQLite's online backup,
+// and a restore closes the database before its file is replaced, then restarts the app so it opens the restored file.
+const openReadonlyDatabase = (file) => new Database(file, { readonly: true, fileMustExist: true });
+
+let databaseClosed = false;
+
+/** Closes the database once. The import closes it before replacing the file, and the restart must not close it a second time. */
+function closeDatabaseOnce() {
+  if (databaseClosed || !announcements) return;
+  databaseClosed = true;
+  announcements.close();
+}
+
+/**
+ * The environment a relaunched development app starts with: this one's, with the Vite dev server address kept. ELECTRON_RUN_AS_NODE is
+ * removed: if it were set, the new process would start as plain Node, with no window at all.
+ */
+function relaunchEnvironment() {
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  if (process.env.VITE_DEV_SERVER_URL) env.VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
+  return env;
+}
+
+/**
+ * Restarts the app after a database change. Everything the app holds open is closed and awaited first, so the new process can take the
+ * same ports and open the same file. The new process opens the restored database itself, and runs its migrations as it starts.
+ * Packaged: the app relaunches itself. Development: the new process is started with its environment set explicitly, so the Vite dev
+ * server address is still there, and then this process exits. Electron's relaunch options have no environment field, so they cannot do it.
+ */
+async function relaunchApp() {
+  await stopRemoteViews();
+  if (lowerThirdServer) await lowerThirdServer.stop();
+  songSync.stop();
+  planSync?.stop();
+  closeDatabaseOnce();
+  if (app.isPackaged) {
+    app.relaunch();
+  } else {
+    const child = spawn(process.execPath, process.argv.slice(1), {
+      cwd: process.cwd(),
+      env: relaunchEnvironment(),
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+  }
+  app.exit(0);
+}
+
+ipcMain.handle('db:export-backup', async (event) => {
+  const picked = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+    title: 'Save a database backup',
+    defaultPath: backupFileName(),
+    filters: DB_FILTERS,
+  });
+  if (picked.canceled || !picked.filePath) return { success: false, cancelled: true };
+  try {
+    const filePath = await exportBackup({
+      target: picked.filePath,
+      backup: (target) => announcements.db.backup(target),
+      schemaVersion: SCHEMA_VERSION,
+      open: openReadonlyDatabase,
+    });
+    return { success: true, filePath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:import-backup', async (event) => {
+  const picked = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
+    title: 'Choose a database backup to restore',
+    properties: ['openFile'],
+    filters: DB_FILTERS,
+  });
+  if (picked.canceled || picked.filePaths.length === 0) return { success: false, cancelled: true };
+  const source = picked.filePaths[0];
+  const result = importBackup({
+    source,
+    activePath: dbStatus.path,
+    schemaVersion: SCHEMA_VERSION,
+    open: openReadonlyDatabase,
+    openForMigration: (file) => openDatabase(file),
+    closeDatabase: () => closeDatabaseOnce(),
+  });
+  if (!result.ok) {
+    // The live database was not closed, so the app keeps running. Once it has been closed, only a restart can reopen it.
+    if (!result.closed) return { success: false, error: result.error };
+    dialog.showErrorBox('The database could not be restored', result.error);
+    await relaunchApp();
+    return { success: false, error: result.error };
+  }
+  await relaunchApp();
+  return { success: true, filePath: source };
+});
 ipcMain.handle('launch:open', (_event, target) => {
   if (typeof target !== 'string' || !target) return;
   return /^https?:\/\//i.test(target) ? shell.openExternal(target) : shell.openPath(target);
@@ -758,6 +877,9 @@ app.whenReady().then(() => {
   state = liveReducer(state, { type: 'settings/welcome', value: readConfig(app.getPath('userData')).welcome });
   state = liveReducer(state, { type: 'lowerStyle/set', value: readConfig(app.getPath('userData')).lower_third });
   announcements = openConfiguredDatabase();
+  // Where the app opened its database, and what it holds: a restored file that shows zero songs here is not the one the app reads.
+  console.log('[DB Path]:', dbStatus.path, dbStatus.fallback ? '(fallback: the configured database would not open)' : '');
+  console.log('[DB Counts]:', databaseCounts(announcements.db));
   // A hymn saved here asks the song sync for a send soon, instead of waiting for its next timer tick.
   setupLyrics(announcements.db, {
     onHymnChanged: () => songSync.notify(),

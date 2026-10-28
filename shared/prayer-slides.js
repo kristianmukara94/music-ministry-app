@@ -200,19 +200,22 @@ const CACHE_LIMIT = 200;
  * when the operator's split is used, 'auto' for the sentence split, 'stale' when a manual split was made for text that has since changed (so
  * the automatic split is used, and the caller says so), and 'none' for an empty prayer. `split` is the saved split, or null.
  */
-export function prayerSlidesFor(text, split) {
+export function prayerSlidesFor(text, split, scale = 1) {
   const body = String(text ?? '');
-  const key = `${body}\u0001${JSON.stringify(split ?? null)}`;
+  // The pages are fitted at the size the text will be drawn at (the normal size times the operator's scale). The page's own fontPx stays
+  // the normal size, and the surface multiplies it by the same scale when it draws the text.
+  const px = PRAYER_MAX_PX * scale;
+  const key = `${body}\u0001${JSON.stringify(split ?? null)}\u0001${px}`;
   if (cache.has(key)) return cache.get(key);
-  const result = compute(body, split);
+  const result = compute(body, split, px);
   if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value);
   cache.set(key, result);
   return result;
 }
 
-/** The sentence split of one text at full size: each slide holds whole sentences, and the slides are balanced. */
-function autoSplit(text) {
-  return balancedSplit(unitsAt(unitsOf(text), PRAYER_MAX_PX), PRAYER_MAX_PX);
+/** The sentence split of one text at the given size: each slide holds whole sentences, and the slides are balanced. */
+function autoSplit(text, px = PRAYER_MAX_PX) {
+  return balancedSplit(unitsAt(unitsOf(text), px), px);
 }
 
 /**
@@ -229,7 +232,7 @@ export function pageTops(texts, px = PRAYER_MAX_PX) {
  * they are. With no breaks, the whole prayer is one part, which is the automatic split. Returns the slides and the two counts the panel
  * shows: the breaks placed by hand, and the slides the automatic rule added beyond the sections.
  */
-function compute(body, split) {
+function compute(body, split, px = PRAYER_MAX_PX) {
   if (!body.trim()) {
     return { mode: 'none', fontPx: PRAYER_MAX_PX, pages: [{ text: '', fontPx: PRAYER_MAX_PX, ...pageTops([''])[0] }], tooLong: false, manualBreaks: 0, automaticSlides: 1 };
   }
@@ -241,19 +244,19 @@ function compute(body, split) {
     mode = 'manual';
     manualBreaks = split.at.length;
     const parts = manualParts(body, split.at);
-    const pieces = parts.map((part) => (fits(part, PRAYER_MAX_PX) ? [part] : autoSplit(part)));
+    const pieces = parts.map((part) => (fits(part, px) ? [part] : autoSplit(part, px)));
     texts = pieces.flat();
     automaticSlides = texts.length - parts.length;
   } else {
     if (split?.mode === 'manual' && split.at.length > 0) mode = 'stale';
-    texts = autoSplit(body);
+    texts = autoSplit(body, px);
   }
-  const tops = pageTops(texts);
+  const tops = pageTops(texts, px);
   return {
     mode,
     fontPx: PRAYER_MAX_PX,
     pages: texts.map((text, i) => ({ text, fontPx: PRAYER_MAX_PX, ...tops[i] })),
-    tooLong: texts.some((t) => !fits(t, PRAYER_MAX_PX)),
+    tooLong: texts.some((t) => !fits(t, px)),
     manualBreaks,
     automaticSlides: automaticSlides ?? texts.length,
   };

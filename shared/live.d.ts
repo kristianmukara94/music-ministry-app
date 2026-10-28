@@ -39,9 +39,29 @@ export interface PassageMark {
 /** Who sent the frame now on the projector: a Mass Queue item, or a direct projection from a module deck. */
 export type ProjectionSource = 'MASS_QUEUE' | 'DIRECT_DECK' | 'PW_SESSION';
 
+/** The frame an output shows for a live frame: the intro slide is a solid black screen in black mode. */
+export function presentedFrame(frame: Frame, introSlideMode: 'title' | 'black'): Frame;
+
+/** True when the projector or the Secondary display is live. The projector prompt asks only when this is false. */
+export function isAnyOutputLive(state: LiveState): boolean;
+
+/** The look the audience sees: the look captured at the pause while the projector is paused, else the working look. */
+export interface OutputLook {
+  slideFont: string | null;
+  slideFontScale: number;
+  introSlideMode: LiveState['introSlideMode'];
+  welcome: LiveState['welcome'];
+}
+export function outputLookOf(state: LiveState): OutputLook;
+
+/** The state with the on-air look in place of the working one. The same object when the two looks are the same. */
+export function applyLook(state: LiveState): LiveState;
+
 export type Frame =
   | { kind: 'idle' }
   | { kind: 'blackout' }
+  /** A solid black screen: an intro slide shown as black. Nothing is drawn on it. */
+  | { kind: 'black' }
   | { kind: 'welcome'; lang: Lang }
   | { kind: 'announcements'; lang: Lang }
   | { kind: 'deck'; title: string; slides: SlideLine[][]; index: number; passage?: PassageMark; style?: TextStyle | null }
@@ -145,6 +165,8 @@ export interface LiveState {
   welcome: WelcomeSettings;
   /** The calibration grid is shown on the projector. */
   calibration: boolean;
+  /** The operator's choice for the intro slide: its Title Card, or a solid black screen. */
+  introSlideMode: 'title' | 'black';
   /** The Announcements deck's counter while it is open; null when no deck is. */
   counter: SlideCounter | null;
   /** A note overlay sent from the Bible module, or null. */
@@ -199,6 +221,7 @@ export type LiveAction =
   | { type: 'settings/projector'; value: Partial<ProjectorSettings> }
   | { type: 'settings/welcome'; value: Partial<WelcomeSettings> }
   | { type: 'calibration/toggle' }
+  | { type: 'introSlide/set'; value: 'title' | 'black' }
   | { type: 'counter/set'; counter: SlideCounter | null }
   | { type: 'noteOverlay/show'; value: NoteOverlay }
   | { type: 'noteOverlay/clear' }

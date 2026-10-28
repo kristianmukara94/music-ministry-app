@@ -20,5 +20,7 @@ export const BACKGROUND_COLORS: { label: string; hex: string }[];
 export function sanitizeTextStyle(input: unknown): TextStyle | null;
 export function parseTextStyle(json: string | null): TextStyle | null;
 export function fontCss(style: TextStyle | null | undefined): string | undefined;
+export function slideFontCss(key: string | null | undefined): string | undefined;
+export function scaledSize(size: string, scale: number | null | undefined): string;
 export function customSizes(style: TextStyle | null | undefined): { body: number; headline: number } | null;
 export function normalizeHex(value: unknown): string | null;

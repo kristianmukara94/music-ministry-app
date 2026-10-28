@@ -11,6 +11,10 @@ export interface SecondaryFrame {
   fit: 'cover' | 'contain' | null;
   loop: boolean | null;
   shade: boolean;
+  /** The slide font the operator chose (a key of TEXT_FONTS), or null to keep each slide's own face. */
+  font: string | null;
+  /** How large the text is drawn, as a share of its normal size: 0.7 to 1.5. 1 is normal. */
+  fontScale: number;
 }
 
 /** The payload of `/api/remote/stream` for the Secondary display: whether it is on air, and the frame it shows. */

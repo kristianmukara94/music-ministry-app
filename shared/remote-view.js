@@ -1,4 +1,4 @@
-import { secondaryFrame } from './live.js';
+import { outputLookOf, presentedFrame, secondaryFrame } from './live.js';
 import { welcomeBackground } from './welcome-settings.js';
 // Remote view: the settings for the two phone viewers, the snapshot of the live screen they show, and the control requests
 // the Primary viewer may send. Shared by the main process (saved to config.json, sent to phones) and tested without
@@ -135,7 +135,16 @@ export function sectionsOf(frame) {
  * is where this slide sits in its set. `paused` says the operator has paused the projector. Nothing else is included.
  */
 export function remoteViewSnapshot(state, now = Date.now()) {
-  return snapshotOf(state, { live: state.outputs.projector, frame: state.projector.live, paused: state.projector.paused }, now);
+  return snapshotOf(state, { live: primaryDrives(state), frame: state.projector.live, paused: state.projector.paused }, now);
+}
+
+/**
+ * Whether the Primary viewer's controls can move what is on air. That is when the projector is on, or when the Remote display follows the
+ * projector (dual mode) and is on air, so the TV shows the frame these controls move. In independent mode the TV shows its own frame, which
+ * these controls do not move, so they stay off rather than appear to work.
+ */
+export function primaryDrives(state) {
+  return state.outputs.projector === true || (state.display?.mode === 'dual' && state.display?.targets?.secondary?.live === true);
 }
 
 /** The secondary display's snapshot: what the Secondary port shows, the TV and the viewers on it. */
@@ -159,8 +168,9 @@ export function mediaIdOf(src) {
  */
 function frameSnapshot(state, frame, base) {
   const kind = base.screen === 'live' ? 'slide' : base.screen === 'blackout' ? 'blackout' : base.screen === 'idle' ? 'idle' : 'off';
-  if (kind !== 'slide') return { kind, title: '', lines: [], mediaId: null };
-  const settings = frame.kind === 'welcome' ? state.welcome : frame.kind === 'pw' ? state.welcome.slideBackground : null;
+  if (kind !== 'slide') return { kind, title: '', lines: [], mediaId: null, font: null, fontScale: 1 };
+  const look = outputLookOf(state);
+  const settings = frame.kind === 'welcome' ? look.welcome : frame.kind === 'pw' ? look.welcome.slideBackground : null;
   const bg = settings ? welcomeBackground(settings) : { color: null, media: null, shade: false };
   return {
     kind,
@@ -172,6 +182,8 @@ function frameSnapshot(state, frame, base) {
     fit: bg.media ? bg.media.fit : null,
     loop: bg.media ? bg.media.loop : null,
     shade: bg.shade,
+    font: outputLookOf(state).slideFont ?? null,
+    fontScale: outputLookOf(state).slideFontScale ?? 1,
   };
 }
 
@@ -192,13 +204,14 @@ function snapshotOf(state, target, now) {
   };
   if (!target.live) return base;
 
-  const frame = target.frame;
+  const frame = presentedFrame(target.frame, outputLookOf(state).introSlideMode);
   if (frame.kind === 'idle') return { ...base, screen: 'idle' };
-  if (frame.kind === 'blackout') return { ...base, screen: 'blackout' };
+  // A solid black intro slide is a blackout for the phones and the TV: a blank screen, with no text or media.
+  if (frame.kind === 'blackout' || frame.kind === 'black') return { ...base, screen: 'blackout' };
 
-  const shown = presentFrame(frame, state.welcome);
+  const shown = presentFrame(frame, outputLookOf(state).welcome);
   const sections = sectionsOf(frame);
-  const following = sections && sections.index + 1 < sections.count ? presentFrame({ ...frame, index: frame.index + 1 }, state.welcome) : null;
+  const following = sections && sections.index + 1 < sections.count ? presentFrame({ ...frame, index: frame.index + 1 }, outputLookOf(state).welcome) : null;
   return {
     ...base,
     screen: 'live',
@@ -227,6 +240,9 @@ export function snapshotForRole(snapshot, role) {
  */
 export function controlAction(state, request) {
   if (!request || typeof request !== 'object') return { ok: false, status: 400, error: 'The request was not understood.' };
+  if (!primaryDrives(state)) {
+    return { ok: false, status: 409, error: 'Nothing this remote controls is on air. Turn the projector on, or set Remote to follow it.' };
+  }
   if (state.projector.paused) return { ok: false, status: 409, error: 'Paused by operator' };
 
   const sections = sectionsOf(state.projector.staged);

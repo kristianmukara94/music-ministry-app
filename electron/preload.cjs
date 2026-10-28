@@ -199,6 +199,11 @@ contextBridge.exposeInMainWorld('apcc', {
     },
   },
 
+  database: {
+    exportBackup: () => ipcRenderer.invoke('db:export-backup'),
+    importBackup: () => ipcRenderer.invoke('db:import-backup'),
+  },
+
   pdf: {
     onConvert: (callback) => {
       const handler = (_event, job) => callback(job);

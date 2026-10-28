@@ -1,4 +1,4 @@
-import { sanitizeProjectorSettings, PROJECTOR_SETTINGS_DEFAULTS } from './projector-settings.js';
+import { sanitizeProjectorSettings, PROJECTOR_SETTINGS_DEFAULTS, INTRO_SLIDE_MODES } from './projector-settings.js';
 import { WELCOME_DEFAULTS, sanitizeWelcomeSettings } from './welcome-settings.js';
 import { sanitizeLowerThirdStyle, LOWER_THIRD_DEFAULTS } from './lower-third-style.js';
 // Single source of truth for what the congregation sees.
@@ -29,6 +29,22 @@ const NO_BACKGROUND = { live: null, staged: null };
 // Older saved browser state has no background layer; treat it as empty.
 const backgroundOf = (p) => p.background ?? NO_BACKGROUND;
 
+/**
+ * The frame an output shows for a live frame. The intro slide is the Praise & Worship title card; in black mode it is a solid black
+ * screen, with no text, icon or background. Every other frame is shown as it is.
+ */
+export function presentedFrame(frame, introSlideMode) {
+  return introSlideMode === 'black' && frame?.kind === 'pw' && frame.slide?.kind === 'title' ? { kind: 'black' } : frame;
+}
+
+/**
+ * True when any output is live: the projector, or the Secondary display (the TV and the phones). A slide goes live straight away when this
+ * is true. The projector prompt only asks when both are off.
+ */
+export function isAnyOutputLive(state) {
+  return state.outputs.projector === true || state.display?.targets?.secondary?.live === true;
+}
+
 export function initialLiveState() {
   return {
     rev: 0,
@@ -36,6 +52,8 @@ export function initialLiveState() {
     settings: PROJECTOR_SETTINGS_DEFAULTS,
     welcome: WELCOME_DEFAULTS,
     calibration: false,
+    // The operator's choice for the intro slide. It starts as the saved default, and changes only from the Live panel or a new default.
+    introSlideMode: 'title',
     counter: null,
     noteOverlay: null,
     lowerStyle: LOWER_THIRD_DEFAULTS,
@@ -63,6 +81,36 @@ function showFrame(p, frame) {
   if (p.paused) return { ...p, staged: frame };
   if (p.live.kind === 'blackout') return { ...p, staged: frame, beforeBlackout: frame };
   return { ...p, staged: frame, live: frame };
+}
+
+/** The settings the outputs draw from, as the operator has set them. The Preview and the thumbnails read these. */
+function lookOf(s) {
+  return { slideFont: s.settings.slideFont, slideFontScale: s.settings.slideFontScale, introSlideMode: s.introSlideMode, welcome: s.welcome };
+}
+
+/**
+ * The look the audience sees. While the projector is paused it is the look captured at the pause, so the Projector window and the TV keep
+ * what was on air. Otherwise it is the working look. The Preview always reads the working look.
+ */
+export function outputLookOf(s) {
+  return s.projector.paused && s.projector.look ? s.projector.look : lookOf(s);
+}
+
+/** The state with the on-air look in place of the working one. Returns the same state when the two looks are the same. */
+export function applyLook(s) {
+  const look = outputLookOf(s);
+  const same =
+    look.slideFont === s.settings.slideFont &&
+    look.slideFontScale === s.settings.slideFontScale &&
+    look.introSlideMode === s.introSlideMode &&
+    look.welcome === s.welcome;
+  if (same) return s;
+  return {
+    ...s,
+    settings: { ...s.settings, slideFont: look.slideFont, slideFontScale: look.slideFontScale },
+    introSlideMode: look.introSlideMode,
+    welcome: look.welcome,
+  };
 }
 
 // A slide's own cue shows its lower third, unless the operator has turned it Off: then it is only staged, and stays Off until the operator turns it On.
@@ -139,9 +187,13 @@ function reduce(s, a) {
       const p = s.projector;
       const paused = a.paused ?? !p.paused;
       if (paused === p.paused) return s;
-      if (paused) return { ...s, projector: { ...p, paused } };
-      if (p.live.kind === 'blackout') return { ...s, projector: { ...p, paused, beforeBlackout: p.staged } };
-      return { ...s, projector: { ...p, paused, live: p.staged } };
+      // Pausing freezes the audience's look where it is now: the frame on air, and the settings the outputs draw from.
+      if (paused) return { ...s, projector: { ...p, paused, look: lookOf(s) } };
+      // Resuming puts the staged frame and the staged background on air, and returns the look to the working settings.
+      const background = backgroundOf(p);
+      const onAirBackground = { ...background, live: background.staged };
+      if (p.live.kind === 'blackout') return { ...s, projector: { ...p, paused, look: null, background: onAirBackground, beforeBlackout: p.staged } };
+      return { ...s, projector: { ...p, paused, look: null, live: p.staged, background: onAirBackground } };
     }
 
     case 'projector/step': {
@@ -174,7 +226,8 @@ function reduce(s, a) {
 
     case 'background/take': {
       const bg = backgroundOf(s.projector);
-      if (bg.live === bg.staged) return s;
+      // While paused, a take waits for resume: the audience keeps the background it had when the projector paused.
+      if (bg.live === bg.staged || s.projector.paused) return s;
       return { ...s, projector: { ...s.projector, background: { ...bg, live: bg.staged } } };
     }
 
@@ -187,8 +240,15 @@ function reduce(s, a) {
     // Clearing takes the lower third off the screen but keeps the last value staged, so toggling it on brings it back.
     // Stages a lower third without showing it. The header toggle or lowerThird/toggle takes it live.
     // Projector output settings, saved by the main process and broadcast to every window.
-    case 'settings/projector':
-      return { ...s, settings: sanitizeProjectorSettings({ ...s.settings, ...a.value }) };
+    case 'settings/projector': {
+      const settings = sanitizeProjectorSettings({ ...s.settings, ...a.value });
+      // A changed default moves the live choice to it. Otherwise the operator's own choice stands.
+      const introSlideMode = settings.defaultIntroSlideMode !== s.settings.defaultIntroSlideMode ? settings.defaultIntroSlideMode : s.introSlideMode;
+      return { ...s, settings, introSlideMode };
+    }
+
+    case 'introSlide/set':
+      return INTRO_SLIDE_MODES.includes(a.value) && a.value !== s.introSlideMode ? { ...s, introSlideMode: a.value } : s;
 
     case 'settings/welcome':
       return { ...s, welcome: sanitizeWelcomeSettings({ ...s.welcome, ...a.value }) };

@@ -125,7 +125,7 @@ export const PRAYER_FIT_LINES: number;
 export function fitsPrayerSlide(text: string): boolean;
 export function prayerPages(text: string): string[];
 /** `band` is the lower third on screen, if any: the lyric and prayer pages leave room for it. */
-export function slidesFor(segment: PwSegment, resolved?: PwResolved, options?: { band?: import('./live.js').LowerThird | null }): PwSlide[];
+export function slidesFor(segment: PwSegment, resolved?: PwResolved, options?: { band?: import('./live.js').LowerThird | null; scale?: number }): PwSlide[];
 export function step(counts: number[], pos: PwPosition, delta: 1 | -1): PwPosition | null;
 export function visibleSlideIndexes(count: number, liveIndex: number | null | undefined): number[];
 export function livePosition(segments: PwSegment[], pw: { segmentKey: string | null; slide: number } | null): PwPosition | null;

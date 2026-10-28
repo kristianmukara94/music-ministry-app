@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { CheckCircle2, Grid3x3, Monitor, MonitorUp, Presentation, RotateCcw } from 'lucide-react';
-import { FADE_MAX_MS, FADE_MIN_MS, type ProjectorSettings as Settings } from '../../shared/projector-settings.js';
+import { FADE_MAX_MS, FADE_MIN_MS, SLIDE_FONTS, type ProjectorSettings as Settings } from '../../shared/projector-settings.js';
+import { TEXT_FONT_GROUPS, TEXT_FONTS, slideFontCss } from '../../shared/text-style.js';
 import { dispatch, useLive } from '../live/store';
 import { bridge, type DisplayInfo } from '../live/bridge';
 import type { MediaAsset } from '../media/types';
@@ -350,6 +351,55 @@ export function ProjectorSettingsPanel() {
               className="h-1.5 w-full cursor-pointer accent-amber-400"
             />
           </div>
+        </section>
+
+        {/* Intro slide: the first slide of a Praise & Worship item, as its title card or a solid black screen. */}
+        <section className={CARD} aria-labelledby="intro-heading">
+          <h2 id="intro-heading" className={HEADING}>Intro slide</h2>
+          <Row
+            title="First slide of an item"
+            detail="The title card at the start of a song or item, or a solid black screen. The Live panel changes this for the item on air."
+          >
+            <Segmented
+              label="Default intro slide"
+              value={settings.defaultIntroSlideMode}
+              options={[
+                { id: 'title', text: 'Title card' },
+                { id: 'black', text: 'Solid black' },
+              ]}
+              onChange={(defaultIntroSlideMode) => save({ defaultIntroSlideMode })}
+            />
+          </Row>
+        </section>
+
+        {/* Slide font: the face for slide text on the projector and the TV. */}
+        <section className={`${CARD} lg:col-span-2`} aria-labelledby="font-heading">
+          <h2 id="font-heading" className={HEADING}>Slide font</h2>
+          <Row
+            title="Font for slide text"
+            detail="Applies to lyrics, readings, prayers and announcements on the projector and the TV. Keep the current look leaves each slide's own font."
+          >
+            <select
+              aria-label="Slide font"
+              value={settings.slideFont ?? ''}
+              onChange={(e) => save({ slideFont: e.target.value || null })}
+              className="h-10 rounded-lg border border-stone-700 bg-stone-950 px-3 text-sm text-stone-100 outline-none focus:border-amber-400"
+            >
+              <option value="">Keep the current look</option>
+              {TEXT_FONT_GROUPS.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.keys.filter((key) => SLIDE_FONTS.includes(key)).map((key) => (
+                    <option key={key} value={key}>
+                      {TEXT_FONTS[key].label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </Row>
+          <p aria-label="Font preview" className="rounded-lg border border-stone-800 bg-stone-950 px-4 py-3 text-2xl text-stone-100" style={{ fontFamily: slideFontCss(settings.slideFont) }}>
+            Lord, have mercy on us
+          </p>
         </section>
 
         {/* Idle screen and calibration. */}

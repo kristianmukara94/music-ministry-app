@@ -5,6 +5,9 @@ export const PROJECTOR_STARTUP: readonly ['welcome', 'black', 'last'];
 export const TRANSITION_STYLES: readonly ['fade', 'slideLeft', 'slideRight', 'slideUp', 'zoomIn'];
 export const FADE_MIN_MS: number;
 export const FADE_MAX_MS: number;
+export const SLIDE_FONTS: string[];
+export const INTRO_SLIDE_MODES: readonly ['title', 'black'];
+export const SLIDE_FONT_SCALES: readonly number[];
 
 export interface ProjectorSettings {
   displayId: number | null;
@@ -17,6 +20,9 @@ export interface ProjectorSettings {
   transitionsOn: boolean;
   transitionStyle: 'fade' | 'slideLeft' | 'slideRight' | 'slideUp' | 'zoomIn';
   fadeMs: number;
+  slideFont: string | null;
+  defaultIntroSlideMode: 'title' | 'black';
+  slideFontScale: number;
 }
 
 export const PROJECTOR_SETTINGS_DEFAULTS: ProjectorSettings;

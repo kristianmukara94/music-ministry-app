@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Frame, MediaFrame, SlideLine } from '../../shared/live.js';
-import { useOutput } from './outputState';
+import { presentedFrame } from '../../shared/live.js';
+import { OnAirLook, useOutput } from './outputState';
 import { translate } from '../i18n/strings';
 import { LOGO_SRC } from '../brand/logo';
 import { getSlideImageUrl, onSlideImageError } from './slideImage';
 import { LowerThirdOverlay } from './LowerThirdView';
-import { customSizes, fontCss } from '../../shared/text-style.js';
+import { customSizes, fontCss, scaledSize, slideFontCss } from '../../shared/text-style.js';
 import { charsPerLine, slideLine, slideText } from '../../shared/text-wrap.js';
 import { aspectRatioOf, type ProjectorSettings } from '../../shared/projector-settings.js';
 import { NoteCallout } from './NoteCallout';
@@ -18,6 +19,12 @@ import { lyricBottomOf } from '../../shared/lyric-area.js';
 import { textAreaShare } from '../../shared/text-area.js';
 import { welcomeBackground } from '../../shared/welcome-settings.js';
 import { SlideBackgroundLayer } from './BackgroundMedia';
+
+/** The slide font the operator chose, as CSS. Undefined keeps each slide's own face. */
+const useSlideFont = (): string | undefined => useOutput((s) => slideFontCss(s.settings.slideFont));
+
+/** The operator's slide text size, as a share of normal: 0.7 to 1.5. Each text surface multiplies its size by it. */
+const useSlideScale = (): number => useOutput((s) => s.settings.slideFontScale);
 
 /** How long clearing the foreground takes to fade out. Keep in step with `duration-300` below. */
 export const FOREGROUND_FADE_MS = 300;
@@ -55,6 +62,8 @@ const BACKING = 'pointer-events-none absolute -top-[3cqh] -bottom-[3cqh] -left-[
  * measures against (see paginate.ts). Empty lines keep their height.
  */
 function TextLines({ lines, serif = false, style = null }: { lines: string[]; serif?: boolean; style?: TextStyle | null }) {
+  const slideFont = useSlideFont();
+  const slideScale = useSlideScale();
   // A chosen style replaces the default size, face, colour and alignment. Without one, the default classes apply.
   const sizes = customSizes(style);
   const chars = charsPerLine(0.86, sizes ? sizes.body : 4.1 * 19.2);
@@ -68,8 +77,8 @@ function TextLines({ lines, serif = false, style = null }: { lines: string[]; se
         style={{
           textAlign: style?.textAlign ?? undefined,
           color: style?.textColor,
-          fontFamily: fontCss(style),
-          fontSize: sizes ? `${sizes.body / 19.2}cqw` : undefined,
+          fontFamily: fontCss(style) ?? slideFont,
+          fontSize: scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'clamp(28px,4.1cqw,88px)', slideScale),
         }}
       >
         {lines.map((line, i) => (
@@ -87,23 +96,25 @@ function TextLines({ lines, serif = false, style = null }: { lines: string[]; se
  * line per paragraph, and each size is relative to the window, so the mirror fits it the same way.
  */
 function HeadedText({ headline, body, style = null }: { headline: string; body: string; style?: TextStyle | null }) {
+  const slideFont = useSlideFont();
+  const slideScale = useSlideScale();
   const sizes = customSizes(style);
   const chars = charsPerLine(0.86, sizes ? sizes.body : 3.6 * 19.2);
   const headlineChars = charsPerLine(0.86, sizes ? sizes.headline : 4.6 * 19.2);
-  const look = { color: style?.textColor, fontFamily: fontCss(style), textAlign: style?.textAlign ?? undefined };
+  const look = { color: style?.textColor, fontFamily: fontCss(style) ?? slideFont, textAlign: style?.textAlign ?? undefined };
   return (
     <div className="relative flex max-w-[86cqw] flex-col items-center gap-[3cqh] text-center" style={{ textAlign: look.textAlign }}>
       <div aria-hidden className={BACKING} />
       <h2
         className={`relative leading-[1.1] font-bold text-white ${sizes ? '' : 'text-[clamp(36px,4.6cqw,96px)]'} ${LEGIBLE}`}
-        style={{ ...look, fontSize: sizes ? `${sizes.headline / 19.2}cqw` : undefined }}
+        style={{ ...look, fontSize: scaledSize(sizes ? `${sizes.headline / 19.2}cqw` : 'clamp(36px,4.6cqw,96px)', slideScale) }}
       >
         {slideLine(headline, headlineChars)}
       </h2>
       {body && (
         <div
           className={`relative flex flex-col gap-[2.2cqh] leading-[1.25] font-medium text-white ${sizes ? '' : 'text-[clamp(28px,3.6cqw,80px)]'}`}
-          style={{ ...look, fontSize: sizes ? `${sizes.body / 19.2}cqw` : undefined }}
+          style={{ ...look, fontSize: scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'clamp(28px,3.6cqw,80px)', slideScale) }}
         >
           {body.split('\n').map((line, i) => (
             <p key={i} className={LEGIBLE}>
@@ -121,6 +132,8 @@ function HeadedText({ headline, body, style = null }: { headline: string; body: 
  * their own colours. With no style, the default classes apply.
  */
 function Slide({ lines, style = null }: { lines: SlideLine[]; style?: TextStyle | null }) {
+  const slideFont = useSlideFont();
+  const slideScale = useSlideScale();
   const sizes = customSizes(style);
   const chars = charsPerLine(0.86, sizes ? sizes.body : 4.1 * 19.2);
   return (
@@ -128,7 +141,7 @@ function Slide({ lines, style = null }: { lines: SlideLine[]; style?: TextStyle 
       <div aria-hidden className={BACKING} />
       <div
         className={`relative flex max-w-[86cqw] flex-col gap-[2.2cqh] leading-[1.22] ${sizes ? '' : 'text-center text-[clamp(28px,4.1cqw,88px)]'}`}
-        style={{ textAlign: style?.textAlign ?? 'center', fontFamily: fontCss(style), fontSize: sizes ? `${sizes.body / 19.2}cqw` : undefined }}
+        style={{ textAlign: style?.textAlign ?? 'center', fontFamily: fontCss(style) ?? slideFont, fontSize: scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'clamp(28px,4.1cqw,88px)', slideScale) }}
       >
         {lines.map((line, i) => {
           const color = line.role === 'response' || line.role === 'cite' ? undefined : style?.textColor;
@@ -150,6 +163,8 @@ function Slide({ lines, style = null }: { lines: SlideLine[]; style?: TextStyle 
  * which is zoomed to the 1920 page, fits its text the same way the projector does.
  */
 function FittedPrayer({ label, text, className, style = null }: { label: string; text: string; className: string; style?: TextStyle | null }) {
+  const slideFont = useSlideFont();
+  const slideScale = useSlideScale();
   const boxRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLParagraphElement>(null);
@@ -163,7 +178,8 @@ function FittedPrayer({ label, text, className, style = null }: { label: string;
       const room = box.clientHeight - labelEl.offsetHeight - 24;
       // A chosen size is the most the prayer grows to. The fit still shrinks it when the text is long.
       const width = box.clientWidth;
-      const max = style?.fontSize ? (width * style.fontSize) / 1920 : width * 0.045;
+      // The scale raises the maximum too, and the fit below still shrinks the text to the room it has.
+      const max = (style?.fontSize ? (width * style.fontSize) / 1920 : width * 0.045) * slideScale;
       const min = window.innerWidth * 0.016;
       let size = max;
       el.style.fontSize = `${size}px`;
@@ -176,9 +192,9 @@ function FittedPrayer({ label, text, className, style = null }: { label: string;
     // The mirror's zoom is set after the page loads, which changes the window width. Fit again on every resize.
     window.addEventListener('resize', fit);
     return () => window.removeEventListener('resize', fit);
-  }, [label, text, style]);
+  }, [label, text, style, slideScale]);
 
-  const look = { color: style?.textColor, fontFamily: fontCss(style), textAlign: style?.textAlign ?? undefined };
+  const look = { color: style?.textColor, fontFamily: fontCss(style) ?? slideFont, textAlign: style?.textAlign ?? undefined };
   return (
     <div ref={boxRef} className="flex min-h-0 w-full flex-1 flex-col items-center justify-center">
       <div ref={labelRef} className="shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase">{label}</div>
@@ -188,11 +204,14 @@ function FittedPrayer({ label, text, className, style = null }: { label: string;
 }
 
 function FrameView({ frame }: { frame: Frame }) {
+  const slideFont = useSlideFont();
+  const slideScale = useSlideScale();
   // The background behind the Live set's slides: its own saved setting, separate from the Welcome background.
   const pwBackground = welcomeBackground(useOutput((s) => s.welcome.slideBackground));
   switch (frame.kind) {
     case 'idle':
     case 'blackout':
+    case 'black':
       return null;
     case 'welcome':
       // The welcome screen's own content, colours and size, from the Welcome screen settings.
@@ -244,8 +263,8 @@ function FrameView({ frame }: { frame: Frame }) {
             style={{
               textShadow: '0 2px 14px rgba(0,0,0,0.85), 0 0 3px rgba(0,0,0,0.6)',
               color: frame.style?.textColor,
-              fontFamily: fontCss(frame.style),
-              fontSize: sizes ? `${sizes.body / 19.2}cqw` : undefined,
+              fontFamily: fontCss(frame.style) ?? slideFont,
+              fontSize: scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'clamp(36px,4.6cqw,96px)', slideScale),
               textAlign: frame.style?.textAlign ?? 'center',
             }}
           >
@@ -287,7 +306,7 @@ function FrameView({ frame }: { frame: Frame }) {
       );
     case 'pw':
       // A Praise & Worship slide. It draws its own background, so it fills the stage.
-      return <PwSlideFace slide={frame.slide} segmentName={frame.segmentName} type={frame.type} index={frame.index} total={frame.total} footer={frame.footer} background={pwBackground} />;
+      return <PwSlideFace slide={frame.slide} segmentName={frame.segmentName} type={frame.type} index={frame.index} total={frame.total} slideFont={slideFont} slideScale={slideScale} footer={frame.footer} background={pwBackground} />;
     case 'whiteboard':
       // Sized to the space the screen leaves, so the lower-third clearance on the parent shortens it too.
       return (
@@ -475,8 +494,20 @@ function CalibrationGrid() {
   );
 }
 
-/** Congregation screen. With `mirror`, the same view becomes the operator's confidence monitor. */
-export function ProjectorView({ mirror = false, embedded = false }: { mirror?: boolean; embedded?: boolean }) {
+/**
+ * Congregation screen. With `mirror`, the same view becomes the operator's confidence monitor. The congregation's picture draws the look
+ * that is on air, which stays as it was at the pause until the projector resumes. The mirror draws the working look, so the operator sees
+ * every change as it is made.
+ */
+export function ProjectorView(props: { mirror?: boolean; embedded?: boolean }) {
+  return (
+    <OnAirLook.Provider value={!props.mirror}>
+      <ProjectorViewBody {...props} />
+    </OnAirLook.Provider>
+  );
+}
+
+function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: boolean; embedded?: boolean }) {
   const projector = useOutput((s) => s.projector);
   const projectorOn = useOutput((s) => s.outputs.projector);
   const settings = useOutput((s) => s.settings);
@@ -487,7 +518,9 @@ export function ProjectorView({ mirror = false, embedded = false }: { mirror?: b
   const transitionMs = settings.transitionsOn ? settings.fadeMs : 0;
   // While the projector is paused, the operator's mirror shows the staged frame, so it follows every change. The projector
   // itself keeps the frame it was showing until it resumes.
-  const picture = mirror && projector.paused ? projector.staged : projector.live;
+  // The intro slide shows as its title card or as black, by the operator's choice on the Live panel.
+  const introSlideMode = useOutput((s) => s.introSlideMode);
+  const picture = presentedFrame(mirror && projector.paused ? projector.staged : projector.live, introSlideMode);
   const { frame, fading, serial } = useFadedFrame(picture, transitionMs);
 
   // Blackout hides the background as well as the foreground, and keeps it queued for when it lifts.
@@ -536,6 +569,7 @@ export function ProjectorView({ mirror = false, embedded = false }: { mirror?: b
       {slideMedia && <SlideBackgroundLayer media={slideMedia} visible={outputShowing && !blackedOut && shownFrame.kind === 'pw'} />}
       {/* A song's or prayer's background colour fills the screen only when no motion background is playing, so it never covers the media. */}
       {!background && shownFrame.kind === 'idle' && <IdleScreen mode={settings.idle} media={settings.idleMedia} />}
+      {shownFrame.kind === 'black' && <div className="absolute inset-0 bg-black" />}
       {!background && (shownFrame.kind === 'lyrics' || shownFrame.kind === 'rosary') && shownFrame.style?.bgColor && (
         <div className="absolute inset-0" style={{ backgroundColor: shownFrame.style.bgColor }} />
       )}

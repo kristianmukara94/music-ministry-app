@@ -105,6 +105,8 @@ function StatusWidget({ icon: Icon, eyebrow, tone, badge, detail, action, onActi
 const FRAME_LABEL: Record<Exclude<Frame['kind'], 'deck' | 'image' | 'text' | 'lyrics' | 'psalm' | 'rosary' | 'whiteboard' | 'pw'>, StringKey> = {
   idle: 'frame.idle',
   blackout: 'frame.blackout',
+  // A black intro slide is a blank projector, so it shows the same label as a blackout.
+  black: 'frame.blackout',
   welcome: 'frame.welcome',
   announcements: 'frame.announcements',
 };
