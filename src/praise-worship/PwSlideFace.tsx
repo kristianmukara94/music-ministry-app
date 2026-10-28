@@ -56,20 +56,34 @@ export function PwSlideFace({
   // The picture or video is not drawn here: it is one layer the surface keeps mounted across slides (see SlideBackgroundLayer), under
   // this slide. So the slide's root is transparent when there is one, and only the shade and the text are drawn on top of it.
   const layers = background?.shade && background.media ? <BackgroundShade area={textAreaStyle()} /> : null;
-  const rootClass = background?.media ? 'absolute inset-0 text-fg' : 'absolute inset-0 bg-canvas text-fg';
+  // The slide canvas clips everything: no text or child can draw outside the 16:9 frame.
+  const rootClass = background?.media ? 'absolute inset-0 overflow-hidden text-fg' : 'absolute inset-0 overflow-hidden bg-canvas text-fg';
 
   if (slide.kind === 'title') {
     const Icon = TYPE_ICON[type];
+    // Proportional across the whole 70%-150% range: no ceiling, so every A-/A+ step changes the title. Long titles (more than 25 characters,
+    // which wrap to three lines) start smaller, so they stay inside the frame. The line width follows the scaled size.
+    const long = slide.label.length > 25;
+    const titleCqw = (long ? 3.6 : 4.4) * (slideScale ?? 1);
+    const titleChars = charsPerLine(0.84, titleCqw * 19.2);
+    // No text-area shade on a title card: the title stands on the picture or the colour itself, with no box behind it. The title is centred
+    // on the full frame, and the header and footer badges are pinned to the top and bottom edges, above it.
     return (
       <div data-theme="default" className={rootClass} style={colorStyle}>
-        {layers}
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-[3cqh] px-[8cqw] text-center">
-          <Icon aria-hidden className="size-[6cqw] text-gold" strokeWidth={1.25} />
-          <h2 className="text-[6.2cqw] leading-[1.15] tracking-[0.08em] uppercase" style={{ fontFamily: slideFont ?? TEXT_FONTS.display.css, fontWeight: 700, fontSize: scaledSize('6.2cqw', slideScale) }}>
-            {slideLine(slide.label, charsPerLine(0.84, 6.2 * 19.2))}
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-[8cqw] py-[8cqh] text-center">
+          <Icon aria-hidden className="mb-[2.5cqh] h-[4cqw] w-[4cqw] shrink-0 text-gold opacity-80" strokeWidth={1.25} />
+          <h2 className="max-h-[65cqh] leading-[1.12] tracking-[0.08em] uppercase" style={{ fontFamily: slideFont ?? TEXT_FONTS.display.css, fontWeight: 700, fontSize: `${titleCqw}cqw` }}>
+            {slideLine(slide.label, titleChars)}
           </h2>
-          <div aria-hidden className="h-[0.35cqh] w-[12cqw] bg-gold" />
-          {slide.subtitle && <p className="text-[2.2cqw] tracking-wide text-muted">{slide.subtitle}</p>}
+          <div aria-hidden className="mt-[2.5cqh] h-[0.35cqh] w-[12cqw] bg-gold" />
+          {slide.subtitle && <p className="mt-[2cqh] text-[2.2cqw] tracking-wide text-muted">{slide.subtitle}</p>}
+        </div>
+        <div className="absolute top-[5cqh] left-[6cqw] right-[6cqw] z-10 flex items-center justify-between">
+          <span className="text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{segmentName}</span>
+        </div>
+        <div className="absolute bottom-[5cqh] left-[6cqw] right-[6cqw] z-10 flex items-center justify-between">
+          <span className="text-[1.6cqw] text-muted">{footer}</span>
+          {position && <span className="font-mono text-[1.6cqw] text-muted">{position}</span>}
         </div>
       </div>
     );

@@ -21,7 +21,7 @@ test('the Live set video is mounted once, outside the keyed slide wrapper, so a 
 test('the slides do not draw the video: the slide root is transparent over the layer, and only the shade and text sit on top', () => {
   const face = read('src/praise-worship/PwSlideFace.tsx');
   assert.doesNotMatch(face, /<BackgroundMedia/, 'no video inside a slide, which would be rebuilt per slide');
-  assert.match(face, /const rootClass = background\?\.media \? 'absolute inset-0 text-fg' : 'absolute inset-0 bg-canvas text-fg';/, 'transparent over a picture or video');
+  assert.match(face, /const rootClass = background\?\.media \? 'absolute inset-0 overflow-hidden text-fg' : 'absolute inset-0 overflow-hidden bg-canvas text-fg';/, 'transparent over a picture or video, and the canvas clips its contents');
   assert.match(face, /className=\{rootClass\}/);
 });
 

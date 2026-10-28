@@ -45,7 +45,8 @@ test('every text surface takes the scale: the projector, the praise and worship 
   assert.match(view, /const max = \(style\?\.fontSize \? \(width \* style\.fontSize\) \/ 1920 : width \* 0\.045\) \* slideScale;/, 'the fitted prayer grows with the scale and still shrinks to fit');
 
   const face = read('src/praise-worship/PwSlideFace.tsx');
-  assert.ok((face.match(/scaledSize\(/g) ?? []).length >= 3, 'the title, prayer and lyric text take the scale');
+  assert.ok((face.match(/scaledSize\(/g) ?? []).length >= 2, 'the prayer and lyric text take the scale');
+  assert.match(face, /const titleCqw = \(long \? 3\.6 : 4\.4\) \* \(slideScale \?\? 1\);/, 'the title takes the scale in proportion, with no ceiling, smaller for long titles');
 
   const tv = read('src/tv/LargeScreen.tsx');
   assert.match(tv, /const scale = frame\.fontScale \?\? 1;/);
