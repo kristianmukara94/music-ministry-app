@@ -10,7 +10,7 @@ export const TYPE_ICON = { prayer: Cross, song: Music, scripture: BookOpen } as 
 
 /** Status colours, from the theme. Ready is the ok tone, gaps use the accent, deleted content the danger tone. */
 export const STATUS_TONE: Record<PwStatus, string> = {
-  ready: 'text-ok',
+  ready: 'text-emerald-400',
   auto: 'text-muted',
   needs_song: 'text-accent',
   needs_prayer: 'text-accent',
@@ -109,7 +109,7 @@ export function LineupRail() {
 
   let index = -1;
   return (
-    <section aria-labelledby="pw-lineup-heading" className="flex min-w-0 flex-col rounded-2xl border border-line bg-panel p-4">
+    <section aria-labelledby="pw-lineup-heading" className="flex min-w-0 flex-col rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 p-4">
       <div className="mb-2 flex items-baseline justify-between gap-2 px-1">
         <h2 id="pw-lineup-heading" className="text-lg font-bold">{t('lineup')}</h2>
       </div>
@@ -224,7 +224,7 @@ export function LineupRail() {
                         <Icon size={16} aria-hidden />
                       </span>
                       <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="text-[15px] leading-tight font-semibold">{segment.name}</span>
+                        <span className="text-[15px] leading-tight font-semibold text-zinc-200">{segment.name}</span>
                         <span className="truncate text-xs text-muted">{assignedLabel(segment, t, names)}</span>
                       </span>
                       {/* Capped and wrapping, so a long translated status never runs over the segment name. */}

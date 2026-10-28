@@ -36,7 +36,7 @@ function NewSessionForm({ onDone }: { onDone?: () => void }) {
   };
 
   return (
-    <form onSubmit={submit} className="flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-panel p-4">
+    <form onSubmit={submit} className="flex flex-wrap items-end gap-3 rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 p-4">
       <label className="flex min-w-56 flex-1 flex-col gap-1 text-xs text-muted">
         {t('sessionName')}
         <input required maxLength={120} value={name} placeholder={t('sessionNamePlaceholder')} onChange={(e) => setName(e.target.value)} className={`${INPUT} text-fg`} />
@@ -68,7 +68,7 @@ function NewSessionForm({ onDone }: { onDone?: () => void }) {
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex min-w-36 flex-1 flex-col gap-1 rounded-2xl border border-line bg-panel px-5 py-3.5">
+    <div className="flex min-w-36 flex-1 flex-col gap-1 rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 px-5 py-3.5">
       <span className="text-sm text-muted">{label}</span>
       {children}
     </div>
@@ -148,10 +148,10 @@ export function PlanView() {
           <Stat label={t('stat_runTime')}>
             <span className="font-mono text-2xl font-bold whitespace-nowrap">{formatRunTime(totalMinutes(session.segments))}</span>
           </Stat>
-          <div className="flex min-w-64 flex-[2] flex-col gap-2 rounded-2xl border border-line bg-panel px-5 py-3.5">
+          <div className="flex min-w-64 flex-[2] flex-col gap-2 rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 px-5 py-3.5">
             <div className="flex items-baseline justify-between gap-3">
               <span id="pw-ready-label" className="text-sm text-muted">{t('stat_ready')}</span>
-              <span className="font-mono">{ready} / {total}</span>
+              <span className="inline-flex items-center gap-2 font-mono">{ready === total && total > 0 && <span aria-hidden className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-400">✓</span>}{ready} / {total}</span>
             </div>
             <div
               role="progressbar"

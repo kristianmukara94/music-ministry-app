@@ -321,7 +321,14 @@ const REMOTE_NO_NETWORK = 'No WiFi or local network was found. Connect this lapt
 const ACTIVITY_LIMIT = 30;
 /** The two viewers' pages. Each is its own server on its own port: Primary controls the output, Secondary only watches. */
 const remoteViews = {
-  primary: createRemoteViewServer({ distDir: path.join(__dirname, '../dist'), role: 'primary', canConnect: canAcceptPhone, onControl: controlFromPhone }),
+  primary: createRemoteViewServer({
+    distDir: path.join(__dirname, '../dist'),
+    role: 'primary',
+    canConnect: canAcceptPhone,
+    onControl: controlFromPhone,
+    // The TV page's port, from the saved Secondary viewer settings, so the helper page links to the right address.
+    tvPort: () => readConfig(app.getPath('userData')).remote_view.secondary.port,
+  }),
   secondary: createRemoteViewServer({ distDir: path.join(__dirname, '../dist'), role: 'secondary', canConnect: canAcceptPhone, mediaFile: mediaFileFor }),
 };
 // Why each viewer is not running when it is turned on. Null when it runs, or when it is off.

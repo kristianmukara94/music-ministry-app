@@ -4,7 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { snapshotForRole } from '../shared/remote-view.js';
+import { REMOTE_VIEW_PORTS, snapshotForRole } from '../shared/remote-view.js';
 import { MIME_BY_EXT, rangeResponse } from './media-range.js';
 
 /** Wrong PIN entries allowed before the unlock pauses. A PIN has few digits, so this stops guessing. */
@@ -39,10 +39,36 @@ const TV_TYPE_BY_EXT = {
   '.json': 'application/json; charset=utf-8',
 };
 
+/**
+ * The helper page for a TV address typed on the control port. Plain HTML, styled from the laptop's own stylesheet, with no outside assets, so
+ * it loads with no internet. The address and port are escaped as they are written in.
+ */
+export function guidancePage(url, port) {
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TV Display</title>
+<link rel="stylesheet" href="/remote/guide.css">
+</head>
+<body>
+<main>
+<h1>Looking for the TV Display?</h1>
+<p>Please open the TV View on Port ${esc(port)}:</p>
+<p class="address"><code>${esc(url)}</code></p>
+<a class="button" href="${esc(url)}">Open the TV View</a>
+</main>
+</body>
+</html>
+`;
+}
+
 /** The page each viewer opens at its address, and the only files each viewer's folder may serve. */
 const ROLE_PAGE = { primary: 'index.html', secondary: 'viewer.html' };
 const ROLE_FILES = {
-  primary: ['index.html', 'common.js', 'remote.js', 'remote.css'],
+  primary: ['index.html', 'common.js', 'remote.js', 'remote.css', 'guide.css'],
   secondary: ['viewer.html', 'common.js', 'viewer.js', 'remote.css'],
 };
 
@@ -80,7 +106,7 @@ export function deviceLabel(userAgent = '') {
  * Secondary port is refused whatever the page sends. `/api/remote/stream` sends the live screen as the laptop changes it.
  * When a PIN is set, every route needs an unlocked session, and each viewer has its own session cookie.
  */
-export function createRemoteViewServer({ distDir, role = 'primary', canConnect = () => true, onControl = () => ({ ok: false, status: 409, error: 'Control is not set up.' }), mediaFile = () => null }) {
+export function createRemoteViewServer({ distDir, role = 'primary', canConnect = () => true, onControl = () => ({ ok: false, status: 409, error: 'Control is not set up.' }), mediaFile = () => null, tvPort = () => REMOTE_VIEW_PORTS.secondary }) {
   let server = null;
   let bound = null;
   let starting = null;
@@ -292,6 +318,20 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
     else fs.createReadStream(file).pipe(res);
   }
 
+  /**
+   * The guidance page for the TV address typed on the control port. It is plain HTML with no outside assets, and its only link is to the TV
+   * page on the Secondary port, on the same laptop address the phone used. The host is checked before it is written into the page.
+   */
+  function tvGuidance(req, res) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { ok: false }, { Allow: 'GET, HEAD' });
+    const rawHost = String(req.headers.host ?? '').replace(/:\d+$/, '');
+    const host = /^[A-Za-z0-9.\-[\]:]+$/.test(rawHost) && rawHost ? rawHost : '127.0.0.1';
+    const port = Number(tvPort());
+    const url = `http://${host}:${Number.isInteger(port) ? port : REMOTE_VIEW_PORTS.secondary}/tv`;
+    res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(req.method === 'HEAD' ? undefined : guidancePage(url, port));
+  }
+
   function handle(req, res) {
     let pathname;
     try {
@@ -303,6 +343,8 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
     if (pathname.startsWith('/api/remote/media/')) return media(req, res, pathname);
     // The TV screen is read-only, so its page and files are served only on the Secondary port.
     if (role === 'secondary' && (pathname === '/tv' || pathname.startsWith('/assets/'))) return serveTv(req, res, pathname);
+    // The TV screen's address on the control port: a helper page points to the Secondary port, so a wrong address is not a blank 404.
+    if (role === 'primary' && (pathname === '/tv' || pathname === '/remote-view')) return tvGuidance(req, res);
     if (pathname === '/api/remote/status') {
       if (req.method !== 'GET') return sendJson(res, 405, { ok: false }, { Allow: 'GET' });
       return sendJson(res, 200, { role, pinRequired: pinRequired(), unlocked: unlocked(req) });

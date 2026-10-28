@@ -20,8 +20,8 @@ import { setPwState, usePw } from './store';
 import { usePwT, type PwT } from './strings';
 import type { PwSession } from './types';
 
-const BTN = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line-strong px-5 text-sm font-semibold transition hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40';
-const BTN_ACCENT = 'inline-flex min-h-14 items-center justify-center gap-2 rounded-xl bg-accent px-8 text-base font-bold text-on-accent transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40';
+const BTN = 'inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/30 px-3 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40';
+const BTN_ACCENT = 'inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 px-4 text-sm font-bold text-zinc-950 shadow-md shadow-amber-500/10 transition-all hover:from-amber-400 hover:to-amber-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40';
 // The bottom row's buttons: the same look, with tighter side padding, so the five fit one line in a narrow Live panel (see the row's comment).
 // Every control in the bottom row is h-9 and holds one line, so the row keeps one height and no label wraps. The palette is the dark
 // presentation theme: zinc surfaces, zinc text, and amber-500 for the active state.
@@ -59,7 +59,7 @@ function stepChip(s: LiveStep, t: PwT) {
 function LiveLineup({ session, segment }: { session: PwSession; segment: number }) {
   const t = usePwT();
   return (
-    <section aria-labelledby="pw-live-lineup" className="flex min-w-0 flex-col rounded-2xl border border-line bg-panel p-4">
+    <section aria-labelledby="pw-live-lineup" className="flex min-w-0 flex-col rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 p-4">
       <div className="mb-3 flex items-baseline justify-between px-1">
         <h2 id="pw-live-lineup" className="text-lg font-bold">{t('lineup')}</h2>
         <span className="font-mono text-xs text-muted">{t('doneOf', { done: segment, total: session.segments.length })}</span>
@@ -112,12 +112,12 @@ export function LiveView() {
   const live = useLive((s) => s.state);
   const showAllVerses = useUi((s) => s.showAllVerses);
   const now = useNow().getTime();
-  if (!session) return <p className="rounded-2xl border border-line bg-panel p-6 text-muted">{t('noSessions')}</p>;
+  if (!session) return <p className="rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 p-6 text-muted">{t('noSessions')}</p>;
 
   const pw = live.pw?.sessionId === session.id ? live.pw : null;
   if (!pw) {
     return (
-      <div className="flex flex-col items-start gap-4 rounded-2xl border border-line bg-panel p-6">
+      <div className="flex flex-col items-start gap-4 rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 p-6">
         <p className="text-muted">{t('notLive')}</p>
         <button type="button" className={BTN_ACCENT} onClick={goLive}>
           <Play size={18} aria-hidden fill="currentColor" /> {t('goLive')}
@@ -191,7 +191,7 @@ export function LiveView() {
         <LiveLineup session={session} segment={segmentIndex} />
 
         {segment && (
-          <section aria-labelledby="pw-live-title" className="flex min-w-0 flex-col gap-4 rounded-2xl border border-line bg-panel p-5">
+          <section aria-labelledby="pw-live-title" className="flex min-w-0 flex-col gap-4 rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 p-5">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div className="min-w-0">
                 <p className="eyebrow !text-accent">
@@ -285,7 +285,7 @@ export function LiveView() {
         )}
 
         <div className="flex min-w-0 flex-col gap-5 @4xl/pw:col-span-2 @6xl/pw:col-span-1">
-          <section aria-labelledby="pw-outputs" className="flex flex-col gap-3 rounded-2xl border border-line bg-panel p-4">
+          <section aria-labelledby="pw-outputs" className="flex flex-col gap-3 rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 p-4">
             <h2 id="pw-outputs" className="text-lg font-bold">{t('outputs')}</h2>
             <span className="text-sm text-muted">{t('congregation')}</span>
             <div className="relative aspect-video overflow-hidden rounded-xl border border-line">
@@ -299,7 +299,7 @@ export function LiveView() {
 
           <SecondaryControls />
 
-          <section aria-labelledby="pw-next-up" className="flex flex-col gap-1 rounded-2xl border border-line bg-panel p-4">
+          <section aria-labelledby="pw-next-up" className="flex flex-col gap-1 rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 p-4">
             <h2 id="pw-next-up" className="eyebrow !text-accent">{t('nextUp')}</h2>
             {nextSegment ? (
               <>
@@ -313,7 +313,7 @@ export function LiveView() {
             )}
           </section>
 
-          <section aria-labelledby="pw-preflight" className="flex flex-col gap-2 rounded-2xl border border-line bg-panel p-4">
+          <section aria-labelledby="pw-preflight" className="flex flex-col gap-2 rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 p-4">
             <h2 id="pw-preflight" className="eyebrow !text-accent">{t('preflight')}</h2>
             <p>{missingSongs === 0 ? t('preflightOk') : missingSongs === 1 ? t('preflightSongsOne') : t('preflightSongs', { n: missingSongs })}</p>
             {missingSongs > 0 && (

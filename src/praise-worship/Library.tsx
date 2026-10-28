@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Search, Tag } from 'lucide-react';
+import { ChevronDown, Search, Tag } from 'lucide-react';
 import { acceptsTab, fitsSegment, GOSPEL_ACCLAMATION, scriptureAssignment, songAssignment, type PwContent, type PwSegment, type PwType } from '../../shared/pw.js';
 import { bridge } from '../live/bridge';
 import type { HymnSummary } from '../lyrics/types';
@@ -17,6 +17,7 @@ const TABS: { id: LibTab; key: string }[] = [
 const TYPE_FOR_TAB: Record<LibTab, PwType> = { song: 'song', prayer: 'prayer', scripture: 'scripture' };
 
 const ADD = 'grid min-h-11 min-w-16 shrink-0 place-items-center rounded-xl border border-line-strong px-4 text-sm font-bold transition hover:border-accent hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40';
+const PRIMARY_BTN = 'inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 px-4 text-sm font-bold text-zinc-950 shadow-md shadow-amber-500/10 transition-all hover:from-amber-400 hover:to-amber-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40';
 const INSERT_BTN = 'inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-line-strong px-3 text-sm font-semibold transition hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40';
 const SEARCH_DELAY_MS = 200;
 
@@ -201,7 +202,7 @@ export function Library() {
   };
 
   return (
-    <section aria-labelledby="pw-library-heading" className="flex min-w-0 flex-col gap-3 rounded-2xl border border-line bg-panel p-4">
+    <section aria-labelledby="pw-library-heading" className="flex min-w-0 flex-col gap-3 rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
         <h2 id="pw-library-heading" className="text-lg font-bold">{t('library')}</h2>
         {segment && <span className="text-sm text-muted">{t('addsTo', { n: pad2(selected + 1) })}</span>}
@@ -228,6 +229,14 @@ export function Library() {
       </label>
       <p id="pw-lib-keys" className="sr-only">{t('resultKeys')}</p>
 
+      {segment && (
+        <div className="flex justify-end">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs font-semibold text-zinc-200">
+            {segment.name}
+            <ChevronDown size={12} aria-hidden />
+          </span>
+        </div>
+      )}
       <div role="tablist" aria-label={t('library')} className="flex border-b border-line">
         {TABS.map((x) => (
           <button
@@ -240,11 +249,12 @@ export function Library() {
             tabIndex={tab === x.id ? 0 : -1}
             onClick={() => setTab(x.id)}
             onKeyDown={(e) => onTabKey(e, tab, setTab)}
-            className={`-mb-px min-h-11 border-b-2 px-3 text-[15px] font-semibold transition ${
-              tab === x.id ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-fg'
+            className={`-mb-px min-h-11 border-b-2 px-3 text-[15px] font-semibold transition-all duration-300 ${
+              tab === x.id ? 'border-amber-500 text-amber-400' : 'border-transparent text-muted hover:text-fg'
             }`}
           >
             {t(x.key)}
+            {tab === x.id && <span className="ml-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-400">{rows.length}</span>}
           </button>
         ))}
       </div>
@@ -257,7 +267,7 @@ export function Library() {
 
       {(tab === 'song' || tab === 'prayer') && (
         <div className="flex flex-wrap items-center gap-3 px-1">
-          <button type="button" className={INSERT_BTN} disabled={!segment || ticked.every((k) => !k.startsWith(`${tab}-`))} onClick={addSelected}>
+          <button type="button" className={PRIMARY_BTN} disabled={!segment || ticked.every((k) => !k.startsWith(`${tab}-`))} onClick={addSelected}>
             Add selected
           </button>
           {addNote && <p role="status" className="text-sm text-muted">{addNote}</p>}
@@ -276,13 +286,26 @@ export function Library() {
             className={`flex items-center gap-2 rounded-xl border p-2 ${row.key === activeKey ? 'border-accent bg-panel-2' : 'border-line bg-canvas/30'}`}
           >
             {row.tickable && (
-              <input
-                type="checkbox"
-                checked={ticked.includes(row.key)}
-                onChange={() => setTicked(toggleTick(ticked, row.key))}
-                aria-label={`Select ${row.title}`}
-                className="size-5 shrink-0"
-              />
+              <label className="relative inline-flex shrink-0 cursor-pointer">
+                {/* The real checkbox keeps its label and keyboard behaviour; the capsule beside it shows the state. */}
+                <input
+                  type="checkbox"
+                  checked={ticked.includes(row.key)}
+                  onChange={() => setTicked(toggleTick(ticked, row.key))}
+                  aria-label={`Select ${row.title}`}
+                  className="peer sr-only"
+                />
+                <span
+                  aria-hidden
+                  className={`flex size-5 items-center justify-center rounded text-xs font-black transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-amber-400 ${
+                    ticked.includes(row.key)
+                      ? 'bg-gradient-to-br from-amber-400 to-amber-600 text-zinc-950 shadow-sm shadow-amber-500/20'
+                      : 'border border-zinc-700 bg-zinc-900/50 hover:border-zinc-500'
+                  }`}
+                >
+                  {ticked.includes(row.key) ? '✓' : ''}
+                </span>
+              </label>
             )}
             <button
               ref={(el) => {

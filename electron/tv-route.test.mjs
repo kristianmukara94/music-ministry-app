@@ -45,7 +45,10 @@ test('the TV page is served at /tv on the read-only port, with its assets, and t
     const style = await fetch(`${secondary.base}/assets/tv-abc.css`);
     assert.match(style.headers.get('content-type'), /^text\/css/);
 
-    assert.equal((await fetch(`${primary.base}/tv`)).status, 404, 'the control port does not serve the TV page');
+    // The control port answers /tv with a helper page that links to the Secondary port. It never serves the TV page itself.
+    const helper = await fetch(`${primary.base}/tv`);
+    assert.equal(helper.status, 200);
+    assert.match(await helper.text(), /Looking for the TV Display\?/, 'the control port answers with the helper page, not the TV page');
     assert.equal((await fetch(`${primary.base}/assets/tv-abc.js`)).status, 404, 'nor its assets');
   } finally {
     await secondary.server.stop();
