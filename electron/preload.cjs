@@ -58,6 +58,9 @@ contextBridge.exposeInMainWorld('apcc', {
     saveReading: (input) => ipcRenderer.invoke('lectionary:saveReading', input),
     clearReading: (date, readingType) => ipcRenderer.invoke('lectionary:clearReading', date, readingType),
     setSeasonInfo: (date, seasonInfo) => ipcRenderer.invoke('lectionary:setSeasonInfo', date, seasonInfo),
+    overview: (from, to) => ipcRenderer.invoke('lectionary:overview', from, to),
+    exportJSON: () => ipcRenderer.invoke('lectionary:exportJSON'),
+    importJSON: () => ipcRenderer.invoke('lectionary:importJSON'),
   },
 
   rosary: {

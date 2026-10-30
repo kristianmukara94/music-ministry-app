@@ -1,7 +1,12 @@
-import { ipcMain } from 'electron';
+import { BrowserWindow, dialog, ipcMain } from 'electron';
+import fs from 'node:fs';
 import { parseTextStyle, sanitizeTextStyle } from '../shared/text-style.js';
+import { createLectionaryWriter, isCalendarDate, parseBackup, READING_TYPES, readAllLectionary } from './lectionary-backup.js';
 
-export const READING_TYPES = ['First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel Acclamation', 'Gospel'];
+export { READING_TYPES };
+const BACKUP_FILE_NAME = 'apccmma_lectionary_backup.json';
+/** The widest date range an overview answers for, so one call cannot read the whole library by accident. */
+const MAX_OVERVIEW_DAYS = 400;
 /** Entered here for Praise & Worship. Mass plans leave it out, so the Mass planner behaves as it did before it existed. */
 export const GOSPEL_ACCLAMATION = 'Gospel Acclamation';
 const PSALM = 'Responsorial Psalm';
@@ -76,7 +81,9 @@ export const LECTIONARY_ACCLAMATION_MIGRATIONS = [
 ];
 
 /** Reading data access. Pure: takes a database handle. */
-export function createLectionaryService(db) {
+export function createLectionaryService(db, deps = {}) {
+  const { showSaveDialog, showOpenDialog } = deps;
+  const writer = createLectionaryWriter(db);
   const q = {
     day: db.prepare(`
       SELECT reading_type AS readingType, liturgical_season_info AS seasonInfo, citation,
@@ -142,6 +149,66 @@ export function createLectionaryService(db) {
       return q.remove.run(date, readingType).changes > 0;
     },
 
+    /**
+     * What is in the library, and which slots are saved on each date from `from` to `to`. Read only. A slot with no text has no row,
+     * so a slot in the list is a slot with a reading.
+     */
+    overview(from, to) {
+      if (!isCalendarDate(from) || !isCalendarDate(to)) throw new Error('Dates must be real dates in the form YYYY-MM-DD.');
+      if (from > to) throw new Error('The start date is after the end date.');
+      if ((Date.parse(to) - Date.parse(from)) / 86400000 > MAX_OVERVIEW_DAYS) throw new Error(`Ask for ${MAX_OVERVIEW_DAYS} days or fewer.`);
+
+      const totals = db.prepare('SELECT COUNT(*) AS readings, COUNT(DISTINCT liturgical_date) AS days, MIN(liturgical_date) AS earliest, MAX(liturgical_date) AS latest FROM lectionary_readings').get();
+      const bySlot = Object.fromEntries(READING_TYPES.map((type) => [type, 0]));
+      for (const row of db.prepare('SELECT reading_type AS readingType, COUNT(*) AS n FROM lectionary_readings GROUP BY reading_type').all()) bySlot[row.readingType] = row.n;
+
+      const days = new Map();
+      for (const row of db.prepare('SELECT liturgical_date AS date, liturgical_season_info AS seasonInfo, reading_type AS readingType FROM lectionary_readings WHERE liturgical_date BETWEEN ? AND ? ORDER BY liturgical_date').all(from, to)) {
+        const day = days.get(row.date) ?? { date: row.date, seasonInfo: row.seasonInfo, slots: [] };
+        if (!day.seasonInfo) day.seasonInfo = row.seasonInfo;
+        day.slots.push(row.readingType);
+        days.set(row.date, day);
+      }
+      return { readings: totals.readings, days: totals.days, earliest: totals.earliest, latest: totals.latest, bySlot, range: [...days.values()] };
+    },
+
+    /** Asks where to save, then writes every reading to a JSON file. Resolves to null if cancelled. */
+    async exportBackup(win) {
+      const picked = await showSaveDialog(win, {
+        title: 'Export lectionary readings',
+        defaultPath: BACKUP_FILE_NAME,
+        filters: [{ name: 'JSON backup', extensions: ['json'] }],
+      });
+      if (picked.canceled || !picked.filePath) return null;
+      const backup = readAllLectionary(db);
+      await fs.promises.writeFile(picked.filePath, `${JSON.stringify(backup, null, 2)}
+`, 'utf8');
+      return { path: picked.filePath, readings: backup.lectionary_readings.length };
+    },
+
+    /**
+     * Asks for a backup file, checks every reading, then writes them all in one transaction. A file with any bad reading changes
+     * nothing. Readings already saved on the same date and slot are replaced. Resolves to null if cancelled.
+     */
+    async importBackup(win) {
+      const picked = await showOpenDialog(win, {
+        title: 'Import lectionary readings',
+        properties: ['openFile'],
+        filters: [{ name: 'JSON backup', extensions: ['json'] }],
+      });
+      if (picked.canceled || picked.filePaths.length === 0) return null;
+      const source = picked.filePaths[0];
+      let data;
+      try {
+        data = JSON.parse(await fs.promises.readFile(source, 'utf8'));
+      } catch {
+        throw new Error('This file is not valid JSON.');
+      }
+      const rows = parseBackup(data);
+      writer.write(rows);
+      return { path: source, readings: rows.readings.length };
+    },
+
     /** Applies the day's liturgical label (e.g. "3rd Sunday of Lent") to every slot saved for that date. */
     setSeasonInfo(date, seasonInfo) {
       requireDate(date);
@@ -152,11 +219,18 @@ export function createLectionaryService(db) {
 
 /** Registers the `lectionary:*` IPC channels. Called once from the main process. */
 export function setupLectionary(db) {
-  const service = createLectionaryService(db);
-  const handle = (channel, fn) => ipcMain.handle(`lectionary:${channel}`, (_event, ...args) => fn(...args));
+  const service = createLectionaryService(db, {
+    showSaveDialog: (win, options) => (win ? dialog.showSaveDialog(win, options) : dialog.showSaveDialog(options)),
+    showOpenDialog: (win, options) => (win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options)),
+  });
+  // The window that asked is passed first, so a file dialog opens over it.
+  const handle = (channel, fn) => ipcMain.handle(`lectionary:${channel}`, (event, ...args) => fn(BrowserWindow.fromWebContents(event.sender), ...args));
 
-  handle('getDay', (date) => service.getDay(date));
-  handle('saveReading', (input) => service.saveReading(input));
-  handle('clearReading', (date, readingType) => service.clearReading(date, readingType));
-  handle('setSeasonInfo', (date, seasonInfo) => service.setSeasonInfo(date, seasonInfo));
+  handle('getDay', (_win, date) => service.getDay(date));
+  handle('saveReading', (_win, input) => service.saveReading(input));
+  handle('clearReading', (_win, date, readingType) => service.clearReading(date, readingType));
+  handle('setSeasonInfo', (_win, date, seasonInfo) => service.setSeasonInfo(date, seasonInfo));
+  handle('overview', (_win, from, to) => service.overview(from, to));
+  handle('exportJSON', (win) => service.exportBackup(win));
+  handle('importJSON', (win) => service.importBackup(win));
 }

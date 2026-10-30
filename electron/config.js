@@ -11,7 +11,7 @@ import { checkCloudAddress } from './cloud-address.js';
 export const DB_FILE_NAME = 'apccmma.db';
 export const LANGUAGES = ['en', 'tl', 'ceb'];
 // Must match the [data-theme] blocks in src/styles.css.
-export const THEME_IDS = ['obsidian', 'default', 'light', 'classic', 'olive', 'black-gold', 'deep-teal', 'burgundy', 'wine', 'slate', 'ice-blue', 'mint', 'sage', 'linen', 'shell'];
+export const THEME_IDS = ['obsidian', 'default', 'light', 'classic', 'olive', 'black-gold', 'deep-teal', 'burgundy', 'wine', 'slate', 'ice-blue', 'mint', 'sage', 'linen', 'shell', 'advent', 'christmas', 'ordinary-time', 'lent', 'holy-week', 'easter', 'pentecost', 'season-auto'];
 const FILE = 'config.json';
 
 export const UPDATE_CHANNELS = ['stable', 'beta'];

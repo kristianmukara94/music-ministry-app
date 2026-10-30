@@ -339,11 +339,12 @@ export function AnnouncementsDeck() {
       <header className="flex flex-wrap items-start justify-between gap-6 px-6 pt-5 pb-3">
         <div>
           <div className="text-sm font-semibold tracking-wider text-accent uppercase">{tr('eyebrow')}</div>
-          <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{tr('title')}</h1>
+          <h1 className="mt-1 text-3xl leading-tight font-extrabold tracking-tight text-fg xl:text-4xl">{tr('title')}</h1>
           <p className="mt-2 text-[15px] text-muted">{tr('subtitle')}</p>
           <div className="mt-3 flex items-center gap-2 text-sm text-muted">
-            <span className="rounded bg-panel-2 px-1.5 py-0.5 font-mono text-xs tabular-nums text-fg">{count}</span>
-            {folderLabel}
+            <span className="font-semibold text-fg">{folderLabel}</span>
+            <span aria-hidden>·</span>
+            <span className="tabular-nums">{tr('slideCount', { n: count })}</span>
           </div>
         </div>
 
@@ -382,6 +383,7 @@ export function AnnouncementsDeck() {
       </header>
 
       <PlaybackBar
+        tr={tr}
         playing={playing}
         playback={playback}
         onChange={setPlayback}
@@ -580,9 +582,9 @@ function FolderList({
               <button type="button" onClick={() => onSelect(f.id)} className={rowClass(selected === f.id)} aria-current={selected === f.id}>
                 <Folder size={15} aria-hidden />
                 <span className="flex-1 truncate">{f.name}</span>
-                <span className="font-mono text-xs tabular-nums group-hover:hidden">{f.count}</span>
+                <span className="font-mono text-xs tabular-nums">{f.count}</span>
               </button>
-              <div className="hidden items-center group-hover:flex">
+              <div className="flex items-center opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
                 <button
                   type="button"
                   onClick={() => { setDraft(f.name); setEditingId(f.id); }}
@@ -732,7 +734,7 @@ function SlideGrid({
               onClick={() => onRemove(slide)}
               aria-label={tr('deleteSlide')}
               title={tr('deleteSlide')}
-              className="absolute top-2 right-2 hidden size-7 place-items-center rounded bg-black/80 text-white hover:bg-crimson group-hover:grid"
+              className="absolute top-2 right-2 grid size-7 place-items-center rounded bg-black/80 text-white opacity-0 transition hover:bg-crimson focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100"
             >
               <Trash2 size={14} aria-hidden />
             </button>
@@ -761,10 +763,11 @@ function LimeSwitch({ label, on, onChange }: { label: string; on: boolean; onCha
 }
 
 /**
- * The playback bar: step buttons, the autoplay interval, the loop and count switches, the slide badge, and the
- * clear and play actions. The labels are English, as the rest of this screen's controls are.
+ * The playback bar: step buttons, autoplay, the loop and count switches, the slide counter, and the clear and play
+ * actions. Navigation sits on the left and the projector actions on the right. The keyboard hint sits underneath.
  */
-function PlaybackBar({ playing, playback, onChange, current, total, disabled, onFirst, onNext, onTogglePlay, onClear }: {
+function PlaybackBar({ tr, playing, playback, onChange, current, total, disabled, onFirst, onNext, onTogglePlay, onClear }: {
+  tr: AnnT;
   playing: boolean;
   playback: Playback;
   onChange: (playback: Playback) => void;
@@ -776,23 +779,26 @@ function PlaybackBar({ playing, playback, onChange, current, total, disabled, on
   onTogglePlay: () => void;
   onClear: () => void;
 }) {
-  const tile = 'w-8 h-8 flex items-center justify-center bg-panel-2 border border-accent/30 text-fg/90 hover:border-accent hover:text-accent rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-40';
+  const tile = 'grid size-9 place-items-center rounded-lg border border-accent/30 bg-panel-2 text-fg/90 transition-colors hover:border-accent hover:text-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40';
+  const timerLabel = playing ? tr('pauseAutoplay') : tr('startAutoplay');
+  const numberField = 'w-14 rounded-md border border-accent/40 bg-panel-2 px-2 py-1 text-right font-mono text-xs font-bold text-fg focus:border-accent focus:outline-none';
+
   return (
-    <div role="toolbar" aria-label="Playback" className="flex flex-wrap items-center gap-x-5 gap-y-3 border-b border-line px-6 py-3">
+    <div role="toolbar" aria-label={tr('playback')} className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line px-6 py-3">
       <div className="flex items-center gap-1.5">
-        <button type="button" onClick={onFirst} disabled={disabled} aria-label="First slide" title="First slide" className={tile}>
+        <button type="button" onClick={onFirst} disabled={disabled} aria-label={tr('firstSlide')} title={tr('firstSlide')} className={tile}>
           <ChevronsLeft size={16} aria-hidden />
         </button>
-        <button type="button" onClick={onTogglePlay} disabled={disabled && !playing} aria-label={playing ? 'Pause timer' : 'Start timer'} title={playing ? 'Pause timer' : 'Start timer'} className={tile}>
+        <button type="button" onClick={onTogglePlay} disabled={disabled && !playing} aria-label={timerLabel} title={timerLabel} className={tile}>
           {playing ? <Pause size={15} aria-hidden /> : <Play size={14} aria-hidden />}
         </button>
-        <button type="button" onClick={onNext} disabled={disabled} aria-label="Next slide" title="Next slide" className={tile}>
+        <button type="button" onClick={onNext} disabled={disabled} aria-label={tr('nextSlide')} title={tr('nextSlide')} className={tile}>
           <ChevronsRight size={16} aria-hidden />
         </button>
       </div>
 
-      <div className="flex items-center gap-2 text-xs font-bold tracking-wider text-muted uppercase">
-        <span>Autoplay</span>
+      <div className="flex items-center gap-2.5">
+        <span className="text-xs font-bold tracking-wider text-muted uppercase">{tr('autoplay')}</span>
         <input
           type="range"
           min={1}
@@ -800,10 +806,10 @@ function PlaybackBar({ playing, playback, onChange, current, total, disabled, on
           step={1}
           value={playback.interval}
           onChange={(e) => onChange({ ...playback, interval: clampInterval(e.target.value) })}
-          aria-label="Autoplay interval in seconds"
-          className="w-32 accent-accent bg-fg/10 h-1.5 rounded-lg cursor-pointer"
+          aria-label={tr('autoplayInterval')}
+          className="h-1.5 w-28 cursor-pointer rounded-lg bg-fg/10 accent-accent"
         />
-        <span className="flex items-center gap-0.5">
+        <span className="flex items-center gap-1.5">
           <input
             type="number"
             min={1}
@@ -814,38 +820,40 @@ function PlaybackBar({ playing, playback, onChange, current, total, disabled, on
             }}
             // Typing here must not trigger the deck's keys (arrows, space, Enter).
             onKeyDown={(e) => e.stopPropagation()}
-            aria-label="Autoplay interval, in seconds"
-            className="w-14 bg-panel-2 border border-accent/40 text-fg font-mono focus:border-accent focus:outline-none rounded-md px-2 py-1 text-xs font-bold text-right"
+            aria-label={tr('autoplayInterval')}
+            className={numberField}
           />
-          <span className="text-sm font-bold text-fg">s</span>
+          <span className="text-xs font-bold text-muted">{tr('secondsUnit')}</span>
         </span>
       </div>
 
-      <LimeSwitch label="Loop deck" on={playback.loop} onChange={(loop) => onChange({ ...playback, loop })} />
-      <LimeSwitch label="Project slide count" on={playback.showCount} onChange={(showCount) => onChange({ ...playback, showCount })} />
+      <LimeSwitch label={tr('loopDeck')} on={playback.loop} onChange={(loop) => onChange({ ...playback, loop })} />
+      <LimeSwitch label={tr('showCount')} on={playback.showCount} onChange={(showCount) => onChange({ ...playback, showCount })} />
 
-      <span className="bg-panel-2/90 border border-accent/30 text-accent/90 text-xs font-mono font-semibold px-3 py-1 rounded-full shadow-sm tabular-nums">
-        Current slide {current > 0 ? current : '–'}/{total}
-      </span>
+      <output aria-live="polite" className="rounded-full border border-accent/30 bg-panel-2/90 px-3 py-1 font-mono text-xs font-semibold tabular-nums text-accent">
+        {current > 0 ? tr('pageOf', { n: current, total }) : tr('noSlideSelected')}
+      </output>
 
       <div className="ml-auto flex items-center gap-2">
         <button
           type="button"
           onClick={onClear}
-          className="px-3 py-2 bg-panel-2/80 border border-danger/50 text-danger hover:bg-danger/10 hover:border-danger rounded-lg font-bold text-xs tracking-wider uppercase transition-colors flex items-center gap-1.5"
+          className="flex h-10 items-center gap-2 rounded-lg border border-danger/50 bg-panel-2/80 px-3.5 text-xs font-bold tracking-wider text-danger uppercase transition-colors hover:border-danger hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-danger focus-visible:outline-none"
         >
-          <Trash2 size={14} aria-hidden /> Clear all
+          <Trash2 size={14} aria-hidden /> {tr('clearProjector')}
         </button>
         <button
           type="button"
           onClick={onTogglePlay}
           disabled={disabled && !playing}
-          className="px-4 py-2 bg-accent hover:brightness-110 text-on-accent font-bold rounded-lg shadow-md shadow-black/40 transition-all flex items-center gap-2 text-xs tracking-wider uppercase disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-10 items-center gap-2 rounded-lg bg-accent px-5 text-xs font-extrabold tracking-wider text-on-accent uppercase shadow-md shadow-black/40 transition-all hover:brightness-110 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
         >
           {playing ? <Pause size={14} aria-hidden /> : <Play size={14} fill="currentColor" aria-hidden />}
-          {playing ? 'Pause' : 'Play'}
+          {playing ? tr('pauseDeck') : tr('playDeck')}
         </button>
       </div>
+
+      <p className="-mt-1 w-full text-xs text-faint">{tr('keyHint')}</p>
     </div>
   );
 }

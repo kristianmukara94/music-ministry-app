@@ -311,6 +311,123 @@
   --color-info: #1d4ed8;
 }
 
+/* ─── Seasonal: the colours of the liturgical year ─── */
+[data-theme="advent"] {
+  --color-canvas: #130a26;
+  --color-panel: rgb(34 18 66 / 0.8);
+  --color-panel-2: rgb(52 28 96 / 0.7);
+  --color-line: rgb(100 70 160 / 0.5);
+  --color-line-strong: #6d4fb0;
+  --color-fg: #f4eefc;
+  --color-muted: #d4c6ee;
+  --color-faint: #beaee0;
+  --color-accent: #ffcf70;
+  --color-on-accent: #130a26;
+  --color-gold: #ffcf70;
+  --color-danger: #ff8f82;
+  --color-ok: #7fd18b;
+}
+
+[data-theme="christmas"] {
+  --color-canvas: #fcf8ee;
+  --color-panel: rgb(255 255 255 / 0.88);
+  --color-panel-2: rgb(246 236 214 / 0.9);
+  --color-line: rgb(160 120 60 / 0.3);
+  --color-line-strong: #c9a96a;
+  --color-fg: #2a1410;
+  --color-muted: #5a3a30;
+  --color-faint: #503a30;
+  --color-accent: #8a1722;
+  --color-on-accent: #ffffff;
+  --color-gold: #8a6410;
+  --color-danger: #8a1c22;
+  --color-ok: #1f6b35;
+  --color-warn: #8a4b08;
+  --color-info: #1d4ed8;
+}
+
+[data-theme="ordinary-time"] {
+  --color-canvas: #071a10;
+  --color-panel: rgb(12 46 28 / 0.8);
+  --color-panel-2: rgb(18 68 40 / 0.7);
+  --color-line: rgb(40 120 70 / 0.5);
+  --color-line-strong: #2f8a55;
+  --color-fg: #eefaf2;
+  --color-muted: #bfe5cc;
+  --color-faint: #93c9a6;
+  --color-accent: #86e0a8;
+  --color-on-accent: #071a10;
+  --color-gold: #86e0a8;
+  --color-danger: #ff8f82;
+  --color-ok: #7fd18b;
+}
+
+[data-theme="lent"] {
+  --color-canvas: #161019;
+  --color-panel: rgb(40 30 48 / 0.85);
+  --color-panel-2: rgb(58 44 70 / 0.75);
+  --color-line: rgb(110 90 130 / 0.45);
+  --color-line-strong: #6e5a82;
+  --color-fg: #f1ecf4;
+  --color-muted: #cdbfd6;
+  --color-faint: #c2b3ce;
+  --color-accent: #c9a8e8;
+  --color-on-accent: #161019;
+  --color-gold: #c9a8e8;
+  --color-danger: #ff8f82;
+  --color-ok: #7fd18b;
+}
+
+[data-theme="holy-week"] {
+  --color-canvas: #1a0406;
+  --color-panel: rgb(52 10 14 / 0.85);
+  --color-panel-2: rgb(80 16 22 / 0.75);
+  --color-line: rgb(140 36 44 / 0.5);
+  --color-line-strong: #9c2f38;
+  --color-fg: #fbeeee;
+  --color-muted: #ebc5c7;
+  --color-faint: #d6a3a7;
+  --color-accent: #f0dcc4;
+  --color-on-accent: #1a0406;
+  --color-gold: #f0dcc4;
+  --color-danger: #ff8f82;
+  --color-ok: #7fd18b;
+}
+
+[data-theme="easter"] {
+  --color-canvas: #fffdf6;
+  --color-panel: rgb(255 255 255 / 0.9);
+  --color-panel-2: rgb(250 240 210 / 0.9);
+  --color-line: rgb(170 130 30 / 0.3);
+  --color-line-strong: #d4b45a;
+  --color-fg: #25200f;
+  --color-muted: #54491f;
+  --color-faint: #4d4420;
+  --color-accent: #6b4e00;
+  --color-on-accent: #ffffff;
+  --color-gold: #7d5c00;
+  --color-danger: #8a1c22;
+  --color-ok: #1f6b35;
+  --color-warn: #8a4b08;
+  --color-info: #1d4ed8;
+}
+
+[data-theme="pentecost"] {
+  --color-canvas: #200a03;
+  --color-panel: rgb(66 24 8 / 0.82);
+  --color-panel-2: rgb(96 36 12 / 0.72);
+  --color-line: rgb(160 70 30 / 0.5);
+  --color-line-strong: #b0501f;
+  --color-fg: #fff0e6;
+  --color-muted: #f0cdb4;
+  --color-faint: #dcae8f;
+  --color-accent: #ffb347;
+  --color-on-accent: #200a03;
+  --color-gold: #ffb347;
+  --color-danger: #ff8f82;
+  --color-ok: #7fd18b;
+}
+
 /* Condensed display cut of Archivo — headlines, labels, the booth clock. */
 @utility condensed {
   font-stretch: 72%;

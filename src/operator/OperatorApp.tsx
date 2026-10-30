@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Calendar, ListOrdered, X } from 'lucide-react';
 import { dispatch, useLive } from '../live/store';
 import { useT } from '../i18n/strings';
@@ -109,7 +109,8 @@ function EdgeTabs() {
   const label = 'text-[13px] font-black tracking-[0.2em] uppercase condensed [writing-mode:vertical-rl]';
   const icon = 'text-accent transition-transform duration-200 group-hover:scale-110';
   return (
-    <div className="fixed top-[134px] right-0 z-20 flex flex-col gap-3">
+    // Below the top bar, wherever it ends. The bar is one row when the window is wide and two when it is not.
+    <div className="fixed top-[calc(var(--topbar-h)+86px)] right-0 z-20 flex flex-col gap-3">
       <button id="queue-nav-button" type="button" className={tab} onClick={() => setUi({ queueOpen: true })} aria-label={`${t('queue.tab')}: ${queueCount} ${t('card.items')}`}>
         <ListOrdered size={16} strokeWidth={2.25} aria-hidden className={icon} />
         <span className={label}>{t('queue.tab')}</span>
@@ -171,16 +172,18 @@ function QueueDrawer() {
 
   if (!open) return null;
   const close = () => setUi({ queueOpen: false });
-  // The drawer sits below the top bar, so the window controls and the Projector status stay clickable.
+  // The drawer sits below the top bar, so the window controls, the switches and every top bar button stay clickable. --topbar-h is the
+  // bar's measured height (see OperatorApp), so the drawer still clears it when the bar wraps to a second row.
   // The backdrop only dims the page. Clicks pass through it, and the outside-click listener closes the drawer.
+  // The drawer is painted on the canvas colour first: several themes make --color-panel see-through, and the page must not show through it.
   return (
     <>
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 top-12 z-30 bg-black/50" aria-hidden />
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 top-[var(--topbar-h)] z-30 bg-black/50" aria-hidden />
       <aside
         ref={drawerRef}
         // Clicks inside the drawer never reach the outside-click listener.
         onMouseDown={(e) => e.stopPropagation()}
-        className="fixed top-12 right-0 z-40 flex h-[calc(100vh-3rem)] w-[380px] flex-col border-l border-line bg-panel shadow-2xl"
+        className="fixed top-[var(--topbar-h)] right-0 z-40 flex h-[calc(100vh-var(--topbar-h))] w-[380px] flex-col border-l border-line bg-canvas shadow-2xl"
         aria-label={t('card.queue')}
         // A media card dropped here joins the queue, in the introductory rites. The queue then stages it.
         onDragOver={(e) => {
@@ -196,21 +199,23 @@ function QueueDrawer() {
           );
         }}
       >
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-3">
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-base font-bold tracking-tight text-fg">Mass Queue</h2>
-            <span className="rounded-full bg-accent/20 px-2 py-0.5 font-mono text-xs font-bold text-accent tabular-nums">{queue.length}</span>
-          </div>
-          <button
-            type="button"
-            onClick={close}
-            aria-label="Close queue"
-            className="grid size-8 place-items-center rounded-md border border-line text-fg/60 transition hover:border-fg/30 hover:text-fg"
-          >
-            <X size={16} aria-hidden />
-          </button>
-        </header>
-        <ServiceQueue items={queue} />
+        <div className="flex min-h-0 flex-1 flex-col bg-panel">
+          <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-base font-bold tracking-tight text-fg">Mass Queue</h2>
+              <span className="rounded-full bg-accent/20 px-2 py-0.5 font-mono text-xs font-bold text-accent tabular-nums">{queue.length}</span>
+            </div>
+            <button
+              type="button"
+              onClick={close}
+              aria-label="Close queue"
+              className="grid size-8 place-items-center rounded-md border border-line text-fg/60 transition hover:border-fg/30 hover:text-fg focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+            >
+              <X size={16} aria-hidden />
+            </button>
+          </header>
+          <ServiceQueue items={queue} />
+        </div>
       </aside>
     </>
   );
@@ -241,10 +246,24 @@ export function OperatorApp() {
     document.documentElement.lang = lang === 'tl' ? 'fil' : lang;
   }, [lang]);
 
+  // The top bar's real height. It is one row in a wide window and two in a narrower one, and the overlays below it (the queue drawer and
+  // the edge tabs) start where it ends, so they read it from --topbar-h rather than assuming a row.
+  const barRef = useRef<HTMLDivElement>(null);
+  const [barHeight, setBarHeight] = useState(48);
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const read = () => setBarHeight(Math.round(bar.getBoundingClientRect().height));
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-canvas text-fg">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-canvas text-fg" style={{ '--topbar-h': `${barHeight}px` } as CSSProperties}>
       {/* The top bar spans the full width. The queue drawer, planner tab and command palette are overlays above it. */}
-      <div className="relative z-20 w-full shrink-0">
+      <div ref={barRef} className="relative z-20 w-full shrink-0">
         <TopBar />
       </div>
       <LiveNoticeBanner />

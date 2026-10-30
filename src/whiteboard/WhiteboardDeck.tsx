@@ -1,8 +1,8 @@
-import { useEffect, useState, type DragEvent } from 'react';
-import { FileDown, FileUp, Layers, Monitor, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState, type DragEvent } from 'react';
+import { Copy, FileUp, Layers, Monitor, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { templateStart } from './templates';
 import { bridge } from '../live/bridge';
-import { dispatch } from '../live/store';
+import { dispatch, useLive } from '../live/store';
 import { SlideCanvas } from './SlideCanvas';
 import { SlideEditorModal } from './SlideEditorModal';
 import { TemplateModal, type TemplateId } from './TemplateModal';
@@ -36,6 +36,16 @@ export function WhiteboardDeck() {
   const [editor, setEditor] = useState<{ key: number; mode: 'create' | 'edit'; initial: WhiteboardSlideInput } | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
   const [dropId, setDropId] = useState<number | null>(null);
+  const [query, setQuery] = useState('');
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const live = useLive((s) => s.state.projector.live);
+
+  // A confirmation fades after a few seconds, so it never lingers over later work.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   const reload = () =>
     api
@@ -85,6 +95,17 @@ export function WhiteboardDeck() {
     }
   };
 
+  /** Saves a copy with its own id, named so it can be told apart from the original. */
+  const duplicate = async (slide: WhiteboardSlide) => {
+    try {
+      await api.save({ title: `${slide.title} (copy)`, content: slide.content, design: slide.design });
+      setNotice(`Duplicated "${slide.title}".`);
+      await reload();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  };
+
   const importPowerPoint = async () => {
     setBusy(true);
     setError(null);
@@ -121,6 +142,16 @@ export function WhiteboardDeck() {
   };
 
   const count = slides.length;
+  const search = query.trim().toLowerCase();
+  const visible = useMemo(
+    () => (search ? slides.filter((s) => s.title.toLowerCase().includes(search) || s.content.toLowerCase().includes(search)) : slides),
+    [slides, search],
+  );
+  // Reordering is only meaningful on the whole list, so it is switched off while a search narrows it.
+  const reorderable = !search;
+
+  /** Whether the projector is already showing this slide. */
+  const isLive = (slide: WhiteboardSlide) => live.kind === 'whiteboard' && live.slide.title === slide.title && live.slide.content === slide.content;
 
   return (
     <div className="flex min-h-[calc(100vh-88px)] flex-col">
@@ -128,23 +159,16 @@ export function WhiteboardDeck() {
       <header className="flex shrink-0 flex-wrap items-start justify-between gap-5 px-6 pt-5 pb-3">
         <div>
           <div className="text-sm font-semibold tracking-wider text-accent uppercase">Slide builder</div>
-          <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">Whiteboard</h1>
+          <h1 className="mt-1 text-3xl leading-tight font-extrabold tracking-tight text-fg xl:text-4xl">Whiteboard</h1>
           <p className="mt-1 text-sm text-fg/70">Create sermon notes and bulletin points</p>
-          <p className="mt-2 font-mono text-xs text-fg/50">
-            {count} {count === 1 ? 'slide' : 'slides'} • Drag to reorder • Double-click to project
+          <p className="mt-2 text-xs text-fg/50">
+            <span className="tabular-nums">{count} {count === 1 ? 'slide' : 'slides'}</span>
+            <span aria-hidden> · </span>Drag to reorder<span aria-hidden> · </span>Double-click or press Enter to project
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => setTemplatesOpen(true)} className="flex h-10 items-center gap-2 rounded-lg border border-fg/20 bg-panel-2 px-3 text-xs font-bold tracking-wider text-fg/90 uppercase transition-colors hover:border-accent/40 hover:text-accent">
             <Layers size={14} aria-hidden /> Templates
-          </button>
-          <button
-            type="button"
-            disabled
-            title="PowerPoint export is not available yet."
-            className="flex h-10 items-center gap-2 rounded-lg border border-line bg-panel-2/60 px-3 text-xs font-bold tracking-wider text-fg/50 uppercase opacity-60"
-          >
-            <FileDown size={14} aria-hidden /> Export PowerPoint
           </button>
           <button type="button" onClick={importPowerPoint} disabled={busy} className="flex h-10 items-center gap-2 rounded-lg border border-fg/20 bg-panel-2 px-3 text-xs font-bold tracking-wider text-fg/90 uppercase transition-colors hover:border-accent/40 hover:text-accent disabled:opacity-40">
             <FileUp size={14} aria-hidden /> {busy ? 'Importing…' : 'Import PowerPoint'}
@@ -156,7 +180,14 @@ export function WhiteboardDeck() {
       </header>
 
       {error && <div role="alert" className="border-b border-danger/40 bg-danger/10 px-6 py-2 text-sm whitespace-pre-line text-danger">{error}</div>}
-      {notice && !error && <div role="status" className="border-b border-line px-6 py-2 text-sm text-fg/80">{notice}</div>}
+      {notice && !error && (
+        <div role="status" className="flex items-center justify-between gap-3 border-b border-line bg-accent/10 px-6 py-2 text-sm text-fg/90">
+          {notice}
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className="grid size-6 place-items-center rounded text-fg/60 hover:text-fg">
+            <X size={14} aria-hidden />
+          </button>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         {/* Library: the slides, as one folder. */}
@@ -189,11 +220,33 @@ export function WhiteboardDeck() {
               </p>
             </div>
           ) : (
+            <>
+            <div className="relative mb-5 max-w-md">
+              <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-fg/40" aria-hidden />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search slides by title or text"
+                aria-label="Search slides"
+                className="h-10 w-full rounded-lg border border-fg/15 bg-panel-2 pr-9 pl-9 text-sm text-fg outline-none placeholder:text-fg/40 focus:border-accent"
+              />
+              {query && (
+                <button type="button" onClick={() => setQuery('')} aria-label="Clear search" className="absolute top-1/2 right-2 grid size-6 -translate-y-1/2 place-items-center rounded text-fg/50 hover:text-fg">
+                  <X size={14} aria-hidden />
+                </button>
+              )}
+            </div>
+            {visible.length === 0 && (
+              <p role="status" className="rounded-lg border border-dashed border-fg/20 p-8 text-center text-sm text-fg/60">
+                No slides match "{query.trim()}".
+              </p>
+            )}
             <ul className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-4">
-              {slides.map((slide, i) => (
+              {visible.map((slide) => (
                 <li
                   key={slide.id}
-                  draggable
+                  draggable={reorderable}
                   onDragStart={(e) => onDragStart(e, slide)}
                   onDragOver={(e) => {
                     if (dragId == null) return;
@@ -210,29 +263,58 @@ export function WhiteboardDeck() {
                   }}
                   className={`group relative rounded-lg transition ${dropId === slide.id ? 'ring-2 ring-accent' : ''} ${dragId === slide.id ? 'opacity-40' : ''}`}
                 >
+                  {/* A plain block layout: the preview keeps its 16:9 shape instead of collapsing inside a flex button. */}
                   <button
                     type="button"
+                    onClick={() => setSelectedId(slide.id)}
                     onDoubleClick={() => project(slide)}
-                    aria-label={`${slide.title}. Double-click to project.`}
-                    className="flex w-full flex-col overflow-hidden rounded-lg border border-line bg-panel-2 text-left transition-colors hover:border-accent/40"
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return;
+                      e.preventDefault();
+                      project(slide);
+                    }}
+                    aria-pressed={selectedId === slide.id}
+                    aria-label={`${slide.title}. Double-click or press Enter to project.`}
+                    className={`block w-full overflow-hidden rounded-lg border bg-panel-2 text-left transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${
+                      selectedId === slide.id ? 'border-accent ring-1 ring-accent' : 'border-line hover:border-accent/40'
+                    }`}
                   >
-                    <div className="relative">
-                      <SlideCanvas slide={slide} className="aspect-video w-full" />
-                      <span className="absolute top-2 left-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[11px] font-bold text-fg/90">{i + 1}</span>
+                    <div className="relative aspect-video w-full overflow-hidden">
+                      <div className="absolute inset-0">
+                        <SlideCanvas slide={slide} className="h-full w-full" />
+                      </div>
+                      <span className="absolute top-2 left-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[11px] font-bold text-fg/90">{slides.indexOf(slide) + 1}</span>
+                      {isLive(slide) && (
+                        <span className="absolute bottom-2 left-2 rounded bg-accent px-1.5 py-0.5 text-[10px] font-extrabold tracking-wider text-on-accent uppercase">Live</span>
+                      )}
                     </div>
-                    <div className="truncate px-3 py-2 text-sm font-semibold text-fg">{slide.title}</div>
+                    <div className="truncate px-3 py-2.5 text-sm font-semibold text-fg">{slide.title || 'Untitled slide'}</div>
                   </button>
-                  <div className="absolute top-2 right-2 hidden gap-1 group-hover:flex">
-                    <button type="button" onClick={() => openEdit(slide)} aria-label={`Edit ${slide.title}`} className="grid size-7 place-items-center rounded bg-black/75 text-fg/90 hover:text-accent">
-                      <Pencil size={13} aria-hidden />
-                    </button>
-                    <button type="button" onClick={() => remove(slide)} aria-label={`Delete ${slide.title}`} className="grid size-7 place-items-center rounded bg-black/75 text-fg/90 hover:text-danger">
-                      <Trash2 size={13} aria-hidden />
-                    </button>
+                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
+                    {(
+                      [
+                        { label: 'Project', icon: Monitor, run: () => project(slide), hover: 'hover:text-accent' },
+                        { label: 'Edit', icon: Pencil, run: () => openEdit(slide), hover: 'hover:text-accent' },
+                        { label: 'Duplicate', icon: Copy, run: () => void duplicate(slide), hover: 'hover:text-accent' },
+                        { label: 'Delete', icon: Trash2, run: () => void remove(slide), hover: 'hover:text-danger' },
+                      ] as const
+                    ).map(({ label, icon: Icon, run, hover }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={run}
+                        aria-label={`${label} ${slide.title}`}
+                        title={label}
+                        className={`grid size-7 place-items-center rounded bg-black/75 text-fg/90 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${hover}`}
+                      >
+                        <Icon size={13} aria-hidden />
+                      </button>
+                    ))}
                   </div>
                 </li>
               ))}
             </ul>
+            </>
           )}
         </section>
       </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { CheckCircle2, Grid3x3, Monitor, MonitorUp, Presentation, RotateCcw } from 'lucide-react';
-import { FADE_MAX_MS, FADE_MIN_MS, SLIDE_FONTS, type ProjectorSettings as Settings } from '../../shared/projector-settings.js';
+import { Check, CheckCircle2, Grid3x3, History, House, Monitor, MonitorUp, Moon, Power, PowerOff, RotateCcw, type LucideIcon } from 'lucide-react';
+import { FADE_MAX_MS, FADE_MIN_MS, PROJECTOR_SETTINGS_DEFAULTS as DEFAULTS, SLIDE_FONTS, type ProjectorSettings as Settings } from '../../shared/projector-settings.js';
 import { TEXT_FONT_GROUPS, TEXT_FONTS, slideFontCss } from '../../shared/text-style.js';
 import { dispatch, useLive } from '../live/store';
 import { bridge, type DisplayInfo } from '../live/bridge';
@@ -8,37 +8,44 @@ import type { MediaAsset } from '../media/types';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+const FOCUS = 'focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none';
 const CARD = 'flex flex-col gap-4 rounded-xl border border-line bg-panel-2/60 p-5 shadow-lg';
 const HEADING = 'text-[11px] font-semibold tracking-wider text-fg/70 uppercase';
 const SUB = 'text-xs text-fg/60';
 /** The app's primary gold button. */
-const PRIMARY = 'flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold tracking-wider text-on-accent uppercase shadow-md shadow-black/40 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40';
-const SECONDARY = 'flex items-center gap-2 rounded-lg border border-fg/20 bg-panel-2 px-3 py-2 text-xs font-bold tracking-wider text-fg/90 uppercase transition-colors hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40';
-const RESET = 'flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-fg/60 uppercase transition-colors hover:text-accent';
+const PRIMARY = `flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold tracking-wider whitespace-nowrap text-on-accent uppercase shadow-md shadow-black/40 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none ${FOCUS}`;
+const SECONDARY = `flex items-center gap-2 rounded-lg border border-fg/20 bg-panel-2 px-3 py-2 text-xs font-bold tracking-wider whitespace-nowrap text-fg/90 uppercase transition-colors hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`;
+const RESET = `flex shrink-0 items-center gap-1.5 rounded text-[11px] font-bold tracking-wider whitespace-nowrap text-fg/60 uppercase transition-colors hover:text-accent disabled:cursor-default disabled:opacity-40 disabled:hover:text-fg/60 ${FOCUS}`;
 
 /** A segmented control: one of the options is lit gold. */
-function Segmented<T extends string>({ label, value, options, onChange }: {
+function Segmented<T extends string>({ label, value, options, onChange, disabled = false }: {
   label: string;
   value: T;
-  options: { id: T; text: string }[];
+  options: { id: T; text: string; icon?: LucideIcon }[];
   onChange: (id: T) => void;
+  disabled?: boolean;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1 rounded-lg border border-line bg-panel p-1">
-      {options.map((o) => (
-        <button
-          key={o.id}
-          type="button"
-          role="radio"
-          aria-checked={value === o.id}
-          onClick={() => onChange(o.id)}
-          className={`rounded-md px-3 py-1.5 text-[11px] font-bold tracking-wider uppercase transition-colors ${
-            value === o.id ? 'border border-accent/40 bg-accent/20 text-accent' : 'border border-transparent text-fg/60 hover:text-fg/90'
-          }`}
-        >
-          {o.text}
-        </button>
-      ))}
+    <div role="radiogroup" aria-label={label} aria-disabled={disabled} className={`flex flex-wrap gap-1 rounded-lg border border-line bg-panel p-1 ${disabled ? 'opacity-40' : ''}`}>
+      {options.map((o) => {
+        const Icon = o.icon;
+        return (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={value === o.id}
+            disabled={disabled}
+            onClick={() => onChange(o.id)}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-bold tracking-wider whitespace-nowrap uppercase transition-colors disabled:cursor-not-allowed ${FOCUS} ${
+              value === o.id ? 'border border-accent/40 bg-accent/20 text-accent' : 'border border-transparent text-fg/60 hover:text-fg/90'
+            }`}
+          >
+            {Icon && <Icon size={13} aria-hidden />}
+            {o.text}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -46,24 +53,68 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
 /** A switch lit gold when on. */
 function GoldSwitch({ label, on, onChange }: { label: string; on: boolean; onChange: (on: boolean) => void }) {
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className="flex items-center gap-2">
+    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className={`flex items-center gap-2 rounded-full ${FOCUS}`}>
       <span className={`relative h-5 w-9 rounded-full border transition ${on ? 'border-accent bg-accent' : 'border-fg/20 bg-panel-2'}`}>
         <span className={`absolute top-0.5 size-3.5 rounded-full transition-all ${on ? 'left-[18px] bg-panel' : 'left-0.5 bg-fg/50'}`} aria-hidden />
       </span>
+      <span className="w-6 text-[11px] font-bold tracking-wider text-fg/70 uppercase">{on ? 'On' : 'Off'}</span>
     </button>
   );
 }
 
-/** One labelled row inside a card: the name and its explanation on the left, the control on the right. */
-function Row({ title, detail, children }: { title: string; detail: string; children: ReactNode }) {
+/**
+ * One labelled row inside a card: the name and its explanation, and the control. `stacked` puts a wide control (a
+ * segmented choice) on its own line under the text, so it never squeezes the explanation into a narrow column.
+ */
+function Row({ title, detail, children, stacked = false }: { title: string; detail: string; children: ReactNode; stacked?: boolean }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 border-t border-line pt-4">
+    <div className={`border-t border-line pt-4 ${stacked ? 'flex flex-col gap-3' : 'flex flex-wrap items-start justify-between gap-3'}`}>
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold text-fg">{title}</div>
         <div className={SUB}>{detail}</div>
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className={stacked ? '' : 'shrink-0'}>{children}</div>
     </div>
+  );
+}
+
+/** A section heading with its explanation, and an optional "Reset to defaults" that is off while the section already matches them. */
+function CardHeader({ id, title, detail, onReset, resetDisabled }: { id: string; title: string; detail?: string; onReset?: () => void; resetDisabled?: boolean }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <h2 id={id} className={HEADING}>{title}</h2>
+        {detail && <p className={SUB}>{detail}</p>}
+      </div>
+      {onReset && (
+        <button type="button" onClick={onReset} disabled={resetDisabled} className={RESET}>
+          <RotateCcw size={12} aria-hidden /> Reset to defaults
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A picture of the output on the chosen display: the screen, and the content inside it. "Aspect fit" leaves bars where
+ * the content's shape differs from the screen's, "Fill" stretches it to the edges, so the choice can be seen before it is made.
+ */
+function PicturePreview({ screen, aspect, fit }: { screen: { width: number; height: number }; aspect: Settings['aspect']; fit: Settings['fit'] }) {
+  const [aw, ah] = aspect.split(':').map(Number);
+  const content = aw / ah;
+  const display = screen.width / screen.height;
+  return (
+    <figure className="flex flex-col items-center gap-2">
+      <div className="flex w-full max-w-xs items-center justify-center overflow-hidden rounded-md border-2 border-fg/25 bg-black" style={{ aspectRatio: `${screen.width} / ${screen.height}` }} role="img" aria-label={`Preview: ${aspect} content, ${fit === 'fill' ? 'stretched to fill' : 'fitted with bars'}, on a ${screen.width} by ${screen.height} display`}>
+        <div
+          className="grid place-items-center border border-accent/60 bg-accent/15 text-[9px] font-bold tracking-wider text-accent uppercase"
+          style={fit === 'fill' ? { width: '100%', height: '100%' } : { aspectRatio: `${aw} / ${ah}`, ...(content > display ? { width: '100%' } : { height: '100%' }) }}
+        >
+          {aspect}
+        </div>
+      </div>
+      <figcaption className={SUB}>{fit === 'fill' ? 'Content is stretched to the screen edges.' : 'Black bars appear where the shapes differ.'}</figcaption>
+    </figure>
   );
 }
 
@@ -101,11 +152,23 @@ export function ProjectorSettingsPanel() {
   useEffect(() => setPending(settings.displayId), [settings.displayId]);
   // The slider follows the saved duration when it changes from somewhere else.
   useEffect(() => setFadeDraft(settings.fadeMs), [settings.fadeMs]);
+  // A confirmation is read once, then it gets out of the way.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
-  /** Saves a change. The live state then carries it to the projector and the preview. */
+  /** Saves a change. The live state then carries it to the projector and the preview. Resolves true once it is saved. */
   const save = (patch: Partial<Settings>) => {
     setError(null);
-    bridge.projector.save(patch).catch((err) => setError(errorText(err)));
+    return bridge.projector.save(patch).then(
+      () => true,
+      (err) => {
+        setError(errorText(err));
+        return false;
+      },
+    );
   };
 
   const togglePicking = () => dispatch({ type: 'output/toggle', output: 'projector' });
@@ -116,7 +179,24 @@ export function ProjectorSettingsPanel() {
     bridge.displays.identify().catch((err) => setError(errorText(err)));
   };
 
-  const chosenMissing = settings.displayId !== null && !displays.some((d) => d.id === settings.displayId);
+  const apply = () => {
+    void save({ displayId: pending }).then((ok) => {
+      if (!ok) return;
+      const chosen = displays.find((d) => d.id === pending);
+      setNotice(chosen ? `The projector will use Display ${chosen.index}.` : 'The projector will choose its display automatically.');
+    });
+  };
+
+  const chosen = displays.find((d) => d.id === settings.displayId);
+  const chosenMissing = settings.displayId !== null && !chosen;
+  const automatic = settings.displayId === null || chosenMissing;
+  const dirty = pending !== settings.displayId;
+  // The screen the preview is drawn for: the chosen display, the one being picked, or a 16:9 screen when none is known.
+  const previewDisplay = displays.find((d) => d.id === (pending ?? settings.displayId)) ?? displays.find((d) => d.primary) ?? { width: 1920, height: 1080 };
+  const target = chosen ? `Display ${chosen.index}` : 'the automatic display';
+
+  const isDefault = <K extends keyof Settings>(...keys: K[]) => keys.every((k) => settings[k] === DEFAULTS[k]);
+  const resetTo = (...keys: (keyof Settings)[]) => void save(Object.fromEntries(keys.map((k) => [k, DEFAULTS[k]])) as Partial<Settings>);
 
   return (
     <div className="flex flex-col gap-6">
@@ -133,35 +213,49 @@ export function ProjectorSettingsPanel() {
       </header>
 
       {error && <div role="alert" className="rounded-md border border-danger/40 bg-panel-2 px-4 py-2 text-sm text-danger">{error}</div>}
-      {notice && !error && <div role="status" className="rounded-md border border-line bg-panel-2 px-4 py-2 text-sm text-fg/80">{notice}</div>}
+      {notice && !error && (
+        <div role="status" className="flex items-center justify-between gap-3 rounded-md border border-line bg-panel-2 px-4 py-2 text-sm text-fg/80">
+          {notice}
+        </div>
+      )}
 
-      {/* The window toggle: its state, and the one action that changes it. */}
-      <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-line bg-panel-2/60 p-5">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="grid size-12 shrink-0 place-items-center rounded-lg border border-accent/30 bg-panel text-accent">
+      {/* The window toggle: its state, where it shows, and the one action that changes it. */}
+      <section aria-label="Projector window" className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-line bg-panel-2/60 p-5">
+        <div className="flex min-w-0 flex-wrap items-center gap-4">
+          <div className={`grid size-12 shrink-0 place-items-center rounded-lg border bg-panel ${projectorOn ? 'border-ok/50 text-ok' : 'border-accent/30 text-accent'}`}>
             <Monitor size={22} aria-hidden />
           </div>
-          <div>
+          <div className="min-w-0">
             <span
-              className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-bold tracking-wider uppercase ${
-                projectorOn ? 'border-accent/40 bg-accent/20 text-accent' : 'border-fg/20 bg-fg/10 text-fg/60'
+              role="status"
+              className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-0.5 text-xs font-bold tracking-wider uppercase ${
+                projectorOn ? 'border-ok/50 bg-ok/15 text-ok' : 'border-fg/20 bg-fg/10 text-fg/70'
               }`}
             >
-              {projectorOn ? '● Projector open' : '○ Projector closed'}
+              <span className={`size-2 rounded-full ${projectorOn ? 'animate-pulse bg-ok' : 'border border-fg/50'}`} aria-hidden />
+              {projectorOn ? 'Projector open' : 'Projector closed'}
             </span>
-            <p className="mt-1.5 text-sm text-fg/60">Choose a display before opening the projector.</p>
+            <p className="mt-1.5 text-sm text-fg/60">
+              {projectorOn ? `Showing on ${target}${chosen ? ` · ${chosen.width} × ${chosen.height}` : ''}.` : `Opens on ${target}. Change the display below first if needed.`}
+            </p>
           </div>
         </div>
-        <button type="button" onClick={togglePicking} className={PRIMARY}>
-          <Presentation size={14} aria-hidden /> {projectorOn ? 'Close projector window' : '► Open projector window'}
+        <button
+          type="button"
+          onClick={togglePicking}
+          className={projectorOn ? `${SECONDARY} h-10 border-danger/50 text-danger hover:border-danger hover:text-danger` : `${PRIMARY} h-10`}
+        >
+          {projectorOn ? <PowerOff size={14} aria-hidden /> : <Power size={14} aria-hidden />}
+          {projectorOn ? 'Close projector window' : 'Open projector window'}
         </button>
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Picture: the aspect ratio and how the content fits the screen. */}
+        {/* Picture: the aspect ratio and how the content fits the screen, with a preview of both. */}
         <section className={CARD} aria-labelledby="picture-heading">
-          <h2 id="picture-heading" className={HEADING}>Picture</h2>
-          <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
+          <CardHeader id="picture-heading" title="Picture" detail="The shape of the content, and how it sits on the screen." onReset={() => resetTo('aspect', 'fit')} resetDisabled={isDefault('aspect', 'fit')} />
+          <PicturePreview screen={previewDisplay} aspect={settings.aspect} fit={settings.fit} />
+          <div role="radiogroup" aria-label="Aspect ratio" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {([
               ['16:9', '16:9 Widescreen', '1920×1080'],
               ['4:3', '4:3 Standard', '1024×768'],
@@ -171,8 +265,8 @@ export function ProjectorSettingsPanel() {
                 type="button"
                 role="radio"
                 aria-checked={settings.aspect === id}
-                onClick={() => save({ aspect: id })}
-                className={`flex flex-col items-start gap-0.5 rounded-lg border p-3 text-left transition ${
+                onClick={() => void save({ aspect: id })}
+                className={`flex flex-col items-start gap-0.5 rounded-lg border p-3 text-left transition ${FOCUS} ${
                   settings.aspect === id ? 'border-accent bg-accent/10 text-accent' : 'border-line bg-panel/60 text-fg/90 hover:border-fg/30'
                 }`}
               >
@@ -191,8 +285,8 @@ export function ProjectorSettingsPanel() {
                 type="button"
                 role="radio"
                 aria-checked={settings.fit === id}
-                onClick={() => save({ fit: id })}
-                className={`flex items-start gap-3 rounded-lg border p-3 text-left transition ${
+                onClick={() => void save({ fit: id })}
+                className={`flex items-start gap-3 rounded-lg border p-3 text-left transition ${FOCUS} ${
                   settings.fit === id ? 'border-accent bg-accent/10' : 'border-line hover:border-fg/30'
                 }`}
               >
@@ -212,13 +306,17 @@ export function ProjectorSettingsPanel() {
             <h2 id="display-heading" className={HEADING}>Display assignment</h2>
             <p className={SUB}>Pick the physical display that receives congregation output.</p>
           </div>
-          <div>
-            <div className="text-sm font-semibold text-fg">Projector display</div>
-            <p className={SUB}>Select one display, then apply the pending assignment.</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-sm font-semibold text-fg">Projector display</div>
+              <p className={SUB}>Select one display, then apply it.</p>
+            </div>
+            {automatic && <span className="rounded border border-accent/40 bg-accent/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-accent uppercase">Automatic</span>}
           </div>
           <div role="radiogroup" aria-label="Projector display" className="grid gap-2">
             {displays.map((d) => {
               const selected = pending === d.id;
+              const inUse = settings.displayId === d.id;
               return (
                 <button
                   key={d.id}
@@ -226,7 +324,7 @@ export function ProjectorSettingsPanel() {
                   role="radio"
                   aria-checked={selected}
                   onClick={() => setPending(d.id)}
-                  className={`flex items-start gap-3 rounded-lg border p-3 text-left transition ${
+                  className={`flex items-start gap-3 rounded-lg border p-3 text-left transition ${FOCUS} ${
                     selected ? 'border-accent bg-accent/10 shadow-md shadow-black/30' : 'border-line bg-panel/60 hover:border-fg/30'
                   }`}
                 >
@@ -238,6 +336,9 @@ export function ProjectorSettingsPanel() {
                       {d.primary && (
                         <span className="rounded border border-fg/30 bg-fg/10 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-fg/80 uppercase">Primary</span>
                       )}
+                      {inUse && (
+                        <span className="rounded bg-accent px-1.5 py-0.5 text-[10px] font-extrabold tracking-wider text-on-accent uppercase">In use</span>
+                      )}
                     </div>
                     <div className="mt-1 font-mono text-xs text-fg/90">
                       {d.width} × {d.height}
@@ -246,77 +347,79 @@ export function ProjectorSettingsPanel() {
                       Position {d.x}, {d.y}
                     </div>
                   </div>
+                  {selected && <Check size={16} strokeWidth={3} className="mt-0.5 shrink-0 text-accent" aria-hidden />}
                 </button>
               );
             })}
-            {displays.length === 0 && <p className={SUB}>No displays were detected.</p>}
+            {displays.length === 0 && <p className={SUB}>No displays were detected. Connect the projector, then choose Identify displays.</p>}
+            {displays.length === 1 && <p className={SUB}>Only one display is connected, so the projector opens on it. Connect the projector to show on a second screen.</p>}
           </div>
           {chosenMissing && (
-            <p className="text-xs text-accent">The chosen display is not connected. The projector uses the automatic choice until it is back.</p>
+            <p role="status" className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-accent">
+              The chosen display is not connected. The projector uses the automatic choice until it is back.
+            </p>
           )}
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => save({ displayId: pending })} disabled={pending === settings.displayId} className={PRIMARY}>
-              Apply assignment
-            </button>
-            <button type="button" onClick={() => setPending(null)} className={SECONDARY}>
-              Use automatic choice
-            </button>
-            <button type="button" onClick={identify} className={SECONDARY}>
-              <MonitorUp size={14} aria-hidden /> Identify displays
-            </button>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={apply} disabled={!dirty} className={PRIMARY}>
+                Apply assignment
+              </button>
+              <button type="button" onClick={() => setPending(null)} disabled={pending === null} className={SECONDARY}>
+                Use automatic choice
+              </button>
+              <button type="button" onClick={identify} className={SECONDARY}>
+                <MonitorUp size={14} aria-hidden /> Identify displays
+              </button>
+            </div>
+            <p className={SUB} aria-live="polite">
+              {dirty ? 'You have an unapplied choice. Select Apply assignment to use it.' : 'Automatic uses the first external display, or the primary when there is none.'}
+            </p>
           </div>
           <Row title="Fullscreen on the active projector" detail="Off opens a windowed preview of the output instead.">
-            <GoldSwitch label="Fullscreen on the active projector" on={settings.fullscreen} onChange={(on) => save({ fullscreen: on })} />
+            <GoldSwitch label="Fullscreen on the active projector" on={settings.fullscreen} onChange={(on) => void save({ fullscreen: on })} />
           </Row>
         </section>
 
         {/* Startup: what the projector shows when its window first opens. */}
         <section className={CARD} aria-labelledby="startup-heading">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 id="startup-heading" className={HEADING}>Startup</h2>
-              <p className={SUB}>Choose what the projector displays when it first opens or after a display reconnects.</p>
-            </div>
-            <button type="button" onClick={() => save({ startupScreen: 'black' })} className={RESET}>
-              <RotateCcw size={12} aria-hidden /> Reset to defaults
-            </button>
-          </div>
-          <Row title="Default startup screen" detail="Choose what appears when the projector window first opens.">
+          <CardHeader
+            id="startup-heading"
+            title="Startup"
+            detail="Choose what the projector displays when it first opens or after a display reconnects."
+            onReset={() => resetTo('startupScreen')}
+            resetDisabled={isDefault('startupScreen')}
+          />
+          <Row title="Default startup screen" detail="Choose what appears when the projector window first opens." stacked>
             <Segmented
               label="Default startup screen"
               value={settings.startupScreen}
               options={[
-                { id: 'welcome', text: '🏠 Welcome screen' },
-                { id: 'black', text: '🌙 Black screen' },
-                { id: 'last', text: '🕒 Last content' },
+                { id: 'welcome', text: 'Welcome screen', icon: House },
+                { id: 'black', text: 'Black screen', icon: Moon },
+                { id: 'last', text: 'Last content', icon: History },
               ]}
-              onChange={(startupScreen) => save({ startupScreen })}
+              onChange={(startupScreen) => void save({ startupScreen })}
             />
           </Row>
         </section>
 
         {/* Transitions: how projected content changes. */}
         <section className={CARD} aria-labelledby="transitions-heading">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 id="transitions-heading" className={HEADING}>Transitions</h2>
-              <p className={SUB}>Control how projected content changes between slides and passages.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => save({ transitionsOn: true, transitionStyle: 'fade', fadeMs: 500 })}
-              className={RESET}
-            >
-              <RotateCcw size={12} aria-hidden /> Reset to defaults
-            </button>
-          </div>
+          <CardHeader
+            id="transitions-heading"
+            title="Transitions"
+            detail="Control how projected content changes between slides and passages."
+            onReset={() => resetTo('transitionsOn', 'transitionStyle', 'fadeMs')}
+            resetDisabled={isDefault('transitionsOn', 'transitionStyle', 'fadeMs')}
+          />
           <Row title="Use transitions" detail="Animate changes on the preview and projector when supported.">
-            <GoldSwitch label="Use transitions" on={settings.transitionsOn} onChange={(transitionsOn) => save({ transitionsOn })} />
+            <GoldSwitch label="Use transitions" on={settings.transitionsOn} onChange={(transitionsOn) => void save({ transitionsOn })} />
           </Row>
-          <Row title="Transition style" detail="How new content arrives.">
+          <Row title="Transition style" detail={settings.transitionsOn ? 'How new content arrives.' : 'Turn transitions on to choose a style.'} stacked>
             <Segmented
               label="Transition style"
               value={settings.transitionStyle}
+              disabled={!settings.transitionsOn}
               options={[
                 { id: 'fade', text: 'Fade' },
                 { id: 'slideLeft', text: 'Slide left' },
@@ -324,14 +427,14 @@ export function ProjectorSettingsPanel() {
                 { id: 'slideUp', text: 'Slide up' },
                 { id: 'zoomIn', text: 'Zoom in' },
               ]}
-              onChange={(transitionStyle) => save({ transitionStyle })}
+              onChange={(transitionStyle) => void save({ transitionStyle })}
             />
           </Row>
-          <div className="flex flex-col gap-2 border-t border-line pt-4">
+          <div className={`flex flex-col gap-2 border-t border-line pt-4 ${settings.transitionsOn ? '' : 'opacity-40'}`}>
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-semibold text-fg">Transition duration</div>
-                <div className={SUB}>From 100ms to 1000ms.</div>
+                <div className={SUB}>Shorter feels snappier, longer feels smoother.</div>
               </div>
               <span className="rounded-full border border-accent/30 bg-panel px-2.5 py-1 font-mono text-xs font-semibold text-accent tabular-nums">
                 {fadeDraft}ms
@@ -343,22 +446,28 @@ export function ProjectorSettingsPanel() {
               max={FADE_MAX_MS}
               step={50}
               value={fadeDraft}
+              disabled={!settings.transitionsOn}
               aria-label="Transition duration in milliseconds"
               onChange={(e) => setFadeDraft(Number(e.target.value))}
-              onPointerUp={() => save({ fadeMs: fadeDraft })}
-              onKeyUp={() => save({ fadeMs: fadeDraft })}
-              onBlur={() => fadeDraft !== settings.fadeMs && save({ fadeMs: fadeDraft })}
-              className="h-1.5 w-full cursor-pointer accent-accent"
+              onPointerUp={() => void save({ fadeMs: fadeDraft })}
+              onKeyUp={() => void save({ fadeMs: fadeDraft })}
+              onBlur={() => fadeDraft !== settings.fadeMs && void save({ fadeMs: fadeDraft })}
+              className={`h-1.5 w-full cursor-pointer accent-accent disabled:cursor-not-allowed ${FOCUS}`}
             />
+            <div className="flex justify-between font-mono text-[10px] text-fg/50" aria-hidden>
+              <span>{FADE_MIN_MS}ms</span>
+              <span>{FADE_MAX_MS}ms</span>
+            </div>
           </div>
         </section>
 
         {/* Intro slide: the first slide of a Praise & Worship item, as its title card or a solid black screen. */}
         <section className={CARD} aria-labelledby="intro-heading">
-          <h2 id="intro-heading" className={HEADING}>Intro slide</h2>
+          <CardHeader id="intro-heading" title="Intro slide" onReset={() => resetTo('defaultIntroSlideMode')} resetDisabled={isDefault('defaultIntroSlideMode')} />
           <Row
             title="First slide of an item"
             detail="The title card at the start of a song or item, or a solid black screen. The Live panel changes this for the item on air."
+            stacked
           >
             <Segmented
               label="Default intro slide"
@@ -367,14 +476,14 @@ export function ProjectorSettingsPanel() {
                 { id: 'title', text: 'Title card' },
                 { id: 'black', text: 'Solid black' },
               ]}
-              onChange={(defaultIntroSlideMode) => save({ defaultIntroSlideMode })}
+              onChange={(defaultIntroSlideMode) => void save({ defaultIntroSlideMode })}
             />
           </Row>
         </section>
 
         {/* Slide font: the face for slide text on the projector and the TV. */}
         <section className={`${CARD} lg:col-span-2`} aria-labelledby="font-heading">
-          <h2 id="font-heading" className={HEADING}>Slide font</h2>
+          <CardHeader id="font-heading" title="Slide font" onReset={() => resetTo('slideFont')} resetDisabled={isDefault('slideFont')} />
           <Row
             title="Font for slide text"
             detail="Applies to lyrics, readings, prayers and announcements on the projector and the TV. Keep the current look leaves each slide's own font."
@@ -382,8 +491,8 @@ export function ProjectorSettingsPanel() {
             <select
               aria-label="Slide font"
               value={settings.slideFont ?? ''}
-              onChange={(e) => save({ slideFont: e.target.value || null })}
-              className="h-10 rounded-lg border border-fg/20 bg-panel px-3 text-sm text-fg outline-none focus:border-accent"
+              onChange={(e) => void save({ slideFont: e.target.value || null })}
+              className={`h-10 rounded-lg border border-fg/20 bg-panel px-3 text-sm text-fg outline-none focus:border-accent ${FOCUS}`}
             >
               <option value="">Keep the current look</option>
               {TEXT_FONT_GROUPS.map((group) => (
@@ -404,8 +513,8 @@ export function ProjectorSettingsPanel() {
 
         {/* Idle screen and calibration. */}
         <section className={`${CARD} lg:col-span-2`} aria-labelledby="idle-heading">
-          <h2 id="idle-heading" className={HEADING}>Idle screen and calibration</h2>
-          <Row title="When nothing is live" detail="What the projector shows between items.">
+          <CardHeader id="idle-heading" title="Idle screen and calibration" onReset={() => resetTo('idle', 'idleMedia')} resetDisabled={isDefault('idle', 'idleMedia')} />
+          <Row title="When nothing is live" detail="What the projector shows between items." stacked>
             <Segmented
               label="Idle screen"
               value={settings.idle}
@@ -414,7 +523,7 @@ export function ProjectorSettingsPanel() {
                 { id: 'crest', text: 'Parish crest' },
                 { id: 'media', text: 'Custom background' },
               ]}
-              onChange={(idle) => save({ idle })}
+              onChange={(idle) => void save({ idle })}
             />
           </Row>
           {settings.idle === 'media' && (
@@ -422,8 +531,8 @@ export function ProjectorSettingsPanel() {
               <span className={SUB}>Image shown while nothing is live</span>
               <select
                 value={settings.idleMedia ?? ''}
-                onChange={(e) => save({ idleMedia: e.target.value || null })}
-                className="h-10 rounded-lg border border-fg/20 bg-panel px-3 text-sm text-fg outline-none focus:border-accent"
+                onChange={(e) => void save({ idleMedia: e.target.value || null })}
+                className={`h-10 rounded-lg border border-fg/20 bg-panel px-3 text-sm text-fg outline-none focus:border-accent ${FOCUS}`}
               >
                 <option value="">Choose an image…</option>
                 {media.map((m) => (
@@ -431,10 +540,17 @@ export function ProjectorSettingsPanel() {
                 ))}
               </select>
               {media.length === 0 && <span className={SUB}>No images in the Media Library yet.</span>}
+              {media.length > 0 && !settings.idleMedia && <span className="text-xs text-accent">Choose an image, or the projector shows black until you do.</span>}
             </label>
           )}
-          <Row title="Calibration grid" detail="Shows a grid on the projector for lining up the picture. Open the projector window first.">
-            <button type="button" aria-pressed={calibration} onClick={() => dispatch({ type: 'calibration/toggle' })} className={calibration ? PRIMARY : SECONDARY}>
+          <Row title="Calibration grid" detail={projectorOn ? 'Shows a grid on the projector for lining up the picture.' : 'Open the projector window first, then show a grid to line up the picture.'}>
+            <button
+              type="button"
+              aria-pressed={calibration}
+              disabled={!projectorOn && !calibration}
+              onClick={() => dispatch({ type: 'calibration/toggle' })}
+              className={calibration ? PRIMARY : SECONDARY}
+            >
               <Grid3x3 size={14} aria-hidden /> {calibration ? 'Hide calibration grid' : 'Test calibration grid'}
             </button>
           </Row>

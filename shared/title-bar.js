@@ -2,6 +2,8 @@
 // The table must match the --color-canvas and --color-fg values in each [data-theme] block of src/styles.css. The test in
 // shared/title-bar.test.mjs reads that file and checks it.
 
+import { resolveTheme } from './liturgical-season.js';
+
 /** The canvas (the top bar's background) and the foreground (the symbols) for each theme. */
 export const TITLE_BAR_COLOURS = {
   obsidian: { canvas: '#0c0d10', fg: '#f1f1f4' },
@@ -19,13 +21,21 @@ export const TITLE_BAR_COLOURS = {
   sage: { canvas: '#f1f4ee', fg: '#1c2416' },
   linen: { canvas: '#f8f3ea', fg: '#2b2117' },
   shell: { canvas: '#f6f5f8', fg: '#1d1a24' },
+  advent: { canvas: '#130a26', fg: '#f4eefc' },
+  christmas: { canvas: '#fcf8ee', fg: '#2a1410' },
+  'ordinary-time': { canvas: '#071a10', fg: '#eefaf2' },
+  lent: { canvas: '#161019', fg: '#f1ecf4' },
+  'holy-week': { canvas: '#1a0406', fg: '#fbeeee' },
+  easter: { canvas: '#fffdf6', fg: '#25200f' },
+  pentecost: { canvas: '#200a03', fg: '#fff0e6' },
 };
 
 /** The height of the title bar in CSS pixels. Matches the top bar. */
 export const TITLE_BAR_HEIGHT = 48;
 
 /** The overlay options for a theme. Unknown themes fall back to the default. */
-export function titleBarOverlayFor(theme) {
-  const colours = TITLE_BAR_COLOURS[theme] ?? TITLE_BAR_COLOURS.default;
+export function titleBarOverlayFor(theme, date = new Date()) {
+  // "Automatic" paints with today's liturgical season, so the buttons follow it too.
+  const colours = TITLE_BAR_COLOURS[resolveTheme(theme, date)] ?? TITLE_BAR_COLOURS.default;
   return { color: colours.canvas, symbolColor: colours.fg, height: TITLE_BAR_HEIGHT };
 }

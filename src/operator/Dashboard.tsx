@@ -179,6 +179,8 @@ function StatusCards() {
     : projector.paused
       ? { tone: 'paused', label: t('status.paused') }
       : { tone: 'live', label: t('status.live') };
+  // Toggle only works once a lower third has been shown or staged. Until then, the button opens the editor that makes one.
+  const lowerReady = lowerThird.live !== null || lowerThird.staged !== null;
   const lowerBadge: { tone: BadgeTone; label: string } = lowerThird.live === null
     ? { tone: 'off', label: t('status.off') }
     : lowerThird.paused
@@ -201,8 +203,8 @@ function StatusCards() {
         onAction={() => dispatch({ type: 'output/toggle', output: 'projector' })} />
       <StatusWidget icon={MonitorPlay} eyebrow={t('card.lowerThird')} tone={lowerBadge.tone} badge={lowerBadge.label}
         detail={lowerThird.live ? lowerThird.live.line1 : t('card.nothingShowing')}
-        action={t('card.action.lowerThird')}
-        onAction={() => dispatch({ type: 'lowerThird/toggle' })} />
+        action={lowerReady ? t('card.action.lowerThird') : t('card.action.lowerThirdSetup')}
+        onAction={() => (lowerReady ? dispatch({ type: 'lowerThird/toggle' }) : setUi({ view: 'media' }))} />
       <StatusWidget icon={Eye} eyebrow={t('card.mirror')} tone={mirrorBadge.tone} badge={mirrorBadge.label} inlineBadge
         detail={t('card.preview')}
         action={outputs.preview ? t('card.action.mirrorClose') : t('card.action.mirrorOpen')}

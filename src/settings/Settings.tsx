@@ -4,6 +4,8 @@ import { DatabaseSettings } from './DatabaseSettings';
 import { bridge } from '../live/bridge';
 import { setUi } from '../state/ui';
 import { RosarySettings } from './RosarySettings';
+import { LectionarySettings } from './LectionarySettings';
+import { LyricsSettings } from './LyricsSettings';
 import { ProjectorSettingsPanel } from './ProjectorSettings';
 import { LowerThirdSettings } from './LowerThirdSettings';
 import { WelcomeScreenSettings } from './WelcomeScreenSettings';
@@ -61,8 +63,8 @@ const NAV: { title: string; items: NavItem[] }[] = [
     title: 'Content',
     items: [
       { key: 'rosary', label: 'Rosary' },
-      { key: 'lectionary', label: 'Lectionary', soon: true },
-      { key: 'lyrics', label: 'Song lyrics', soon: true },
+      { key: 'lectionary', label: 'Lectionary' },
+      { key: 'lyrics', label: 'Song lyrics' },
     ],
   },
   {
@@ -250,6 +252,12 @@ export function Settings() {
 
       case 'rosary':
         return <RosarySettings />;
+
+      case 'lectionary':
+        return <LectionarySettings />;
+
+      case 'lyrics':
+        return <LyricsSettings />;
 
       case 'remote':
         return <RemoteViewSettings />;

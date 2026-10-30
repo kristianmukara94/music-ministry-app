@@ -59,3 +59,8 @@ test('an unknown theme falls back to the default overlay', () => {
   assert.deepEqual(titleBarOverlayFor('not-a-theme'), titleBarOverlayFor('default'));
   assert.deepEqual(titleBarOverlayFor(undefined), titleBarOverlayFor('default'));
 });
+
+test('Automatic takes the colours of the date\'s liturgical season', () => {
+  assert.deepEqual(titleBarOverlayFor('season-auto', new Date(2026, 2, 1)), titleBarOverlayFor('lent'));
+  assert.deepEqual(titleBarOverlayFor('season-auto', new Date(2026, 11, 25)), titleBarOverlayFor('christmas'));
+});
