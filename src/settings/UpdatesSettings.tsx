@@ -14,9 +14,9 @@ const GOLD = 'text-[#D4AF37]';
 const ghostButton =
   'flex h-9 items-center gap-2 rounded-md border border-[#27272a] px-3 text-xs font-semibold text-[#e4e4e7] hover:bg-[#27272a] disabled:opacity-40';
 const amberButton =
-  'flex h-10 items-center gap-2 rounded-md bg-amber-500 px-4 text-xs font-bold uppercase text-[#18181b] shadow-md hover:brightness-110 disabled:opacity-40';
+  'flex h-10 items-center gap-2 rounded-md bg-accent px-4 text-xs font-bold uppercase text-[#18181b] shadow-md hover:brightness-110 disabled:opacity-40';
 const greenButton =
-  'flex h-10 items-center gap-2 rounded-md bg-emerald-500 px-4 text-xs font-bold uppercase text-[#18181b] shadow-md hover:brightness-110 disabled:opacity-40';
+  'flex h-10 items-center gap-2 rounded-md bg-ok px-4 text-xs font-bold uppercase text-[#18181b] shadow-md hover:brightness-110 disabled:opacity-40';
 
 const MB = 1024 * 1024;
 const megabytes = (bytes: number) => `${(bytes / MB).toFixed(1)} MB`;
@@ -246,8 +246,8 @@ function UpdateStatus({ event, lastCheckedAt, skippedVersion, onCheck, onDownloa
       return (
         <div role="status" aria-live="polite" className={`${CARD} flex items-center gap-3 text-sm`}>
           <span className="relative flex h-2.5 w-2.5" aria-hidden>
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-75" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-accent" />
           </span>
           Checking GitHub Releases for updates...
         </div>
@@ -255,8 +255,8 @@ function UpdateStatus({ event, lastCheckedAt, skippedVersion, onCheck, onDownloa
 
     case 'UPDATE_NOT_AVAILABLE':
       return (
-        <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-5 py-3">
-          <span className="flex items-center gap-2 text-sm font-bold text-emerald-400">
+        <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-full border border-ok/40 bg-ok/10 px-5 py-3">
+          <span className="flex items-center gap-2 text-sm font-bold text-ok">
             <CheckCircle2 size={16} aria-hidden /> You are running the latest version
           </span>
           {lastCheckedAt && <span className={`text-xs ${MUTED}`}>Last checked {formatDayAndClock(new Date(lastCheckedAt), region, { seconds: true })}</span>}
@@ -269,7 +269,7 @@ function UpdateStatus({ event, lastCheckedAt, skippedVersion, onCheck, onDownloa
       return (
         <div role="status" className={`${CARD} flex flex-col gap-4`}>
           <div className="flex flex-wrap items-center gap-3">
-            <span className="rounded-full border border-amber-500/50 bg-amber-500/15 px-3 py-1 text-xs font-bold text-amber-400 uppercase">
+            <span className="rounded-full border border-accent/50 bg-accent/15 px-3 py-1 text-xs font-bold text-accent uppercase">
               New Version v{version} Available
             </span>
             {skipped && <span className={`text-xs ${MUTED}`}>You skipped this version. Background checks stay quiet for it.</span>}
@@ -292,8 +292,8 @@ function UpdateStatus({ event, lastCheckedAt, skippedVersion, onCheck, onDownloa
 
     case 'UPDATE_PAUSED':
       return (
-        <div role="status" className="flex flex-col gap-4 rounded-xl border border-amber-500/50 bg-amber-500/10 p-5 text-[#e4e4e7]">
-          <span className="flex items-center gap-2 text-sm font-bold text-amber-400">
+        <div role="status" className="flex flex-col gap-4 rounded-xl border border-accent/50 bg-accent/10 p-5 text-[#e4e4e7]">
+          <span className="flex items-center gap-2 text-sm font-bold text-accent">
             <Pause size={16} aria-hidden /> Download paused: this is a metered connection
           </span>
           <p className={`text-xs ${MUTED}`}>Connect to an unmetered network and retry, or download anyway now.</p>
@@ -326,7 +326,7 @@ function UpdateStatus({ event, lastCheckedAt, skippedVersion, onCheck, onDownloa
             aria-valuenow={Math.round(percent)}
             className="h-2 w-full overflow-hidden rounded-full bg-[#27272a]"
           >
-            <div className="h-full rounded-full bg-amber-500 transition-[width] duration-150" style={{ width: `${percent}%` }} />
+            <div className="h-full rounded-full bg-accent transition-[width] duration-150" style={{ width: `${percent}%` }} />
           </div>
           <p className={`text-xs ${MUTED}`}>{megabytes(bytesPerSecond)}/s. Keep APCCMMA open until the download finishes.</p>
         </div>
@@ -335,8 +335,8 @@ function UpdateStatus({ event, lastCheckedAt, skippedVersion, onCheck, onDownloa
 
     case 'UPDATE_DOWNLOADED':
       return (
-        <div role="status" className="flex flex-col gap-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-5 text-[#e4e4e7]">
-          <span className="flex items-center gap-2 text-sm font-bold text-emerald-400">
+        <div role="status" className="flex flex-col gap-4 rounded-xl border border-ok/40 bg-ok/10 p-5 text-[#e4e4e7]">
+          <span className="flex items-center gap-2 text-sm font-bold text-ok">
             <CheckCircle2 size={16} aria-hidden /> Update v{event.payload.version} Downloaded
           </span>
           <p className={`text-xs ${MUTED}`}>Restart to finish installing. It also installs the next time APCCMMA quits.</p>
@@ -350,8 +350,8 @@ function UpdateStatus({ event, lastCheckedAt, skippedVersion, onCheck, onDownloa
 
     case 'UPDATE_ERROR':
       return (
-        <div role="alert" className="flex flex-col gap-3 rounded-xl border border-red-500 bg-red-500/10 p-5 text-[#e4e4e7]">
-          <span className="flex items-center gap-2 text-sm font-bold text-red-400">
+        <div role="alert" className="flex flex-col gap-3 rounded-xl border border-danger bg-danger/10 p-5 text-[#e4e4e7]">
+          <span className="flex items-center gap-2 text-sm font-bold text-danger">
             <AlertTriangle size={16} aria-hidden /> The update could not be completed
           </span>
           <p className="break-words font-mono text-xs text-[#fca5a5]">{event.payload.message}</p>
@@ -372,8 +372,8 @@ const INLINE = /(\*\*[^*]+\*\*|`[^`]+`|\[(?:Feature|Fix|Security)\])/i;
 
 const BADGE_STYLE: Record<string, string> = {
   feature: 'border-[#D4AF37]/50 bg-[#D4AF37]/15 text-[#D4AF37]',
-  fix: 'border-sky-500/50 bg-sky-500/15 text-sky-300',
-  security: 'border-red-500/50 bg-red-500/15 text-red-300',
+  fix: 'border-info/50 bg-info/15 text-info',
+  security: 'border-danger/50 bg-danger/15 text-danger',
 };
 
 function Badge({ tag }: { tag: string }) {
@@ -395,7 +395,7 @@ function Inline({ text }: { text: string }) {
         if (tag) return <Badge key={i} tag={tag[1]} />;
         if (part.length > 4 && part.startsWith('**') && part.endsWith('**')) {
           return (
-            <strong key={i} className="font-bold text-white">
+            <strong key={i} className="font-bold text-fg">
               {part.slice(2, -2)}
             </strong>
           );
@@ -494,8 +494,8 @@ function ReleaseHistory({ history, onRetry }: { history: HistoryState; onRetry: 
   }
   if (history.status === 'error') {
     return (
-      <div role="alert" className="flex flex-col gap-3 rounded-xl border border-red-500 bg-red-500/10 p-5 text-[#e4e4e7]">
-        <span className="text-sm font-bold text-red-400">Could not load the release history</span>
+      <div role="alert" className="flex flex-col gap-3 rounded-xl border border-danger bg-danger/10 p-5 text-[#e4e4e7]">
+        <span className="text-sm font-bold text-danger">Could not load the release history</span>
         <p className="break-words font-mono text-xs text-[#fca5a5]">{history.error}</p>
         <div>
           <button type="button" onClick={onRetry} className={ghostButton}>
@@ -518,7 +518,7 @@ function ReleaseHistory({ history, onRetry }: { history: HistoryState; onRetry: 
               <span className="font-mono text-sm font-bold text-[#D4AF37]">{release.tag_name}</span>
               <span className="text-sm font-semibold">{release.name}</span>
               {release.prerelease && (
-                <span className="rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-px text-[10px] font-bold text-amber-400 uppercase">Pre-release</span>
+                <span className="rounded-full border border-accent/50 bg-accent/15 px-2 py-px text-[10px] font-bold text-accent uppercase">Pre-release</span>
               )}
               <span className={`ml-auto text-xs ${MUTED}`}>{formatDay(new Date(release.published_at), region)}</span>
             </summary>

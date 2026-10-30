@@ -21,7 +21,7 @@ export interface Shown {
   total: number;
 }
 
-const STAGE = 'relative aspect-video w-full overflow-hidden rounded-xl border border-line-strong [container-type:size]';
+const STAGE = 'relative aspect-video w-full overflow-hidden rounded-lg border border-fg/15 [container-type:size]';
 
 /** A slide, drawn with the projector's own design, or a black screen when the step is blank. */
 function Face({ shown, blackLabel, background }: { shown: Shown; blackLabel: string; background: WelcomeBackground }) {
@@ -70,7 +70,7 @@ export function CurrentNextPreview({
   const background = welcomeBackground(useLive((s) => s.state.welcome.slideBackground));
   const panel = (heading: string, body: ReactNode) => (
     <figure className="flex min-w-0 flex-col gap-1.5">
-      <figcaption className="eyebrow !text-accent">{heading}</figcaption>
+      <figcaption className="text-[11px] font-semibold tracking-wider text-accent uppercase">{heading}</figcaption>
       {body}
     </figure>
   );
@@ -94,7 +94,7 @@ export function CurrentNextPreview({
             <Face shown={next} blackLabel={t('previewBlack')} background={background} />
           </div>
         ) : (
-          <div className="grid aspect-video w-full place-items-center rounded-xl border border-dashed border-line-strong p-3 text-center text-sm text-muted">
+          <div className="grid aspect-video w-full place-items-center rounded-lg border border-dashed border-fg/15 p-3 text-center text-sm text-muted">
             {endLabel}
           </div>
         ),

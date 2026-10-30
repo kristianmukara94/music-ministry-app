@@ -22,10 +22,10 @@ export function TemplateModal({ onPick, onClose }: { onPick: (id: TemplateId) =>
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Choose template" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full max-w-2xl flex-col gap-5 overflow-y-auto rounded-xl border border-stone-700 bg-stone-950 p-6 shadow-2xl">
+      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full max-w-2xl flex-col gap-5 overflow-y-auto rounded-xl border border-fg/20 bg-panel p-6 shadow-2xl">
         <header className="flex items-center justify-between gap-4">
-          <h2 className="text-lg font-black tracking-wide text-stone-100">Choose Template</h2>
-          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-md border border-stone-700 text-stone-400 hover:text-stone-100">
+          <h2 className="text-lg font-bold tracking-tight text-fg">Choose Template</h2>
+          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-md border border-fg/20 text-fg/60 hover:text-fg">
             <X size={16} aria-hidden />
           </button>
         </header>
@@ -35,14 +35,14 @@ export function TemplateModal({ onPick, onClose }: { onPick: (id: TemplateId) =>
               key={id}
               type="button"
               onClick={() => onPick(id)}
-              className="flex flex-col items-start gap-3 rounded-lg border border-stone-800 bg-stone-900/60 p-4 text-left transition-colors hover:border-amber-500/40 hover:bg-stone-900"
+              className="flex flex-col items-start gap-3 rounded-lg border border-line bg-panel-2/60 p-4 text-left transition-colors hover:border-accent/40 hover:bg-fg/10"
             >
-              <span className="grid size-10 place-items-center rounded-md border border-amber-500/30 bg-stone-950 text-amber-300">
+              <span className="grid size-10 place-items-center rounded-md border border-accent/30 bg-panel text-accent">
                 <Icon size={18} aria-hidden />
               </span>
               <span className="flex flex-col">
-                <span className="text-sm font-bold text-stone-100">{label}</span>
-                <span className="text-xs text-stone-400">{hint}</span>
+                <span className="text-sm font-bold text-fg">{label}</span>
+                <span className="text-xs text-fg/60">{hint}</span>
               </span>
             </button>
           ))}

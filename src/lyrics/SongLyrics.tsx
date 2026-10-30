@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ListMusic, Music, Pencil, Play, Plus, Search, Trash2, Type } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, ListMusic, Music, Pencil, Play, Plus, Search, Trash2, Type } from 'lucide-react';
 import { BACKGROUND_COLORS, sanitizeTextStyle } from '../../shared/text-style.js';
 import type { TextStyle } from '../../shared/text-style';
 import { ColorField, StyleToolbar } from '../announcements/StyleControls';
@@ -34,11 +34,11 @@ function sectionKind(stanzaType: string): string {
 
 /** A colour per section kind, so verses, the chorus, bridges and outros are easy to tell apart at a glance. */
 const SECTION_TONE: Record<string, string> = {
-  Verse: 'border-sky-400/40 bg-sky-400/10 text-sky-300 hover:bg-sky-400/20',
-  Chorus: 'border-amber-400/40 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20',
-  Bridge: 'border-violet-400/40 bg-violet-400/10 text-violet-300 hover:bg-violet-400/20',
-  Outro: 'border-emerald-400/40 bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20',
-  Tag: 'border-line-strong bg-panel-2 text-fg/80 hover:bg-panel',
+  Verse: 'border-info/40 bg-info/10 text-info hover:bg-info/20',
+  Chorus: 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/20',
+  Bridge: 'border-warn/40 bg-warn/10 text-warn hover:bg-warn/20',
+  Outro: 'border-ok/40 bg-ok/10 text-ok hover:bg-ok/20',
+  Tag: 'border-fg/15 bg-panel-2 text-fg/80 hover:bg-panel',
 };
 
 /** The projector frame for one stanza of a hymn, or null when there is no such stanza. */
@@ -60,7 +60,7 @@ const todayIso = () => {
 /** What is being dragged: a library hymn, or a row already in the setlist. */
 type DragSource = { kind: 'library'; hymnId: number } | { kind: 'setlist'; index: number };
 
-const selectClass = 'h-9 rounded-md border border-line-strong bg-canvas px-2 text-xs text-fg outline-none focus:border-accent';
+const selectClass = 'h-9 rounded-md border border-fg/15 bg-panel-2 px-2 text-xs text-fg outline-none focus:border-accent';
 
 export function SongLyrics() {
   const t = useLyT();
@@ -101,6 +101,8 @@ export function SongLyrics() {
   const dragRef = useRef<DragSource | null>(null);
   const fail = (err: unknown) => setError(errorText(err));
   const modalOpen = showCreate || editing !== null;
+  const inSetlist = new Set(entries.map((e) => e.hymnId));
+  const onAirTitle = liveFrame.kind === 'lyrics' ? liveFrame.title : null;
 
   // A hymn opened from the Service Queue. Its cues load even if it is not in this setlist.
   const [focusedId, setFocusedId] = useState<number | null>(null);
@@ -245,6 +247,15 @@ export function SongLyrics() {
     void applyOrder(ids);
   };
 
+  /** Moves a setlist row one place up or down, and keeps it selected. Drag and drop does the same for longer moves. */
+  const moveEntry = (index: number, delta: -1 | 1) => {
+    const to = index + delta;
+    if (to < 0 || to >= entries.length) return;
+    const ids = entries.map((e) => e.hymnId);
+    [ids[index], ids[to]] = [ids[to], ids[index]];
+    void applyOrder(ids).then(() => setSelected(to));
+  };
+
   const removeFromSetlist = (index: number) => void applyOrder(entries.filter((_, i) => i !== index).map((e) => e.hymnId));
 
   const createSetlist = async (e: FormEvent) => {
@@ -326,32 +337,32 @@ export function SongLyrics() {
 
   return (
     <div className="flex min-h-[calc(100vh-88px)] flex-col">
-      <header className="border-b border-line px-6 pt-5 pb-4">
-        <div className="eyebrow text-fg">{t('eyebrow')}</div>
-        <h1 className="mt-1 text-[56px] leading-none font-black uppercase condensed">{t('title')}</h1>
-        <p className="mt-2 text-[15px] text-muted">{t('subtitle')}</p>
+      <header className="px-5 pt-5 pb-4">
+        <div className="text-sm font-semibold tracking-wider text-accent uppercase">{t('eyebrow')}</div>
+        <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{t('title')}</h1>
+        <p className="mt-1 text-sm text-fg/70">{t('subtitle')}</p>
       </header>
 
       {error && (
-        <div role="alert" className="border-b border-crimson/40 bg-crimson/10 px-6 py-2 text-sm text-danger">
+        <div role="alert" className="mx-5 mb-4 rounded-lg border border-danger/50 bg-danger/10 px-4 py-2 text-sm text-danger">
           {error}
         </div>
       )}
 
-      <div className="grid min-h-0 grid-cols-1 xl:flex-1 xl:grid-cols-[360px_minmax(0,1fr)_minmax(0,1.1fr)]">
+      <div className="grid min-h-0 grid-cols-1 gap-5 px-5 pb-5 xl:flex-1 xl:grid-cols-[360px_minmax(0,1fr)_minmax(0,1.1fr)]">
         {/* ── Library ── */}
-        <section className="flex min-h-[420px] flex-col border-r border-line">
+        <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-[10px] border border-line bg-panel">
           <div className="flex flex-col gap-3 border-b border-line p-4">
             <div className="flex items-center justify-between">
-              <span className="eyebrow text-fg">{t('libraryTitle')}</span>
+              <span className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('libraryTitle')}</span>
               <div className="flex items-center gap-2">
-              <button type="button" onClick={() => setShowCategories(true)} className="h-9 rounded-md border border-line-strong px-3 text-xs font-bold whitespace-nowrap uppercase hover:bg-panel-2">
+              <button type="button" onClick={() => setShowCategories(true)} className="h-9 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs font-semibold tracking-wide whitespace-nowrap uppercase transition hover:bg-fg/10">
                 {t('songCategoriesButton')}
               </button>
               <button
                 type="button"
                 onClick={() => setShowCreate(true)}
-                className="flex h-9 items-center gap-1.5 rounded-md bg-accent px-3 text-xs font-extrabold uppercase text-on-accent hover:brightness-105"
+                className="flex h-9 items-center gap-1.5 rounded-md border border-accent bg-accent px-3 text-xs font-extrabold tracking-wide uppercase text-on-accent transition hover:brightness-110"
               >
                 <Plus size={14} strokeWidth={2.5} aria-hidden /> {t('createHymn')}
               </button>
@@ -364,7 +375,7 @@ export function SongLyrics() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t('search')}
-                className="h-10 w-full rounded-md border border-line-strong bg-canvas pr-3 pl-9 text-sm outline-none focus:border-accent"
+                className="h-10 w-full rounded-md border border-fg/15 bg-panel-2 pr-3 pl-9 text-sm outline-none focus:border-accent"
               />
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -377,22 +388,28 @@ export function SongLyrics() {
                 {LANGUAGES.map((l) => <option key={l} value={l}>{t(`lang_${l}`)}</option>)}
               </select>
             </div>
+            <p className="text-xs text-fg/60 tabular-nums">{t('hymnCount', { n: hymns.length })}</p>
           </div>
 
           <ul className="min-h-0 flex-1 overflow-y-auto p-2">
-            {hymns.length === 0 && <li className="p-4 text-sm text-muted">{t('noHymns')}</li>}
+            {hymns.length === 0 && <li className="p-4 text-sm text-fg/60">{t('noHymns')}</li>}
             {hymns.map((h) => (
               <li
                 key={h.id}
                 draggable
                 onDragStart={() => { dragRef.current = { kind: 'library', hymnId: h.id }; }}
                 onDragEnd={() => { dragRef.current = null; setDropAt(null); }}
-                className="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-panel-2"
+                onDoubleClick={() => setlistId != null && addToSetlist(h.id)}
+                title={setlistId != null ? t('dblAddHint') : undefined}
+                className="group flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-fg/[0.06]"
               >
                 <Music size={14} className="shrink-0 cursor-grab text-faint" aria-hidden />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold">{h.title}</div>
-                  <div className="truncate text-[11px] text-muted">
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate text-sm font-semibold text-fg">{h.title}</span>
+                    {inSetlist.has(h.id) && <Check size={13} className="shrink-0 text-ok" aria-label={t('inSetlist')} />}
+                  </div>
+                  <div className="truncate text-[11px] text-fg/60">
                     {[h.composer, h.musicalKey, t(`cat_${h.category}`), t(`lang_${h.language}`), t('stanzaCount', { n: h.stanzaCount })].filter(Boolean).join(' · ')}
                   </div>
                 </div>
@@ -406,7 +423,7 @@ export function SongLyrics() {
                 >
                   <Plus size={14} aria-hidden />
                 </button>
-                <div className="hidden shrink-0 items-center group-hover:flex">
+                <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                   <button
                     type="button"
                     onClick={() => void startEdit(h)}
@@ -433,15 +450,16 @@ export function SongLyrics() {
         </section>
 
         {/* ── Sunday setlist ── */}
-        <section className="flex min-h-[420px] flex-col border-r border-line">
+        <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-[10px] border border-line bg-panel">
           <div className="flex flex-col gap-3 border-b border-line p-4">
             <div className="flex items-center gap-2">
               <ListMusic size={16} aria-hidden />
-              <span className="eyebrow text-fg">{t('setlistTitle')}</span>
+              <span className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('setlistTitle')}</span>
+              {setlistId != null && <span className="rounded-full bg-fg/10 px-2 py-px font-mono text-[10px] font-bold text-fg/70 tabular-nums">{entries.length}</span>}
               <button
                 type="button"
                 onClick={() => setNewSetlist((open) => !open)}
-                className="ml-auto h-8 rounded-md border border-line-strong px-2.5 text-[11px] font-bold uppercase hover:bg-panel-2"
+                className="ml-auto h-8 rounded-md border border-fg/15 bg-panel-2 px-2.5 text-[11px] font-semibold tracking-wide uppercase transition hover:bg-fg/10"
               >
                 {newSetlist ? t('cancel') : t('newSetlist')}
               </button>
@@ -459,7 +477,7 @@ export function SongLyrics() {
                     <option key={s.id} value={s.id}>{s.date} · {s.name}</option>
                   ))}
                 </select>
-                <button type="button" onClick={deleteSetlist} aria-label={t('deleteSetlist')} title={t('deleteSetlist')} className="grid size-9 place-items-center rounded-md border border-line-strong text-muted hover:text-danger">
+                <button type="button" onClick={deleteSetlist} aria-label={t('deleteSetlist')} title={t('deleteSetlist')} className="grid size-9 place-items-center rounded-md border border-fg/15 text-muted hover:text-danger">
                   <Trash2 size={14} aria-hidden />
                 </button>
               </div>
@@ -475,7 +493,7 @@ export function SongLyrics() {
                   value={setlistName}
                   onChange={(e) => setSetlistName(e.target.value)}
                   placeholder={t('setlistName')}
-                  className="h-9 rounded-md border border-line-strong bg-canvas px-3 text-sm outline-none focus:border-accent"
+                  className="h-9 rounded-md border border-fg/15 bg-panel-2 px-3 text-sm outline-none focus:border-accent"
                 />
                 <div className="flex gap-2">
                   <input
@@ -484,7 +502,7 @@ export function SongLyrics() {
                     aria-label={t('date')}
                     value={setlistDate}
                     onChange={(e) => setSetlistDate(e.target.value)}
-                    className="h-9 rounded-md border border-line-strong bg-canvas px-2 text-sm outline-none focus:border-accent"
+                    className="h-9 rounded-md border border-fg/15 bg-panel-2 px-2 text-sm outline-none focus:border-accent"
                   />
                   <button type="submit" disabled={!setlistName.trim()} className="h-9 flex-1 rounded-md bg-accent text-xs font-extrabold uppercase text-on-accent disabled:opacity-40">
                     {t('create')}
@@ -496,7 +514,7 @@ export function SongLyrics() {
 
           {setlistId != null && (
             <ol className="min-h-0 flex-1 overflow-y-auto p-2" onDragLeave={() => setDropAt(null)}>
-              {entries.length === 0 && <li className="p-4 text-sm text-muted">{t('dropHere')}</li>}
+              {entries.length === 0 && <li className="grid min-h-40 place-items-center rounded-[10px] border-2 border-dashed border-fg/20 p-6 text-center text-sm text-fg/60">{t('dropHere')}</li>}
               {entries.map((entry, i) => (
                 <li
                   key={`${entry.position}-${entry.hymnId}`}
@@ -512,16 +530,24 @@ export function SongLyrics() {
                     e.preventDefault();
                     dropOnSetlist(i);
                   }}
-                  className={`flex items-center gap-2 rounded-md border-t-2 px-2 py-2 ${
-                    dropAt === i ? 'border-accent' : 'border-transparent'
-                  } ${selected === i ? 'bg-panel-2' : 'hover:bg-panel-2'}`}
+                  className={`group flex items-center gap-2 rounded-lg border-t-2 border-l-[3px] px-2 py-2 transition ${
+                    dropAt === i ? 'border-t-accent' : 'border-t-transparent'
+                  } ${selected === i ? 'border-l-accent bg-gradient-to-r from-accent/20 to-accent/5' : 'border-l-transparent hover:bg-fg/[0.06]'}`}
                 >
-                  <span className="w-6 shrink-0 font-mono text-xs text-faint">{i + 1}</span>
+                  <span className="w-6 shrink-0 text-center font-mono text-xs text-fg/50">{onAirTitle === entry.title ? <span className="mx-auto block size-2 animate-pulse rounded-full bg-ok" title={t('live')} /> : i + 1}</span>
                   <button type="button" onClick={() => setSelected(i)} className="min-w-0 flex-1 text-left" aria-current={selected === i}>
-                    <div className="truncate text-sm font-semibold">{entry.title}</div>
+                    <div className={`truncate text-sm font-semibold ${selected === i ? 'text-accent' : 'text-fg'}`}>{entry.title}</div>
                     {entry.deleted && <div className="text-[11px] text-danger">{t('deletedHymnStatus')}</div>}
                     <div className="truncate text-[11px] text-muted">{[entry.composer, t(`cat_${entry.category}`)].filter(Boolean).join(' · ')}</div>
                   </button>
+                  <div className="flex shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                    <button type="button" onClick={() => moveEntry(i, -1)} disabled={i === 0} aria-label={t('moveUp')} title={t('moveUp')} className="grid size-7 place-items-center rounded text-fg/60 hover:text-fg disabled:opacity-30">
+                      <ArrowUp size={13} aria-hidden />
+                    </button>
+                    <button type="button" onClick={() => moveEntry(i, 1)} disabled={i === entries.length - 1} aria-label={t('moveDown')} title={t('moveDown')} className="grid size-7 place-items-center rounded text-fg/60 hover:text-fg disabled:opacity-30">
+                      <ArrowDown size={13} aria-hidden />
+                    </button>
+                  </div>
                   <button type="button" onClick={() => removeFromSetlist(i)} aria-label={t('removeHymn', { title: entry.title })} className="grid size-7 shrink-0 place-items-center rounded text-muted hover:text-danger">
                     <Trash2 size={13} aria-hidden />
                   </button>
@@ -544,16 +570,16 @@ export function SongLyrics() {
         </section>
 
         {/* ── Live cue controller ── */}
-        <section className="flex min-h-[auto] min-w-0 flex-col xl:min-h-0">
+        <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-[10px] border border-line bg-panel xl:min-h-0">
           <div className="shrink-0 border-b border-line p-4">
-            <span className="eyebrow text-fg">{t('cuesTitle')}</span>
+            <span className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('cuesTitle')}</span>
             {hymn ? (
               <>
-                <h2 className="mt-1 text-2xl font-black uppercase condensed">{hymn.title}</h2>
+                <h2 className="mt-1 text-2xl font-bold tracking-tight">{hymn.title}</h2>
                 <p className="text-xs text-muted">{[hymn.composer, hymn.musicalKey, t(`cat_${hymn.category}`), t(`lang_${hymn.language}`)].filter(Boolean).join(' · ')}</p>
               </>
             ) : (
-              <h2 className="mt-1 text-2xl font-black uppercase condensed text-muted">{t('noHymn')}</h2>
+              <h2 className="mt-1 text-2xl font-bold tracking-tight text-muted">{t('noHymn')}</h2>
             )}
           </div>
 
@@ -584,7 +610,7 @@ export function SongLyrics() {
                   aria-expanded={styleOpen}
                   aria-controls="lyr-style-panel"
                   onClick={() => setUi({ slideStyleOpen: !styleOpen })}
-                  className="flex h-9 w-fit items-center gap-2 rounded-md border border-line-strong px-3 text-xs font-bold uppercase hover:bg-panel-2"
+                  className="flex h-9 w-fit items-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs font-semibold tracking-wide uppercase transition hover:bg-fg/10"
                 >
                   <Type size={14} aria-hidden /> {t('styleToggle')}
                 </button>
@@ -626,17 +652,17 @@ export function SongLyrics() {
                         aria-current={selected ? 'true' : undefined}
                         className={`w-full rounded-lg border p-4 text-left transition ${
                           selected
-                            ? 'border-amber-400 bg-amber-400/15 ring-2 ring-amber-400'
+                            ? 'border-accent bg-accent/15 ring-2 ring-accent'
                             : live
-                              ? 'border-emerald-500 bg-emerald-500/10'
+                              ? 'border-ok bg-ok/10'
                               : next
-                                ? 'border-dashed border-line-strong bg-panel-2'
-                                : 'border-line bg-panel hover:border-line-strong'
+                                ? 'border-dashed border-fg/15 bg-panel-2'
+                                : 'border-line bg-panel hover:border-fg/15'
                         }`}
                       >
                         <div className="mb-2 flex items-center gap-2">
                           <span className="font-mono text-[11px] font-bold tracking-wider text-accent uppercase">{stanza.stanzaType}</span>
-                          {live && <span className="rounded bg-emerald-500 px-1.5 py-0.5 text-[10px] font-extrabold text-stone-950 uppercase">{t('live')}</span>}
+                          {live && <span className="rounded bg-ok px-1.5 py-0.5 text-[10px] font-extrabold text-on-accent uppercase">{t('live')}</span>}
                           {next && !live && <span className="text-[10px] font-bold text-muted uppercase">{t('next')}</span>}
                         </div>
                         <p className="line-clamp-4 text-[15px] leading-snug whitespace-pre-line">{stanza.lyricsText}</p>
@@ -655,15 +681,18 @@ export function SongLyrics() {
                   type="button"
                   onClick={takeLive}
                   disabled={cue < 0}
-                  className="ml-auto flex shrink-0 items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-xs font-bold tracking-wider text-white uppercase shadow-md transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="ml-auto flex h-10 shrink-0 items-center gap-2 rounded-md border border-ok bg-ok px-5 text-xs font-extrabold tracking-wider text-canvas uppercase shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Play size={14} fill="currentColor" aria-hidden /> {tAnn('play')}
                 </button>
               </div>
             </>
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center p-8 text-center text-sm text-muted">
-              <p>{t('selectHint')}</p>
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-fg/60">
+              <span className="grid size-12 place-items-center rounded-[10px] border border-line text-fg/50">
+                <Music size={22} aria-hidden />
+              </span>
+              <p className="max-w-xs">{t('selectHint')}</p>
             </div>
           )}
         </section>

@@ -38,27 +38,27 @@ test('every A-/A+ step is a visible size change on a Title Card, for short and l
   assert.ok(titleCqw(SHORT, 1.5) - titleCqw(SHORT, 1.4) > 0.4, 'at 150% it is bigger again');
 });
 
-test('the Title Card code has no ceiling, the proportional formula, and a 65cqh height limit', () => {
+test('the Title Card code has no ceiling, the proportional formula, and a 65% height limit (36.563cqw on a 16:9 frame)', () => {
   const face = read('src/praise-worship/PwSlideFace.tsx');
   assert.match(face, /const long = slide\.label\.length > 25;/);
   assert.match(face, /const titleCqw = \(long \? 3\.6 : 4\.4\) \* \(slideScale \?\? 1\);/);
   assert.match(face, /const titleChars = charsPerLine\(0\.84, titleCqw \* 19\.2\);/, 'the line width follows the scaled size');
   assert.doesNotMatch(face, /Math\.min\(4\.8|Math\.min\(6\.0|5\.8\)|7\.0\)/, 'no ceiling is left on the title');
-  assert.match(face, /<h2 className="max-h-\[65cqh\] leading-\[1\.12\] tracking-\[0\.08em\] uppercase"/);
+  assert.match(face, /<h2 className="max-h-\[36\.563cqw\] leading-\[1\.12\] tracking-\[0\.08em\] uppercase"/);
   assert.match(face, /fontSize: `\$\{titleCqw\}cqw`/);
   assert.doesNotMatch(face, /top-\[14cqh\] bottom-\[12cqh\]/, 'the sub-band box is gone');
 });
 
 test('the title is centred on the full frame, with the compact icon above the heading', () => {
   const face = read('src/praise-worship/PwSlideFace.tsx');
-  assert.match(face, /<div className="absolute inset-0 flex flex-col items-center justify-center px-\[8cqw\] py-\[8cqh\] text-center">/);
-  assert.match(face, /className="mb-\[2\.5cqh\] h-\[4cqw\] w-\[4cqw\] shrink-0 text-gold opacity-80"/);
+  assert.match(face, /<div className="absolute inset-0 flex flex-col items-center justify-center px-\[8cqw\] py-\[4\.5cqw\] text-center">/);
+  assert.match(face, /className="mb-\[1\.406cqw\] h-\[4cqw\] w-\[4cqw\] shrink-0 text-gold opacity-80"/);
 });
 
 test('the header and footer badges are pinned to the top and bottom edges, above the title', () => {
   const face = read('src/praise-worship/PwSlideFace.tsx');
-  assert.match(face, /<div className="absolute top-\[5cqh\] left-\[6cqw\] right-\[6cqw\] z-10 flex items-center justify-between">/);
-  assert.match(face, /<div className="absolute bottom-\[5cqh\] left-\[6cqw\] right-\[6cqw\] z-10 flex items-center justify-between">/);
+  assert.match(face, /<div className="absolute top-\[2\.813cqw\] left-\[6cqw\] right-\[6cqw\] z-10 flex items-center justify-between">/);
+  assert.match(face, /<div className="absolute bottom-\[2\.813cqw\] left-\[6cqw\] right-\[6cqw\] z-10 flex items-center justify-between">/);
 });
 
 test('the preview reads the scale from the store, and passes it into the slide, so Current and Next re-render at once', () => {
@@ -74,7 +74,7 @@ test('the slide canvas clips everything, so no text can draw outside the 16:9 fr
 
 test('every slide preview is a strict 16:9 frame that clips its contents', () => {
   const next = read('src/praise-worship/CurrentNextPreview.tsx');
-  assert.match(next, /const STAGE = 'relative aspect-video w-full overflow-hidden rounded-xl/);
+  assert.match(next, /const STAGE = 'relative aspect-video w-full overflow-hidden rounded-(xl|lg)/);
   const panel = read('src/operator/PreviewPanel.tsx');
   assert.match(panel, /<div className="relative overflow-hidden" style=\{\{ width: 'min\(100cqw, calc\(100cqh \* 16 \/ 9\)\)', height: 'min\(100cqh, calc\(100cqw \* 9 \/ 16\)\)' \}\}>/);
 });

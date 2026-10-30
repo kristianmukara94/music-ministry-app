@@ -27,22 +27,23 @@ test('dropping a song on a multi-song slot adds it until the limit', () => {
   assert.deepEqual(seg.content.hymnIds, [1, 2, 3]);
 });
 
-test('dropping a song on segment 4 (Bible Enthronement) is accepted, as the title slide allows songs', () => {
+test('dropping a song on segment 4 (Bible Enthronement) is accepted, and the title slide stays', () => {
   const seg = slot('bible_enthronement');
   const drop = songDrop(seg, 7);
   assert.ok(drop.patch, 'the drop is accepted');
   const after = applied(seg, drop.patch);
-  assert.equal(after.type, 'song');
-  assert.deepEqual(after.content, { kind: 'song', hymnIds: [7], maxSongs: 1, category: null });
+  assert.equal(after.type, 'scripture', 'the card keeps its type');
+  assert.equal(after.content.kind, 'title');
+  assert.deepEqual(after.content.hymnIds, [7]);
   assert.equal(after.minutes, seg.minutes, 'the slot keeps its minutes');
 });
 
-test('dropping a song on the Gospel Acclamation slot attaches it, in place of the lectionary reading', () => {
+test('dropping a song on the Gospel Acclamation slot attaches it, alongside the reading', () => {
   const seg = slot('gospel_acclamation');
   const drop = songDrop(seg, 7);
   assert.equal(drop.refused, undefined, 'the slot accepts a song');
   const attached = applied(seg, drop.patch);
-  assert.equal(attached.content.kind, 'song');
+  assert.equal(attached.content.kind, 'lectionary');
   assert.deepEqual(attached.content.hymnIds, [7]);
 });
 

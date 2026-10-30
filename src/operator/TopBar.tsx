@@ -11,47 +11,47 @@ import { liveCommands } from './actions';
 const DRAG = '[-webkit-app-region:drag]';
 const NO_DRAG = '[-webkit-app-region:no-drag]';
 
-const BASE = 'relative flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs font-semibold transition-all duration-200';
+const BASE = 'relative flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[13px] font-medium transition-all duration-200';
 
-/** Blackout: a dark red accent when the screen is black, so it reads as a state and not as a warning. */
+/** Blackout: a solid gold button, the one control that must always be easy to find. Dark red and breathing while the screen is black. */
 const EMERGENCY = {
-  idle: 'rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-red-400 hover:bg-red-500/20',
-  active: 'blackout-breathe rounded-full border border-red-900 bg-red-950/80 px-3 py-1.5 text-red-300 shadow-[inset_0_0_12px_rgba(127,29,29,0.6)]',
+  idle: 'rounded-md border border-accent/60 bg-accent px-4 py-1.5 text-sm font-extrabold tracking-wide text-on-accent uppercase shadow-[0_0_14px_color-mix(in_oklab,var(--color-accent)_35%,transparent)] hover:brightness-110',
+  active: 'blackout-breathe rounded-md border border-danger bg-danger/20 px-4 py-1.5 font-extrabold tracking-wide uppercase text-danger',
 };
 
 /**
- * Overlay toggles. While one is showing, its border and glow light up gold, so the operator sees at a glance
+ * Overlay toggles: plain text until one is showing, then its border and glow light up gold, so the operator sees at a glance
  * what the congregation is seeing.
  */
 const TOGGLE = {
-  idle: 'rounded-md border border-line bg-white/5 px-3 py-1.5 text-fg/80 hover:bg-white/10',
+  idle: 'rounded-md border border-transparent px-3 py-1.5 text-fg/85 hover:bg-fg/[0.07] hover:text-fg',
   active:
     'rounded-md border border-accent/70 bg-accent/15 px-3 py-1.5 text-accent ring-1 ring-accent/30 shadow-[0_0_14px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]',
 };
 
-/** Playback overrides: muted text that brightens on hover. */
+/** Playback overrides: dark ghost buttons that brighten on hover. */
 const OVERRIDE = {
-  idle: 'rounded-md px-3 py-1.5 text-fg/60 hover:text-fg',
-  active: 'rounded-md px-3 py-1.5 text-accent',
+  idle: 'rounded-md border border-fg/15 bg-panel-2 px-3 py-1.5 text-fg/85 hover:bg-fg/10 hover:text-fg',
+  active: 'rounded-md border border-accent/50 bg-panel-2 px-3 py-1.5 text-accent',
 };
 
 /** The Preview button: a gold outline and glow while the floating preview is open, the muted dark pill otherwise. */
 const PREVIEW_TONE = {
-  idle: 'rounded-md border border-stone-800 bg-stone-900 px-3 py-1.5 text-stone-300 hover:text-stone-100',
-  active: 'rounded-md border border-amber-500/50 bg-amber-500/20 px-3 py-1.5 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.35)]',
+  idle: 'rounded-md border border-transparent px-3 py-1.5 text-fg/85 hover:bg-fg/[0.07] hover:text-fg',
+  active: 'rounded-md border border-accent/60 bg-accent/20 px-3 py-1.5 text-accent shadow-[0_0_12px_color-mix(in_oklab,var(--color-accent)_35%,transparent)]',
 };
 
 const DISABLED = 'cursor-not-allowed opacity-40';
 
 function ControlButton({
-  icon: Icon,
   label,
   tone,
   active = false,
   disabled = false,
   onClick,
 }: {
-  icon: LucideIcon;
+  /** Kept so call sites can say what the control is. The top bar shows text only. */
+  icon?: LucideIcon;
   label: string;
   tone: { idle: string; active: string };
   active?: boolean;
@@ -66,14 +66,13 @@ function ControlButton({
       aria-pressed={active}
       className={`${BASE} ${NO_DRAG} ${active ? tone.active : tone.idle} ${disabled ? DISABLED : ''}`}
     >
-      <Icon size={13} strokeWidth={2.25} aria-hidden className="shrink-0" />
       <span>{label}</span>
     </button>
   );
 }
 
 /**
- * A master switch: a pill with a dot, green and LIVE when on, muted grey and OFF when off. The Projector and Remote switches
+ * A master switch: a pill with a dot, green and LIVE when on, red and OFF when off. The Projector and Remote switches
  * both use it, so they look the same.
  */
 function MasterSwitch({ on, label, title, onClick }: { on: boolean; label: string; title: string; onClick: () => void }) {
@@ -86,15 +85,15 @@ function MasterSwitch({ on, label, title, onClick }: { on: boolean; label: strin
       onClick={onClick}
       className={`${BASE} ${NO_DRAG} rounded-full border px-3.5 py-1.5 tracking-wide ${
         on
-          ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 shadow-[0_0_14px_rgba(16,185,129,0.3)]'
-          : 'border-line bg-white/5 text-fg/50 hover:text-fg/70'
+          ? 'border-ok/50 bg-ok/15 text-ok hover:bg-ok/25'
+          : 'border-danger/50 bg-danger/15 text-danger hover:bg-danger/25'
       }`}
     >
       <span
-        className={`size-2 shrink-0 rounded-full ${on ? 'animate-pulse bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]' : 'bg-zinc-500'}`}
+        className={`size-2 shrink-0 rounded-full ${on ? 'animate-pulse bg-ok shadow-[0_0_6px_var(--color-ok)]' : 'bg-danger'}`}
         aria-hidden
       />
-      {label} · {on ? 'LIVE' : 'OFF'}
+      {label} • {on ? 'LIVE' : 'OFF'}
     </button>
   );
 }
@@ -142,18 +141,18 @@ export function TopBar() {
 
   return (
     // pr-[144px] keeps the master switch clear of the Windows caption buttons (about 46px each).
-    <header className={`relative z-20 flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-line bg-canvas/80 py-1.5 pr-[144px] pl-4 backdrop-blur-md select-none ${DRAG}`}>
+    <header className={`relative z-20 flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-line bg-canvas py-1.5 pr-[144px] pl-4 select-none ${DRAG}`}>
       {/* At narrow widths the controls scroll sideways rather than being clipped. The projector switch stays in place. */}
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5">
         {/* Cluster 1: emergency and state controls. */}
         <div role="group" aria-label={t('top.groupState')} className="flex items-center gap-1.5">
           {promptChoice === 'skip' && (
-            <span role="status" className="flex h-8 items-center gap-2 rounded-full border border-stone-600 bg-stone-900/80 px-3 text-[11px] font-bold tracking-wider text-stone-300 uppercase">
+            <span role="status" className="flex h-8 items-center gap-2 rounded-full border border-fg/30 bg-panel-2 px-3 text-[11px] font-bold tracking-wider text-fg/80 uppercase">
               Projector: skipped
               <button
                 type="button"
                 onClick={() => setUi({ projectorPromptChoice: 'ask' })}
-                className="text-amber-300 underline underline-offset-2 hover:text-amber-200"
+                className="text-accent underline underline-offset-2 hover:brightness-110"
               >
                 Ask again
               </button>

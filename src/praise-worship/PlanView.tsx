@@ -1,15 +1,19 @@
 import { useState, type FormEvent } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { CalendarDays, Plus, Trash2 } from 'lucide-react';
 import { formatRunTime, readiness, totalMinutes } from '../../shared/pw.js';
+import { DATE_LOCALES } from '../i18n/strings';
+import { formatIsoDay, formatIsoWeekday } from '../state/region';
+import { useRegion } from '../state/useRegion';
+import { useUi } from '../state/ui';
 import { LineupRail } from './LineupRail';
 import { Library } from './Library';
 import { SegmentEditor } from './SegmentEditor';
 import { createSession, deleteSession, errorText, flushSave, openSession, updateSession, usePw } from './store';
 import { usePwT } from './strings';
 
-const INPUT = 'h-11 rounded-xl border border-line-strong bg-canvas/40 px-3 text-sm outline-none focus:border-accent';
-const BTN = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line-strong px-4 text-sm font-semibold transition hover:bg-panel-2 disabled:opacity-40';
-const BTN_ACCENT = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-accent px-5 text-sm font-bold text-on-accent transition hover:opacity-90 disabled:opacity-40';
+const INPUT = 'h-10 rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent/40';
+const BTN = 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-4 text-sm font-semibold text-fg/85 transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
+const BTN_ACCENT = 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-accent bg-accent px-5 text-sm font-bold text-on-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40';
 
 const isoToday = () => {
   const d = new Date();
@@ -36,7 +40,7 @@ function NewSessionForm({ onDone }: { onDone?: () => void }) {
   };
 
   return (
-    <form onSubmit={submit} className="flex flex-wrap items-end gap-3 rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 p-4">
+    <form onSubmit={submit} className="flex flex-wrap items-end gap-3 rounded-[10px] border border-line bg-panel p-4">
       <label className="flex min-w-56 flex-1 flex-col gap-1 text-xs text-muted">
         {t('sessionName')}
         <input required maxLength={120} value={name} placeholder={t('sessionNamePlaceholder')} onChange={(e) => setName(e.target.value)} className={`${INPUT} text-fg`} />
@@ -68,8 +72,8 @@ function NewSessionForm({ onDone }: { onDone?: () => void }) {
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex min-w-36 flex-1 flex-col gap-1 rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 px-5 py-3.5">
-      <span className="text-sm text-muted">{label}</span>
+    <div className="flex min-w-0 flex-col gap-1 rounded-[10px] border border-line bg-panel px-4 py-3">
+      <span className="text-[11px] font-semibold tracking-wider text-fg/60 uppercase">{label}</span>
       {children}
     </div>
   );
@@ -80,6 +84,8 @@ export function PlanView() {
   const session = usePw((s) => s.session);
   const sessions = usePw((s) => s.sessions);
   const [creating, setCreating] = useState(false);
+  const lang = useUi((s) => s.lang);
+  const region = useRegion();
 
   if (!session) {
     return (
@@ -92,12 +98,13 @@ export function PlanView() {
 
   const { ready, total, missingSongs } = readiness(session.segments);
   const percent = total ? Math.round((ready / total) * 100) : 0;
+  const dateLabel = `${formatIsoWeekday(session.liturgicalDate, DATE_LOCALES[lang])}, ${formatIsoDay(session.liturgicalDate, region)}`;
 
   return (
     <div className="flex flex-col gap-5">
       {/* Which session: switch, start a new one, or delete this one. */}
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex min-w-60 flex-col gap-1 text-xs text-muted">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-fg/60 uppercase">
           {t('session')}
           <select
             value={session.id}
@@ -105,7 +112,7 @@ export function PlanView() {
               await flushSave();
               await openSession(Number(e.target.value));
             }}
-            className={`${INPUT} text-fg`}
+            className={`${INPUT} min-w-60 text-fg normal-case`}
           >
             {sessions.map((s) => (
               <option key={s.id} value={s.id}>
@@ -119,7 +126,7 @@ export function PlanView() {
         </button>
         <button
           type="button"
-          className={BTN}
+          className={`${BTN} hover:!border-danger/60 hover:!text-danger`}
           onClick={() => window.confirm(t('confirmDeleteSession', { name: session.name })) && void deleteSession(session.id)}
         >
           <Trash2 size={16} aria-hidden /> {t('deleteSession')}
@@ -127,31 +134,39 @@ export function PlanView() {
       </div>
       {creating && <NewSessionForm onDone={() => setCreating(false)} />}
 
-      <header className="flex flex-wrap items-end justify-between gap-5">
+      <header className="flex flex-wrap items-start justify-between gap-5">
         <div className="min-w-0">
-          <p className="eyebrow !text-accent">{t('eyebrow_plan')}</p>
-          <h1 className="mt-1 font-sans condensed text-[56px] leading-none font-black uppercase">{session.name}</h1>
-          <label className="mt-1 inline-flex items-center gap-2 text-muted">
-            <span className="sr-only">{t('date')}</span>
+          <p className="text-sm font-semibold tracking-wider text-accent uppercase">{t('eyebrow_plan')}</p>
+          <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{session.name}</h1>
+          {/* The date reads as a plain label. Pressing it opens the calendar. */}
+          <label className="relative mt-2 inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-3 text-sm font-semibold text-fg/85 transition focus-within:ring-2 focus-within:ring-accent hover:bg-fg/10">
+            <CalendarDays size={15} className="text-accent" aria-hidden />
+            {dateLabel}
             <input
               type="date"
+              aria-label={t('date')}
               value={session.liturgicalDate}
               onChange={(e) => e.target.value && updateSession({ liturgicalDate: e.target.value })}
-              className="min-h-11 rounded-lg bg-transparent px-1 text-fg outline-none focus:ring-2 focus:ring-accent"
+              onClick={(e) => e.currentTarget.showPicker?.()}
+              className="absolute inset-0 cursor-pointer opacity-0"
             />
           </label>
         </div>
-        <div className="flex flex-wrap gap-3">
+
+        <div className="grid w-full grid-cols-2 gap-3 sm:w-auto sm:grid-cols-[8rem_8rem_minmax(16rem,1fr)]">
           <Stat label={t('stat_segments')}>
-            <span className="font-mono text-2xl font-bold">{total}</span>
+            <span className="font-mono text-2xl font-bold text-fg">{total}</span>
           </Stat>
           <Stat label={t('stat_runTime')}>
-            <span className="font-mono text-2xl font-bold whitespace-nowrap">{formatRunTime(totalMinutes(session.segments))}</span>
+            <span className="font-mono text-2xl font-bold whitespace-nowrap text-fg">{formatRunTime(totalMinutes(session.segments))}</span>
           </Stat>
-          <div className="flex min-w-64 flex-[2] flex-col gap-2 rounded-2xl border border-zinc-800/60 bg-zinc-900/50 backdrop-blur-md shadow-xl shadow-black/40 px-5 py-3.5">
-            <div className="flex items-baseline justify-between gap-3">
-              <span id="pw-ready-label" className="text-sm text-muted">{t('stat_ready')}</span>
-              <span className="inline-flex items-center gap-2 font-mono">{ready === total && total > 0 && <span aria-hidden className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-400">✓</span>}{ready} / {total}</span>
+          <div className="col-span-2 flex min-w-0 flex-col gap-2 rounded-[10px] border border-line bg-panel px-4 py-3 sm:col-span-1">
+            <div className="flex items-center justify-between gap-3">
+              <span id="pw-ready-label" className="text-[11px] font-semibold tracking-wider text-fg/60 uppercase">{t('stat_ready')}</span>
+              <span className="inline-flex items-center gap-2 font-mono text-lg font-bold whitespace-nowrap text-fg">
+                {ready === total && total > 0 && <span aria-hidden className="inline-flex items-center rounded-full border border-ok/40 bg-ok/15 px-2 py-0.5 text-[10px] font-bold text-ok">✓</span>}
+                {ready} / {total}
+              </span>
             </div>
             <div
               role="progressbar"
@@ -159,11 +174,11 @@ export function PlanView() {
               aria-valuemin={0}
               aria-valuemax={total}
               aria-valuenow={ready}
-              className="h-2 overflow-hidden rounded-full bg-panel-2"
+              className="h-2 overflow-hidden rounded-full bg-fg/10"
             >
               <div className="h-full rounded-full bg-ok transition-[width]" style={{ width: `${percent}%` }} />
             </div>
-            <span className="text-sm text-muted">
+            <span className={`text-xs ${missingSongs === 0 ? 'text-ok' : 'text-warn'}`}>
               {missingSongs === 0 ? t('allHaveSongs') : missingSongs === 1 ? t('stillNeedSongOne') : t('stillNeedSong', { n: missingSongs })}
             </span>
           </div>

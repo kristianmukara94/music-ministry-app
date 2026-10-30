@@ -336,10 +336,10 @@ export function AnnouncementsDeck() {
 
   return (
     <div className="flex min-h-[calc(100vh-88px)] flex-col">
-      <header className="flex flex-wrap items-start justify-between gap-6 border-b border-line px-6 pt-5 pb-4">
+      <header className="flex flex-wrap items-start justify-between gap-6 px-6 pt-5 pb-3">
         <div>
-          <div className="eyebrow text-fg">{tr('eyebrow')}</div>
-          <h1 className="mt-1 text-[56px] leading-none font-black uppercase condensed">{tr('title')}</h1>
+          <div className="text-sm font-semibold tracking-wider text-accent uppercase">{tr('eyebrow')}</div>
+          <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{tr('title')}</h1>
           <p className="mt-2 text-[15px] text-muted">{tr('subtitle')}</p>
           <div className="mt-3 flex items-center gap-2 text-sm text-muted">
             <span className="rounded bg-panel-2 px-1.5 py-0.5 font-mono text-xs tabular-nums text-fg">{count}</span>
@@ -354,7 +354,7 @@ export function AnnouncementsDeck() {
               <select
                 value={importTarget ?? ''}
                 onChange={(e) => setImportTarget(Number(e.target.value))}
-                className="h-10 rounded-md border border-line-strong bg-canvas px-2 text-sm text-fg"
+                className="h-10 rounded-md border border-fg/15 bg-panel-2 px-2 text-sm text-fg"
               >
                 {folders.map((f) => (
                   <option key={f.id} value={f.id}>{f.name}</option>
@@ -366,7 +366,7 @@ export function AnnouncementsDeck() {
             type="button"
             onClick={importSlides}
             disabled={busy || target == null}
-            className="flex h-11 items-center gap-2 rounded-md border border-line-strong px-4 text-[13px] font-extrabold uppercase condensed hover:bg-panel-2 disabled:opacity-40"
+            className="flex h-11 items-center gap-2 rounded-md border border-fg/15 px-4 text-xs font-extrabold tracking-wider uppercase hover:bg-fg/10 disabled:opacity-40"
           >
             <Upload size={16} aria-hidden /> {tr('importSlides')}
           </button>
@@ -374,7 +374,7 @@ export function AnnouncementsDeck() {
             type="button"
             onClick={() => setTextOpen(true)}
             disabled={busy || target == null}
-            className="flex h-11 items-center gap-2 rounded-md border border-line-strong px-4 text-[13px] font-extrabold uppercase condensed hover:bg-panel-2 disabled:opacity-40"
+            className="flex h-11 items-center gap-2 rounded-md border border-fg/15 px-4 text-xs font-extrabold tracking-wider uppercase hover:bg-fg/10 disabled:opacity-40"
           >
             <Type size={16} aria-hidden /> {tr('createText')}
           </button>
@@ -516,10 +516,10 @@ function FolderList({
 
   const rowClass = (isActive: boolean) =>
     `flex min-w-0 flex-1 items-center gap-3 rounded-md border-l-2 px-3 py-2.5 text-left text-sm font-semibold transition ${
-      isActive ? 'border-accent bg-panel-2 text-fg' : 'border-transparent text-muted hover:bg-panel-2 hover:text-fg'
+      isActive ? 'border-accent bg-panel-2 text-fg' : 'border-transparent text-muted hover:bg-fg/10 hover:text-fg'
     }`;
 
-  const inputClass = 'h-10 w-full rounded-md border border-line-strong bg-canvas px-3 text-sm outline-none focus:border-accent';
+  const inputClass = 'h-10 w-full rounded-md border border-fg/15 bg-panel-2 px-3 text-sm outline-none focus:border-accent';
 
   return (
     <aside className="flex w-[260px] shrink-0 flex-col gap-3 border-r border-line p-4">
@@ -547,7 +547,7 @@ function FolderList({
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="flex h-10 items-center justify-center gap-2 rounded-md border border-line-strong text-xs font-extrabold uppercase condensed hover:bg-panel-2"
+          className="flex h-10 items-center justify-center gap-2 rounded-md border border-fg/15 text-xs font-extrabold tracking-wider uppercase hover:bg-fg/10"
         >
           <FolderPlus size={15} aria-hidden /> {tr('newFolder')}
         </button>
@@ -588,7 +588,7 @@ function FolderList({
                   onClick={() => { setDraft(f.name); setEditingId(f.id); }}
                   aria-label={tr('rename')}
                   title={tr('rename')}
-                  className="grid size-7 place-items-center rounded text-muted hover:bg-panel-2 hover:text-fg"
+                  className="grid size-7 place-items-center rounded text-muted hover:bg-fg/10 hover:text-fg"
                 >
                   <Pencil size={13} aria-hidden />
                 </button>
@@ -613,10 +613,10 @@ function FolderList({
 function EmptyState({ tr, onImport, disabled }: { tr: AnnT; onImport: () => void; disabled: boolean }) {
   return (
     <div className="flex h-full min-h-[480px] flex-col items-center justify-center p-10 text-center">
-      <div className="grid size-16 place-items-center rounded-xl border border-line-strong bg-panel">
+      <div className="grid size-16 place-items-center rounded-xl border border-fg/15 bg-panel">
         <Megaphone size={26} strokeWidth={1.6} aria-hidden />
       </div>
-      <h2 className="mt-5 text-3xl font-black uppercase condensed">{tr('emptyTitle')}</h2>
+      <h2 className="mt-5 text-3xl font-bold tracking-tight">{tr('emptyTitle')}</h2>
       <p className="mt-2 max-w-md text-sm text-muted">{tr('emptyBody')}</p>
       <p className="mt-1 text-xs text-faint">{tr('dropHint')}</p>
 
@@ -625,11 +625,11 @@ function EmptyState({ tr, onImport, disabled }: { tr: AnnT; onImport: () => void
           type="button"
           onClick={onImport}
           disabled={disabled}
-          className="flex h-11 items-center gap-2 rounded-md bg-accent px-5 text-[13px] font-extrabold uppercase condensed text-on-accent hover:brightness-105 disabled:opacity-40"
+          className="flex h-11 items-center gap-2 rounded-md bg-accent px-5 text-xs font-extrabold tracking-wider uppercase text-on-accent hover:brightness-105 disabled:opacity-40"
         >
           <Upload size={16} aria-hidden /> {tr('importSlides')}
         </button>
-        <aside className="flex max-w-md gap-3 rounded-lg border border-line-strong bg-panel p-4 text-left">
+        <aside className="flex max-w-md gap-3 rounded-lg border border-fg/15 bg-panel p-4 text-left">
           <Info size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden />
           <div className="text-sm">
             <p className="font-bold">{tr('infoTitle')}</p>
@@ -705,7 +705,7 @@ function SlideGrid({
               onClick={() => onStage(slide)}
               aria-pressed={isActive}
               className={`w-full overflow-hidden rounded-lg border bg-panel text-left transition ${
-                isActive ? 'border-accent ring-1 ring-accent' : 'border-line hover:border-line-strong'
+                isActive ? 'border-accent ring-1 ring-accent' : 'border-line hover:border-fg/15'
               }`}
             >
               <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-md border border-line bg-black/80">
@@ -752,8 +752,8 @@ function Badge({ tone, children }: { tone: 'live' | 'staged'; children: string }
 function LimeSwitch({ label, on, onChange }: { label: string; on: boolean; onChange: (on: boolean) => void }) {
   return (
     <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className="flex items-center gap-2 text-xs font-bold tracking-wider text-fg/80 uppercase">
-      <span className={`relative h-5 w-9 rounded-full border transition ${on ? 'border-amber-400 bg-amber-500' : 'border-stone-700 bg-stone-900'}`}>
-        <span className={`absolute top-0.5 size-3.5 rounded-full transition-all ${on ? 'left-[18px] bg-stone-950' : 'left-0.5 bg-fg/60'}`} aria-hidden />
+      <span className={`relative h-5 w-9 rounded-full border transition ${on ? 'border-accent bg-accent' : 'border-fg/20 bg-panel-2'}`}>
+        <span className={`absolute top-0.5 size-3.5 rounded-full transition-all ${on ? 'left-[18px] bg-panel' : 'left-0.5 bg-fg/60'}`} aria-hidden />
       </span>
       {label}
     </button>
@@ -776,7 +776,7 @@ function PlaybackBar({ playing, playback, onChange, current, total, disabled, on
   onTogglePlay: () => void;
   onClear: () => void;
 }) {
-  const tile = 'w-8 h-8 flex items-center justify-center bg-stone-900 border border-amber-500/30 text-stone-200 hover:border-amber-400 hover:text-amber-300 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-40';
+  const tile = 'w-8 h-8 flex items-center justify-center bg-panel-2 border border-accent/30 text-fg/90 hover:border-accent hover:text-accent rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-40';
   return (
     <div role="toolbar" aria-label="Playback" className="flex flex-wrap items-center gap-x-5 gap-y-3 border-b border-line px-6 py-3">
       <div className="flex items-center gap-1.5">
@@ -801,7 +801,7 @@ function PlaybackBar({ playing, playback, onChange, current, total, disabled, on
           value={playback.interval}
           onChange={(e) => onChange({ ...playback, interval: clampInterval(e.target.value) })}
           aria-label="Autoplay interval in seconds"
-          className="w-32 accent-amber-400 bg-stone-800 h-1.5 rounded-lg cursor-pointer"
+          className="w-32 accent-accent bg-fg/10 h-1.5 rounded-lg cursor-pointer"
         />
         <span className="flex items-center gap-0.5">
           <input
@@ -815,7 +815,7 @@ function PlaybackBar({ playing, playback, onChange, current, total, disabled, on
             // Typing here must not trigger the deck's keys (arrows, space, Enter).
             onKeyDown={(e) => e.stopPropagation()}
             aria-label="Autoplay interval, in seconds"
-            className="w-14 bg-stone-900 border border-amber-500/40 text-stone-100 font-mono focus:border-amber-400 focus:outline-none rounded-md px-2 py-1 text-xs font-bold text-right"
+            className="w-14 bg-panel-2 border border-accent/40 text-fg font-mono focus:border-accent focus:outline-none rounded-md px-2 py-1 text-xs font-bold text-right"
           />
           <span className="text-sm font-bold text-fg">s</span>
         </span>
@@ -824,7 +824,7 @@ function PlaybackBar({ playing, playback, onChange, current, total, disabled, on
       <LimeSwitch label="Loop deck" on={playback.loop} onChange={(loop) => onChange({ ...playback, loop })} />
       <LimeSwitch label="Project slide count" on={playback.showCount} onChange={(showCount) => onChange({ ...playback, showCount })} />
 
-      <span className="bg-stone-900/90 border border-amber-500/30 text-amber-300/90 text-xs font-mono font-semibold px-3 py-1 rounded-full shadow-sm tabular-nums">
+      <span className="bg-panel-2/90 border border-accent/30 text-accent/90 text-xs font-mono font-semibold px-3 py-1 rounded-full shadow-sm tabular-nums">
         Current slide {current > 0 ? current : '–'}/{total}
       </span>
 
@@ -832,7 +832,7 @@ function PlaybackBar({ playing, playback, onChange, current, total, disabled, on
         <button
           type="button"
           onClick={onClear}
-          className="px-3 py-2 bg-stone-900/80 border border-red-500/50 text-red-400 hover:bg-red-500/10 hover:border-red-400 rounded-lg font-bold text-xs tracking-wider uppercase transition-colors flex items-center gap-1.5"
+          className="px-3 py-2 bg-panel-2/80 border border-danger/50 text-danger hover:bg-danger/10 hover:border-danger rounded-lg font-bold text-xs tracking-wider uppercase transition-colors flex items-center gap-1.5"
         >
           <Trash2 size={14} aria-hidden /> Clear all
         </button>
@@ -840,7 +840,7 @@ function PlaybackBar({ playing, playback, onChange, current, total, disabled, on
           type="button"
           onClick={onTogglePlay}
           disabled={disabled && !playing}
-          className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded-lg shadow-md shadow-amber-950/40 transition-all flex items-center gap-2 text-xs tracking-wider uppercase disabled:cursor-not-allowed disabled:opacity-40"
+          className="px-4 py-2 bg-accent hover:brightness-110 text-on-accent font-bold rounded-lg shadow-md shadow-black/40 transition-all flex items-center gap-2 text-xs tracking-wider uppercase disabled:cursor-not-allowed disabled:opacity-40"
         >
           {playing ? <Pause size={14} aria-hidden /> : <Play size={14} fill="currentColor" aria-hidden />}
           {playing ? 'Pause' : 'Play'}

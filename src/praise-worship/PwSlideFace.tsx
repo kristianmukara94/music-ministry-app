@@ -20,6 +20,9 @@ const TYPE_ICON = { prayer: Cross, song: Music, scripture: BookOpen } as const;
  * The background is the one the Welcome screen uses (see shared/welcome-settings.js): unset, the slide keeps its own dark colour; a colour
  * fills it; a picture or a video covers it, with a shade behind the text when that is on. The text is drawn on top, as before.
  *
+ * Every offset is in container widths (cqw), never container heights (cqh). The slide is always 16:9, so the two are the same length, but a
+ * height unit can resolve to zero in a preview box that is sized by its aspect ratio, which stacked the title card on top of itself.
+ *
  * The lyric and prayer text is drawn at the same size and place whether the lower third is on or off. The lower third adapts to the text,
  * not the other way round (see shared/lyric-area.js).
  */
@@ -70,18 +73,18 @@ export function PwSlideFace({
     // on the full frame, and the header and footer badges are pinned to the top and bottom edges, above it.
     return (
       <div data-theme="default" className={rootClass} style={colorStyle}>
-        <div className="absolute inset-0 flex flex-col items-center justify-center px-[8cqw] py-[8cqh] text-center">
-          <Icon aria-hidden className="mb-[2.5cqh] h-[4cqw] w-[4cqw] shrink-0 text-gold opacity-80" strokeWidth={1.25} />
-          <h2 className="max-h-[65cqh] leading-[1.12] tracking-[0.08em] uppercase" style={{ fontFamily: slideFont ?? TEXT_FONTS.display.css, fontWeight: 700, fontSize: `${titleCqw}cqw` }}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-[8cqw] py-[4.5cqw] text-center">
+          <Icon aria-hidden className="mb-[1.406cqw] h-[4cqw] w-[4cqw] shrink-0 text-gold opacity-80" strokeWidth={1.25} />
+          <h2 className="max-h-[36.563cqw] leading-[1.12] tracking-[0.08em] uppercase" style={{ fontFamily: slideFont ?? TEXT_FONTS.display.css, fontWeight: 700, fontSize: `${titleCqw}cqw` }}>
             {slideLine(slide.label, titleChars)}
           </h2>
-          <div aria-hidden className="mt-[2.5cqh] h-[0.35cqh] w-[12cqw] bg-gold" />
-          {slide.subtitle && <p className="mt-[2cqh] text-[2.2cqw] tracking-wide text-muted">{slide.subtitle}</p>}
+          <div aria-hidden className="mt-[1.406cqw] h-[0.197cqw] w-[12cqw] bg-gold" />
+          {slide.subtitle && <p className="mt-[1.125cqw] text-[2.2cqw] tracking-wide text-muted">{slide.subtitle}</p>}
         </div>
-        <div className="absolute top-[5cqh] left-[6cqw] right-[6cqw] z-10 flex items-center justify-between">
+        <div className="absolute top-[2.813cqw] left-[6cqw] right-[6cqw] z-10 flex items-center justify-between">
           <span className="text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{segmentName}</span>
         </div>
-        <div className="absolute bottom-[5cqh] left-[6cqw] right-[6cqw] z-10 flex items-center justify-between">
+        <div className="absolute bottom-[2.813cqw] left-[6cqw] right-[6cqw] z-10 flex items-center justify-between">
           <span className="text-[1.6cqw] text-muted">{footer}</span>
           {position && <span className="font-mono text-[1.6cqw] text-muted">{position}</span>}
         </div>
@@ -95,7 +98,7 @@ export function PwSlideFace({
         {layers}
         {/* The panel tint lifts a prayer off a plain background; a picture or a video is shown as it is, without it. */}
         {!background?.media && <div className="absolute inset-0 bg-panel" />}
-        <div className="absolute top-[7cqh] left-[6cqw] text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{slideLine(slide.label, charsPerLine(0.88, 1.6 * 19.2))}</div>
+        <div className="absolute top-[3.938cqw] left-[6cqw] text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{slideLine(slide.label, charsPerLine(0.88, 1.6 * 19.2))}</div>
         {/* Full size, at the slide's top: the shared top for normal slides, the centred top for a short one (see shared/text-area.js). */}
         <p
           className={`absolute inset-x-[6cqw] font-serif text-[5cqw] whitespace-pre-line ${slide.placeholder ? 'text-muted italic' : 'font-semibold'}`}
@@ -109,8 +112,8 @@ export function PwSlideFace({
         >
           {slideText(slide.text, charsPerLine(PRAYER_WIDTH_SHARE, slide.fontPx ?? 96))}
         </p>
-        <div className="absolute bottom-[7cqh] left-[6cqw] text-[1.6cqw] text-muted">{footer}</div>
-        {position && <div className="absolute right-[6cqw] bottom-[7cqh] font-mono text-[1.6cqw] text-muted">{position}</div>}
+        <div className="absolute bottom-[3.938cqw] left-[6cqw] text-[1.6cqw] text-muted">{footer}</div>
+        {position && <div className="absolute right-[6cqw] bottom-[3.938cqw] font-mono text-[1.6cqw] text-muted">{position}</div>}
       </div>
     );
   }
@@ -118,14 +121,14 @@ export function PwSlideFace({
   return (
     <div data-theme="default" className={rootClass} style={colorStyle}>
       {layers}
-      <div className="absolute top-[7cqh] left-[6cqw] text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{slideLine(slide.label, charsPerLine(0.88, 1.6 * 19.2))}</div>
-      <div className="absolute top-[7cqh] right-[6cqw] text-[1.6cqw] text-muted">{segmentName}</div>
+      <div className="absolute top-[3.938cqw] left-[6cqw] text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{slideLine(slide.label, charsPerLine(0.88, 1.6 * 19.2))}</div>
+      <div className="absolute top-[3.938cqw] right-[6cqw] text-[1.6cqw] text-muted">{segmentName}</div>
       {/* Lyrics: the same rule as the prayer, at the slide's top. */}
       <p className="absolute inset-x-[6cqw] font-serif text-[5cqw] font-semibold whitespace-pre-line" style={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slide.align ?? 'center', lineHeight: LINEUP_LINE_HEIGHT, fontFamily: slideFont, fontSize: scaledSize('5cqw', slideScale) }}>
         {slideText(slide.text, charsPerLine(0.88, 5 * 19.2))}
       </p>
-      <div className="absolute bottom-[7cqh] left-[6cqw] text-[1.6cqw] text-muted">{footer}</div>
-      {position && <div className="absolute right-[6cqw] bottom-[7cqh] font-mono text-[1.6cqw] text-muted">{position}</div>}
+      <div className="absolute bottom-[3.938cqw] left-[6cqw] text-[1.6cqw] text-muted">{footer}</div>
+      {position && <div className="absolute right-[6cqw] bottom-[3.938cqw] font-mono text-[1.6cqw] text-muted">{position}</div>}
     </div>
   );
 }

@@ -7,8 +7,8 @@ import type { SongCategory } from './types';
 const api = bridge.lyrics;
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-const field = 'h-10 min-w-0 flex-1 rounded-md border border-line-strong bg-canvas px-3 text-sm outline-none focus:border-accent';
-const button = 'h-10 rounded-md border border-line-strong px-3 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40';
+const field = 'h-10 min-w-0 flex-1 rounded-md border border-fg/15 bg-panel-2 px-3 text-sm outline-none focus:border-accent';
+const button = 'h-10 rounded-md border border-fg/15 px-3 text-xs font-bold uppercase hover:bg-fg/10 disabled:opacity-40';
 
 /** The operator's list of song categories for the Mass: add, rename and remove. Renaming also renames the songs that use it. */
 export function SongCategoriesModal({ onClose }: { onClose: () => void }) {
@@ -59,9 +59,9 @@ export function SongCategoriesModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-6" role="dialog" aria-modal="true" aria-label={t('songCategoriesTitle')}>
-      <div className="flex max-h-full w-full max-w-[560px] flex-col overflow-hidden rounded-xl border border-line-strong bg-panel">
+      <div className="flex max-h-full w-full max-w-[560px] flex-col overflow-hidden rounded-xl border border-fg/15 bg-panel">
         <header className="flex items-center justify-between border-b border-line px-6 py-4">
-          <h2 className="text-2xl font-black uppercase condensed">{t('songCategoriesTitle')}</h2>
+          <h2 className="text-2xl font-bold tracking-tight">{t('songCategoriesTitle')}</h2>
           <button type="button" onClick={onClose} aria-label={t('close')} className="text-muted hover:text-fg">
             <X size={18} />
           </button>

@@ -115,6 +115,18 @@ function targetDisplay() {
   return chosen ?? externalDisplay() ?? screen.getPrimaryDisplay();
 }
 
+/**
+ * The display the lower-third window may open on: the one chosen in Settings, only while it is connected and is not the primary display.
+ * The primary display is where the operator console runs, so the window never opens there. With no such display the window stays closed,
+ * and the lower third still shows on the projector and in the OBS browser source.
+ */
+function lowerThirdDisplay() {
+  const target = state.lowerStyle.target;
+  if (target == null) return null;
+  const primaryId = screen.getPrimaryDisplay().id;
+  return screen.getAllDisplays().find((d) => d.id === target && d.id !== primaryId) ?? null;
+}
+
 function externalDisplay() {
   const primary = screen.getPrimaryDisplay();
   return screen.getAllDisplays().find((d) => d.id !== primary.id) ?? null;
@@ -252,8 +264,8 @@ const createOutput = {
   },
   // The lower third on its own screen, for a second projector or a stream. Transparent, so only the bar shows.
   lowerThird: () => {
-    const target = state.lowerStyle.target;
-    const display = (target != null && screen.getAllDisplays().find((d) => d.id === target)) || screen.getPrimaryDisplay();
+    // reconcileWindows opens this window only when lowerThirdDisplay() has a display for it. The primary display is never a fallback.
+    const display = lowerThirdDisplay();
     const win = new BrowserWindow({
       x: display.bounds.x,
       y: display.bounds.y,
@@ -280,6 +292,12 @@ function reconcileWindows() {
   for (const key of OUTPUTS) {
     const win = windows[key];
     const wanted = state.outputs[key];
+    // The lower-third window needs a display other than the primary one. Without it nothing opens, and the output is switched off again.
+    if (key === 'lowerThird' && wanted && !win && !lowerThirdDisplay()) {
+      console.warn('[lower third] no display other than the primary one is chosen or connected, so no window opens.');
+      setImmediate(() => apply({ type: 'output/set', output: 'lowerThird', on: false }));
+      continue;
+    }
     // Outputs without a window creator (the lower third now draws on the projector) never open a window.
     if (wanted && !win && createOutput[key]) {
       const created = createOutput[key]();
@@ -303,12 +321,12 @@ let lowerThirdServer = null;
  * a display with no window opens one; choosing no display closes it.
  */
 function placeLowerThirdWindow() {
-  const target = state.lowerStyle.target;
-  if (target == null) {
-    apply({ type: 'output/set', output: 'lowerThird', on: false });
+  const display = lowerThirdDisplay();
+  if (!display) {
+    // No display chosen, the chosen one is unplugged, or it is the primary display: the window closes, and stays closed.
+    if (state.outputs.lowerThird) apply({ type: 'output/set', output: 'lowerThird', on: false });
     return;
   }
-  const display = screen.getAllDisplays().find((d) => d.id === target) ?? screen.getPrimaryDisplay();
   const win = windows.lowerThird;
   if (win && !win.isDestroyed()) {
     win.setBounds(display.bounds);
@@ -952,6 +970,13 @@ app.whenReady().then(() => {
   // Remote view starts only when the operator turned it on last time.
   void syncRemoteView();
   if (state.lowerStyle.target != null) placeLowerThirdWindow();
+  // Unplugging the chosen display closes the window at once, instead of letting the system drag it onto the main screen, and plugging it
+  // back in opens it again.
+  for (const event of ['display-added', 'display-removed', 'display-metrics-changed']) {
+    screen.on(event, () => {
+      if (state.lowerStyle.target != null) placeLowerThirdWindow();
+    });
+  }
   media = setupMedia(announcements.db, {
     loadRoute: load,
     preload: webPreferences.preload,

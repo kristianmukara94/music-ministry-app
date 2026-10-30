@@ -1,4 +1,5 @@
 import { ArrowRight, BookOpen, Eye, Film, ListOrdered, Megaphone, Monitor, MonitorPlay, Music, type LucideIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 import type { Frame } from '../../shared/live.js';
 import { dispatch, useLive } from '../live/store';
 import { useT, type StringKey } from '../i18n/strings';
@@ -11,93 +12,141 @@ import { useNow } from './useNow';
 
 // ── Header ────────────────────────────────────────────────────────────────
 
-function Contours() {
-  return (
-    <svg className="pointer-events-none absolute inset-0 h-full w-full text-fg opacity-[0.06]" viewBox="0 0 1200 200" preserveAspectRatio="none" aria-hidden>
-      {Array.from({ length: 11 }, (_, i) => (
-        <path key={i} fill="none" stroke="currentColor" strokeWidth="1"
-          d={`M0 ${20 + i * 16} C 220 ${-20 + i * 22}, 430 ${130 + i * 6}, 660 ${40 + i * 15} S 1010 ${-30 + i * 24}, 1200 ${50 + i * 14}`} />
-      ))}
-    </svg>
-  );
-}
-
 function ConsoleHeader() {
   const t = useT();
   const today = useNow();
   return (
-    <section className="relative shrink-0 overflow-hidden rounded-xl border border-line bg-panel backdrop-blur-md px-5 pt-4 pb-3">
-      <Contours />
-      <div className="relative flex items-end justify-between gap-6">
-        <div>
-          <div className="text-[10px] font-bold tracking-widest text-accent/80 uppercase">{t('head.eyebrow')}</div>
-          <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-fg">
-            {t('head.welcomeTo')} <span className="text-accent">APCC</span>MMA
-          </h1>
-          <p className="mt-1 text-[11px] font-bold tracking-widest text-fg/50 uppercase">{t('head.parish')}</p>
-          <p className="mt-1 text-xs leading-relaxed font-normal text-fg/60">{t('head.tagline')}</p>
-        </div>
-        <dl className="hidden shrink-0 gap-2 text-right xl:flex">
-          {[
-            [t('head.liturgicalYear'), String(liturgicalYear(today))],
-            [t('head.sundayCycle'), sundayCycle(today)],
-            [t('head.weekdayCycle'), weekdayCycle(today)],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-lg border border-line-strong bg-canvas/60 px-3 py-2">
-              <dt className="text-[9px] font-bold tracking-wider text-fg/40 uppercase">{label}</dt>
-              <dd className="font-mono text-lg font-bold text-fg tabular-nums">{value}</dd>
-            </div>
-          ))}
-        </dl>
+    <section className="flex shrink-0 items-start justify-between gap-6">
+      <div className="min-w-0">
+        <div className="text-sm font-semibold tracking-wider text-accent uppercase">{t('head.eyebrow')}</div>
+        <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">
+          {t('head.welcomeTo')} APCCMMA
+        </h1>
+        <p className="mt-1 text-sm leading-relaxed font-normal text-fg/70">
+          <span className="uppercase">{t('head.parish')}</span> - {t('head.tagline')}
+        </p>
       </div>
+      <dl className="hidden shrink-0 gap-3 text-center lg:flex">
+        {[
+          [t('head.liturgicalYear'), String(liturgicalYear(today))],
+          [t('head.sundayCycle'), sundayCycle(today)],
+          [t('head.weekdayCycle'), weekdayCycle(today)],
+        ].map(([label, value]) => (
+          <div key={label} className="min-w-[88px] rounded-lg border border-accent/50 bg-panel px-3 py-2">
+            <dt className="text-[10px] font-medium tracking-wide text-fg/75 uppercase">{label}</dt>
+            <dd className="font-mono text-3xl leading-tight font-bold text-fg tabular-nums">{value}</dd>
+          </div>
+        ))}
+      </dl>
     </section>
+  );
+}
+
+/** A section title with a hairline running out to the right edge. */
+function SectionHeading({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-4">
+      <h2 className="shrink-0 text-sm font-semibold tracking-wide text-fg/80 uppercase">{children}</h2>
+      <span className="h-px flex-1 bg-line" aria-hidden />
+    </div>
   );
 }
 
 // ── Status cards ──────────────────────────────────────────────────────────
 
-type BadgeTone = 'live' | 'off' | 'paused' | 'warn';
+type BadgeTone = 'live' | 'off' | 'paused' | 'warn' | 'empty';
 
-/** A status pill. LIVE glows green, OFF is grey, PAUSED is amber, DISCONNECTED is a muted amber. */
-const BADGE_TONE: Record<BadgeTone, { dot: string; pill: string }> = {
-  live: { dot: 'animate-pulse bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]', pill: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.3)]' },
-  off: { dot: 'bg-zinc-500', pill: 'border-white/10 bg-white/5 text-fg/50' },
-  paused: { dot: 'bg-amber-300', pill: 'border-amber-400/40 bg-amber-400/15 text-amber-300' },
-  warn: { dot: 'bg-amber-500/70', pill: 'border-amber-500/25 bg-amber-500/10 text-amber-400/80' },
+/**
+ * Status colours. LIVE is green, OFF is red, PAUSED and DISCONNECTED are amber, and EMPTY is slate blue.
+ * `pill` is the outlined badge, `card` the tinted, glowing card around it and `word` the emphasised word of the main text.
+ * The colours are theme tokens (ok, danger, warn, info), so each theme supplies a version that reads on its own background.
+ */
+const BADGE_TONE: Record<BadgeTone, { pill: string; card: string; word: string }> = {
+  live: {
+    pill: 'border-ok/60 bg-ok/15 text-ok',
+    card: 'border-ok/60 bg-ok/[0.07] shadow-lg shadow-ok/10',
+    word: 'text-ok',
+  },
+  off: {
+    pill: 'border-danger/60 bg-danger/15 text-danger',
+    card: 'border-danger/60 bg-danger/[0.07] shadow-lg shadow-danger/10',
+    word: 'text-danger',
+  },
+  paused: {
+    pill: 'border-warn/60 bg-warn/15 text-warn',
+    card: 'border-warn/60 bg-warn/[0.07] shadow-lg shadow-warn/10',
+    word: 'text-warn',
+  },
+  warn: {
+    pill: 'border-warn/60 bg-warn/15 text-warn',
+    card: 'border-warn/60 bg-warn/[0.07] shadow-lg shadow-warn/10',
+    word: 'text-warn',
+  },
+  empty: {
+    pill: 'border-info/60 bg-info/15 text-info',
+    card: 'border-info/60 bg-info/[0.07] shadow-lg shadow-info/10',
+    word: 'text-info',
+  },
 };
 
 function StatusBadge({ tone, label }: { tone: BadgeTone; label: string }) {
   return (
-    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-extrabold tracking-[0.14em] uppercase ${BADGE_TONE[tone].pill}`}>
-      <span className={`size-1.5 rounded-full ${BADGE_TONE[tone].dot}`} aria-hidden />
+    <span className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-0.5 text-[11px] font-extrabold tracking-wider uppercase ${BADGE_TONE[tone].pill}`}>
       {label}
     </span>
   );
 }
 
-/** An interactive status widget: a state badge, what it is doing, and one action that changes it. */
-function StatusWidget({ icon: Icon, eyebrow, tone, badge, detail, action, onAction }: {
-  icon: LucideIcon; eyebrow: string; tone: BadgeTone; badge: string; detail: string; action: string; onAction: () => void;
+/** The card's button. `primary` is the solid cream call to action, used when the safe next step is to switch something on. */
+const CARD_BUTTON = {
+  primary: 'bg-fg text-canvas hover:brightness-110',
+  ghost: 'border border-fg/15 bg-panel-2 text-fg hover:bg-fg/10',
+};
+
+/** The last word of a status line, set in the status colour: "Projector is off" with "off" in red. */
+function EmphasisLast({ text, tone }: { text: string; tone: BadgeTone }) {
+  const cut = text.lastIndexOf(' ');
+  if (cut < 0) return <span className={BADGE_TONE[tone].word}>{text}</span>;
+  return (
+    <>
+      {text.slice(0, cut + 1)}
+      <span className={BADGE_TONE[tone].word}>{text.slice(cut + 1)}</span>
+    </>
+  );
+}
+
+/**
+ * An interactive status widget: a header band with the name and a state badge, what the output is doing, and one action that
+ * changes it. With `inlineBadge` the badge sits beside the main text instead of in the header.
+ */
+function StatusWidget({ icon: Icon, eyebrow, tone, badge, detail, emphasis = false, inlineBadge = false, action, onAction, primary = false }: {
+  icon: LucideIcon; eyebrow: string; tone: BadgeTone; badge: string; detail: string; emphasis?: boolean; inlineBadge?: boolean;
+  action: string; onAction: () => void; primary?: boolean;
 }) {
   return (
-    <article className="flex flex-col gap-3 rounded-xl border border-line bg-panel backdrop-blur-md px-5 py-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="grid size-9 place-items-center rounded-md border border-line-strong">
-          <Icon size={16} aria-hidden />
+    <article className={`flex flex-col overflow-hidden rounded-[10px] border ${BADGE_TONE[tone].card}`}>
+      <header className="flex min-h-12 items-center justify-between gap-3 border-b border-fg/10 bg-fg/[0.05] px-4 py-2">
+        <div className="flex min-w-0 items-center gap-2.5 text-fg/70">
+          <Icon size={16} aria-hidden className="shrink-0" />
+          <span className="truncate text-xs font-semibold tracking-wide uppercase">{eyebrow}</span>
         </div>
-        <StatusBadge tone={tone} label={badge} />
+        {!inlineBadge && <StatusBadge tone={tone} label={badge} />}
+      </header>
+      <div className="flex min-h-[84px] flex-1 flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
+        <div className="min-w-0 truncate text-2xl leading-tight font-bold text-fg xl:text-[28px]">
+          {emphasis ? <EmphasisLast text={detail} tone={tone} /> : detail}
+        </div>
+        {inlineBadge && <StatusBadge tone={tone} label={badge} />}
       </div>
-      <div className="min-w-0">
-        <div className="text-[10px] font-bold tracking-widest text-fg/50 uppercase">{eyebrow}</div>
-        <div className="mt-1 truncate text-sm font-semibold text-fg/90">{detail}</div>
+      <div className="px-4 pb-4">
+        <button
+          type="button"
+          onClick={onAction}
+          className={`flex h-10 w-full items-center justify-center rounded-md text-sm font-bold transition ${CARD_BUTTON[primary ? 'primary' : 'ghost']}`}
+        >
+          {action}
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={onAction}
-        className="mt-auto flex h-8 items-center justify-center rounded-md border border-line-strong bg-canvas/60 text-xs font-bold text-fg/80 transition hover:border-accent/60 hover:text-accent"
-      >
-        {action}
-      </button>
     </article>
   );
 }
@@ -140,19 +189,21 @@ function StatusCards() {
     : { tone: 'warn', label: t('status.disconnected') };
   const queueBadge: { tone: BadgeTone; label: string } = queue.length > 0
     ? { tone: 'live', label: t('status.ready') }
-    : { tone: 'off', label: t('status.empty') };
+    : { tone: 'empty', label: t('status.empty') };
 
   return (
     <div className="grid shrink-0 grid-cols-2 gap-4 xl:grid-cols-4">
       <StatusWidget icon={Monitor} eyebrow={t('card.congregation')} tone={projectorBadge.tone} badge={projectorBadge.label}
         detail={outputs.projector ? `${t('card.showing')}: ${showing}` : t('card.projectorOff')}
+        emphasis={!outputs.projector}
+        primary={!outputs.projector}
         action={outputs.projector ? t('card.action.projectorOff') : t('card.action.projectorOn')}
         onAction={() => dispatch({ type: 'output/toggle', output: 'projector' })} />
       <StatusWidget icon={MonitorPlay} eyebrow={t('card.lowerThird')} tone={lowerBadge.tone} badge={lowerBadge.label}
         detail={lowerThird.live ? lowerThird.live.line1 : t('card.nothingShowing')}
         action={t('card.action.lowerThird')}
         onAction={() => dispatch({ type: 'lowerThird/toggle' })} />
-      <StatusWidget icon={Eye} eyebrow={t('card.mirror')} tone={mirrorBadge.tone} badge={mirrorBadge.label}
+      <StatusWidget icon={Eye} eyebrow={t('card.mirror')} tone={mirrorBadge.tone} badge={mirrorBadge.label} inlineBadge
         detail={t('card.preview')}
         action={outputs.preview ? t('card.action.mirrorClose') : t('card.action.mirrorOpen')}
         onAction={() => dispatch({ type: 'output/toggle', output: 'preview' })} />
@@ -166,29 +217,32 @@ function StatusCards() {
 
 // ── Action center ─────────────────────────────────────────────────────────
 
-const ACTIONS: { icon: LucideIcon; title: StringKey; desc: StringKey; view: ViewKey }[] = [
-  { icon: BookOpen, title: 'act.lectionary', desc: 'act.lectionaryDesc', view: 'lectionary' },
-  { icon: Music, title: 'act.hymns', desc: 'act.hymnsDesc', view: 'lyrics' },
-  { icon: Megaphone, title: 'act.announcements', desc: 'act.announcementsDesc', view: 'announcements' },
-  { icon: Film, title: 'act.media', desc: 'act.mediaDesc', view: 'media' },
+/** `from` and `to` are the two ends of the card's 135-degree gradient. The cards are fully saturated, with a glassy icon tile. */
+const ACTIONS: { icon: LucideIcon; title: StringKey; desc: StringKey; view: ViewKey; from: string; to: string }[] = [
+  { icon: BookOpen, title: 'act.lectionary', desc: 'act.lectionaryDesc', view: 'lectionary', from: '#7c3aed', to: '#2563eb' },
+  { icon: Music, title: 'act.hymns', desc: 'act.hymnsDesc', view: 'lyrics', from: '#d97706', to: '#78350f' },
+  { icon: Megaphone, title: 'act.announcements', desc: 'act.announcementsDesc', view: 'announcements', from: '#e11d48', to: '#9f1239' },
+  { icon: Film, title: 'act.media', desc: 'act.mediaDesc', view: 'media', from: '#0284c7', to: '#0369a1' },
 ];
 
 function ActionCenter() {
   const t = useT();
   return (
-    <section className="shrink-0">
-      <div className="text-[10px] font-bold tracking-widest text-fg/50 uppercase">{t('act.eyebrow')}</div>
-      <h2 className="mb-2.5 text-sm font-bold text-fg">{t('act.title')}</h2>
+    <section className="flex shrink-0 flex-col gap-3">
+      <SectionHeading>{t('act.eyebrow')} / {t('act.title')}</SectionHeading>
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        {ACTIONS.map(({ icon: Icon, title, desc, view }) => (
+        {ACTIONS.map(({ icon: Icon, title, desc, view, from, to }) => (
           <button key={view} type="button" onClick={() => setUi({ view })}
-            className="group flex min-h-24 items-center gap-4 rounded-xl border border-line bg-panel backdrop-blur-md px-5 py-4 text-left transition hover:border-line-strong hover:bg-panel-2">
-            <Icon size={26} strokeWidth={1.6} className="shrink-0" aria-hidden />
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-bold text-fg transition-colors group-hover:text-accent">{t(title)}</span>
-              <span className="mt-0.5 block text-xs leading-relaxed font-normal text-fg/60">{t(desc)}</span>
+            style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
+            className="group flex min-h-[104px] items-center gap-4 rounded-[10px] border border-white/25 px-4 py-4 text-left shadow-lg shadow-black/30 transition hover:brightness-110">
+            <span className="grid shrink-0 place-items-center rounded-xl bg-white/15 p-3 text-white ring-1 ring-white/25">
+              <Icon size={30} strokeWidth={1.7} aria-hidden />
             </span>
-            <ArrowRight size={16} className="shrink-0 text-muted transition group-hover:translate-x-0.5 group-hover:text-fg" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block text-xl leading-tight font-semibold text-white">{t(title)}</span>
+              <span className="mt-1 block text-xs leading-snug font-normal text-white/80">{t(desc)}</span>
+            </span>
+            <ArrowRight size={20} className="shrink-0 text-white transition group-hover:translate-x-0.5" aria-hidden />
           </button>
         ))}
       </div>
@@ -199,12 +253,16 @@ function ActionCenter() {
 // ── Dashboard ─────────────────────────────────────────────────────────────
 
 export function Dashboard() {
+  const t = useT();
   return (
-    <div className="flex min-h-full flex-col gap-4 p-5">
+    <div className="flex min-h-full flex-col gap-5 p-5 pb-6">
       <ConsoleHeader />
-      <StatusCards />
+      <section className="flex shrink-0 flex-col gap-3">
+        <SectionHeading>{t('card.sectionTitle')}</SectionHeading>
+        <StatusCards />
+      </section>
       <ActionCenter />
-      <div className="grid min-h-[264px] shrink-0 grid-cols-1 gap-4 min-[1180px]:flex-1 min-[1180px]:grid-cols-[1.1fr_1fr_1.55fr]">
+      <div className="grid min-h-[264px] shrink-0 grid-cols-1 gap-4 min-[1180px]:flex-1 min-[1180px]:grid-cols-3">
         <BoothClock />
         <KeyboardMap />
         <Launchpad />

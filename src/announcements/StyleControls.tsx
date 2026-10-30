@@ -3,11 +3,11 @@ import { AlignCenter, AlignLeft, AlignRight } from 'lucide-react';
 import type { TextAlign, TextFontFamily, TextStyle } from '../../shared/text-style';
 import { normalizeHex, TEXT_COLORS, TEXT_FONT_GROUPS, TEXT_FONTS, TEXT_SIZES } from '../../shared/text-style.js';
 
-const CONTROL = 'h-8 rounded-md border border-line-strong bg-canvas px-2 text-xs outline-none focus:border-accent';
+const CONTROL = 'h-8 rounded-md border border-fg/15 bg-panel-2 px-2 text-xs text-fg outline-none focus:border-accent';
 // One height and padding for every toolbar button, and no wrapping inside a button, so "Extra Large [80px]" stays on one line.
 const SEG = 'flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border px-3 text-xs font-medium';
-const segClass = (on: boolean) => `${SEG} ${on ? 'border-accent/40 bg-accent/15 text-accent' : 'border-line-strong text-fg/70 hover:bg-panel-2'}`;
-const swatchClass = (on: boolean) => `size-7 rounded-md border ${on ? 'border-accent ring-2 ring-accent/40' : 'border-line-strong'}`;
+const segClass = (on: boolean) => `${SEG} ${on ? 'border-accent/50 bg-accent/15 text-accent' : 'border-fg/15 bg-panel-2 text-fg/75 hover:bg-fg/10 hover:text-fg'}`;
+const swatchClass = (on: boolean) => `size-7 rounded-md border ${on ? 'border-accent ring-2 ring-accent/40' : 'border-fg/25'}`;
 const ALIGN_ICON = { left: AlignLeft, center: AlignCenter, right: AlignRight };
 
 /**
@@ -51,7 +51,7 @@ export function ColorField({
 
   return (
     <div role="group" aria-label={label} className="flex flex-wrap items-center gap-1.5">
-      {prefix && <span className="mr-1 text-xs font-bold uppercase text-faint">{prefix}</span>}
+      {prefix && <span className="mr-1 text-[11px] font-semibold tracking-wider uppercase text-fg/60">{prefix}</span>}
       {presets.map((p) => (
         <button
           key={p.hex}
@@ -150,14 +150,14 @@ function SizeInput({ value, onChange }: { value: number | undefined; onChange: (
         const px = Number(draft);
         if (draft.trim() !== '' && !(Number.isInteger(px) && px >= SIZE_MIN && px <= SIZE_MAX)) setDraft(value ? String(value) : '');
       }}
-      className="h-8 w-20 shrink-0 rounded-md border border-line-strong bg-canvas px-3 text-xs outline-none focus:border-accent"
+      className="h-8 w-20 shrink-0 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs text-fg outline-none focus:border-accent"
     />
   );
 }
 
 export function StyleToolbar({ style, onChange }: { style: TextStyle; onChange: (patch: TextStyle) => void }) {
   return (
-    <div role="toolbar" aria-label="Text formatting" className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-canvas p-2">
+    <div role="toolbar" aria-label="Text formatting" className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-fg/[0.03] p-2">
       <select
         aria-label="Font family"
         value={style.fontFamily ?? ''}

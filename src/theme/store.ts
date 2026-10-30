@@ -11,7 +11,7 @@ interface ThemeState {
 }
 
 export const useTheme = create<ThemeState>((set, get) => ({
-  theme: 'default',
+  theme: 'obsidian',
 
   setTheme: async (id) => {
     if (!isThemeId(id) || id === get().theme) return;
@@ -28,7 +28,7 @@ export const useTheme = create<ThemeState>((set, get) => ({
   },
 
   hydrate: (id) => {
-    const theme = isThemeId(id) ? id : 'default';
+    const theme = isThemeId(id) ? id : 'obsidian';
     set({ theme });
     applyTheme(theme);
   },

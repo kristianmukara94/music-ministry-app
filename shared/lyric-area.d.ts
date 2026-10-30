@@ -9,6 +9,7 @@ export interface Page { text: string; fontPx?: number; [key: string]: unknown }
 export function fitPagesToBand<T extends Page>(pages: T[], value: import('./lower-third-layout.js').BandValue | null): T[];
 export function lyricPagesFor(text: string, value: import('./lower-third-layout.js').BandValue | null): string[];
 export function lyricBottomOf(frame: unknown): number | null;
+export const MAX_BAND_SHARE: number;
 export function bandSizesBelow(value: import('./lower-third-layout.js').BandValue, lyricBottomShare: number | null): { titlePx: number; composerPx: number };
 export function slideGroup(slide: unknown): string | null;
 export function findSlideIndex(slides: (unknown | null)[], slide: { kind: string; part?: number; [key: string]: unknown }): number | null;

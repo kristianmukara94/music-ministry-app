@@ -53,8 +53,8 @@ export function AboutLicensing({ version, config, onChanged }: Props) {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="text-2xl font-black uppercase condensed">{SOFTWARE_NAME}</span>
-        <span className="rounded-md border border-line-strong px-2 py-0.5 font-mono text-xs font-bold">v{version}</span>
+        <span className="text-2xl font-bold tracking-tight">{SOFTWARE_NAME}</span>
+        <span className="rounded-md border border-fg/15 px-2 py-0.5 font-mono text-xs font-bold">v{version}</span>
         <span className="text-xs text-muted">{LICENSED_BADGE}</span>
       </div>
 
@@ -68,7 +68,7 @@ export function AboutLicensing({ version, config, onChanged }: Props) {
                 Active License
               </span>
             ) : (
-              <span className="flex w-fit items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-400">
+              <span className="flex w-fit items-center rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-xs font-bold text-accent">
                 Registration incomplete
               </span>
             )}
@@ -122,14 +122,14 @@ export function AboutLicensing({ version, config, onChanged }: Props) {
             >
               {saving ? 'Saving…' : 'Save Registration'}
             </button>
-            <button type="button" onClick={() => setEditing(false)} disabled={saving} className="flex h-10 items-center rounded-md border border-line-strong px-5 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40">
+            <button type="button" onClick={() => setEditing(false)} disabled={saving} className="flex h-10 items-center rounded-md border border-fg/15 px-5 text-xs font-bold uppercase hover:bg-fg/10 disabled:opacity-40">
               Cancel
             </button>
           </div>
         </div>
       ) : (
         <div>
-          <button type="button" onClick={startEdit} className="flex h-10 items-center gap-2 rounded-md border border-line-strong px-4 text-xs font-bold uppercase hover:bg-panel-2">
+          <button type="button" onClick={startEdit} className="flex h-10 items-center gap-2 rounded-md border border-fg/15 px-4 text-xs font-bold uppercase hover:bg-fg/10">
             <Pencil size={14} aria-hidden /> Edit Registration Details
           </button>
         </div>
@@ -141,7 +141,7 @@ export function AboutLicensing({ version, config, onChanged }: Props) {
           onClick={() => setEulaOpen((open) => !open)}
           aria-expanded={eulaOpen}
           aria-controls="eula-viewer"
-          className="flex h-10 w-fit items-center gap-2 rounded-md border border-line-strong px-4 text-xs font-bold uppercase hover:bg-panel-2"
+          className="flex h-10 w-fit items-center gap-2 rounded-md border border-fg/15 px-4 text-xs font-bold uppercase hover:bg-fg/10"
         >
           {eulaOpen ? 'Hide' : 'Read'} the End-User License Agreement
           <ChevronDown size={15} aria-hidden className={`transition ${eulaOpen ? 'rotate-180' : ''}`} />

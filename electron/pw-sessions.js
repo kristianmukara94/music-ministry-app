@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { DEFAULT_CUES, DEFAULT_TEMPLATE, MAX_SONGS, PW_TYPES, segmentFromTemplate } from '../shared/pw.js';
+import { DEFAULT_CUES, DEFAULT_TEMPLATE, MAX_CHAIN, MAX_SONGS, PW_TYPES, segmentFromTemplate } from '../shared/pw.js';
 import { recordTombstone } from './plan-sync-schema.js';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -91,30 +91,55 @@ function cleanGroups(input) {
   return groups;
 }
 
-/** The content slot for a segment of `type`. Ids that point at nothing are refused by the caller's `exists` check. */
-function cleanContent(type, input) {
+/**
+ * The items chained after a card's first item. A prayer card chains prayers and a scripture card chains readings. Ids that point at
+ * nothing are refused by the caller's `exists` check, as for the first item.
+ */
+function cleanChain(input) {
+  const list = Array.isArray(input) ? input : [];
+  if (list.length > MAX_CHAIN) throw new Error(`A card can chain at most ${MAX_CHAIN} items.`);
+  return list.map((item) => {
+    const minutes = Number(item?.minutes ?? 0);
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > MAX_MINUTES) throw new Error(`Minutes must be a whole number from 0 to ${MAX_MINUTES}.`);
+    if (item?.kind === 'prayer') {
+      const noteId = Number(item.noteId);
+      if (!Number.isInteger(noteId)) throw new Error('Unknown prayer.');
+      return { kind: 'prayer', noteId, minutes };
+    }
+    if (item?.kind === 'lectionary') return { kind: 'lectionary', readingType: cleanText(item.readingType, 40, 'Reading'), minutes };
+    throw new Error('A card can only chain prayers and readings.');
+  });
+}
+
+/** `content` with its chain attached. A card with no chain keeps the shape it was saved in, with no `more` field. */
+const attachMore = (content, more) => (more.length ? { ...content, more } : content);
+
+/**
+ * The content slot of a card. Any card holds songs (`hymnIds`) and a chain of prayers and readings (`more`), whatever its first item is.
+ * Ids that point at nothing are refused by the caller's `exists` check.
+ */
+function cleanContent(input) {
   const c = input ?? {};
-  if (type === 'song') {
-    if (c.kind !== 'song') throw new Error('A song segment needs a song slot.');
-    const maxSongs = Math.min(Math.max(Number.parseInt(c.maxSongs, 10) || 1, 1), MAX_SONGS);
-    const hymnIds = (Array.isArray(c.hymnIds) ? c.hymnIds : []).map(Number).filter(Number.isInteger);
-    if (hymnIds.length > maxSongs) throw new Error(`This segment takes at most ${maxSongs} song${maxSongs > 1 ? 's' : ''}.`);
+  const hymnIds = (Array.isArray(c.hymnIds) ? c.hymnIds : []).map(Number).filter(Number.isInteger);
+  if (hymnIds.length > MAX_SONGS) throw new Error(`A card holds at most ${MAX_SONGS} songs.`);
+  const more = cleanChain(c.more);
+  if (c.kind === 'song') {
+    // The card's song limit is kept at or above the songs it holds, so a card never refuses what it was saved with.
+    const maxSongs = Math.min(Math.max(Number.parseInt(c.maxSongs, 10) || 1, hymnIds.length, 1), MAX_SONGS);
     const category = c.category == null ? null : cleanText(c.category, 40, 'Category');
-    return { kind: 'song', hymnIds, maxSongs, category: category || null };
+    return attachMore({ kind: 'song', hymnIds, maxSongs, category: category || null }, more);
   }
-  if (type === 'prayer') {
-    if (c.kind !== 'prayer') throw new Error('A prayer segment needs a prayer slot.');
+  if (c.kind === 'prayer') {
     const noteId = c.noteId == null ? null : Number(c.noteId);
     if (noteId !== null && !Number.isInteger(noteId)) throw new Error('Unknown prayer.');
-    return { kind: 'prayer', noteId };
+    return attachMore({ kind: 'prayer', noteId, hymnIds }, more);
   }
-  if (c.kind === 'lectionary') return { kind: 'lectionary', readingType: cleanText(c.readingType, 40, 'Reading') };
-  if (c.kind === 'title') return { kind: 'title' };
-  throw new Error('A scripture segment needs a title slide or a lectionary link.');
+  if (c.kind === 'lectionary') return attachMore({ kind: 'lectionary', readingType: cleanText(c.readingType, 40, 'Reading'), hymnIds }, more);
+  if (c.kind === 'title') return attachMore({ kind: 'title', hymnIds }, more);
+  throw new Error('A card needs a song, prayer, title slide or lectionary link.');
 }
 
 function cleanArrangement(input, content) {
-  if (content.kind !== 'song') return {};
   const out = {};
   for (const id of content.hymnIds) {
     const order = input?.[String(id)];
@@ -142,7 +167,7 @@ function cleanSegment(input, groupKeys) {
   if (!name) throw new Error('Every segment needs a name.');
   const minutes = Number(s.minutes);
   if (!Number.isInteger(minutes) || minutes < 0 || minutes > MAX_MINUTES) throw new Error(`Minutes must be a whole number from 0 to ${MAX_MINUTES}.`);
-  const content = cleanContent(type, s.content);
+  const content = cleanContent(s.content);
   return {
     key: requireKey(s.key, 'Segment key'),
     group,
@@ -213,23 +238,28 @@ export function createPwService(db) {
     return Boolean(row) && row.display !== 'operator';
   };
 
+  /** Whether every item a card chains still exists. Readings are not in the database, so only prayers can be missing. */
+  const chainExists = (more) => (more ?? []).every((item) => item.kind !== 'prayer' || noteProjectable(item.noteId));
+
   /** Whether everything a segment points at still exists. */
   const contentExists = (content) => {
-    if (content.kind === 'song') return content.hymnIds.every((id) => q.liveHymn.get(id));
-    if (content.kind === 'prayer') return content.noteId == null || noteProjectable(content.noteId);
-    return true;
+    if (!content.hymnIds.every((id) => q.liveHymn.get(id))) return false;
+    if (content.kind === 'prayer') return (content.noteId == null || noteProjectable(content.noteId)) && chainExists(content.more);
+    return chainExists(content.more);
   };
 
   /** The content with anything deleted from its library taken out. */
   const pruneContent = (content) => {
-    if (content.kind === 'song') return { ...content, hymnIds: content.hymnIds.filter((id) => q.liveHymn.get(id)) };
-    if (content.kind === 'prayer' && content.noteId != null && !noteProjectable(content.noteId)) return { ...content, noteId: null };
-    return content;
+    const { more, hymnIds, ...rest } = content;
+    const first = rest.kind === 'prayer' && rest.noteId != null && !noteProjectable(rest.noteId) ? { ...rest, noteId: null } : rest;
+    return attachMore({ ...first, hymnIds: hymnIds.filter((id) => q.liveHymn.get(id)) }, (more ?? []).filter((item) => item.kind !== 'prayer' || noteProjectable(item.noteId)));
   };
 
   /** Refuses a save that points at deleted content, so a lineup never points at nothing when it is written. */
   const requireContent = (segment) => {
-    if (segment.content.kind === 'prayer' && segment.content.noteId != null && q.note.get(segment.content.noteId)?.display === 'operator') {
+    const operatorOnly = (noteId) => noteId != null && q.note.get(noteId)?.display === 'operator';
+    const chained = (segment.content.more ?? []).some((item) => item.kind === 'prayer' && operatorOnly(item.noteId));
+    if ((segment.content.kind === 'prayer' && operatorOnly(segment.content.noteId)) || chained) {
       throw new Error('Operator-only notes cannot be projected. Choose a prayer shown full screen or on the lower third.');
     }
     if (!contentExists(segment.content)) {
@@ -307,7 +337,7 @@ export function createPwService(db) {
     getSession(id) {
       const session = requireSession(id);
       const segments = q.segments.all(id).map((row) => {
-        const content = parseJson(row.content, {});
+        const content = { hymnIds: [], ...parseJson(row.content, {}) };
         const segment = {
           ...row,
           content,
@@ -315,7 +345,7 @@ export function createPwService(db) {
           cues: { ...DEFAULT_CUES, ...parseJson(row.cues, {}) },
         };
         // A segment with a deleted song shows it as deleted, not as missing, so the planner can undo the delete.
-        const deleted = content.kind === 'song' && (content.hymnIds ?? []).some((id) => q.deletedHymn.get(id));
+        const deleted = (content.hymnIds ?? []).some((id) => q.deletedHymn.get(id));
         return { ...segment, deleted, stale: !contentExists(content) };
       });
       return { ...session, segments };
@@ -358,7 +388,7 @@ export function createPwService(db) {
         minutes: s.minutes,
         leader: s.leader,
         cues: s.cues,
-        content: s.content.kind === 'song' ? { ...s.content, hymnIds: [] } : s.content,
+        content: { ...s.content, hymnIds: [] },
       }));
       const { lastInsertRowid } = q.insertTemplate.run(templateName, JSON.stringify(session.groups), JSON.stringify(segments), 0);
       return toTemplate(q.template.get(Number(lastInsertRowid)));

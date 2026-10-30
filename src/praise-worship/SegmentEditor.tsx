@@ -6,6 +6,7 @@ import {
   segmentStatus,
   slidesFor,
   type PwCues,
+  chainOf,
   type PwSegment,
   type PwSlide,
 } from '../../shared/pw.js';
@@ -25,8 +26,8 @@ import { usePwT } from './strings';
 const CUE_KEYS: (keyof PwCues)[] = ['lowerThird', 'titleFirst', 'fadeOut'];
 const CUE_LABEL: Record<keyof PwCues, string> = { lowerThird: 'cue_lowerThird', titleFirst: 'cue_titleFirst', fadeOut: 'cue_fadeOut' };
 
-const BTN = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line-strong px-4 text-sm font-semibold transition hover:bg-panel-2 disabled:cursor-not-allowed disabled:opacity-40';
-const BTN_ACCENT = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-accent px-5 text-sm font-bold text-on-accent transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40';
+const BTN = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-fg/15 px-4 text-sm font-semibold transition hover:bg-fg/10 disabled:cursor-not-allowed disabled:opacity-40';
+const BTN_ACCENT = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-accent px-5 text-sm font-bold text-on-accent transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40';
 const FIELD = 'w-full bg-transparent font-semibold outline-none placeholder:font-normal placeholder:text-muted';
 
 /** Focuses the library search, for Replace and the empty states. */
@@ -34,7 +35,7 @@ const focusLibrary = () => document.getElementById('pw-library-search')?.focus()
 
 function Tile({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }) {
   return (
-    <div className="flex min-h-[72px] flex-col justify-center gap-1 rounded-xl border border-line bg-canvas/40 px-4 py-2.5 focus-within:border-accent">
+    <div className="flex min-h-[72px] flex-col justify-center gap-1 rounded-lg border border-line bg-panel-2 px-4 py-2.5 focus-within:border-accent">
       {htmlFor ? (
         <label htmlFor={htmlFor} className="text-xs text-muted">{label}</label>
       ) : (
@@ -48,11 +49,11 @@ function Tile({ label, htmlFor, children }: { label: string; htmlFor?: string; c
 /** One assigned item: an icon, its name and detail, and the actions for it. */
 function ItemCard({ icon, kicker, title, sub, children }: { icon: ReactNode; kicker: string; title: string; sub: string; children?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-line-strong bg-panel-2 p-4">
-      <span className="grid size-14 shrink-0 place-items-center rounded-xl bg-accent text-on-accent">{icon}</span>
+    <div className="flex flex-wrap items-center gap-4 rounded-[10px] border border-fg/15 bg-panel-2 p-4">
+      <span className="grid size-14 shrink-0 place-items-center rounded-lg bg-accent text-on-accent">{icon}</span>
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="text-xs text-muted">{kicker}</span>
-        <span className="font-sans condensed text-2xl leading-tight font-black uppercase">{title}</span>
+        <span className="text-2xl leading-tight font-bold tracking-tight">{title}</span>
         <span className="text-sm text-muted">{sub}</span>
       </div>
       {children && <div className="flex flex-wrap gap-2">{children}</div>}
@@ -62,7 +63,7 @@ function ItemCard({ icon, kicker, title, sub, children }: { icon: ReactNode; kic
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <button type="button" onClick={focusLibrary} className="w-full rounded-2xl border-2 border-dashed border-line-strong p-6 text-left text-sm text-muted transition hover:border-accent hover:text-fg">
+    <button type="button" onClick={focusLibrary} className="w-full rounded-[10px] border-2 border-dashed border-fg/15 p-6 text-left text-sm text-muted transition hover:border-accent hover:text-fg">
       {text}
     </button>
   );
@@ -132,7 +133,7 @@ function Arrangement({ hymn, order, onChange }: { hymn: Hymn; order: string[]; o
                 }}
                 title={`${s?.stanzaType ?? id} · ${t('arrangementHint')}`}
                 aria-label={t('sectionChip', { label: s?.stanzaType ?? id, n: i + 1, total: order.length })}
-                className={`grid h-11 min-w-14 cursor-grab place-items-center rounded-full border border-line-strong px-4 font-mono text-sm font-bold transition hover:border-accent ${
+                className={`grid h-11 min-w-14 cursor-grab place-items-center rounded-full border border-fg/15 px-4 font-mono text-sm font-bold transition hover:border-accent ${
                   dragFrom === i ? 'opacity-40' : ''
                 }`}
               >
@@ -147,7 +148,7 @@ function Arrangement({ hymn, order, onChange }: { hymn: Hymn; order: string[]; o
             id={`pw-add-section-${hymn.id}`}
             value=""
             onChange={(e) => e.target.value && onChange([...order, e.target.value])}
-            className="h-11 cursor-pointer rounded-full border border-dashed border-line-strong bg-transparent px-4 text-sm font-semibold text-muted hover:border-accent hover:text-fg"
+            className="h-11 cursor-pointer rounded-full border border-dashed border-fg/15 bg-transparent px-4 text-sm font-semibold text-muted hover:border-accent hover:text-fg"
           >
             <option value="">{t('addSection')}</option>
             {hymn.stanzas.map((s) => (
@@ -187,10 +188,10 @@ function PreviewDialog({ segment, slides, onClose }: { segment: PwSegment; slide
         if (e.key === 'ArrowLeft') setIndex((i) => Math.max(i - 1, 0));
       }}
       aria-label={t('previewTitle', { name: segment.name })}
-      className="m-auto w-[min(92vw,1100px)] rounded-2xl border border-line-strong bg-canvas p-5 text-fg backdrop:bg-black/70"
+      className="m-auto w-[min(92vw,1100px)] rounded-[10px] border border-fg/15 bg-panel-2 p-5 text-fg backdrop:bg-black/70"
     >
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="font-sans condensed text-2xl font-black uppercase">{t('previewTitle', { name: segment.name })}</h2>
+        <h2 className="text-2xl font-bold tracking-tight">{t('previewTitle', { name: segment.name })}</h2>
         <button type="button" onClick={onClose} autoFocus className={BTN} aria-label={t('close')}>
           <X size={16} aria-hidden />
         </button>
@@ -237,7 +238,7 @@ export function SegmentEditor() {
   const shownIndexes =
     segment.type === 'song' && !showAllVerses ? visibleSlideIndexes(slides.length, liveSlide) : slides.map((_, n) => n);
   const c = segment.content;
-  const songHymns = c.kind === 'song' ? c.hymnIds.map((id) => hymns[id]).filter((h): h is Hymn => Boolean(h)) : [];
+  const songHymns = c.hymnIds.map((id) => hymns[id]).filter((h): h is Hymn => Boolean(h));
   const key = songHymns.find((h) => h.musicalKey)?.musicalKey ?? '—';
   const update = (patch: Partial<PwSegment>) => updateSegment(i, patch);
   const startReplace = (hymnId: number | null) => {
@@ -261,17 +262,17 @@ export function SegmentEditor() {
   const reading = c.kind === 'lectionary' ? day?.readings.find((r) => r.readingType === c.readingType) : undefined;
 
   return (
-    <section aria-labelledby="pw-segment-title" className="flex min-w-0 flex-col gap-5 rounded-2xl border border-line bg-panel p-5 @container/editor">
+    <section aria-labelledby="pw-segment-title" className="flex min-w-0 flex-col gap-5 rounded-[10px] border border-line bg-panel p-5 @container/editor">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="eyebrow !text-accent">
+          <p className="text-[11px] font-semibold tracking-wider text-accent uppercase">
             {t('segmentEyebrow', { n: pad2(i + 1), group: group?.name ?? segment.group })}
           </p>
-          <h2 id="pw-segment-title" className="mt-1 font-sans condensed text-2xl leading-tight font-black uppercase">
+          <h2 id="pw-segment-title" className="mt-1 text-2xl leading-tight font-bold tracking-tight">
             {segment.name}
           </h2>
         </div>
-        <span className={`rounded-full border border-line-strong px-3 py-1.5 text-sm font-semibold ${STATUS_TONE[status]}`}>{t(`status_${status}`)}</span>
+        <span className={`rounded-full border border-fg/15 px-3 py-1.5 text-sm font-semibold ${STATUS_TONE[status]}`}>{t(`status_${status}`)}</span>
       </header>
 
       <div className="grid grid-cols-1 gap-3 @md/editor:grid-cols-2 @2xl/editor:grid-cols-4">
@@ -312,7 +313,7 @@ export function SegmentEditor() {
       </div>
 
       {segment.stale && (
-        <p className="rounded-xl border border-danger px-4 py-3 text-sm text-danger">
+        <p className="rounded-lg border border-danger px-4 py-3 text-sm text-danger">
           {segment.deleted ? t('songDeleted') : t('missingContent')}
         </p>
       )}
@@ -320,7 +321,7 @@ export function SegmentEditor() {
 
       {/* What is assigned */}
       <div className="flex flex-col gap-3">
-        {c.kind === 'song' &&
+        {(c.kind === 'song' || songHymns.length > 0) &&
           (songHymns.length === 0 ? (
             <EmptyState text={t('emptySong')} />
           ) : (
@@ -357,7 +358,7 @@ export function SegmentEditor() {
             <ItemCard icon={<Cross size={24} aria-hidden />} kicker={t('type_prayer')} title={prayer.title} sub={t('prayerCardSub')}>
               <button type="button" className={BTN} onClick={() => setPreviewing(true)}>{t('preview')}</button>
               {replaceButton(null)}
-              <button type="button" className={BTN} onClick={() => update({ content: { kind: 'prayer', noteId: null } })}>{t('remove')}</button>
+              <button type="button" className={BTN} onClick={() => update({ content: { kind: 'prayer', noteId: null, hymnIds: c.hymnIds, more: chainOf(segment) } })}>{t('remove')}</button>
             </ItemCard>
           ) : (
             <EmptyState text={t('emptyPrayer')} />
@@ -418,7 +419,7 @@ export function SegmentEditor() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 @2xl/editor:grid-cols-2">
-        <fieldset className="rounded-2xl border border-line p-4">
+        <fieldset className="rounded-[10px] border border-line p-4">
           <legend className="px-2 font-bold">{t('cues')}</legend>
           <div className="flex flex-col">
             {CUE_KEYS.map((k) => (
@@ -434,7 +435,7 @@ export function SegmentEditor() {
             ))}
           </div>
         </fieldset>
-        <div className="flex flex-col gap-2 rounded-2xl border border-line p-4">
+        <div className="flex flex-col gap-2 rounded-[10px] border border-line p-4">
           <label htmlFor="pw-notes" className="font-bold">{t('operatorNotes')}</label>
           <textarea
             id="pw-notes"
@@ -443,7 +444,7 @@ export function SegmentEditor() {
             rows={4}
             placeholder={t('notesPlaceholder')}
             onChange={(e) => update({ notes: e.target.value })}
-            className="min-h-28 flex-1 resize-y rounded-xl border border-line-strong bg-canvas/40 p-3 text-sm outline-none placeholder:text-muted focus:border-accent"
+            className="min-h-28 flex-1 resize-y rounded-lg border border-fg/15 bg-panel-2 p-3 text-sm outline-none placeholder:text-muted focus:border-accent"
           />
         </div>
       </div>

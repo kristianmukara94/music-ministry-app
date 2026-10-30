@@ -3,7 +3,7 @@ import { bridge } from '../live/bridge';
 import { COPYRIGHT_NOTICE, DEVELOPER, EULA_CONFIRMATION, EULA_SECTIONS, EULA_TITLE, SOFTWARE_NAME, type LegalSection } from '../legal/license';
 import type { Registration } from '../settings/types';
 
-const FIELD = 'h-11 rounded-md border border-line-strong bg-canvas px-3 text-sm outline-none focus:border-accent disabled:opacity-60';
+const FIELD = 'h-11 rounded-md border border-fg/15 bg-panel-2 px-3 text-sm outline-none focus:border-accent disabled:opacity-60';
 
 /** The license terms as headed paragraphs. Shared by the first-launch modal and the Settings viewer. */
 export function LicenseText({ sections = EULA_SECTIONS }: { sections?: LegalSection[] }) {
@@ -115,11 +115,11 @@ function EulaModal({ onAccepted }: { onAccepted: () => void }) {
 
   // Deliberately no close button, no Escape handler and no backdrop click. The only way forward is to accept.
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-      <div role="dialog" aria-modal="true" aria-labelledby="eula-title" className="flex max-h-full w-full max-w-2xl flex-col rounded-xl border border-line-strong bg-panel shadow-2xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="eula-title" className="flex max-h-full w-full max-w-2xl flex-col rounded-xl border border-fg/15 bg-panel shadow-2xl">
         <header className="border-b border-line px-6 py-4">
           <p className="eyebrow">{SOFTWARE_NAME}</p>
-          <h2 id="eula-title" className="text-2xl font-black uppercase condensed">
+          <h2 id="eula-title" className="text-2xl font-bold tracking-tight">
             {EULA_TITLE}
           </h2>
           <p className="mt-1 text-xs text-muted">
@@ -143,7 +143,7 @@ function EulaModal({ onAccepted }: { onAccepted: () => void }) {
               checked={confirmed}
               onChange={(e) => setConfirmed(e.target.checked)}
               disabled={saving}
-              className="mt-1 size-4 accent-amber-500"
+              className="mt-1 size-4 accent-accent"
             />
             <span>{EULA_CONFIRMATION}</span>
           </label>

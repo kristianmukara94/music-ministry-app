@@ -21,7 +21,7 @@ function ThemeCard({ info, active, onPick }: { info: ThemeInfo; active: boolean;
       aria-pressed={active}
       aria-label={`${info.name}${active ? ' (in use)' : ''}`}
       className={`group flex w-full flex-col gap-2 rounded-xl border bg-panel p-2 text-left transition ${
-        active ? 'border-accent ring-2 ring-accent' : 'border-line hover:border-line-strong'
+        active ? 'border-accent ring-2 ring-accent' : 'border-line hover:border-fg/15'
       }`}
     >
       <div data-theme={info.id} className="relative w-full aspect-video overflow-hidden rounded-lg border border-line bg-canvas" aria-hidden>
@@ -65,7 +65,7 @@ export function ThemeView() {
     <section aria-labelledby="theme-heading" className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-4">
         <div>
-          <h2 id="theme-heading" className="text-[44px] leading-none font-black uppercase condensed">Theme</h2>
+          <h2 id="theme-heading" className="text-4xl leading-tight font-extrabold tracking-tight text-fg">Theme</h2>
           <p className="mt-2 text-[15px] text-muted">
             Colors for APCCMMA's own windows. Projected slides keep their own styles.
           </p>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, Play, Save, Scissors, Sparkles, Trash2 } from 'lucide-react';
+import { BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Play, Save, Scissors, Sparkles, Trash2 } from 'lucide-react';
 import { bridge } from '../live/bridge';
 import { dispatch } from '../live/store';
 import { setUi, useUi } from '../state/ui';
@@ -46,9 +46,13 @@ const upcomingSunday = () => {
   return isoOf(new Date(today.getFullYear(), today.getMonth(), today.getDate() + ((7 - today.getDay()) % 7)));
 };
 
-const input = 'h-10 w-full rounded-md border border-line-strong bg-canvas px-3 text-sm outline-none focus:border-accent';
+// The same surfaces as the dashboard: cards on the panel colour, hairline borders, dark ghost buttons, an accent focus ring.
+const CARD = 'rounded-[10px] border border-line bg-panel';
+const LABEL = 'text-[11px] font-semibold tracking-wider text-fg/60 uppercase';
+const input =
+  'h-10 w-full rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40';
 const button =
-  'flex h-9 items-center gap-2 rounded-md border border-line-strong px-3 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40';
+  'flex h-9 items-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs font-semibold tracking-wide text-fg/85 uppercase transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
 
 export function LectionaryDeck() {
   const t = useLectT();
@@ -221,32 +225,48 @@ export function LectionaryDeck() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Ctrl+S saves the reading, even from inside the text box. The refs keep the listener current without re-binding it.
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  const canSaveRef = useRef(false);
+  canSaveRef.current = dirty && !busy;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's') return;
+      e.preventDefault();
+      if (canSaveRef.current) void saveRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const savedCount = day?.readings.filter((r) => r.rawText).length ?? 0;
   const region = useRegion();
   const dateLabel = `${formatIsoWeekday(date, DATE_LOCALE[lang])}, ${formatIsoDay(date, region)}`;
 
   return (
-    <div className="flex min-h-[calc(100vh-88px)] flex-col">
-      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-line px-6 pt-5 pb-4">
+    <div className="flex min-h-[calc(100vh-88px)] flex-col gap-5 p-5 pb-6">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="eyebrow text-fg">{t('eyebrow')}</div>
-          <h1 className="mt-1 text-[56px] leading-none font-black uppercase condensed">{t('title')}</h1>
-          <p className="mt-2 text-[15px] text-muted">{t('subtitle')}</p>
+          <div className="text-sm font-semibold tracking-wider text-accent uppercase">{t('eyebrow')}</div>
+          <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{t('title')}</h1>
+          <p className="mt-1 text-sm text-fg/70">{t('subtitle')}</p>
         </div>
       </header>
 
       {error && (
-        <div role="alert" className="border-b border-crimson/40 bg-crimson/10 px-6 py-2 text-sm text-danger">
+        <div role="alert" className="rounded-lg border border-danger/50 bg-danger/10 px-4 py-2 text-sm text-danger">
           {error}
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 items-start gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
         {/* ── Left: calendar and slots ── */}
-        <section className="flex flex-col gap-4 border-r border-line p-5">
+        <section className={`${CARD} flex flex-col gap-5 p-5`}>
           <div className="flex flex-col gap-2">
-            <label htmlFor="lect-date" className="eyebrow">{t('dateHeading')}</label>
+            <label htmlFor="lect-date" className={LABEL}>{t('dateHeading')}</label>
             <input id="lect-date" type="date" value={date} onChange={(e) => changeDate(e.target.value)} className={input} />
-            <p className="text-sm text-muted">{dateLabel}</p>
+            <p className="text-sm text-fg/70">{dateLabel}</p>
             <div className="flex gap-2">
               <button type="button" onClick={() => changeDate(addDays(date, -1))} className={button}>
                 <ChevronLeft size={14} aria-hidden /> {t('previousDay')}
@@ -261,7 +281,7 @@ export function LectionaryDeck() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label htmlFor="lect-label" className="eyebrow">{t('labelHeading')}</label>
+            <label htmlFor="lect-label" className={LABEL}>{t('labelHeading')}</label>
             <input
               id="lect-label"
               value={dayLabel}
@@ -273,8 +293,14 @@ export function LectionaryDeck() {
             />
           </div>
 
-          <nav aria-label={t('readingsHeading')} className="flex flex-col gap-2">
-            <span className="eyebrow">{t('readingsHeading')}</span>
+          <nav aria-label={t('readingsHeading')} className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className={LABEL}>{t('readingsHeading')}</span>
+              <span className="text-xs text-fg/60 tabular-nums">{t('progress', { n: savedCount, total: READING_TYPES.length })}</span>
+            </div>
+            <div role="progressbar" aria-label={t('readingsHeading')} aria-valuemin={0} aria-valuemax={READING_TYPES.length} aria-valuenow={savedCount} className="mb-1 h-1 overflow-hidden rounded-full bg-fg/10">
+              <div className="h-full rounded-full bg-ok transition-all" style={{ width: `${(savedCount / READING_TYPES.length) * 100}%` }} />
+            </div>
             {READING_TYPES.map((type) => {
               const row = day?.readings.find((r) => r.readingType === type);
               const filled = Boolean(row?.rawText);
@@ -285,17 +311,17 @@ export function LectionaryDeck() {
                   type="button"
                   onClick={() => changeSlot(type)}
                   aria-current={active}
-                  className={`flex flex-col gap-0.5 rounded-lg border-l-2 px-3 py-2.5 text-left transition ${
-                    active ? 'border-accent bg-panel-2' : 'border-transparent hover:bg-panel-2'
+                  className={`flex flex-col gap-0.5 rounded-lg border-l-[3px] px-3 py-2.5 text-left transition ${
+                    active ? 'border-accent bg-gradient-to-r from-accent/20 to-accent/5' : 'border-transparent hover:bg-fg/[0.06]'
                   }`}
                 >
-                  <span className="flex items-center gap-2 text-sm font-semibold">
+                  <span className={`flex items-center gap-2 text-sm font-semibold ${active ? 'text-accent' : 'text-fg'}`}>
                     {t(SLOT_KEY[type] as Parameters<LectT>[0])}
-                    <span className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${filled ? 'bg-accent text-on-accent' : 'border border-line-strong text-muted'}`}>
+                    <span className={`ml-auto rounded-full border px-2 py-0.5 text-[10px] font-extrabold tracking-wider uppercase ${filled ? 'border-ok/60 bg-ok/15 text-ok' : 'border-fg/20 bg-fg/[0.06] text-fg/60'}`}>
                       {filled ? t('saved') : t('empty')}
                     </span>
                   </span>
-                  <span className="truncate text-xs text-muted">
+                  <span className="truncate text-xs text-fg/60">
                     {row?.citation || (type === 'Second Reading' ? t('optional') : ' ')}
                   </span>
                 </button>
@@ -305,28 +331,42 @@ export function LectionaryDeck() {
         </section>
 
         {/* ── Right: editor and cue ── */}
-        <section className="flex min-w-0 flex-col gap-4 p-5">
-          <div className="flex items-center gap-2">
-            <BookOpen size={16} aria-hidden />
-            <h2 className="text-2xl font-black uppercase condensed">{t(SLOT_KEY[slot] as Parameters<LectT>[0])}</h2>
-            <span className="ml-auto text-xs text-muted">{dirty ? t('unsaved') : notice ?? ''}</span>
+        <section className={`${CARD} flex min-w-0 flex-col gap-4 p-5`}>
+          <div className="flex items-center gap-2.5 border-b border-line pb-3">
+            <span className="grid size-8 place-items-center rounded-lg border border-accent/30 bg-accent/10 text-accent">
+              <BookOpen size={16} aria-hidden />
+            </span>
+            <h2 className="text-2xl font-bold tracking-tight text-fg">{t(SLOT_KEY[slot] as Parameters<LectT>[0])}</h2>
+            <span role="status" aria-live="polite" className="ml-auto">
+              {dirty ? (
+                <span className="flex items-center gap-1.5 rounded-full border border-warn/60 bg-warn/15 px-2.5 py-0.5 text-[11px] font-bold text-warn">
+                  <span className="size-1.5 rounded-full bg-warn" aria-hidden />
+                  {t('unsaved')}
+                </span>
+              ) : notice ? (
+                <span className="flex items-center gap-1.5 rounded-full border border-ok/60 bg-ok/15 px-2.5 py-0.5 text-[11px] font-bold text-ok">
+                  <Check size={12} aria-hidden />
+                  {notice}
+                </span>
+              ) : null}
+            </span>
           </div>
 
           {isPsalm && (
             <label className="flex flex-col gap-1.5">
-              <span className="eyebrow">{t('responseLabel')}</span>
+              <span className={LABEL}>{t('responseLabel')}</span>
               <input
                 value={response}
                 maxLength={160}
                 placeholder={t('responsePlaceholder')}
                 onChange={(e) => edit(() => setResponse(e.target.value))}
-                className="h-11 rounded-md border border-line-strong bg-canvas px-3 text-[15px] font-semibold text-gold outline-none focus:border-accent"
+                className="h-11 rounded-lg border border-fg/15 bg-panel-2 px-3 text-[15px] font-semibold text-accent outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40"
               />
             </label>
           )}
 
           <label className="flex flex-col gap-1.5">
-            <span className="eyebrow">{t('citation')}</span>
+            <span className={LABEL}>{t('citation')}</span>
             <input
               value={citation}
               maxLength={160}
@@ -336,20 +376,9 @@ export function LectionaryDeck() {
             />
           </label>
 
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 2xl:grid-cols-2">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
             <div className="flex min-h-0 flex-col gap-3">
-              <div className="flex flex-col gap-2">
-                <StyleToolbar style={readingStyle} onChange={(patch) => edit(() => setReadingStyle((s) => ({ ...s, ...patch })))} />
-                <ColorField
-                  label="Background colour"
-                  prefix="Background"
-                  value={readingStyle.bgColor}
-                  presets={BACKGROUND_COLORS}
-                  onChange={(hex) => edit(() => setReadingStyle((s) => ({ ...s, bgColor: hex })))}
-                  clearLabel="No colour"
-                />
-              </div>
-              <label htmlFor="lect-text" className="eyebrow">{isPsalm ? t('versesLabel') : t('readingLabel')}</label>
+              <label htmlFor="lect-text" className={LABEL}>{isPsalm ? t('versesLabel') : t('readingLabel')}</label>
               <textarea
                 id="lect-text"
                 ref={editor}
@@ -358,52 +387,97 @@ export function LectionaryDeck() {
                 rows={14}
                 spellCheck={false}
                 placeholder={isPsalm ? t('versesPlaceholder') : t('readingPlaceholder')}
-                className="min-h-[240px] flex-1 resize-y rounded-md border border-line-strong bg-canvas p-3 font-mono text-sm leading-relaxed outline-none focus:border-accent"
+                className="min-h-[240px] flex-1 resize-y rounded-lg border border-fg/15 bg-panel-2 p-3 font-mono text-sm leading-relaxed text-fg outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40"
               />
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button type="button" onClick={autoPaginate} disabled={!master.trim()} className={button}>
                   <Sparkles size={14} aria-hidden /> {t('autoPaginate')}
                 </button>
                 <button type="button" onClick={insertBreak} disabled={!master.trim()} className={button}>
                   <Scissors size={14} aria-hidden /> {t('breakAtCursor')}
                 </button>
+                {pages.length > 0 && (
+                  <span className="ml-auto text-xs text-fg/60 tabular-nums">{pages.length === 1 ? t('slideOne') : t('slideMany', { n: pages.length })}</span>
+                )}
               </div>
 
+              {/* The slide style is set once per reading, so it stays folded away until it is needed. */}
+              <details className="group rounded-lg border border-line bg-fg/[0.03]">
+                <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+                  <span className={LABEL}>{t('stylePanel')}</span>
+                  <ChevronDown size={16} className="text-fg/60 transition group-open:rotate-180" aria-hidden />
+                </summary>
+                <div className="flex flex-col gap-2 border-t border-line p-3">
+                  <StyleToolbar style={readingStyle} onChange={(patch) => edit(() => setReadingStyle((s) => ({ ...s, ...patch })))} />
+                  <ColorField
+                    label="Background colour"
+                    prefix="Background"
+                    value={readingStyle.bgColor}
+                    presets={BACKGROUND_COLORS}
+                    onChange={(hex) => edit(() => setReadingStyle((s) => ({ ...s, bgColor: hex })))}
+                    clearLabel="No colour"
+                  />
+                </div>
+              </details>
             </div>
 
-            <div className="flex min-w-0 flex-col gap-3">
-              <span className="eyebrow">{t('preview')}</span>
-              {isPsalm ? (
-                <PsalmPreview response={response} text={pages[current] ?? ''} style={checked} />
-              ) : (
-                <SlidePreview text={pages[current] ?? ''} bgSrc={null} style={checked} className="aspect-video w-full rounded-lg border border-line-strong" />
-              )}
+            <div className="flex min-w-0 flex-col gap-3 2xl:sticky 2xl:top-5 2xl:self-start">
+              <div className="flex items-center justify-between gap-2">
+                <span className={LABEL}>{t('preview')}</span>
+                {pages.length > 0 && <span className="font-mono text-xs text-fg/60 tabular-nums">{current + 1} / {pages.length}</span>}
+              </div>
+              <div className="relative">
+                {isPsalm ? (
+                  <PsalmPreview response={response} text={pages[current] ?? ''} style={checked} />
+                ) : (
+                  <SlidePreview text={pages[current] ?? ''} bgSrc={null} style={checked} className="aspect-video w-full rounded-[10px] border border-fg/15" />
+                )}
+                {pages.length === 0 && (
+                  <div className="pointer-events-none absolute inset-0 grid place-items-center p-6 text-center text-sm text-white/45">{t('previewEmpty')}</div>
+                )}
+              </div>
               {pages.length > 1 && (
-                <div className="flex items-center justify-between text-sm">
-                  <button type="button" onClick={() => setPageIndex(Math.max(current - 1, 0))} disabled={current === 0} className={button}>
-                    <ChevronLeft size={14} aria-hidden /> {t('previous')}
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setPageIndex(Math.max(current - 1, 0))} disabled={current === 0} aria-label={t('previous')} className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/15 bg-panel-2 text-fg/80 transition hover:bg-fg/10 disabled:cursor-not-allowed disabled:opacity-40">
+                    <ChevronLeft size={14} aria-hidden />
                   </button>
-                  <span className="font-mono text-xs text-muted">{current + 1} / {pages.length}</span>
-                  <button type="button" onClick={() => setPageIndex(Math.min(current + 1, pages.length - 1))} disabled={current >= pages.length - 1} className={button}>
-                    {t('next')} <ChevronRight size={14} aria-hidden />
+                  <div role="group" aria-label={t('slidesAria')} className="flex flex-1 flex-wrap justify-center gap-1.5">
+                    {pages.map((_, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setPageIndex(i)}
+                        aria-current={i === current ? 'true' : undefined}
+                        className={`grid size-8 place-items-center rounded-md border font-mono text-xs font-bold tabular-nums transition ${
+                          i === current ? 'border-accent bg-accent text-on-accent' : 'border-fg/15 bg-panel-2 text-fg/75 hover:border-accent/50 hover:text-accent'
+                        }`}
+                      >
+                        {i + 1}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => setPageIndex(Math.min(current + 1, pages.length - 1))} disabled={current >= pages.length - 1} aria-label={t('next')} className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/15 bg-panel-2 text-fg/80 transition hover:bg-fg/10 disabled:cursor-not-allowed disabled:opacity-40">
+                    <ChevronRight size={14} aria-hidden />
                   </button>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
-            <button type="button" onClick={clearSlot} disabled={busy || !day?.readings.find((r) => r.readingType === slot)?.rawText} className={`${button} mr-auto text-danger`}>
+          {/* The actions stay at the bottom of the window while the editor scrolls, so Stage and Take Live are never below the fold. */}
+          <div className="sticky bottom-0 z-10 -mx-5 -mb-5 mt-auto flex flex-wrap items-center justify-end gap-3 rounded-b-[10px] border-t border-line bg-panel px-5 py-3">
+            <button type="button" onClick={clearSlot} disabled={busy || !day?.readings.find((r) => r.readingType === slot)?.rawText} className={`${button} mr-auto !text-danger`}>
               <Trash2 size={14} aria-hidden /> {t('clearSlot')}
             </button>
-            <button type="button" onClick={save} disabled={busy || !dirty} className={button}>
+            <button type="button" onClick={save} disabled={busy || !dirty} title={`${t('save')} (Ctrl+S)`} className={button}>
               <Save size={14} aria-hidden /> {t('save')}
             </button>
             <button
               type="button"
               onClick={stageReading}
               disabled={busy || pages.length === 0}
-              className="h-10 rounded-md border border-line-strong px-5 text-[13px] font-extrabold uppercase condensed hover:bg-panel-2 disabled:opacity-40"
+              title={pages.length === 0 ? t('pasteFirst') : t('stageTip')}
+              className={`${button} h-10 px-5`}
             >
               {t('stage')}
             </button>
@@ -411,7 +485,8 @@ export function LectionaryDeck() {
               type="button"
               onClick={takeLive}
               disabled={busy}
-              className="flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-xs font-bold tracking-wider text-white uppercase shadow-md transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+              title={t('liveTip')}
+              className="flex h-10 items-center gap-2 rounded-md border border-ok bg-ok px-5 text-xs font-extrabold tracking-wider text-canvas uppercase shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Play size={14} fill="currentColor" aria-hidden /> {tAnn('play')}
             </button>
@@ -425,9 +500,9 @@ export function LectionaryDeck() {
 /** Psalm preview: the response is pinned in gold above the verses, as on the projector. */
 function PsalmPreview({ response, text, style = null }: { response: string; text: string; style?: TextStyle | null }) {
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-line-strong bg-black" style={{ containerType: 'inline-size', backgroundColor: style?.bgColor }}>
+    <div className="relative aspect-video w-full overflow-hidden rounded-[10px] border border-fg/15 bg-black" style={{ containerType: 'inline-size', backgroundColor: style?.bgColor }}>
       <div className="absolute inset-x-0 top-[6%] px-[6%] text-center">
-        <p className="font-extrabold text-gold" style={{ fontSize: '3.6cqw' }}>
+        <p className="font-extrabold text-accent" style={{ fontSize: '3.6cqw' }}>
           ℟ {response || '…'}
         </p>
       </div>

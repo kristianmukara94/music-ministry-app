@@ -100,8 +100,8 @@ test('a song can be assigned to segment 4, which then holds that song and keeps 
   const patch = songAssignment(seg, 7, null);
   assert.ok(patch, 'the song is accepted');
   const after = applied(seg, patch);
-  assert.equal(after.type, 'song');
-  assert.deepEqual(after.content, { kind: 'song', hymnIds: [7], maxSongs: 1, category: null });
+  assert.equal(after.type, 'scripture', 'the card keeps its type');
+  assert.deepEqual(after.content, { kind: 'title', hymnIds: [7] });
   assert.deepEqual(after.arrangement, {});
   assert.equal(segmentStatus(after), 'ready');
   assert.equal(after.minutes, 4, 'songs carry no duration, so the slot keeps its minutes');

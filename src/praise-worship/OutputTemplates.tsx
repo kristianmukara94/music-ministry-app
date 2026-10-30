@@ -43,7 +43,7 @@ function samplesFor(session: PwSession | null, t: PwT): Samples {
     slides.filter((s) => s.kind === 'prayer' && !s.placeholder).map((slide) => ({ slide, segmentName: segment.name })),
   )[0];
   const scripture = slidesOf('scripture')[0]?.segment ?? session.segments[0];
-  const songSegment = session.segments.find((s) => s.content.kind === 'song' && s.content.hymnIds.length > 0);
+  const songSegment = session.segments.find((s) => s.content.hymnIds.length > 0);
 
   return {
     lyric: lyric ?? fallback.lyric,
@@ -76,13 +76,13 @@ export function OutputTemplates() {
   usePw((s) => s.prayers);
   usePw((s) => s.day);
   const samples = samplesFor(session, t);
-  const stage = 'relative aspect-video w-full overflow-hidden rounded-xl border border-line [container-type:size]';
+  const stage = 'relative aspect-video w-full overflow-hidden rounded-lg border border-line [container-type:size]';
 
   return (
-    <section aria-labelledby="pw-out-heading" className="flex flex-col gap-4 rounded-2xl border border-line bg-panel p-5">
+    <section aria-labelledby="pw-out-heading" className="flex flex-col gap-4 rounded-[10px] border border-line bg-panel p-5">
       <div className="flex flex-col gap-1">
-        <p className="eyebrow !text-accent">{t('eyebrow_outputs')}</p>
-        <h2 id="pw-out-heading" className="font-sans condensed text-2xl font-black uppercase">{t('out_heading')}</h2>
+        <p className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('eyebrow_outputs')}</p>
+        <h2 id="pw-out-heading" className="text-2xl font-bold tracking-tight">{t('out_heading')}</h2>
         <p className="max-w-3xl text-sm text-muted">{t('out_note')}</p>
       </div>
 

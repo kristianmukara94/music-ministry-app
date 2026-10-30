@@ -3,7 +3,7 @@
 // changes nothing. The worship limit (a slot's maxSongs) and the segment 4 rule (a song-or-title slot does not take a reading) are
 // checked for both sides.
 
-import { DEFAULT_TEMPLATE, acceptsTab, songAssignment, typesFor } from './pw.js';
+import { DEFAULT_TEMPLATE, acceptsTab, chainOf, songAssignment, typesFor } from './pw.js';
 
 const templateOf = (key) => DEFAULT_TEMPLATE.segments.find((t) => t.key === key);
 
@@ -42,7 +42,8 @@ function placed(segment, item) {
   if (c.kind === 'song') {
     content = { kind: 'song', hymnIds: [...c.hymnIds], maxSongs: capacityOf(segment), category: segment.content.kind === 'song' ? segment.content.category : null };
   } else {
-    content = { ...c };
+    // The card keeps its chained items: moving its first item does not clear what is chained after it.
+    content = { ...c, more: chainOf(segment) };
   }
   return { ...segment, type: segment.type, content, arrangement: item.arrangement, minutes: item.minutes };
 }
@@ -53,7 +54,7 @@ function emptied(segment) {
   const content =
     segment.content.kind === 'song'
       ? { kind: 'song', hymnIds: [], maxSongs: capacityOf(segment), category: segment.content.category }
-      : { kind: 'prayer', noteId: null };
+      : { kind: 'prayer', noteId: null, more: chainOf(segment) };
   return { ...segment, content, arrangement: {}, minutes: template?.minutes ?? segment.minutes };
 }
 

@@ -13,8 +13,8 @@ const PORT_MAX = 65535;
 const PIN_PATTERN = /^\d{4,8}$/;
 
 const button =
-  'flex h-10 items-center gap-2 rounded-md border border-line-strong px-4 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40';
-const field = 'h-10 rounded-md border border-line-strong bg-canvas px-3 font-mono text-sm outline-none focus:border-accent';
+  'flex h-10 items-center gap-2 rounded-md border border-fg/15 px-4 text-xs font-bold uppercase hover:bg-fg/10 disabled:opacity-40';
+const field = 'h-10 rounded-md border border-fg/15 bg-panel-2 px-3 font-mono text-sm outline-none focus:border-accent';
 
 const ROLE_TEXT: Record<RemoteRole, { title: string; help: string }> = {
   primary: {
@@ -29,8 +29,8 @@ const ROLE_TEXT: Record<RemoteRole, { title: string; help: string }> = {
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-xl border border-line bg-panel p-5 backdrop-blur-md">
-      <h2 className="mb-4 border-b border-line pb-2 text-xl font-black uppercase condensed">{title}</h2>
+    <section className="rounded-xl border border-line bg-panel p-5">
+      <h2 className="mb-4 border-b border-line pb-2 text-xl font-bold tracking-tight">{title}</h2>
       <div className="flex flex-col gap-5">{children}</div>
     </section>
   );
@@ -47,7 +47,7 @@ function Switch({ label, on, disabled, onChange }: { label: string; on: boolean;
       onClick={() => onChange(!on)}
       className="flex shrink-0 items-center disabled:opacity-40"
     >
-      <span className={`relative h-6 w-11 rounded-full border transition ${on ? 'border-accent bg-accent' : 'border-line-strong bg-panel-2'}`}>
+      <span className={`relative h-6 w-11 rounded-full border transition ${on ? 'border-accent bg-accent' : 'border-fg/15 bg-panel-2'}`}>
         <span className={`absolute top-0.5 size-4 rounded-full bg-fg transition-all ${on ? 'left-[22px]' : 'left-0.5'}`} aria-hidden />
       </span>
     </button>
@@ -130,7 +130,7 @@ function ViewerCard({ role, status, busy, onSave }: ViewerProps) {
           <img src={qr} alt={`QR code for ${text.title} at ${qrTarget}`} className="size-40 rounded-md bg-white p-2" />
           <div className="flex min-w-0 flex-1 flex-col gap-3">
             <p className="text-xs text-muted">Open this address in a phone's browser on the same WiFi, or scan the code with the camera.</p>
-            <code aria-label={`${text.title} address`} className="block break-all rounded-md border border-line-strong bg-canvas px-3 py-2 font-mono text-lg font-bold">
+            <code aria-label={`${text.title} address`} className="block break-all rounded-md border border-fg/15 bg-panel-2 px-3 py-2 font-mono text-lg font-bold">
               {status.url}
             </code>
             <div className="flex flex-wrap items-center gap-3">
@@ -144,7 +144,7 @@ function ViewerCard({ role, status, busy, onSave }: ViewerProps) {
             {tvUrl && (
               <div className="flex flex-col gap-3 border-t border-line pt-3">
                 <span className="eyebrow">TV address</span>
-                <code aria-label="TV address" className="block break-all rounded-md border border-line-strong bg-canvas px-3 py-2 font-mono text-lg font-bold">
+                <code aria-label="TV address" className="block break-all rounded-md border border-fg/15 bg-panel-2 px-3 py-2 font-mono text-lg font-bold">
                   {tvUrl}
                 </code>
                 <p className="text-xs text-muted">

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Radio } from 'lucide-react';
 import { bridge } from '../live/bridge';
 import { useLive } from '../live/store';
 import type { GoLiveEntry } from '../../shared/golive.js';
@@ -6,8 +7,10 @@ import { loadMassPlanToQueue, openPwLive } from './goLive';
 import type { GoLiveT } from './strings';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
-const BTN_ACCENT = 'inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-4 text-sm font-semibold text-canvas transition hover:opacity-90';
-const BTN = 'inline-flex min-h-11 items-center justify-center rounded-xl border border-line-strong px-4 text-sm font-semibold transition hover:bg-panel-2';
+const BTN_GO =
+  'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-ok bg-ok px-5 text-sm font-extrabold tracking-wide text-canvas shadow-md transition hover:brightness-110';
+const BTN =
+  'inline-flex h-10 items-center justify-center rounded-md border border-fg/15 bg-panel-2 px-4 text-sm font-semibold text-fg/85 transition hover:bg-fg/10 hover:text-fg';
 
 /**
  * The hub's Go Live for the selected entry. A Mass plan asks first, then loads into the Mass Queue, where the take happens.
@@ -60,8 +63,8 @@ export function GoLiveAction({ entry, t }: { entry: GoLiveEntry; t: GoLiveT }) {
   if (entry.kind === 'pw') {
     return (
       <>
-        <button type="button" className={BTN_ACCENT} onClick={() => void openPw()}>
-          {t('goLive')}
+        <button type="button" className={BTN_GO} onClick={() => void openPw()}>
+          <Radio size={15} aria-hidden /> {t('goLive')}
         </button>
         {error && (
           <p role="alert" className="w-full text-sm text-danger">
@@ -73,20 +76,20 @@ export function GoLiveAction({ entry, t }: { entry: GoLiveEntry; t: GoLiveT }) {
   }
 
   return (
-    <div className="flex w-full flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3">
       {first === null ? (
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={BTN_ACCENT} onClick={() => void askMass()}>
-            {t('goLive')}
+          <button type="button" className={BTN_GO} onClick={() => void askMass()}>
+            <Radio size={15} aria-hidden /> {t('goLive')}
           </button>
         </div>
       ) : (
-        <div role="group" aria-label={t('goLive')} className="flex flex-col gap-3 rounded-xl border border-accent p-4">
-          <p className="text-sm font-semibold">{t('confirmFirst', { label: first })}</p>
-          <p className="text-sm text-muted">{projectorLine}</p>
-          {queuePlanId != null && queuePlanId !== entry.id && <p className="text-sm text-muted">{t('replacesQueue')}</p>}
+        <div role="group" aria-label={t('goLive')} className="flex max-w-xl flex-col gap-3 rounded-[10px] border border-accent/60 bg-accent/5 p-4">
+          <p className="text-sm font-semibold text-fg">{t('confirmFirst', { label: first })}</p>
+          <p className="text-sm text-fg/70">{projectorLine}</p>
+          {queuePlanId != null && queuePlanId !== entry.id && <p className="text-sm text-warn">{t('replacesQueue')}</p>}
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={BTN_ACCENT} onClick={() => void confirmMass()}>
+            <button type="button" className={BTN_GO} onClick={() => void confirmMass()}>
               {t('confirmLoad')}
             </button>
             <button type="button" className={BTN} onClick={() => setFirst(null)}>

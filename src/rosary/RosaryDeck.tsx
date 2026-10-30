@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Presentation } from 'lucide-react';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Presentation } from 'lucide-react';
 import type { Frame } from '../../shared/live.js';
 import { rosaryT } from '../../shared/rosary-i18n.js';
 import { BACKGROUND_COLORS, fontCss, parseTextStyle, sanitizeTextStyle } from '../../shared/text-style.js';
@@ -36,8 +36,11 @@ const STYLE_KEY = 'apccmma.rosary.style';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+// The same surfaces as the dashboard: cards on the panel colour, hairline borders, dark ghost buttons, an accent focus ring.
+const CARD = 'rounded-[10px] border border-line bg-panel';
+const LABEL = 'text-[11px] font-semibold tracking-wider text-fg/60 uppercase';
 const button =
-  'flex h-10 items-center gap-2 rounded-md border border-line-strong px-4 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40';
+  'flex h-10 items-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-4 text-xs font-semibold tracking-wide text-fg/85 uppercase transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
 
 /** The text in the chosen language, or English when that language has none yet. */
 function localized(lang: string, en: string, tl: string, ceb: string): { text: string; fallback: boolean } {
@@ -328,17 +331,17 @@ export function RosaryDeck() {
   if (error) {
     return (
       <div className="p-5">
-        <div role="alert" className="rounded-md border border-danger/40 bg-panel px-4 py-2 text-sm text-danger">{error}</div>
+        <div role="alert" className="rounded-lg border border-danger/50 bg-danger/10 px-4 py-2 text-sm text-danger">{error}</div>
       </div>
     );
   }
-  if (!mysteries) return <p className="p-5 text-sm text-muted">{t('loading')}</p>;
+  if (!mysteries) return <p className="p-5 text-sm text-fg/60">{t('loading')}</p>;
   if (mysteries.length === 0) {
     return (
       <div className="p-5">
-        <div className="rounded-xl border border-line bg-panel p-8">
-          <h1 className="text-4xl font-black uppercase condensed">{t('title')}</h1>
-          <p className="mt-2 max-w-xl text-muted">{t('noData')}</p>
+        <div className={`${CARD} p-8`}>
+          <h1 className="text-4xl font-extrabold tracking-tight text-fg">{t('title')}</h1>
+          <p className="mt-2 max-w-xl text-fg/70">{t('noData')}</p>
         </div>
       </div>
     );
@@ -371,27 +374,29 @@ export function RosaryDeck() {
   const previewStyle = sanitizeTextStyle(style);
   const bgSelected = media.find((m) => m.src === background.live?.src);
 
+  const progress = Math.round(((position + 1) / TOTAL_POSITIONS) * 100);
+  const isLive = projectorLive.kind === 'rosary';
+  const sectionLabel = frame.decade ? `${frame.section} · ${frame.decade}` : frame.section;
+
   return (
-    <section aria-labelledby="rosary-heading" className="flex flex-col gap-4 p-5">
-      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-4">
+    <section aria-labelledby="rosary-heading" className="flex flex-col gap-5 p-5 pb-6">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="eyebrow text-fg">{t('eyebrow')}</div>
-          <h1 id="rosary-heading" className="mt-1 text-[44px] leading-none font-black uppercase condensed">{t('title')}</h1>
-          <p className="mt-2 text-[15px] text-muted">{t('subtitle')}</p>
+          <div className="text-sm font-semibold tracking-wider text-accent uppercase">{t('eyebrow')}</div>
+          <h1 id="rosary-heading" className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{t('title')}</h1>
+          <p className="mt-1 text-sm text-fg/70">{t('subtitle')}</p>
         </div>
 
         {/* The deck's own language. It starts in the app language and does not change the sidebar. */}
-        <div role="group" aria-label={t('title')} className="flex items-center gap-1 rounded-lg border border-fg/10 bg-black/40 p-1">
+        <div role="group" aria-label={t('title')} className="flex items-center gap-1 rounded-lg border border-line bg-panel p-1">
           {LANGUAGES.map((l) => (
             <button
               key={l}
               type="button"
               aria-pressed={lang === l}
               onClick={() => changeLanguage(l)}
-              className={`rounded-md px-3 py-1 text-xs font-semibold uppercase transition-all ${
-                lang === l
-                  ? 'bg-accent text-on-accent shadow-[0_0_10px_color-mix(in_oklab,var(--color-accent)_30%,transparent)]'
-                  : 'text-fg/60 hover:bg-fg/5 hover:text-fg'
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold uppercase transition ${
+                lang === l ? 'bg-accent text-on-accent' : 'text-fg/65 hover:bg-fg/10 hover:text-fg'
               }`}
             >
               {l}
@@ -400,10 +405,10 @@ export function RosaryDeck() {
         </div>
       </header>
 
-      <div className="grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
+      <div className="grid items-start gap-5 xl:grid-cols-[18rem_minmax(0,1fr)]">
         <aside className="flex flex-col gap-4">
-          <div className="rounded-xl border border-line bg-panel p-4">
-            <h2 className="eyebrow mb-2">{t('setHeading')}</h2>
+          <div className={`${CARD} p-4`}>
+            <h2 className={`${LABEL} mb-2`}>{t('setHeading')}</h2>
             <div role="tablist" className="flex flex-col gap-1">
               {MYSTERY_TYPES.map((m) => (
                 <button
@@ -412,13 +417,15 @@ export function RosaryDeck() {
                   role="tab"
                   aria-selected={type === m}
                   onClick={() => setType(m)}
-                  className={`flex items-center justify-between gap-2 rounded-md border-l-2 px-3 py-2 text-left text-sm font-semibold ${
-                    type === m ? 'border-accent bg-panel-2 text-fg' : 'border-transparent text-muted hover:bg-panel-2 hover:text-fg'
+                  className={`flex items-center justify-between gap-2 rounded-lg border-l-[3px] px-3 py-2 text-left text-sm font-semibold transition ${
+                    type === m
+                      ? 'border-accent bg-gradient-to-r from-accent/20 to-accent/5 text-accent'
+                      : 'border-transparent text-fg/80 hover:bg-fg/[0.06] hover:text-fg'
                   }`}
                 >
                   <span>{t(`set_${m}`)}</span>
                   {m === todaySet && (
-                    <span className="shrink-0 rounded bg-accent px-1.5 py-0.5 text-[10px] font-extrabold tracking-wider text-on-accent uppercase">
+                    <span className="shrink-0 rounded-full border border-accent/50 bg-accent/15 px-2 py-0.5 text-[10px] font-extrabold tracking-wider text-accent uppercase">
                       {t('todaySet')}
                     </span>
                   )}
@@ -427,36 +434,43 @@ export function RosaryDeck() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-line bg-panel p-4">
-            <h2 className="eyebrow mb-2">{t('sectionsHeading')}</h2>
+          <div className={`${CARD} p-4`}>
+            <h2 className={`${LABEL} mb-2`}>{t('sectionsHeading')}</h2>
             <ol className="flex flex-col gap-1">
-              {sections.map((s) => (
-                <li key={s.key}>
-                  <button
-                    type="button"
-                    aria-current={s.active ? 'step' : undefined}
-                    onClick={() => goTo(s.start)}
-                    className={`flex w-full items-center rounded-md border-l-2 px-3 py-2 text-left text-sm ${
-                      s.active ? 'border-accent bg-panel-2 text-fg' : 'border-transparent text-muted hover:bg-panel-2 hover:text-fg'
-                    }`}
-                  >
-                    <span className="min-w-0 truncate">{s.label}</span>
-                  </button>
-                </li>
-              ))}
+              {sections.map((s, index) => {
+                // A section is finished once the next one has begun.
+                const done = !s.active && position >= (sections[index + 1]?.start ?? Number.POSITIVE_INFINITY);
+                return (
+                  <li key={s.key}>
+                    <button
+                      type="button"
+                      aria-current={s.active ? 'step' : undefined}
+                      onClick={() => goTo(s.start)}
+                      className={`flex w-full items-center gap-2 rounded-lg border-l-[3px] px-3 py-2 text-left text-sm transition ${
+                        s.active
+                          ? 'border-accent bg-gradient-to-r from-accent/20 to-accent/5 font-semibold text-accent'
+                          : 'border-transparent text-fg/80 hover:bg-fg/[0.06] hover:text-fg'
+                      }`}
+                    >
+                      <span className="min-w-0 flex-1 truncate">{s.label}</span>
+                      {done && <Check size={14} className="shrink-0 text-ok" aria-hidden />}
+                    </button>
+                  </li>
+                );
+              })}
             </ol>
           </div>
 
-          <div className="rounded-xl border border-line bg-panel p-4">
-            <h2 className="eyebrow mb-2">{t('backgroundHeading')}</h2>
+          <div className={`${CARD} p-4`}>
+            <h2 className={`${LABEL} mb-2`}>{t('backgroundHeading')}</h2>
             {media.length === 0 ? (
-              <p className="text-xs text-muted">{t('mediaEmpty')}</p>
+              <p className="text-xs text-fg/60">{t('mediaEmpty')}</p>
             ) : (
               <select
                 aria-label={t('backgroundHeading')}
                 value={bgSelected ? String(bgSelected.id) : ''}
                 onChange={(e) => pickBackground(e.target.value)}
-                className="h-9 w-full rounded-md border border-line-strong bg-canvas px-2 text-sm text-fg outline-none focus:border-accent"
+                className="h-9 w-full rounded-lg border border-fg/15 bg-panel-2 px-2 text-sm text-fg outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
               >
                 <option value="">{t('backgroundNone')}</option>
                 {media.map((m) => (
@@ -467,28 +481,53 @@ export function RosaryDeck() {
           </div>
         </aside>
 
-        <section className="flex min-w-0 flex-col gap-4 rounded-xl border border-line bg-panel p-6 backdrop-blur-md">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="eyebrow">{frame.decade ? `${frame.section} · ${frame.decade}` : frame.section}</p>
-            <p className="text-xs text-muted tabular-nums">{t('stepOf', { n: position + 1, total: TOTAL_POSITIONS })}</p>
+        <section className={`${CARD} flex min-w-0 flex-col gap-5 p-6`}>
+          {/* Where the prayer is: the section, how far through the whole rosary, and whether it is on the screen. */}
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className={LABEL}>{sectionLabel}</span>
+              <div className="flex items-center gap-3">
+                {isLive && (
+                  <span className="flex items-center gap-1.5 rounded-full border border-ok/60 bg-ok/15 px-2.5 py-0.5 text-[10px] font-extrabold tracking-wider text-ok uppercase">
+                    <span className="size-1.5 animate-pulse rounded-full bg-ok" aria-hidden />
+                    {t('live')}
+                  </span>
+                )}
+                <span className="text-xs text-fg/60 tabular-nums">{t('stepOf', { n: position + 1, total: TOTAL_POSITIONS })}</span>
+              </div>
+            </div>
+            <div
+              role="progressbar"
+              aria-label={t('title')}
+              aria-valuemin={1}
+              aria-valuemax={TOTAL_POSITIONS}
+              aria-valuenow={position + 1}
+              className="h-1.5 overflow-hidden rounded-full bg-fg/10"
+            >
+              <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${progress}%` }} />
+            </div>
           </div>
 
-          {frame.mystery && <h2 className="text-[40px] leading-none font-black uppercase condensed">{frame.mystery}</h2>}
-          {frame.scripture && (
-            <p className="text-sm text-muted">
-              {t('scripture')}: {frame.scripture}
-            </p>
+          {frame.mystery && (
+            <div>
+              <h2 className="text-3xl leading-tight font-bold tracking-tight text-fg">{frame.mystery}</h2>
+              {frame.scripture && (
+                <p className="mt-1 text-sm text-fg/60">
+                  {t('scripture')}: {frame.scripture}
+                </p>
+              )}
+            </div>
           )}
 
           {/* The card is a preview of the slide: a background colour, the chosen face, colour and alignment. */}
           {/* The operator text is a fixed size and scrolls inside its card. The chosen font size applies only to the projector and mirror. */}
           <div
-            className="max-h-[60vh] overflow-y-auto rounded-xl border border-stone-800 bg-stone-900/60 p-6"
+            className="max-h-[52vh] overflow-y-auto rounded-[10px] border border-fg/15 bg-panel-2 p-6"
             style={{ backgroundColor: previewStyle?.bgColor }}
           >
-            <p className="eyebrow mb-3 text-accent">{frame.prayer}</p>
+            <p className="mb-3 text-[11px] font-semibold tracking-wider text-accent uppercase">{frame.prayer}</p>
             <p
-              className="text-xl leading-relaxed whitespace-pre-line text-stone-200"
+              className="text-2xl leading-relaxed whitespace-pre-line text-fg"
               style={{
                 color: previewStyle?.textColor,
                 fontFamily: fontCss(previewStyle),
@@ -497,16 +536,16 @@ export function RosaryDeck() {
             >
               {frame.text || t('noText')}
             </p>
-            {fallback && <p className="mt-3 text-xs text-muted">{t('fallbackNote')}</p>}
+            {fallback && <p className="mt-3 text-xs text-fg/60">{t('fallbackNote')}</p>}
           </div>
 
           {/* A long prayer is shown in parts. These step through them, then on to the next step. */}
           {frame.part && (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center justify-center gap-3">
               <button type="button" onClick={() => stepSlide(-1)} className={button}>
                 <ChevronLeft size={15} aria-hidden /> Previous Chunk
               </button>
-              <span className="text-xs font-bold text-accent tabular-nums">
+              <span className="min-w-20 text-center text-xs font-bold text-accent tabular-nums">
                 Part {frame.part.index} of {frame.part.total}
               </span>
               <button type="button" onClick={() => stepSlide(1)} className={button}>
@@ -516,7 +555,7 @@ export function RosaryDeck() {
           )}
 
           {beadCount > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div role="group" aria-label={step.section === 'intro' ? t('prayer_hail_mary') : t('title')} className="flex flex-wrap justify-center gap-2">
               {Array.from({ length: beadCount }, (_, i) => i + 1).map((n) => {
                 const done = n <= beadsDone;
                 const current = step.bead === n;
@@ -527,49 +566,57 @@ export function RosaryDeck() {
                     aria-label={step.section === 'intro' ? `${t('prayer_hail_mary')} ${n}` : t('beadOf', { n })}
                     aria-current={current ? 'step' : undefined}
                     onClick={() => goTo(beadPosition(step, n))}
-                    className={`size-8 rounded-full border-2 transition ${
+                    className={`grid size-9 place-items-center rounded-full border-2 font-mono text-xs font-bold tabular-nums transition ${
                       current
-                        ? 'border-accent bg-accent/40 ring-2 ring-accent'
+                        ? 'border-accent bg-accent/25 text-accent ring-2 ring-accent/50'
                         : done
-                          ? 'border-accent bg-accent'
-                          : 'border-line-strong hover:border-accent'
+                          ? 'border-accent bg-accent text-on-accent'
+                          : 'border-fg/25 text-fg/60 hover:border-accent hover:text-accent'
                     }`}
-                  />
+                  >
+                    {n}
+                  </button>
                 );
               })}
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => goTo(position - 1)} disabled={position === 0} className={button}>
+          {/* Moving through the rosary. Next is the key used most, Take Live puts the step on the screen. */}
+          <div className="flex flex-wrap items-center gap-3 border-t border-line pt-5">
+            <button type="button" onClick={() => goTo(position - 1)} disabled={position === 0} className={`${button} h-11`}>
               <ChevronLeft size={15} aria-hidden /> {t('previous')}
             </button>
-            <button type="button" onClick={() => goTo(position + 1)} disabled={position === TOTAL_POSITIONS - 1} className={button}>
+            <button type="button" onClick={() => goTo(position + 1)} disabled={position === TOTAL_POSITIONS - 1} className={`${button} h-11 px-6`}>
               {t('next')} <ChevronRight size={15} aria-hidden />
             </button>
             <button
               type="button"
               onClick={take}
-              className="flex h-10 items-center gap-2 rounded-md bg-accent px-4 text-[13px] font-extrabold uppercase condensed text-on-accent hover:brightness-105"
+              className="flex h-11 items-center gap-2 rounded-md border border-accent bg-accent px-5 text-xs font-extrabold tracking-wider text-on-accent uppercase shadow-md transition hover:brightness-110"
             >
-              <Presentation size={14} aria-hidden /> {t('takeLive')}
+              <Presentation size={15} aria-hidden /> {t('takeLive')}
             </button>
-            {projectorLive.kind === 'rosary' && <span className="text-xs font-bold text-ok uppercase">● {t('live')}</span>}
-            <p className="ml-auto text-xs text-faint">{t('hotkeys')}</p>
+            <p className="ml-auto text-xs text-fg/50">{t('hotkeys')}</p>
           </div>
 
-          <div className="flex flex-col gap-3 border-t border-line pt-4">
-            <h2 className="eyebrow">{t('styleHeading')}</h2>
-            <StyleToolbar style={style} onChange={changeStyle} />
-            <ColorField
-              label={t('backgroundColor')}
-              prefix={t('backgroundColor')}
-              value={style.bgColor}
-              presets={BACKGROUND_COLORS}
-              onChange={(hex) => changeStyle({ bgColor: hex })}
-              clearLabel={t('noColor')}
-            />
-          </div>
+          {/* The slide style is set once and kept, so it stays folded away until it is needed. */}
+          <details className="group border-t border-line pt-4">
+            <summary className="flex cursor-pointer list-none items-center justify-between rounded-md [&::-webkit-details-marker]:hidden">
+              <span className={LABEL}>{t('styleHeading')}</span>
+              <ChevronDown size={16} className="text-fg/60 transition group-open:rotate-180" aria-hidden />
+            </summary>
+            <div className="mt-3 flex flex-col gap-3">
+              <StyleToolbar style={style} onChange={changeStyle} />
+              <ColorField
+                label={t('backgroundColor')}
+                prefix={t('backgroundColor')}
+                value={style.bgColor}
+                presets={BACKGROUND_COLORS}
+                onChange={(hex) => changeStyle({ bgColor: hex })}
+                clearLabel={t('noColor')}
+              />
+            </div>
+          </details>
         </section>
       </div>
     </section>

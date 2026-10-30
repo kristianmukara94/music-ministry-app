@@ -28,15 +28,15 @@ const emptyUser: NewWebUser = { username: '', displayName: '', role: 'planner' }
 const emptySetup: NewChurchAdmin = { setupKey: '', churchName: '', username: '', displayName: '', deviceLabel: '' };
 
 const button =
-  'flex h-10 items-center gap-2 rounded-md border border-line-strong px-4 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40';
+  'flex h-10 items-center gap-2 rounded-md border border-fg/15 px-4 text-xs font-bold uppercase hover:bg-fg/10 disabled:opacity-40';
 const primary =
   'flex h-10 items-center gap-2 rounded-md bg-accent px-4 text-xs font-bold uppercase text-on-accent shadow-md hover:brightness-110 disabled:opacity-40';
-const field = 'h-10 rounded-md border border-line-strong bg-canvas px-3 font-mono text-sm outline-none focus:border-accent';
+const field = 'h-10 rounded-md border border-fg/15 bg-panel-2 px-3 font-mono text-sm outline-none focus:border-accent';
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-xl border border-line bg-panel p-5 backdrop-blur-md">
-      <h2 className="mb-4 border-b border-line pb-2 text-xl font-black uppercase condensed">{title}</h2>
+    <section className="rounded-xl border border-line bg-panel p-5">
+      <h2 className="mb-4 border-b border-line pb-2 text-xl font-bold tracking-tight">{title}</h2>
       <div className="flex flex-col gap-5">{children}</div>
     </section>
   );

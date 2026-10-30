@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_TEMPLATE, segmentFromTemplate } from './pw.js';
-import { addTicked, toggleTick } from './library-ticks.js';
+import { addTicked, clickTick, tickRange, toggleTick } from './library-ticks.js';
 
 const lineup = () => DEFAULT_TEMPLATE.groups.flatMap((g) => DEFAULT_TEMPLATE.segments.filter((s) => s.group === g.key)).map(segmentFromTemplate);
 const at = (segments, key) => segments.find((s) => s.key === key);
@@ -62,9 +62,63 @@ test('ticks of one tab do not add items of the other', () => {
   assert.equal(result.added, 1);
 });
 
-test('the Library’s checkboxes and "Add selected" call toggleTick and addTicked', () => {
+test('the Library’s cards select through clickTick, and "Add selected" attaches to the selected card', () => {
   const library = readFileSync(fileURLToPath(new URL('../src/praise-worship/Library.tsx', import.meta.url)), 'utf8');
-  assert.match(library, /toggleTick\(ticked, row\.key\)/, 'each song and prayer row is ticked through toggleTick');
-  assert.match(library, /addTicked\(session\.segments, ticked, tab/, '"Add selected" fills through addTicked');
-  assert.match(library, /commitSegments\(result\.segments\)/, 'the result is written to the lineup');
+  assert.match(library, /clickTick\(\s*ticked,/, 'each song and prayer card is selected through clickTick');
+  assert.match(library, /attachMany\(segment, drags\)/, '"Add selected" attaches through attachMany');
+  assert.doesNotMatch(library, /no empty slot left/, 'a card is never refused for want of an empty slot');
+});
+
+const KEYS = ['song-1', 'song-2', 'song-3', 'song-4', 'song-5'];
+
+test('Shift + click adds every row from the anchor to the clicked row, after what was already selected', () => {
+  assert.deepEqual(tickRange(['song-5'], KEYS, 1, 3), ['song-5', 'song-2', 'song-3', 'song-4']);
+});
+
+test('a range works upward as well as downward, and a repeat is not added twice', () => {
+  assert.deepEqual(tickRange([], KEYS, 3, 1), ['song-2', 'song-3', 'song-4']);
+  assert.deepEqual(tickRange(['song-3', 'song-2'], KEYS, 1, 3), ['song-3', 'song-2', 'song-4']);
+  assert.deepEqual(tickRange([], KEYS, 2, 2), ['song-3']);
+});
+
+test('the Library has no checkboxes: the card selects, Add is its own button, and a range starts from the last click', () => {
+  const library = readFileSync(fileURLToPath(new URL('../src/praise-worship/Library.tsx', import.meta.url)), 'utf8');
+  assert.doesNotMatch(library, /type="checkbox"/, 'no standalone checkbox');
+  assert.match(library, /onClick=\{\(e\) => handleCardClick\(e, i, row\)\}/, 'the whole card is clickable');
+  assert.match(library, /useState<number \| null>\(null\)/, 'the last clicked row is tracked');
+  assert.match(library, /e\.stopPropagation\(\);\s+row\.insert\(\);/, 'Add inserts without touching the selection');
+  assert.match(library, /border-l-accent/, 'a selected card has the accent edge');
+});
+
+const NONE = { shift: false, toggle: false };
+
+test('a plain click selects only that card and drops every other selection', () => {
+  const result = clickTick(['song-1', 'song-2', 'prayer-4'], KEYS, 0, 3, NONE);
+  assert.deepEqual(result, { ticked: ['song-4'], anchor: 3 });
+});
+
+test('a plain click on the only selected card leaves it selected', () => {
+  assert.deepEqual(clickTick(['song-2'], KEYS, 1, 1, NONE), { ticked: ['song-2'], anchor: 1 });
+});
+
+test('Ctrl or Cmd + click toggles one card and keeps the rest', () => {
+  const on = clickTick(['song-1'], KEYS, 0, 2, { shift: false, toggle: true });
+  assert.deepEqual(on, { ticked: ['song-1', 'song-3'], anchor: 2 });
+  const off = clickTick(on.ticked, KEYS, on.anchor, 0, { shift: false, toggle: true });
+  assert.deepEqual(off, { ticked: ['song-3'], anchor: 0 });
+});
+
+test('Shift + click adds the range from the anchor and keeps the anchor for the next one', () => {
+  const first = clickTick(['song-1'], KEYS, 0, 2, { shift: true, toggle: false });
+  assert.deepEqual(first, { ticked: ['song-1', 'song-2', 'song-3'], anchor: 0 });
+  const second = clickTick(first.ticked, KEYS, first.anchor, 4, { shift: true, toggle: false });
+  assert.deepEqual(second.ticked, ['song-1', 'song-2', 'song-3', 'song-4', 'song-5']);
+});
+
+test('Shift + click with no anchor selects only that card and sets the anchor there', () => {
+  assert.deepEqual(clickTick(['song-5'], KEYS, null, 2, { shift: true, toggle: false }), { ticked: ['song-3'], anchor: 2 });
+});
+
+test('Shift wins when Shift and Ctrl are held together', () => {
+  assert.deepEqual(clickTick([], KEYS, 1, 3, { shift: true, toggle: true }).ticked, ['song-2', 'song-3', 'song-4']);
 });

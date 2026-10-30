@@ -1,17 +1,14 @@
 import { useRef, useState, type ReactNode } from 'react';
 import {
-  ArrowDownUp, BookOpen, BookOpenText, ClipboardList, Flower2, Film, HandHeart, Languages, LayoutGrid, Maximize, Megaphone,
-  Music, NotebookPen, PanelLeftClose, PanelLeftOpen, Presentation, Radio, Search, Settings, type LucideIcon,
+  Activity, ArrowDownUp, BookOpen, BookOpenText, ClipboardList, Flower2, Film, FolderOpen, HandHeart, Languages, LayoutGrid, Maximize, Megaphone,
+  Menu, Music, NotebookPen, Presentation, Radio, Search, Settings, type LucideIcon,
 } from 'lucide-react';
 import { useLive } from '../live/store';
 import { LANGS, useT, type StringKey } from '../i18n/strings';
 import { exportSettings, importSettings, setUi, useUi, type ViewKey } from '../state/ui';
-import { formatClock } from '../state/region';
-import { useRegion } from '../state/useRegion';
 import { toggleFullscreen } from './actions';
 import { DatabaseStatus } from '../system/DatabaseStatus';
 import { LOGO_SRC } from '../brand/logo';
-import { useNow } from './useNow';
 import { FOOTER_TEXT } from '../legal/license';
 import { LibraryTransferDialog } from './LibraryTransfer';
 
@@ -31,39 +28,39 @@ export const NAV: { key: ViewKey; icon: LucideIcon; label: StringKey }[] = [
   { key: 'settings', icon: Settings, label: 'nav.settings' },
 ];
 
-/** Sidebar sections, in the order the operator works through them. Each module appears once. */
+/**
+ * Sidebar sections, in the order the operator works through them. Each module appears once. The Dashboard is the brand
+ * at the top, and Settings is the gear in the icon row above it.
+ */
 const NAV_GROUPS: { key: StringKey; items: ViewKey[] }[] = [
   { key: 'nav.group.liturgy', items: ['lectionary', 'bible', 'rosary', 'notes'] },
   { key: 'nav.group.worship', items: ['goLive', 'praiseWorship', 'lyrics', 'media', 'announcements'] },
-  { key: 'nav.group.management', items: ['planner', 'dashboard', 'settings', 'whiteboard'] },
+  { key: 'nav.group.management', items: ['planner', 'whiteboard'] },
 ];
 
 /** Views that are listed in the navigation but not built yet. They are disabled until they are ready. */
 const NOT_YET_BUILT: ViewKey[] = [];
 
-/** Category labels: small, spaced, gold. Shared by the navigation and the footer headings. */
-const SECTION_LABEL = 'mt-2.5 mb-1 px-3 text-xs font-extrabold tracking-widest text-amber-400/80 uppercase';
+/** Category labels: small, spaced, with a hairline running out to the right. Shared by the navigation and the footer headings. */
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="mt-3 mb-1 flex items-center gap-2 px-3">
+      <span className="shrink-0 text-xs font-bold tracking-widest text-accent uppercase">{children}</span>
+      <span className="h-px flex-1 bg-fg/10" aria-hidden />
+    </div>
+  );
+}
 
-/** One output as a row: a dot, its name, and a LIVE or OFF badge that is easy to read at a glance. */
+/** One output as a read-only row: a dot, its name, and LIVE or OFF in the status colour. It is not a control, so a stray click mid-service changes nothing. */
 function OutputRow({ label, on, stateLabel, collapsed }: { label: string; on: boolean; stateLabel: string; collapsed: boolean }) {
   return (
-    <li title={`${label}: ${stateLabel}`} className="flex items-center gap-1.5 rounded-lg px-3 py-1 text-sm font-semibold text-stone-200">
+    <li title={`${label}: ${stateLabel}`} className="flex items-center gap-2 rounded-lg px-3 py-1 text-[15px] font-medium text-fg/85">
       <span
-        className={`size-2.5 shrink-0 rounded-full ${on ? 'animate-pulse bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]' : 'bg-stone-600'}`}
+        className={`size-2.5 shrink-0 rounded-full ${on ? 'animate-pulse bg-ok shadow-[0_0_8px_var(--color-ok)]' : 'bg-fg/40'}`}
         aria-hidden
       />
       {!collapsed && <span className="flex-1 truncate">{label}</span>}
-      {!collapsed && (
-        <span
-          className={`rounded-md border px-2 py-1 text-xs font-extrabold tracking-wider ${
-            on
-              ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.25)]'
-              : 'border-stone-700 bg-stone-800/60 text-stone-400'
-          }`}
-        >
-          {stateLabel}
-        </span>
-      )}
+      {!collapsed && <span className={`text-sm font-semibold tracking-wide ${on ? 'text-ok' : 'text-danger'}`}>{stateLabel}</span>}
     </li>
   );
 }
@@ -74,21 +71,21 @@ function QuickRow({ icon: Icon, label, collapsed, onClick, children }: {
 }) {
   return (
     <button type="button" onClick={onClick} title={label}
-      className="flex w-full items-center gap-3 rounded-lg px-3 py-1 text-left text-sm font-medium text-stone-200 transition-colors hover:bg-stone-800/60 hover:text-stone-100">
-      <Icon size={18} className="shrink-0 text-amber-400/80" aria-hidden />
+      className="flex w-full items-center gap-3 rounded-lg px-3 py-1 text-left text-[15px] font-medium text-fg/85 transition-colors hover:bg-fg/[0.06] hover:text-fg">
+      <Icon size={18} strokeWidth={1.7} className="shrink-0 text-fg/70" aria-hidden />
       {!collapsed && <span className="flex-1">{label}</span>}
       {!collapsed && children}
     </button>
   );
 }
 
+const KBD = 'rounded-md border border-fg/15 bg-fg/[0.04] px-2 py-0.5 font-mono text-[11px] text-fg/75';
+
 export function Sidebar() {
   const t = useT();
   const { view, collapsed, lang } = useUi();
   const outputs = useLive((s) => s.state.outputs);
   const lowerThirdLive = useLive((s) => s.state.lowerThird.live);
-  const now = useNow();
-  const region = useRegion();
   const [ioOpen, setIoOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -99,31 +96,40 @@ export function Sidebar() {
     { label: t('side.preview'), on: outputs.preview },
   ];
 
+  const iconButton = 'grid size-9 place-items-center rounded-lg text-fg/70 transition hover:bg-fg/10 hover:text-fg';
+
   return (
     // No outer scrolling: the header and footer are fixed, and only the navigation column scrolls on short screens.
-    <aside className={`flex h-full min-h-0 shrink-0 flex-col justify-between overflow-hidden border-r border-fg/[0.06] bg-canvas/70 px-2 pt-3 pb-2 backdrop-blur-xl transition-[width] select-none ${collapsed ? 'w-[76px]' : 'w-[288px]'}`}>
-      {/* Brand card: the crest in a gold-ringed badge, then the parish name and ministry. */}
-      <div className={`mb-2 flex shrink-0 items-center rounded-xl border border-stone-800/80 bg-stone-900/60 p-2 ${collapsed ? 'justify-center' : 'gap-3'}`}>
-        <div className="shrink-0 rounded-xl border border-amber-500/30 bg-amber-500/10 p-1.5 shadow-md shadow-amber-950/40">
-          <img src={LOGO_SRC} alt="Our Lady of the Assumption Parish" draggable={false} className="h-11 w-11 object-contain" />
-        </div>
-        {!collapsed && (
-          <div className="flex min-w-0 flex-1 flex-col">
-            <h1 className="truncate text-base font-bold tracking-wide text-stone-100">ASSUMPTION PARISH</h1>
-            <span className="truncate text-xs font-bold tracking-widest text-amber-400/90">MUSIC MINISTRY</span>
-          </div>
-        )}
-        {!collapsed && (
-          <button type="button" onClick={() => setUi({ collapsed: true })} className="shrink-0 rounded-md p-1 text-stone-400 transition hover:bg-stone-800 hover:text-amber-300" aria-label="Collapse sidebar">
-            <PanelLeftClose size={18} />
-          </button>
-        )}
-      </div>
-      {collapsed && (
-        <button type="button" onClick={() => setUi({ collapsed: false })} className="mb-3 grid place-items-center rounded-md p-1 text-stone-400 transition hover:bg-stone-800 hover:text-amber-300" aria-label="Expand sidebar">
-          <PanelLeftOpen size={18} />
+    // The warm glow in the top corner is the only warm tone on the sidebar; the rest is slate.
+    <aside
+      style={{ background: 'radial-gradient(120% 34% at 0% 0%, color-mix(in oklab, var(--color-accent) 28%, transparent), color-mix(in oklab, var(--color-accent) 7%, transparent) 55%, transparent 80%), var(--color-canvas)' }}
+      className={`flex h-full min-h-0 shrink-0 flex-col justify-between overflow-hidden border-r border-fg/[0.08] px-2 pt-2 pb-2 transition-[width] select-none ${collapsed ? 'w-[76px]' : 'w-[288px]'}`}
+    >
+      {/* Icon row: the menu button collapses the sidebar, the folder opens the library, the gear opens Settings. */}
+      <div className={`flex shrink-0 gap-1 ${collapsed ? 'flex-col items-center' : 'items-center px-1'}`}>
+        <button type="button" onClick={() => setUi({ collapsed: !collapsed })} className={iconButton} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+          <Menu size={20} strokeWidth={1.7} />
         </button>
-      )}
+        <button type="button" onClick={() => setLibraryOpen(true)} className={iconButton} aria-label="Library" title="Library">
+          <FolderOpen size={20} strokeWidth={1.7} />
+        </button>
+        <button type="button" onClick={() => setUi({ view: 'settings' })} className={`${iconButton} ${view === 'settings' ? 'bg-fg/10 text-accent' : ''}`}
+          aria-label={t('nav.settings')} title={t('nav.settings')} aria-current={view === 'settings' ? 'page' : undefined}>
+          <Settings size={20} strokeWidth={1.7} />
+        </button>
+      </div>
+
+      {/* Brand: the crest and the app name, in gold. Clicking it returns to the dashboard. */}
+      <button type="button" onClick={() => setUi({ view: 'dashboard' })} title={t('nav.dashboard')} aria-current={view === 'dashboard' ? 'page' : undefined}
+        className={`mt-2 mb-1 flex shrink-0 items-center rounded-xl px-1 py-1 text-left transition hover:bg-fg/[0.04] ${collapsed ? 'justify-center' : 'gap-2.5'}`}>
+        <img src={LOGO_SRC} alt="Our Lady of the Assumption Parish" draggable={false} className="h-14 w-14 shrink-0 object-contain" />
+        {!collapsed && (
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-[34px] leading-none font-extrabold tracking-tight text-accent [text-shadow:0_0_18px_color-mix(in_oklab,var(--color-accent)_30%,transparent)]">APCCMMA</span>
+            <span className="mt-1 text-[8.5px] leading-tight font-semibold tracking-wide text-fg/75 uppercase">Assumption Parish Church • Music Ministry</span>
+          </span>
+        )}
+      </button>
 
       {/* The navigation is the only part that scrolls, so it fits any screen height without clipping. */}
       <nav aria-label="Modules" className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
@@ -132,29 +138,32 @@ export function Sidebar() {
             {collapsed ? (
               <div className="mx-2 my-2 h-px bg-fg/10" aria-hidden />
             ) : (
-              <div className={SECTION_LABEL}>{t(group.key)}</div>
+              <SectionLabel>{t(group.key)}</SectionLabel>
             )}
             {group.items.map((key) => {
               const { icon: Icon, label } = NAV.find((n) => n.key === key)!;
               const active = view === key;
               // Modules not yet built stay visible but cannot be opened, so an operator mid-service cannot land on a placeholder.
               const soon = NOT_YET_BUILT.includes(key);
+              // Go Live carries a pulse while the congregation can see something.
+              const onAir = key === 'goLive' && (outputs.projector || outputs.preview);
               return (
                 <button key={key} type="button" onClick={() => setUi({ view: key })} title={soon ? `${t(label)} · ${t('nav.comingSoon')}` : t(label)}
                   disabled={soon} aria-current={active ? 'page' : undefined}
-                  className={`flex w-full items-center gap-2.5 rounded-lg border-l-4 py-1.5 text-[15px] transition-colors duration-150 ${
-                    collapsed ? 'justify-center px-0' : 'px-3.5'
-                  } my-0.5 ${
+                  className={`flex w-full items-center gap-3 rounded-lg border-l-[3px] py-1.5 text-[16px] transition-colors duration-150 ${
+                    collapsed ? 'justify-center px-0' : 'px-3'
+                  } my-px ${
                     soon
-                      ? 'cursor-not-allowed border-transparent font-medium text-stone-500 opacity-50'
+                      ? 'cursor-not-allowed border-transparent font-medium text-fg/40 opacity-50'
                       : active
-                        ? 'border-amber-400 bg-gradient-to-r from-amber-500/20 to-amber-500/5 font-bold text-amber-200'
-                        : 'border-transparent font-semibold text-stone-300 hover:bg-stone-800/60 hover:text-stone-100'
+                        ? 'border-accent bg-gradient-to-r from-accent/20 to-accent/5 font-semibold text-accent'
+                        : 'border-transparent font-medium text-fg/85 hover:bg-fg/[0.06] hover:text-fg'
                   }`}>
-                  <Icon size={20} strokeWidth={2} aria-hidden className={`shrink-0 ${active ? 'text-amber-300 drop-shadow-[0_0_6px_rgba(251,191,36,0.6)]' : ''}`} />
-                  {!collapsed && <span className={`flex-1 truncate text-left ${active ? 'drop-shadow-[0_0_6px_rgba(251,191,36,0.45)]' : ''}`}>{t(label)}</span>}
+                  <Icon size={20} strokeWidth={1.6} aria-hidden className="shrink-0" />
+                  {!collapsed && <span className="flex-1 truncate text-left">{t(label)}</span>}
+                  {!collapsed && onAir && <Activity size={18} aria-hidden className="shrink-0 animate-pulse text-ok" />}
                   {/* Coming-soon items are muted: plain small text, no pill, so they never compete with working tools. */}
-                  {!collapsed && soon && <span className="text-[10px] font-medium tracking-wide text-stone-500 uppercase">{t('nav.comingSoon')}</span>}
+                  {!collapsed && soon && <span className="text-[10px] font-medium tracking-wide text-fg/40 uppercase">{t('nav.comingSoon')}</span>}
                 </button>
               );
             })}
@@ -163,22 +172,22 @@ export function Sidebar() {
       </nav>
 
       {/* Footer: quick actions, the database badge, and the outputs. Fixed at the bottom, never scrolled away. */}
-      <div className="flex shrink-0 flex-col border-t border-stone-800/80 pt-1">
-        {!collapsed && <div className={SECTION_LABEL}>{t('side.quickActions')}</div>}
+      <div className="flex shrink-0 flex-col border-t border-fg/[0.08] pt-1">
+        {!collapsed && <SectionLabel>{t('side.quickActions')}</SectionLabel>}
         <div className="flex flex-col gap-0.5">
           <QuickRow icon={Search} label={t('side.search')} collapsed={collapsed} onClick={() => setUi({ paletteOpen: true })}>
-            <kbd className="rounded bg-stone-800 px-2 py-0.5 font-mono text-[11px] text-stone-300">Ctrl K</kbd>
+            <kbd className={KBD}>Ctrl+K</kbd>
           </QuickRow>
 
-          <div className="flex items-center gap-3 rounded-lg px-3 py-1 text-sm font-medium text-stone-200">
-            <Languages size={18} className="shrink-0 text-amber-400/80" aria-hidden />
+          <div className="flex items-center gap-3 rounded-lg px-3 py-1 text-[15px] font-medium text-fg/85">
+            <Languages size={18} strokeWidth={1.7} className="shrink-0 text-fg/70" aria-hidden />
             {!collapsed && <span className="flex-1">{t('side.language')}</span>}
             {!collapsed && (
-              <div role="radiogroup" aria-label={t('side.language')} className="flex rounded-full border border-stone-700 bg-stone-900/70 p-0.5">
+              <div role="radiogroup" aria-label={t('side.language')} className="flex gap-1">
                 {LANGS.map((l) => (
                   <button key={l.code} type="button" role="radio" aria-checked={lang === l.code} onClick={() => setUi({ lang: l.code })}
-                    className={`rounded-full px-2.5 py-1 font-mono text-xs font-bold transition ${
-                      lang === l.code ? 'bg-amber-400/20 text-amber-200' : 'text-stone-400 hover:text-stone-100'
+                    className={`rounded-md border px-2 py-0.5 font-mono text-[11px] font-semibold transition ${
+                      lang === l.code ? 'border-accent bg-accent/15 text-accent' : 'border-fg/15 bg-fg/[0.04] text-fg/75 hover:text-fg'
                     }`}>
                     {l.label}
                   </button>
@@ -190,16 +199,16 @@ export function Sidebar() {
           <QuickRow icon={ArrowDownUp} label={t('side.exportImport')} collapsed={collapsed} onClick={() => setIoOpen((o) => !o)} />
           {ioOpen && !collapsed && (
             <div className="mb-1 ml-10 flex gap-2">
-              <button type="button" onClick={exportSettings} className="rounded-full border border-stone-700 px-3 py-1 text-xs text-stone-200 transition hover:border-amber-400/40 hover:bg-stone-800/60">{t('side.export')}</button>
-              <button type="button" onClick={() => fileInput.current?.click()} className="rounded-full border border-stone-700 px-3 py-1 text-xs text-stone-200 transition hover:border-amber-400/40 hover:bg-stone-800/60">{t('side.import')}</button>
+              <button type="button" onClick={exportSettings} className="rounded-full border border-fg/15 px-3 py-1 text-xs text-fg/85 transition hover:border-accent/50 hover:bg-fg/[0.06]">{t('side.export')}</button>
+              <button type="button" onClick={() => fileInput.current?.click()} className="rounded-full border border-fg/15 px-3 py-1 text-xs text-fg/85 transition hover:border-accent/50 hover:bg-fg/[0.06]">{t('side.import')}</button>
               <input ref={fileInput} type="file" accept="application/json" hidden
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) importSettings(f).catch((err) => alert(err.message)); e.target.value = ''; }} />
-              <button type="button" onClick={() => setLibraryOpen(true)} className="rounded-full border border-stone-700 px-3 py-1 text-xs text-stone-200 transition hover:border-amber-400/40 hover:bg-stone-800/60">Library</button>
+              <button type="button" onClick={() => setLibraryOpen(true)} className="rounded-full border border-fg/15 px-3 py-1 text-xs text-fg/85 transition hover:border-accent/50 hover:bg-fg/[0.06]">Library</button>
             </div>
           )}
 
           <QuickRow icon={Maximize} label={t('side.fullscreen')} collapsed={collapsed} onClick={toggleFullscreen}>
-            <kbd className="rounded bg-stone-800 px-2 py-0.5 font-mono text-[11px] text-stone-300">Ctrl Shift F</kbd>
+            <kbd className={KBD}>Ctrl+Shift+F</kbd>
           </QuickRow>
         </div>
 
@@ -207,15 +216,8 @@ export function Sidebar() {
           <DatabaseStatus collapsed={collapsed} />
         </div>
 
-        <div className="mt-2 border-t border-stone-800/80 pt-1">
-          {!collapsed ? (
-            <div className="flex items-center justify-between px-3 pt-3">
-              <span className="text-xs font-extrabold tracking-widest text-amber-400/80 uppercase">{t('side.outputs')}</span>
-              <span className="font-mono text-xs font-semibold text-stone-400 tabular-nums">
-                {formatClock(now, region)}
-              </span>
-            </div>
-          ) : null}
+        <div className="mt-1">
+          {!collapsed && <SectionLabel>{t('side.outputs')}</SectionLabel>}
           <ul className="flex flex-col gap-0.5 py-1">
             {outputRows.map((row) => (
               <OutputRow key={row.label} label={row.label} on={row.on} stateLabel={row.on ? 'LIVE' : 'OFF'} collapsed={collapsed} />
@@ -226,7 +228,7 @@ export function Sidebar() {
         {/* Licensing footer. Subtle on purpose: it identifies the licensed build without competing with the operator's tools. */}
         <p
           title={FOOTER_TEXT}
-          className="mt-1 truncate border-t border-stone-800/80 px-3 pt-2 pb-1 text-center text-[10px] tracking-wide text-stone-500"
+          className="mt-1 truncate border-t border-fg/[0.08] px-3 pt-2 pb-1 text-center text-[10px] tracking-wide text-fg/45"
         >
           {collapsed ? '©' : FOOTER_TEXT}
         </p>

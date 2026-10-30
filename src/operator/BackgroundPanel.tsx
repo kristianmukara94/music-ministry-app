@@ -26,7 +26,7 @@ export function BackgroundPanel({ onClose }: { onClose: () => void }) {
     <section aria-label="Live slide background" className="flex min-w-0 flex-col gap-4 rounded-xl border border-line-strong bg-panel-2 p-4">
       <header className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-sm font-black tracking-widest text-fg uppercase">Live slide background</h3>
+          <h3 className="text-[11px] font-semibold tracking-wider text-fg/70 uppercase">Live slide background</h3>
           <p className="mt-0.5 text-xs text-muted">Behind the title, prayer, lyric and scripture slides.</p>
         </div>
         <button type="button" onClick={onClose} aria-label="Close background" title="Close background" className="grid size-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-panel hover:text-fg">

@@ -11,13 +11,13 @@ import type { MediaAsset } from '../media/types';
  * settings, and `save` writes a change to it only. So changing one never changes the other.
  */
 
-const SUB = 'text-xs text-stone-400';
-const LABEL = 'text-sm font-semibold text-stone-100';
-const INPUT = 'rounded-lg border border-stone-800 bg-stone-950 text-sm text-stone-100 outline-none focus:border-amber-500';
+const SUB = 'text-xs text-fg/60';
+const LABEL = 'text-sm font-semibold text-fg';
+const INPUT = 'rounded-lg border border-line bg-panel text-sm text-fg outline-none focus:border-accent';
 const SEG = 'rounded-md px-3 py-1.5 text-[11px] font-bold tracking-wider transition-colors';
-const SEG_ON = 'bg-amber-500 text-stone-950 shadow-md shadow-amber-950/40';
-const SEG_OFF = 'text-stone-400 hover:text-stone-100';
-const SWITCH_OFF = 'border border-stone-700 text-stone-400 hover:text-stone-100';
+const SEG_ON = 'bg-accent text-on-accent shadow-md shadow-black/40';
+const SEG_OFF = 'text-fg/60 hover:text-fg';
+const SWITCH_OFF = 'border border-fg/20 text-fg/60 hover:text-fg';
 
 const TYPE_OPTIONS: { id: BackgroundType; label: string }[] = [
   { id: 'COLOR', label: 'Colour' },
@@ -133,7 +133,7 @@ export function BackgroundControls({
 
   return (
     <div className="flex flex-col gap-4">
-      <div role="radiogroup" aria-label="Background type" className="inline-flex w-fit flex-wrap gap-1 rounded-lg border border-stone-800 bg-stone-950 p-1">
+      <div role="radiogroup" aria-label="Background type" className="inline-flex w-fit flex-wrap gap-1 rounded-lg border border-line bg-panel p-1">
         {TYPE_OPTIONS.map(({ id, label }) => {
           const on = value.backgroundType === id;
           return (
@@ -159,7 +159,7 @@ export function BackgroundControls({
               setColorDraft(hex);
               settle(() => change({ backgroundType: 'COLOR', backgroundColor: hex }));
             }}
-            className="h-9 w-10 cursor-pointer rounded-md border border-stone-800 bg-stone-950 p-1"
+            className="h-9 w-10 cursor-pointer rounded-md border border-line bg-panel p-1"
           />
         </label>
       ) : (
@@ -168,10 +168,10 @@ export function BackgroundControls({
             type="button"
             onClick={() => void importFile()}
             disabled={busy}
-            className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-stone-700 bg-stone-950 p-5 text-center transition-colors hover:border-amber-500/40 disabled:opacity-40"
+            className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-fg/20 bg-panel p-5 text-center transition-colors hover:border-accent/40 disabled:opacity-40"
           >
-            <Upload size={18} className="text-amber-300" aria-hidden />
-            <span className="text-sm font-bold text-stone-100">{busy ? 'Importing…' : kind === 'video' ? 'Choose a video file' : 'Choose an image file'}</span>
+            <Upload size={18} className="text-accent" aria-hidden />
+            <span className="text-sm font-bold text-fg">{busy ? 'Importing…' : kind === 'video' ? 'Choose a video file' : 'Choose an image file'}</span>
             <span className={SUB}>The file is copied into the Media Library, so it is kept with the app.</span>
           </button>
           {items.length > 0 && (
@@ -196,7 +196,7 @@ export function BackgroundControls({
                 : 'The picture covers the whole screen. Its edges are cropped, and the colour is not seen.'}
             </p>
           </div>
-          <div role="radiogroup" aria-label="Fit on screen" className="inline-flex w-fit flex-wrap gap-1 rounded-lg border border-stone-800 bg-stone-950 p-1">
+          <div role="radiogroup" aria-label="Fit on screen" className="inline-flex w-fit flex-wrap gap-1 rounded-lg border border-line bg-panel p-1">
             {FIT_OPTIONS.map(({ id, label }) => {
               const on = value.backgroundFit === id;
               return (
@@ -233,20 +233,20 @@ export function BackgroundControls({
             <button type="button" onClick={() => {
                 const field = fileField(value.backgroundType);
                 change({ backgroundUrl: null, backgroundType: 'COLOR', ...(field ? { [field]: null } : {}) });
-              }} className="flex w-fit shrink-0 items-center gap-1.5 text-[11px] font-bold tracking-wider text-stone-400 uppercase transition-colors hover:text-amber-300">
+              }} className="flex w-fit shrink-0 items-center gap-1.5 text-[11px] font-bold tracking-wider text-fg/60 uppercase transition-colors hover:text-accent">
               <Trash2 size={13} aria-hidden /> Remove background
             </button>
           )}
 
           {playFailed && !missing && (
-            <p role="alert" className="rounded-md border border-amber-500/40 bg-stone-950 px-3 py-2 text-sm text-amber-300">
+            <p role="alert" className="rounded-md border border-accent/40 bg-panel px-3 py-2 text-sm text-accent">
               {kind === 'video' ? 'This video cannot play' : 'This picture cannot be shown'}: {playFailed}. The screen shows the background colour
               instead. Choose another file.
             </p>
           )}
 
           {missing && (
-            <p role="alert" className="rounded-md border border-amber-500/40 bg-stone-950 px-3 py-2 text-sm text-amber-300">
+            <p role="alert" className="rounded-md border border-accent/40 bg-panel px-3 py-2 text-sm text-accent">
               The background file is missing, so the screen shows the background colour instead. Choose the file again.
             </p>
           )}

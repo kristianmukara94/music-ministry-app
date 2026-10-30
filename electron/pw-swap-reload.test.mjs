@@ -120,6 +120,6 @@ test('segment 4 keeps its title slide after a save: a song cannot be swapped int
   assert.deepEqual(refused, { refused: 'type' }, 'a song and the title slide are different types, so the swap is refused');
   const reloaded = bySlot(pw.getSession(session.id).segments, 'bible_enthronement');
   assert.equal(reloaded.type, 'scripture');
-  assert.deepEqual(reloaded.content, { kind: 'title' });
+  assert.deepEqual(reloaded.content, { kind: 'title', hymnIds: [] });
   assert.equal(segmentFromTemplate(DEFAULT_TEMPLATE.segments.find((s) => s.key === 'bible_enthronement')).type, 'scripture');
 });

@@ -4,10 +4,10 @@ import { useLive } from '../live/store';
 import { setUi } from '../state/ui';
 import { ProjectorView } from '../output/ProjectorView';
 
-const ICON = 'grid size-7 place-items-center rounded-lg p-1 text-stone-400 transition hover:bg-stone-800 hover:text-stone-100';
+const ICON = 'grid size-7 place-items-center rounded-lg p-1 text-fg/60 transition hover:bg-fg/10 hover:text-fg';
 
 /** The pinned lock: a gold outline and fill, so it is clear the header is held open. */
-const PINNED_ICON = 'grid size-7 place-items-center rounded-lg border border-amber-500/50 bg-amber-500/20 p-1 text-amber-300 transition hover:bg-amber-500/30';
+const PINNED_ICON = 'grid size-7 place-items-center rounded-lg border border-accent/50 bg-accent/20 p-1 text-accent transition hover:bg-accent/30';
 
 /** Where the panel was last left, and how big it was, so it reopens exactly the same. */
 const POSITION_KEY = 'apcc_preview_position';
@@ -124,7 +124,7 @@ function Grip({ corner, onDown, onMove, onUp }: {
       onPointerMove={onMove}
       onPointerUp={onUp}
       onPointerCancel={onUp}
-      className={`absolute z-30 grid size-5 place-items-center text-stone-600 opacity-0 transition-[opacity,color] group-hover:opacity-100 hover:text-amber-400 ${place} ${cursor}`}
+      className={`absolute z-30 grid size-5 place-items-center text-fg/40 opacity-0 transition-[opacity,color] group-hover:opacity-100 hover:text-accent ${place} ${cursor}`}
     >
       <svg width="10" height="10" viewBox="0 0 10 10" style={{ transform: flip }} aria-hidden>
         <path d="M1 9 L1 1 L9 1" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" />
@@ -214,7 +214,7 @@ export function PreviewPanel() {
     <section
       aria-label="Live preview"
       style={frame}
-      className="group fixed z-50 flex flex-col overflow-hidden rounded-xl border border-stone-800/80 bg-stone-950 shadow-2xl shadow-amber-950/40"
+      className="group fixed z-50 flex flex-col overflow-hidden rounded-xl border border-line/80 bg-panel shadow-2xl shadow-black/40"
     >
       {/* The header is a band of its own, above the picture, so the picture (and its text) never sits under it. */}
       <header
@@ -222,17 +222,17 @@ export function PreviewPanel() {
         onPointerMove={moveDrag}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        className="flex h-14 shrink-0 cursor-move select-none items-center justify-between gap-3 border-b border-stone-800 bg-stone-950 px-3"
+        className="flex h-14 shrink-0 cursor-move select-none items-center justify-between gap-3 border-b border-line bg-panel px-3"
       >
         <div className="flex min-w-0 items-center gap-2.5">
-          <Eye size={16} className="shrink-0 text-amber-400" aria-hidden />
+          <Eye size={16} className="shrink-0 text-accent" aria-hidden />
           <div className="flex min-w-0 flex-col">
-            <h2 className="text-sm font-black tracking-widest text-stone-100 uppercase">Preview</h2>
-            <span className="text-[11px] text-stone-400">Live preview</span>
+            <h2 className="text-[11px] font-semibold tracking-wider text-fg/70 uppercase">Preview</h2>
+            <span className="text-[11px] text-fg/60">Live preview</span>
           </div>
           {/* While the projector is paused, the audience keeps the frame on air. Edits show here only, until the projector resumes. */}
           {paused && (
-            <span role="status" className="shrink-0 rounded-md border border-amber-500 bg-amber-500/15 px-2 py-1 text-[10px] font-extrabold tracking-wider text-amber-300 uppercase">
+            <span role="status" className="shrink-0 rounded-md border border-accent bg-accent/15 px-2 py-1 text-[10px] font-extrabold tracking-wider text-accent uppercase">
               Projector paused · editing staged
             </span>
           )}
@@ -243,16 +243,16 @@ export function PreviewPanel() {
           <span
             className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${
               projectorOn && !paused
-                ? 'live-breathe border-amber-500/50 bg-amber-500/20 text-amber-300 shadow-lg shadow-amber-950/50'
+                ? 'live-breathe border-accent/50 bg-accent/20 text-accent shadow-lg shadow-black/50'
                 : projectorOn
-                  ? 'border-sky-500/50 bg-sky-500/15 text-sky-300'
-                  : 'border-stone-800 bg-stone-900/80 text-stone-500'
+                  ? 'border-info/50 bg-info/15 text-info'
+                  : 'border-line bg-panel-2/80 text-fg/50'
             }`}
           >
             {projectorOn && !paused && (
               <span className="relative mr-1.5 inline-flex size-2 items-center justify-center" aria-hidden>
-                <span className="absolute size-2 animate-ping rounded-full bg-amber-400" />
-                <span className="relative size-2 rounded-full bg-amber-400" />
+                <span className="absolute size-2 animate-ping rounded-full bg-accent" />
+                <span className="relative size-2 rounded-full bg-accent" />
               </span>
             )}
             {projectorOn ? (paused ? 'Projector paused' : 'LIVE') : 'OFF'}

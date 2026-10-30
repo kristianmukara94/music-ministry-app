@@ -8,13 +8,13 @@ import type { MediaAsset } from '../media/types';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-const CARD = 'flex flex-col gap-4 rounded-xl border border-stone-800 bg-stone-900/60 p-5 shadow-lg';
-const HEADING = 'text-sm font-black tracking-widest text-stone-100 uppercase';
-const SUB = 'text-xs text-stone-400';
+const CARD = 'flex flex-col gap-4 rounded-xl border border-line bg-panel-2/60 p-5 shadow-lg';
+const HEADING = 'text-[11px] font-semibold tracking-wider text-fg/70 uppercase';
+const SUB = 'text-xs text-fg/60';
 /** The app's primary gold button. */
-const PRIMARY = 'flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold tracking-wider text-stone-950 uppercase shadow-md shadow-amber-950/40 transition-all hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40';
-const SECONDARY = 'flex items-center gap-2 rounded-lg border border-stone-700 bg-stone-900 px-3 py-2 text-xs font-bold tracking-wider text-stone-200 uppercase transition-colors hover:border-amber-500/40 hover:text-amber-300 disabled:cursor-not-allowed disabled:opacity-40';
-const RESET = 'flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-stone-400 uppercase transition-colors hover:text-amber-300';
+const PRIMARY = 'flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold tracking-wider text-on-accent uppercase shadow-md shadow-black/40 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40';
+const SECONDARY = 'flex items-center gap-2 rounded-lg border border-fg/20 bg-panel-2 px-3 py-2 text-xs font-bold tracking-wider text-fg/90 uppercase transition-colors hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40';
+const RESET = 'flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-fg/60 uppercase transition-colors hover:text-accent';
 
 /** A segmented control: one of the options is lit gold. */
 function Segmented<T extends string>({ label, value, options, onChange }: {
@@ -24,7 +24,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
   onChange: (id: T) => void;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1 rounded-lg border border-stone-800 bg-stone-950 p-1">
+    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1 rounded-lg border border-line bg-panel p-1">
       {options.map((o) => (
         <button
           key={o.id}
@@ -33,7 +33,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
           aria-checked={value === o.id}
           onClick={() => onChange(o.id)}
           className={`rounded-md px-3 py-1.5 text-[11px] font-bold tracking-wider uppercase transition-colors ${
-            value === o.id ? 'border border-amber-500/40 bg-amber-500/20 text-amber-300' : 'border border-transparent text-stone-400 hover:text-stone-200'
+            value === o.id ? 'border border-accent/40 bg-accent/20 text-accent' : 'border border-transparent text-fg/60 hover:text-fg/90'
           }`}
         >
           {o.text}
@@ -47,8 +47,8 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
 function GoldSwitch({ label, on, onChange }: { label: string; on: boolean; onChange: (on: boolean) => void }) {
   return (
     <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className="flex items-center gap-2">
-      <span className={`relative h-5 w-9 rounded-full border transition ${on ? 'border-amber-400 bg-amber-500' : 'border-stone-700 bg-stone-900'}`}>
-        <span className={`absolute top-0.5 size-3.5 rounded-full transition-all ${on ? 'left-[18px] bg-stone-950' : 'left-0.5 bg-stone-400'}`} aria-hidden />
+      <span className={`relative h-5 w-9 rounded-full border transition ${on ? 'border-accent bg-accent' : 'border-fg/20 bg-panel-2'}`}>
+        <span className={`absolute top-0.5 size-3.5 rounded-full transition-all ${on ? 'left-[18px] bg-panel' : 'left-0.5 bg-fg/50'}`} aria-hidden />
       </span>
     </button>
   );
@@ -57,9 +57,9 @@ function GoldSwitch({ label, on, onChange }: { label: string; on: boolean; onCha
 /** One labelled row inside a card: the name and its explanation on the left, the control on the right. */
 function Row({ title, detail, children }: { title: string; detail: string; children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 border-t border-stone-800 pt-4">
+    <div className="flex flex-wrap items-start justify-between gap-3 border-t border-line pt-4">
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold text-stone-100">{title}</div>
+        <div className="text-sm font-semibold text-fg">{title}</div>
         <div className={SUB}>{detail}</div>
       </div>
       <div className="shrink-0">{children}</div>
@@ -123,33 +123,33 @@ export function ProjectorSettingsPanel() {
       {/* Header: the category, the title, and the auto-save note. */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="text-[11px] font-bold tracking-[0.2em] text-stone-500 uppercase">Output</div>
-          <h1 className="mt-1 text-4xl font-black tracking-wide text-stone-100 uppercase">Projector</h1>
-          <p className="mt-2 max-w-xl text-sm text-stone-400">Choose the display the congregation sees, then open or close the projector.</p>
+          <div className="text-[11px] font-bold tracking-[0.2em] text-fg/50 uppercase">Output</div>
+          <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">Projector</h1>
+          <p className="mt-2 max-w-xl text-sm text-fg/60">Choose the display the congregation sees, then open or close the projector.</p>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-stone-900/80 px-3 py-1 text-xs font-semibold text-amber-300/90 shadow-sm">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-panel-2/80 px-3 py-1 text-xs font-semibold text-accent/90 shadow-sm">
           <CheckCircle2 size={13} aria-hidden /> Changes save automatically
         </span>
       </header>
 
-      {error && <div role="alert" className="rounded-md border border-danger/40 bg-stone-900 px-4 py-2 text-sm text-danger">{error}</div>}
-      {notice && !error && <div role="status" className="rounded-md border border-stone-800 bg-stone-900 px-4 py-2 text-sm text-stone-300">{notice}</div>}
+      {error && <div role="alert" className="rounded-md border border-danger/40 bg-panel-2 px-4 py-2 text-sm text-danger">{error}</div>}
+      {notice && !error && <div role="status" className="rounded-md border border-line bg-panel-2 px-4 py-2 text-sm text-fg/80">{notice}</div>}
 
       {/* The window toggle: its state, and the one action that changes it. */}
-      <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-stone-800 bg-stone-900/60 p-5">
+      <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-line bg-panel-2/60 p-5">
         <div className="flex flex-wrap items-center gap-4">
-          <div className="grid size-12 shrink-0 place-items-center rounded-lg border border-amber-500/30 bg-stone-950 text-amber-300">
+          <div className="grid size-12 shrink-0 place-items-center rounded-lg border border-accent/30 bg-panel text-accent">
             <Monitor size={22} aria-hidden />
           </div>
           <div>
             <span
               className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-bold tracking-wider uppercase ${
-                projectorOn ? 'border-amber-500/40 bg-amber-500/20 text-amber-300' : 'border-stone-700 bg-stone-800 text-stone-400'
+                projectorOn ? 'border-accent/40 bg-accent/20 text-accent' : 'border-fg/20 bg-fg/10 text-fg/60'
               }`}
             >
               {projectorOn ? '● Projector open' : '○ Projector closed'}
             </span>
-            <p className="mt-1.5 text-sm text-stone-400">Choose a display before opening the projector.</p>
+            <p className="mt-1.5 text-sm text-fg/60">Choose a display before opening the projector.</p>
           </div>
         </div>
         <button type="button" onClick={togglePicking} className={PRIMARY}>
@@ -173,11 +173,11 @@ export function ProjectorSettingsPanel() {
                 aria-checked={settings.aspect === id}
                 onClick={() => save({ aspect: id })}
                 className={`flex flex-col items-start gap-0.5 rounded-lg border p-3 text-left transition ${
-                  settings.aspect === id ? 'border-amber-400 bg-amber-500/10 text-amber-200' : 'border-stone-800 bg-stone-950/60 text-stone-200 hover:border-stone-600'
+                  settings.aspect === id ? 'border-accent bg-accent/10 text-accent' : 'border-line bg-panel/60 text-fg/90 hover:border-fg/30'
                 }`}
               >
                 <span className="text-sm font-bold">{name}</span>
-                <span className="font-mono text-xs text-stone-400">{size}</span>
+                <span className="font-mono text-xs text-fg/60">{size}</span>
               </button>
             ))}
           </div>
@@ -193,12 +193,12 @@ export function ProjectorSettingsPanel() {
                 aria-checked={settings.fit === id}
                 onClick={() => save({ fit: id })}
                 className={`flex items-start gap-3 rounded-lg border p-3 text-left transition ${
-                  settings.fit === id ? 'border-amber-400 bg-amber-500/10' : 'border-stone-800 hover:border-stone-600'
+                  settings.fit === id ? 'border-accent bg-accent/10' : 'border-line hover:border-fg/30'
                 }`}
               >
-                <span className={`mt-0.5 size-3.5 shrink-0 rounded-full border-2 ${settings.fit === id ? 'border-amber-400 bg-amber-400' : 'border-stone-500'}`} aria-hidden />
+                <span className={`mt-0.5 size-3.5 shrink-0 rounded-full border-2 ${settings.fit === id ? 'border-accent bg-accent' : 'border-fg/40'}`} aria-hidden />
                 <span className="flex flex-col">
-                  <span className="text-sm font-semibold text-stone-100">{name}</span>
+                  <span className="text-sm font-semibold text-fg">{name}</span>
                   <span className={SUB}>{detail}</span>
                 </span>
               </button>
@@ -213,7 +213,7 @@ export function ProjectorSettingsPanel() {
             <p className={SUB}>Pick the physical display that receives congregation output.</p>
           </div>
           <div>
-            <div className="text-sm font-semibold text-stone-100">Projector display</div>
+            <div className="text-sm font-semibold text-fg">Projector display</div>
             <p className={SUB}>Select one display, then apply the pending assignment.</p>
           </div>
           <div role="radiogroup" aria-label="Projector display" className="grid gap-2">
@@ -227,22 +227,22 @@ export function ProjectorSettingsPanel() {
                   aria-checked={selected}
                   onClick={() => setPending(d.id)}
                   className={`flex items-start gap-3 rounded-lg border p-3 text-left transition ${
-                    selected ? 'border-amber-400 bg-amber-500/10 shadow-md shadow-amber-950/30' : 'border-stone-800 bg-stone-950/60 hover:border-stone-600'
+                    selected ? 'border-accent bg-accent/10 shadow-md shadow-black/30' : 'border-line bg-panel/60 hover:border-fg/30'
                   }`}
                 >
-                  <Monitor size={18} className={`mt-0.5 shrink-0 ${selected ? 'text-amber-300' : 'text-stone-400'}`} aria-hidden />
+                  <Monitor size={18} className={`mt-0.5 shrink-0 ${selected ? 'text-accent' : 'text-fg/60'}`} aria-hidden />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-bold text-stone-100">Display {d.index}</span>
-                      {d.label && <span className="text-xs text-stone-400">{d.label}</span>}
+                      <span className="text-sm font-bold text-fg">Display {d.index}</span>
+                      {d.label && <span className="text-xs text-fg/60">{d.label}</span>}
                       {d.primary && (
-                        <span className="rounded border border-stone-600 bg-stone-800 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-stone-300 uppercase">Primary</span>
+                        <span className="rounded border border-fg/30 bg-fg/10 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-fg/80 uppercase">Primary</span>
                       )}
                     </div>
-                    <div className="mt-1 font-mono text-xs text-stone-200">
+                    <div className="mt-1 font-mono text-xs text-fg/90">
                       {d.width} × {d.height}
                     </div>
-                    <div className="font-mono text-[11px] text-stone-500">
+                    <div className="font-mono text-[11px] text-fg/50">
                       Position {d.x}, {d.y}
                     </div>
                   </div>
@@ -252,7 +252,7 @@ export function ProjectorSettingsPanel() {
             {displays.length === 0 && <p className={SUB}>No displays were detected.</p>}
           </div>
           {chosenMissing && (
-            <p className="text-xs text-amber-400">The chosen display is not connected. The projector uses the automatic choice until it is back.</p>
+            <p className="text-xs text-accent">The chosen display is not connected. The projector uses the automatic choice until it is back.</p>
           )}
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => save({ displayId: pending })} disabled={pending === settings.displayId} className={PRIMARY}>
@@ -327,13 +327,13 @@ export function ProjectorSettingsPanel() {
               onChange={(transitionStyle) => save({ transitionStyle })}
             />
           </Row>
-          <div className="flex flex-col gap-2 border-t border-stone-800 pt-4">
+          <div className="flex flex-col gap-2 border-t border-line pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-sm font-semibold text-stone-100">Transition duration</div>
+                <div className="text-sm font-semibold text-fg">Transition duration</div>
                 <div className={SUB}>From 100ms to 1000ms.</div>
               </div>
-              <span className="rounded-full border border-amber-500/30 bg-stone-950 px-2.5 py-1 font-mono text-xs font-semibold text-amber-300 tabular-nums">
+              <span className="rounded-full border border-accent/30 bg-panel px-2.5 py-1 font-mono text-xs font-semibold text-accent tabular-nums">
                 {fadeDraft}ms
               </span>
             </div>
@@ -348,7 +348,7 @@ export function ProjectorSettingsPanel() {
               onPointerUp={() => save({ fadeMs: fadeDraft })}
               onKeyUp={() => save({ fadeMs: fadeDraft })}
               onBlur={() => fadeDraft !== settings.fadeMs && save({ fadeMs: fadeDraft })}
-              className="h-1.5 w-full cursor-pointer accent-amber-400"
+              className="h-1.5 w-full cursor-pointer accent-accent"
             />
           </div>
         </section>
@@ -383,7 +383,7 @@ export function ProjectorSettingsPanel() {
               aria-label="Slide font"
               value={settings.slideFont ?? ''}
               onChange={(e) => save({ slideFont: e.target.value || null })}
-              className="h-10 rounded-lg border border-stone-700 bg-stone-950 px-3 text-sm text-stone-100 outline-none focus:border-amber-400"
+              className="h-10 rounded-lg border border-fg/20 bg-panel px-3 text-sm text-fg outline-none focus:border-accent"
             >
               <option value="">Keep the current look</option>
               {TEXT_FONT_GROUPS.map((group) => (
@@ -397,7 +397,7 @@ export function ProjectorSettingsPanel() {
               ))}
             </select>
           </Row>
-          <p aria-label="Font preview" className="rounded-lg border border-stone-800 bg-stone-950 px-4 py-3 text-2xl text-stone-100" style={{ fontFamily: slideFontCss(settings.slideFont) }}>
+          <p aria-label="Font preview" className="rounded-lg border border-line bg-panel px-4 py-3 text-2xl text-fg" style={{ fontFamily: slideFontCss(settings.slideFont) }}>
             Lord, have mercy on us
           </p>
         </section>
@@ -423,7 +423,7 @@ export function ProjectorSettingsPanel() {
               <select
                 value={settings.idleMedia ?? ''}
                 onChange={(e) => save({ idleMedia: e.target.value || null })}
-                className="h-10 rounded-lg border border-stone-700 bg-stone-950 px-3 text-sm text-stone-100 outline-none focus:border-amber-400"
+                className="h-10 rounded-lg border border-fg/20 bg-panel px-3 text-sm text-fg outline-none focus:border-accent"
               >
                 <option value="">Choose an image…</option>
                 {media.map((m) => (

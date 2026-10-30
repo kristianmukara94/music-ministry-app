@@ -83,12 +83,12 @@ const NAV: { title: string; items: NavItem[] }[] = [
 ];
 
 const button =
-  'flex h-10 items-center gap-2 rounded-md border border-line-strong px-4 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40';
+  'flex h-10 items-center gap-2 rounded-md border border-fg/15 px-4 text-xs font-bold uppercase hover:bg-fg/10 disabled:opacity-40';
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-line bg-panel p-5 backdrop-blur-md">
-      <h2 className="mb-4 border-b border-line pb-2 text-xl font-black uppercase condensed">{title}</h2>
+    <section className="rounded-xl border border-line bg-panel p-5">
+      <h2 className="mb-4 border-b border-line pb-2 text-xl font-bold tracking-tight">{title}</h2>
       <div className="flex flex-col gap-5">{children}</div>
     </section>
   );
@@ -96,8 +96,8 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 
 function ComingSoon({ label }: { label: string }) {
   return (
-    <section className="rounded-xl border border-dashed border-line-strong bg-panel p-8 text-center">
-      <h2 className="text-2xl font-black uppercase condensed">{label}</h2>
+    <section className="rounded-xl border border-dashed border-fg/15 bg-panel p-8 text-center">
+      <h2 className="text-2xl font-bold tracking-tight">{label}</h2>
       <p className="mt-2 text-sm text-muted">This setting is not built yet. It will appear here when it is.</p>
     </section>
   );
@@ -225,7 +225,7 @@ export function Settings() {
               <select
                 value={state.config.default_language}
                 onChange={(e) => void changeLanguage(e.target.value as Language)}
-                className="h-11 rounded-md border border-line-strong bg-canvas px-3 text-sm outline-none focus:border-accent"
+                className="h-11 rounded-md border border-fg/15 bg-panel-2 px-3 text-sm outline-none focus:border-accent"
               >
                 {LANGUAGE_OPTIONS.map((o) => (
                   <option key={o.code} value={o.code}>{o.label}</option>
@@ -264,11 +264,11 @@ export function Settings() {
             <Card title="Database & media">
               <div className="flex flex-col gap-2">
                 <span className="eyebrow">Active database</span>
-                <code aria-label="Active database path" className="block break-all rounded-md border border-line-strong bg-canvas px-3 py-2 font-mono text-xs text-fg">
+                <code aria-label="Active database path" className="block break-all rounded-md border border-fg/15 bg-panel-2 px-3 py-2 font-mono text-xs text-fg">
                   {state.databasePath}
                 </code>
                 <span className="eyebrow mt-2">Media folder</span>
-                <code aria-label="Media folder path" className="block break-all rounded-md border border-line-strong bg-canvas px-3 py-2 font-mono text-xs text-fg">
+                <code aria-label="Media folder path" className="block break-all rounded-md border border-fg/15 bg-panel-2 px-3 py-2 font-mono text-xs text-fg">
                   {state.assetsPath}
                 </code>
                 <p className="text-xs text-muted">Stays beside the database. Moving the database moves this folder with it.</p>
@@ -324,8 +324,8 @@ export function Settings() {
     // A fieldset, not a div: disabling it locks every control while a database move runs. Its browser padding and margin are reset in the CSS.
     // Below xl the section list sits above the page, so the page keeps its full width at a 1024 px window. From xl it sits beside it.
     <fieldset disabled={moving} aria-busy={moving} className="m-0 flex h-full w-full min-w-0 flex-col overflow-hidden border-0 p-0 disabled:opacity-60 xl:flex-row">
-      <aside aria-label="Settings sections" className="flex max-h-[40vh] w-full shrink-0 flex-col gap-5 overflow-y-auto border-b border-line bg-panel p-4 backdrop-blur-md xl:h-full xl:max-h-none xl:w-64 xl:border-r xl:border-b-0">
-        <h1 className="px-2 pt-2 text-[34px] leading-none font-black uppercase condensed">Settings</h1>
+      <aside aria-label="Settings sections" className="flex max-h-[40vh] w-full shrink-0 flex-col gap-5 overflow-y-auto border-b border-line bg-panel p-4 xl:h-full xl:max-h-none xl:w-64 xl:border-r xl:border-b-0">
+        <h1 className="px-2 pt-2 text-3xl leading-tight font-extrabold tracking-tight text-fg">Settings</h1>
 
         <label className="relative">
           <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" aria-hidden />
@@ -335,7 +335,7 @@ export function Settings() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search settings"
             aria-label="Search settings"
-            className="h-10 w-full rounded-md border border-line-strong bg-canvas pr-3 pl-9 text-sm outline-none focus:border-accent"
+            className="h-10 w-full rounded-md border border-fg/15 bg-panel-2 pr-3 pl-9 text-sm outline-none focus:border-accent"
           />
         </label>
 
@@ -352,8 +352,8 @@ export function Settings() {
                     type="button"
                     onClick={() => setActive(item.key)}
                     aria-current={isActive ? 'page' : undefined}
-                    className={`flex items-center gap-2 rounded-md border-l-2 px-3 py-2 text-left text-sm font-semibold transition ${
-                      isActive ? 'border-accent bg-panel-2 text-fg' : 'border-transparent text-muted hover:bg-panel-2 hover:text-fg'
+                    className={`flex items-center gap-2 rounded-lg border-l-[3px] px-3 py-2 text-left text-sm font-semibold transition ${
+                      isActive ? 'border-accent bg-gradient-to-r from-accent/20 to-accent/5 text-accent' : 'border-transparent text-fg/80 hover:bg-fg/[0.06] hover:text-fg'
                     }`}
                   >
                     {item.key === 'theme' && <Palette size={14} aria-hidden />}

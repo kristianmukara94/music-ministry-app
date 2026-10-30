@@ -63,7 +63,7 @@ const toSave = (segments) => segments.map(({ id, stale, deleted, ...s }) => s);
 
 const bySlot = (segments, key) => segments.find((s) => s.key === key);
 
-test('a song saved into segment 4 reloads as a song, with the slot minutes and no title content', () => {
+test('a song saved into segment 4 reloads beside the title slide, with the slot minutes', () => {
   const { pw, session, songId } = setup();
   const seg4 = bySlot(session.segments, 'bible_enthronement');
   assert.equal(seg4.type, 'scripture', 'the lineup starts with the title slide');
@@ -74,8 +74,8 @@ test('a song saved into segment 4 reloads as a song, with the slot minutes and n
 
   const reloaded = pw.getSession(session.id);
   const back = bySlot(reloaded.segments, 'bible_enthronement');
-  assert.equal(back.type, 'song');
-  assert.deepEqual(back.content, { kind: 'song', hymnIds: [songId], maxSongs: 1, category: null });
+  assert.equal(back.type, 'scripture', 'the card keeps its type');
+  assert.deepEqual(back.content, { kind: 'title', hymnIds: [songId] });
   assert.equal(back.minutes, 4);
   assert.equal(segmentStatus(back), 'ready');
   assert.equal(back.stale, false);
@@ -94,7 +94,7 @@ test('a title slide put back into segment 4 after a song reloads as the title sl
 
   const final = bySlot(pw.getSession(session.id).segments, 'bible_enthronement');
   assert.equal(final.type, 'scripture');
-  assert.deepEqual(final.content, { kind: 'title' });
+  assert.deepEqual(final.content, { kind: 'title', hymnIds: [] });
   assert.equal(final.minutes, 4);
 });
 
@@ -144,13 +144,13 @@ test('songs dropped from the Song List reload in the right slots, and a refused 
   pw.saveSession(session.id, { segments: toSave(segments) });
 
   const reloaded = pw.getSession(session.id).segments;
-  assert.equal(bySlot(reloaded, 'bible_enthronement').type, 'song');
+  assert.equal(bySlot(reloaded, 'bible_enthronement').type, 'scripture', 'the card keeps its type');
   assert.deepEqual(bySlot(reloaded, 'bible_enthronement').content.hymnIds, [ids[0]]);
   assert.deepEqual(bySlot(reloaded, 'marian_song').content.hymnIds, [ids[1]]);
   assert.deepEqual(bySlot(reloaded, 'worship').content.hymnIds, [ids[2], ids[3]], 'worship keeps the two drops; the repeat of Song C was refused');
 });
 
-test('a song dropped on the Gospel Acclamation slot is saved, and reloads in place of the reading', () => {
+test('a song dropped on the Gospel Acclamation slot is saved, and reloads beside the reading', () => {
   const { pw, session, lyrics } = setup();
   const hymnId = lyrics.createHymn(hymn('Song E')).id;
   const before = bySlot(session.segments, 'gospel_acclamation');
@@ -159,7 +159,7 @@ test('a song dropped on the Gospel Acclamation slot is saved, and reloads in pla
   const segments = session.segments.map((s) => (s === before ? { ...s, ...drop.patch } : s));
   pw.saveSession(session.id, { segments: toSave(segments) });
   const after = bySlot(pw.getSession(session.id).segments, 'gospel_acclamation');
-  assert.equal(after.content.kind, 'song');
+  assert.equal(after.content.kind, 'lectionary');
   assert.deepEqual(after.content.hymnIds, [hymnId]);
 });
 

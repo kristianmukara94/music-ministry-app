@@ -15,12 +15,12 @@ import type { MediaAsset } from '../media/types';
 import { WelcomeCanvas } from '../output/WelcomeScreen';
 import { BackgroundControls } from './BackgroundControls';
 
-const CARD = 'flex flex-col gap-5 rounded-xl border border-stone-800 bg-stone-900 p-6 shadow-lg';
-const CARD_TITLE = 'text-base font-black tracking-wide text-stone-100 uppercase';
-const SUB = 'text-xs text-stone-400';
-const LABEL = 'text-sm font-semibold text-stone-100';
-const INPUT = 'rounded-lg border border-stone-800 bg-stone-950 text-sm text-stone-100 outline-none focus:border-amber-500';
-const RESET = 'flex shrink-0 items-center gap-1.5 text-[11px] font-bold tracking-wider text-stone-400 uppercase transition-colors hover:text-amber-300 disabled:opacity-40';
+const CARD = 'flex flex-col gap-5 rounded-xl border border-line bg-panel-2 p-6 shadow-lg';
+const CARD_TITLE = 'text-base font-bold tracking-tight text-fg';
+const SUB = 'text-xs text-fg/60';
+const LABEL = 'text-sm font-semibold text-fg';
+const INPUT = 'rounded-lg border border-line bg-panel text-sm text-fg outline-none focus:border-accent';
+const RESET = 'flex shrink-0 items-center gap-1.5 text-[11px] font-bold tracking-wider text-fg/60 uppercase transition-colors hover:text-accent disabled:opacity-40';
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -55,7 +55,7 @@ function useDraft<T>(stored: T, save: (value: T) => void, delay = 150) {
 /** A card header: the title and subtitle on the left, and the reset button on the right, over a rule. */
 function CardHeader({ title, subtitle, onReset }: { title: string; subtitle: string; onReset: () => void }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-stone-800 pb-4">
+    <div className="flex items-start justify-between gap-4 border-b border-line pb-4">
       <div className="min-w-0">
         <h2 className={CARD_TITLE}>{title}</h2>
         <p className={`mt-1 ${SUB}`}>{subtitle}</p>
@@ -115,7 +115,7 @@ function ColorRow({ label, hint, value, onSave }: { label: string; hint: string;
         value={value.toLowerCase()}
         aria-label={`${label} picker`}
         onChange={(e) => onSave(e.target.value.toUpperCase())}
-        className="h-9 w-10 cursor-pointer rounded-md border border-stone-800 bg-stone-950 p-1"
+        className="h-9 w-10 cursor-pointer rounded-md border border-line bg-panel p-1"
       />
       <input
         value={draft}
@@ -141,9 +141,9 @@ function FontSizeRow({ value, onSave }: { value: number; onSave: (px: number) =>
         value={draft}
         aria-label="Font size"
         onChange={(e) => change(Number(e.target.value))}
-        className="w-32 accent-amber-400"
+        className="w-32 accent-accent"
       />
-      <output aria-label="Font size in pixels" className="min-w-[4rem] rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-center font-mono text-xs font-bold text-amber-300">
+      <output aria-label="Font size in pixels" className="min-w-[4rem] rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-center font-mono text-xs font-bold text-accent">
         {draft}px
       </output>
     </SettingRow>
@@ -203,17 +203,17 @@ export function WelcomeScreenSettings() {
     <div className="flex w-full max-w-7xl flex-col gap-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="text-[11px] font-bold tracking-[0.2em] text-stone-500 uppercase">Output</div>
-          <h1 className="mt-1 text-4xl font-black tracking-wide text-stone-100 uppercase">Welcome Screen</h1>
-          <p className="mt-2 text-sm text-stone-400">What the projector shows before the service starts.</p>
+          <div className="text-[11px] font-bold tracking-[0.2em] text-fg/50 uppercase">Output</div>
+          <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">Welcome Screen</h1>
+          <p className="mt-2 text-sm text-fg/60">What the projector shows before the service starts.</p>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-stone-900 px-3 py-1 text-xs font-semibold text-amber-300/90">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-panel-2 px-3 py-1 text-xs font-semibold text-accent/90">
           <CheckCircle2 size={13} aria-hidden /> Changes save automatically
         </span>
       </header>
 
       {error && (
-        <div role="alert" className="rounded-md border border-danger/40 bg-stone-900 px-4 py-2 text-sm text-danger">
+        <div role="alert" className="rounded-md border border-danger/40 bg-panel-2 px-4 py-2 text-sm text-danger">
           {error}
         </div>
       )}
@@ -228,7 +228,7 @@ export function WelcomeScreenSettings() {
             />
 
             <SettingRow label="Welcome type" hint="Switch between a typed message and an uploaded image.">
-              <div role="radiogroup" aria-label="Welcome type" className="inline-flex flex-wrap gap-1 rounded-lg border border-stone-800 bg-stone-950 p-1">
+              <div role="radiogroup" aria-label="Welcome type" className="inline-flex flex-wrap gap-1 rounded-lg border border-line bg-panel p-1">
                 {types.map(({ id, label, icon: Icon }) => {
                   const on = welcome.welcomeType === id;
                   return (
@@ -239,7 +239,7 @@ export function WelcomeScreenSettings() {
                       aria-checked={on}
                       onClick={() => update({ welcomeType: id })}
                       className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-[11px] font-bold tracking-wider transition-colors ${
-                        on ? 'bg-amber-500 text-stone-950 shadow-md shadow-amber-950/40' : 'text-stone-400 hover:text-stone-100'
+                        on ? 'bg-accent text-on-accent shadow-md shadow-black/40' : 'text-fg/60 hover:text-fg'
                       }`}
                     >
                       <Icon size={13} aria-hidden /> {label}
@@ -261,7 +261,7 @@ export function WelcomeScreenSettings() {
                       : 'The picture covers the whole screen. Its edges are cropped, and the background colour is not seen.'}
                   </p>
                 </div>
-                <div role="radiogroup" aria-label="Fit on screen" className="inline-flex w-fit flex-wrap gap-1 rounded-lg border border-stone-800 bg-stone-950 p-1">
+                <div role="radiogroup" aria-label="Fit on screen" className="inline-flex w-fit flex-wrap gap-1 rounded-lg border border-line bg-panel p-1">
                   {IMAGE_FIT_OPTIONS.map(({ id, label }) => {
                     const on = welcome.imageFit === id;
                     return (
@@ -272,7 +272,7 @@ export function WelcomeScreenSettings() {
                         aria-checked={on}
                         onClick={() => update({ imageFit: id })}
                         className={`rounded-md px-3 py-1.5 text-[11px] font-bold tracking-wider transition-colors ${
-                          on ? 'bg-amber-500 text-stone-950 shadow-md shadow-amber-950/40' : 'text-stone-400 hover:text-stone-100'
+                          on ? 'bg-accent text-on-accent shadow-md shadow-black/40' : 'text-fg/60 hover:text-fg'
                         }`}
                       >
                         {label}
@@ -284,10 +284,10 @@ export function WelcomeScreenSettings() {
                   type="button"
                   onClick={() => void importImage()}
                   disabled={busy}
-                  className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-stone-700 bg-stone-950 p-6 text-center transition-colors hover:border-amber-500/40 disabled:opacity-40"
+                  className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-fg/20 bg-panel p-6 text-center transition-colors hover:border-accent/40 disabled:opacity-40"
                 >
-                  <Upload size={20} className="text-amber-300" aria-hidden />
-                  <span className="text-sm font-bold text-stone-100">{busy ? 'Importing…' : 'Choose an image from your computer'}</span>
+                  <Upload size={20} className="text-accent" aria-hidden />
+                  <span className="text-sm font-bold text-fg">{busy ? 'Importing…' : 'Choose an image from your computer'}</span>
                   <span className={SUB}>The picture is added to the Media Library.</span>
                 </button>
                 {images.length > 0 && (
@@ -344,14 +344,14 @@ export function WelcomeScreenSettings() {
 
         <aside className="flex min-w-0 flex-col lg:col-span-5 lg:self-start">
           <section className={CARD} aria-labelledby="welcome-preview-heading">
-            <div className="border-b border-stone-800 pb-4">
+            <div className="border-b border-line pb-4">
               <h2 id="welcome-preview-heading" className={CARD_TITLE}>
                 Live preview
               </h2>
               <p className={`mt-1 ${SUB}`}>A scaled mirror of the welcome screen output.</p>
             </div>
             {/* The frame is the same size on any window; the text scales with it, as it does on the projector. */}
-            <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl border border-stone-800 bg-stone-950 p-4 [container-type:inline-size]">
+            <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl border border-line bg-panel p-4 [container-type:inline-size]">
               <div className="relative h-full w-full overflow-hidden">
                 <WelcomeCanvas settings={welcome} onBackgroundMissing={() => setPreviewMissing(true)} />
               </div>

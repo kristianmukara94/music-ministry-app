@@ -85,16 +85,30 @@ export function frameFor(segment: PwSegment, s: LiveStep): Frame {
   return { kind: 'pw', slide: s.slide, segmentName: segment.name, type: segment.type, index: s.index, total: s.total, footer };
 }
 
+/** The song titles of a segment on one line. A long list would fill the screen, so it keeps the first title and counts the rest. */
+function titlesLine(titles: string[]): string {
+  const all = titles.join(' · ');
+  return titles.length < 2 || all.length <= 60 ? all : `${titles[0]} · +${titles.length - 1} more`;
+}
+
+/** The song a live step belongs to, or null for a title, a prayer, a reading or the black step. */
+function hymnOf(step: LiveStep | undefined): number | null {
+  return step?.kind === 'slide' && step.slide.kind === 'lyrics' ? step.slide.hymnId : null;
+}
+
 /**
  * The livestream lower third for a segment: the segment's name on the gold tag, and on the maroon bar the song title with
- * its composer beneath (or the group, when there is no song or no composer).
+ * its composer beneath (or the group, when there is no song or no composer). When `hymnId` names one of the segment's songs, the bar
+ * shows that song alone, so a segment of several songs names the one that is playing and not all of them at once.
  */
-export function lowerThirdFor(session: PwSession, segment: PwSegment): LowerThird {
+export function lowerThirdFor(session: PwSession, segment: PwSegment, hymnId: number | null = null): LowerThird {
   const hymns = usePw.getState().hymns;
-  const songs = segment.content.kind === 'song' ? segment.content.hymnIds.map((id) => hymns[id]).filter(Boolean) : [];
+  const songs = segment.content.hymnIds.map((id) => hymns[id]).filter(Boolean);
   const group = session.groups.find((g) => g.key === segment.group)?.name ?? '';
   if (songs.length === 0) return { template: 'segment', tag: segment.name, line1: group };
-  return { template: 'segment', tag: segment.name, line1: songs.map((h) => h.title).join(' · '), line2: songs[0].composer || group };
+  const playing = hymnId != null && segment.content.hymnIds.includes(hymnId) ? hymns[hymnId] : undefined;
+  if (playing) return { template: 'segment', tag: segment.name, line1: playing.title, line2: playing.composer || group };
+  return { template: 'segment', tag: segment.name, line1: titlesLine(songs.map((h) => h.title)), line2: songs[0].composer || group };
 }
 
 /** What has the projector, in words the operator knows. Null when it is free or already showing this session. */
@@ -134,10 +148,16 @@ export function showPosition(session: PwSession, deck: LiveStep[][], pos: PwPosi
     dispatch({ type: 'projector/show', frame: frameOverride ?? frameFor(segment, s), source: 'PW_SESSION' });
     dispatch({ type: 'pw/cursor', segmentKey: segment.key, slide: pos.slide, now: Date.now() });
     if (leavingBlackStep) dispatch({ type: 'projector/blackout' });
-    if (!before?.onAir || before.segmentKey !== segment.key) {
-      const value = lowerThirdFor(session, segment);
+    const newSegment = !before?.onAir || before.segmentKey !== segment.key;
+    // Moving on to another song of the same segment names that song on the lower third.
+    const hymnNow = hymnOf(s);
+    const hymnBefore = beforePos ? hymnOf(deck[beforePos.segment]?.[beforePos.slide]) : null;
+    const newSong = !newSegment && hymnNow !== null && hymnNow !== hymnBefore;
+    if (newSegment || newSong) {
+      const value = lowerThirdFor(session, segment, hymnNow);
       // A segment with no Lower 3rd cue does not change the Lower 3rd on or off: its value is only staged, for the operator to take live.
-      if (segment.cues.lowerThird) dispatch({ type: 'lowerThird/show', value });
+      // A band already on screen for this segment is updated in place, so it never names the wrong song.
+      if (segment.cues.lowerThird || (newSong && now.lowerThird.live?.template === 'segment')) dispatch({ type: 'lowerThird/show', value });
       else dispatch({ type: 'lowerThird/stage', value });
     }
   };

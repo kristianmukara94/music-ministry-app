@@ -5,8 +5,8 @@ import { bridge } from '../live/bridge';
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 const button =
-  'flex h-10 items-center gap-2 rounded-md border border-line-strong px-4 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40';
-const primary = 'flex h-10 items-center gap-2 rounded-md bg-amber-500 px-4 text-xs font-bold uppercase text-stone-950 hover:bg-amber-400 disabled:opacity-40';
+  'flex h-10 items-center gap-2 rounded-md border border-fg/15 px-4 text-xs font-bold uppercase hover:bg-fg/10 disabled:opacity-40';
+const primary = 'flex h-10 items-center gap-2 rounded-md bg-accent px-4 text-xs font-bold uppercase text-on-accent hover:brightness-110 disabled:opacity-40';
 
 const RESTORE_WARNING =
   'Restoring a database will overwrite all existing lineups, songs, and preferences. The application will restart automatically to load the new data. Do you want to continue?';
@@ -62,8 +62,8 @@ export function DatabaseSettings() {
   };
 
   return (
-    <section aria-labelledby="database-data-heading" className="flex flex-col gap-4 rounded-xl border border-line bg-panel p-5 backdrop-blur-md">
-      <h2 id="database-data-heading" className="border-b border-line pb-2 text-xl font-black uppercase condensed">
+    <section aria-labelledby="database-data-heading" className="flex flex-col gap-4 rounded-xl border border-line bg-panel p-5">
+      <h2 id="database-data-heading" className="border-b border-line pb-2 text-xl font-bold tracking-tight">
         Database &amp; Data Management
       </h2>
       <p className="text-sm text-muted">
@@ -81,10 +81,10 @@ export function DatabaseSettings() {
         </button>
       </div>
 
-      {busy === 'import' && <p role="status" className="text-sm text-amber-300">Restoring the database. The application is restarting…</p>}
+      {busy === 'import' && <p role="status" className="text-sm text-accent">Restoring the database. The application is restarting…</p>}
 
       {notice && (
-        <p role={notice.tone === 'error' ? 'alert' : 'status'} className={`break-all text-sm ${notice.tone === 'error' ? 'text-danger' : 'text-emerald-300'}`}>
+        <p role={notice.tone === 'error' ? 'alert' : 'status'} className={`break-all text-sm ${notice.tone === 'error' ? 'text-danger' : 'text-ok'}`}>
           {notice.text}
         </p>
       )}
@@ -97,7 +97,7 @@ export function DatabaseSettings() {
             aria-labelledby="restore-title"
             aria-describedby="restore-warning"
             onClick={(e) => e.stopPropagation()}
-            className="flex w-full max-w-md flex-col gap-4 rounded-xl border border-line-strong bg-panel p-6 shadow-2xl"
+            className="flex w-full max-w-md flex-col gap-4 rounded-xl border border-fg/15 bg-panel p-6 shadow-2xl"
           >
             <h3 id="restore-title" className="flex items-center gap-2 text-lg font-bold">
               <DatabaseBackup size={18} aria-hidden /> Restore a backup?

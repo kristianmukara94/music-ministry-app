@@ -12,7 +12,7 @@ export function SpeakerNotes({ tr, staged }: { tr: AnnT; staged: Frame }) {
 
   return (
     <aside aria-label={tr('notesTitle')} className="flex w-[320px] shrink-0 flex-col gap-4 border-l border-line bg-panel p-4">
-      <h2 className="eyebrow text-fg">{tr('notesTitle')}</h2>
+      <h2 className="text-[11px] font-semibold tracking-wider text-accent uppercase">{tr('notesTitle')}</h2>
 
       {staged.kind === 'text' && (
         <div className="aspect-video w-full overflow-hidden rounded-md border border-line">

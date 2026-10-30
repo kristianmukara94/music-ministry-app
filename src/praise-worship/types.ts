@@ -1,4 +1,6 @@
-import type { PwGroup, PwHymnTag, PwSegment, PwTemplateData } from '../../shared/pw.js';
+import type { PwChainItem, PwGroup, PwHymnTag, PwSegment, PwTemplateData } from '../../shared/pw.js';
+
+export type { PwChainItem };
 
 export interface PwSessionSummary {
   id: number;

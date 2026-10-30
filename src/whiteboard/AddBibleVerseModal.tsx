@@ -14,9 +14,9 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
  */
 const DEUTEROCANONICAL = new Set(['TOB', 'JDT', 'WIS', 'SIR', 'BAR', '1MA', '2MA']);
 
-const CARD = 'flex w-full max-w-2xl flex-col gap-5 rounded-xl border border-stone-800 bg-stone-900 p-6 text-stone-100 shadow-2xl';
-const FIELD = 'w-full rounded-lg border border-stone-800 bg-stone-950 p-2.5 text-sm text-stone-100 outline-none focus:border-amber-400';
-const LABEL = 'flex flex-col gap-1.5 text-[11px] font-bold tracking-wider text-stone-400 uppercase';
+const CARD = 'flex w-full max-w-2xl flex-col gap-5 rounded-xl border border-line bg-panel-2 p-6 text-fg shadow-2xl';
+const FIELD = 'w-full rounded-lg border border-line bg-panel p-2.5 text-sm text-fg outline-none focus:border-accent';
+const LABEL = 'flex flex-col gap-1.5 text-[11px] font-bold tracking-wider text-fg/60 uppercase';
 
 const STYLE_LABELS: Record<string, string> = { plain: 'Plain', italic: 'Italic', boxed: 'Boxed', callout: 'Callout' };
 const POSITION_LABELS: Record<string, string> = { bottom: 'Bottom', top: 'Top', center: 'Center', full: 'Full' };
@@ -131,13 +131,13 @@ export function AddBibleVerseModal({ onAdd, onClose }: {
     <div role="dialog" aria-modal="true" aria-label="Add Bible Verse" className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className={CARD}>
         <header className="flex items-center justify-between gap-4">
-          <h2 className="text-lg font-black tracking-wide text-stone-100 uppercase">Add Bible Verse</h2>
-          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-md border border-stone-700 text-stone-400 hover:text-stone-100">
+          <h2 className="text-lg font-bold tracking-tight text-fg">Add Bible Verse</h2>
+          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-md border border-fg/20 text-fg/60 hover:text-fg">
             <X size={16} aria-hidden />
           </button>
         </header>
 
-        {error && <div role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>}
+        {error && <div role="alert" className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</div>}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className={`${LABEL} sm:col-span-2`}>
@@ -201,7 +201,7 @@ export function AddBibleVerseModal({ onAdd, onClose }: {
           <label className={LABEL}>
             <span className="flex items-center justify-between">
               Font size
-              <span className="rounded-full border border-amber-500/30 bg-stone-950 px-2.5 py-0.5 font-mono text-xs font-semibold text-amber-300 normal-case tabular-nums">
+              <span className="rounded-full border border-accent/30 bg-panel px-2.5 py-0.5 font-mono text-xs font-semibold text-accent normal-case tabular-nums">
                 Font Size: {fontSize}px
               </span>
             </span>
@@ -212,25 +212,25 @@ export function AddBibleVerseModal({ onAdd, onClose }: {
               step={1}
               value={fontSize}
               onChange={(e) => setFontSize(Number(e.target.value))}
-              className="h-1.5 w-full cursor-pointer accent-amber-400 bg-stone-800 rounded-lg"
+              className="h-1.5 w-full cursor-pointer accent-accent bg-fg/10 rounded-lg"
             />
           </label>
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-stone-200">
-          <input type="checkbox" checked={showReference} onChange={(e) => setShowReference(e.target.checked)} className="size-4 accent-amber-400" />
+        <label className="flex items-center gap-2 text-sm text-fg/90">
+          <input type="checkbox" checked={showReference} onChange={(e) => setShowReference(e.target.checked)} className="size-4 accent-accent" />
           Show verse reference
         </label>
 
-        <footer className="flex items-center justify-end gap-3 border-t border-stone-800 pt-4">
-          <button type="button" onClick={onClose} className="rounded-lg border border-stone-700 bg-stone-800 px-4 py-2 text-xs font-bold tracking-wider text-stone-200 uppercase hover:bg-stone-700">
+        <footer className="flex items-center justify-end gap-3 border-t border-line pt-4">
+          <button type="button" onClick={onClose} className="rounded-lg border border-fg/20 bg-fg/10 px-4 py-2 text-xs font-bold tracking-wider text-fg/90 uppercase hover:bg-fg/20">
             Cancel
           </button>
           <button
             type="button"
             onClick={addVerse}
             disabled={busy || !book}
-            className="rounded-lg bg-amber-500 px-5 py-2 text-xs font-extrabold tracking-wider text-stone-950 uppercase shadow-md shadow-amber-950/40 hover:bg-amber-400 disabled:opacity-40"
+            className="rounded-lg bg-accent px-5 py-2 text-xs font-extrabold tracking-wider text-on-accent uppercase shadow-md shadow-black/40 hover:brightness-110 disabled:opacity-40"
           >
             {busy ? 'Reading…' : 'Add Verse'}
           </button>

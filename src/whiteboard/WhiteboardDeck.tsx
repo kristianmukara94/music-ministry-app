@@ -125,66 +125,66 @@ export function WhiteboardDeck() {
   return (
     <div className="flex min-h-[calc(100vh-88px)] flex-col">
       {/* Header: the category, the title, the status line, and the actions. */}
-      <header className="flex shrink-0 flex-wrap items-start justify-between gap-5 border-b border-stone-800 px-6 pt-5 pb-4">
+      <header className="flex shrink-0 flex-wrap items-start justify-between gap-5 px-6 pt-5 pb-3">
         <div>
-          <div className="text-[11px] font-bold tracking-[0.2em] text-stone-500 uppercase">Slide builder</div>
-          <h1 className="mt-1 text-[44px] leading-none font-black tracking-wide text-stone-100 uppercase">Whiteboard</h1>
-          <p className="mt-2 text-sm text-stone-400">Create sermon notes and bulletin points</p>
-          <p className="mt-2 font-mono text-xs text-stone-500">
+          <div className="text-sm font-semibold tracking-wider text-accent uppercase">Slide builder</div>
+          <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">Whiteboard</h1>
+          <p className="mt-1 text-sm text-fg/70">Create sermon notes and bulletin points</p>
+          <p className="mt-2 font-mono text-xs text-fg/50">
             {count} {count === 1 ? 'slide' : 'slides'} • Drag to reorder • Double-click to project
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => setTemplatesOpen(true)} className="flex h-10 items-center gap-2 rounded-lg border border-stone-700 bg-stone-900 px-3 text-xs font-bold tracking-wider text-stone-200 uppercase transition-colors hover:border-amber-500/40 hover:text-amber-300">
+          <button type="button" onClick={() => setTemplatesOpen(true)} className="flex h-10 items-center gap-2 rounded-lg border border-fg/20 bg-panel-2 px-3 text-xs font-bold tracking-wider text-fg/90 uppercase transition-colors hover:border-accent/40 hover:text-accent">
             <Layers size={14} aria-hidden /> Templates
           </button>
           <button
             type="button"
             disabled
             title="PowerPoint export is not available yet."
-            className="flex h-10 items-center gap-2 rounded-lg border border-stone-800 bg-stone-900/60 px-3 text-xs font-bold tracking-wider text-stone-500 uppercase opacity-60"
+            className="flex h-10 items-center gap-2 rounded-lg border border-line bg-panel-2/60 px-3 text-xs font-bold tracking-wider text-fg/50 uppercase opacity-60"
           >
             <FileDown size={14} aria-hidden /> Export PowerPoint
           </button>
-          <button type="button" onClick={importPowerPoint} disabled={busy} className="flex h-10 items-center gap-2 rounded-lg border border-stone-700 bg-stone-900 px-3 text-xs font-bold tracking-wider text-stone-200 uppercase transition-colors hover:border-amber-500/40 hover:text-amber-300 disabled:opacity-40">
+          <button type="button" onClick={importPowerPoint} disabled={busy} className="flex h-10 items-center gap-2 rounded-lg border border-fg/20 bg-panel-2 px-3 text-xs font-bold tracking-wider text-fg/90 uppercase transition-colors hover:border-accent/40 hover:text-accent disabled:opacity-40">
             <FileUp size={14} aria-hidden /> {busy ? 'Importing…' : 'Import PowerPoint'}
           </button>
-          <button type="button" onClick={openNew} className="flex h-10 items-center gap-2 rounded-lg bg-amber-500 px-4 text-xs font-bold tracking-wider text-stone-950 uppercase shadow-md shadow-amber-950/40 transition-all hover:bg-amber-400">
+          <button type="button" onClick={openNew} className="flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-xs font-bold tracking-wider text-on-accent uppercase shadow-md shadow-black/40 transition-all hover:brightness-110">
             <Plus size={14} aria-hidden /> New slide
           </button>
         </div>
       </header>
 
-      {error && <div role="alert" className="border-b border-red-500/40 bg-red-500/10 px-6 py-2 text-sm whitespace-pre-line text-red-300">{error}</div>}
-      {notice && !error && <div role="status" className="border-b border-stone-800 px-6 py-2 text-sm text-stone-300">{notice}</div>}
+      {error && <div role="alert" className="border-b border-danger/40 bg-danger/10 px-6 py-2 text-sm whitespace-pre-line text-danger">{error}</div>}
+      {notice && !error && <div role="status" className="border-b border-line px-6 py-2 text-sm text-fg/80">{notice}</div>}
 
       <div className="flex min-h-0 flex-1">
         {/* Library: the slides, as one folder. */}
-        <aside className="flex max-h-full w-56 shrink-0 flex-col gap-3 overflow-y-auto border-r border-stone-800 p-4">
-          <div className="text-[11px] font-bold tracking-[0.2em] text-stone-500 uppercase">Library</div>
-          <div className="flex items-center justify-between gap-2 rounded-md border-l-2 border-amber-400 bg-amber-500/10 px-3 py-2.5 text-sm font-semibold text-amber-200">
+        <aside className="flex max-h-full w-56 shrink-0 flex-col gap-3 overflow-y-auto border-r border-line p-4">
+          <div className="text-[11px] font-bold tracking-[0.2em] text-fg/50 uppercase">Library</div>
+          <div className="flex items-center justify-between gap-2 rounded-md border-l-2 border-accent bg-accent/10 px-3 py-2.5 text-sm font-semibold text-accent">
             <span>All slides</span>
-            <span className="rounded-full border border-amber-500/30 bg-stone-950 px-2 py-0.5 font-mono text-xs text-amber-300 tabular-nums">{count}</span>
+            <span className="rounded-full border border-accent/30 bg-panel px-2 py-0.5 font-mono text-xs text-accent tabular-nums">{count}</span>
           </div>
         </aside>
 
         <section className="min-h-0 min-w-0 flex-1 overflow-y-auto p-6">
           {slides.length === 0 ? (
-            <div className="flex h-full min-h-[420px] flex-col items-center justify-center rounded-xl border border-dashed border-stone-700 bg-stone-900/40 p-10 text-center">
-              <div className="grid size-16 place-items-center rounded-xl border border-amber-500/30 bg-stone-950 text-amber-300">
+            <div className="flex h-full min-h-[420px] flex-col items-center justify-center rounded-xl border border-dashed border-fg/20 bg-panel-2/40 p-10 text-center">
+              <div className="grid size-16 place-items-center rounded-xl border border-accent/30 bg-panel text-accent">
                 <Monitor size={26} aria-hidden />
               </div>
-              <h2 className="mt-5 text-2xl font-black tracking-wide text-stone-100 uppercase">No slides yet</h2>
-              <p className="mt-2 max-w-md text-sm text-stone-400">Create a slide, or import a PowerPoint (.pptx) to turn its text into editable slides.</p>
+              <h2 className="mt-5 text-2xl font-bold tracking-tight text-fg">No slides yet</h2>
+              <p className="mt-2 max-w-md text-sm text-fg/60">Create a slide, or import a PowerPoint (.pptx) to turn its text into editable slides.</p>
               <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-                <button type="button" onClick={openNew} className="flex h-10 items-center gap-2 rounded-lg bg-amber-500 px-4 text-xs font-bold tracking-wider text-stone-950 uppercase shadow-md shadow-amber-950/40 hover:bg-amber-400">
+                <button type="button" onClick={openNew} className="flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-xs font-bold tracking-wider text-on-accent uppercase shadow-md shadow-black/40 hover:brightness-110">
                   <Plus size={14} aria-hidden /> New slide
                 </button>
-                <button type="button" onClick={importPowerPoint} disabled={busy} className="flex h-10 items-center gap-2 rounded-lg border border-stone-700 bg-stone-900 px-4 text-xs font-bold tracking-wider text-stone-200 uppercase hover:border-amber-500/40 hover:text-amber-300 disabled:opacity-40">
+                <button type="button" onClick={importPowerPoint} disabled={busy} className="flex h-10 items-center gap-2 rounded-lg border border-fg/20 bg-panel-2 px-4 text-xs font-bold tracking-wider text-fg/90 uppercase hover:border-accent/40 hover:text-accent disabled:opacity-40">
                   <FileUp size={14} aria-hidden /> Import PowerPoint
                 </button>
               </div>
-              <p className="mt-6 max-w-lg text-xs text-stone-500">
+              <p className="mt-6 max-w-lg text-xs text-fg/50">
                 To show a deck exactly as designed, import it in Announcements instead: each slide becomes a full-quality image.
               </p>
             </div>
@@ -208,25 +208,25 @@ export function WhiteboardDeck() {
                     setDragId(null);
                     setDropId(null);
                   }}
-                  className={`group relative rounded-lg transition ${dropId === slide.id ? 'ring-2 ring-amber-400' : ''} ${dragId === slide.id ? 'opacity-40' : ''}`}
+                  className={`group relative rounded-lg transition ${dropId === slide.id ? 'ring-2 ring-accent' : ''} ${dragId === slide.id ? 'opacity-40' : ''}`}
                 >
                   <button
                     type="button"
                     onDoubleClick={() => project(slide)}
                     aria-label={`${slide.title}. Double-click to project.`}
-                    className="flex w-full flex-col overflow-hidden rounded-lg border border-stone-800 bg-stone-900 text-left transition-colors hover:border-amber-500/40"
+                    className="flex w-full flex-col overflow-hidden rounded-lg border border-line bg-panel-2 text-left transition-colors hover:border-accent/40"
                   >
                     <div className="relative">
                       <SlideCanvas slide={slide} className="aspect-video w-full" />
-                      <span className="absolute top-2 left-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[11px] font-bold text-stone-200">{i + 1}</span>
+                      <span className="absolute top-2 left-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[11px] font-bold text-fg/90">{i + 1}</span>
                     </div>
-                    <div className="truncate px-3 py-2 text-sm font-semibold text-stone-100">{slide.title}</div>
+                    <div className="truncate px-3 py-2 text-sm font-semibold text-fg">{slide.title}</div>
                   </button>
                   <div className="absolute top-2 right-2 hidden gap-1 group-hover:flex">
-                    <button type="button" onClick={() => openEdit(slide)} aria-label={`Edit ${slide.title}`} className="grid size-7 place-items-center rounded bg-black/75 text-stone-200 hover:text-amber-300">
+                    <button type="button" onClick={() => openEdit(slide)} aria-label={`Edit ${slide.title}`} className="grid size-7 place-items-center rounded bg-black/75 text-fg/90 hover:text-accent">
                       <Pencil size={13} aria-hidden />
                     </button>
-                    <button type="button" onClick={() => remove(slide)} aria-label={`Delete ${slide.title}`} className="grid size-7 place-items-center rounded bg-black/75 text-stone-200 hover:text-red-400">
+                    <button type="button" onClick={() => remove(slide)} aria-label={`Delete ${slide.title}`} className="grid size-7 place-items-center rounded bg-black/75 text-fg/90 hover:text-danger">
                       <Trash2 size={13} aria-hidden />
                     </button>
                   </div>

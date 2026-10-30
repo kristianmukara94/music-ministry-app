@@ -38,7 +38,7 @@ test('a picture or a video covers the slide, under the text', () => {
   // The media and the shade come before the text in the page, and the text is positioned, so it paints above them.
   assert.ok(source.indexOf('{layers}') < source.indexOf('font-serif text-[5cqw]'), 'the layers are drawn before the text');
   // A prayer or title in normal flow would paint under an absolute layer: each text block is positioned, or sits in a positioned wrapper.
-  assert.match(source, /<div className="absolute inset-0 flex flex-col items-center justify-center px-\[8cqw\] py-\[8cqh\] text-center">/, 'the title sits in a positioned full-frame wrapper');
+  assert.match(source, /<div className="absolute inset-0 flex flex-col items-center justify-center px-\[8cqw\] py-\[4\.5cqw\] text-center">/, 'the title sits in a positioned full-frame wrapper');
   assert.doesNotMatch(source, /top-\[14cqh\] bottom-\[12cqh\]/, 'no sub-band box');
 });
 

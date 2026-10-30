@@ -29,14 +29,14 @@ export function ProjectorPrompt() {
         aria-labelledby="projector-prompt-title"
         aria-describedby="projector-prompt-message"
         onClick={(e) => e.stopPropagation()}
-        className="flex w-full max-w-md flex-col gap-5 rounded-xl border border-amber-500/40 bg-stone-950 p-6 shadow-2xl"
+        className="flex w-full max-w-md flex-col gap-5 rounded-xl border border-accent/40 bg-panel p-6 shadow-2xl"
       >
         <header className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="grid size-10 shrink-0 place-items-center rounded-lg border border-amber-500/40 bg-amber-500/15 text-amber-300">
+            <span className="grid size-10 shrink-0 place-items-center rounded-lg border border-accent/40 bg-accent/15 text-accent">
               <MonitorOff size={20} aria-hidden />
             </span>
-            <h2 id="projector-prompt-title" className="text-lg font-black tracking-wider text-stone-100 uppercase">
+            <h2 id="projector-prompt-title" className="text-lg font-bold tracking-tight text-fg">
               Projector is OFF
             </h2>
           </div>
@@ -44,17 +44,17 @@ export function ProjectorPrompt() {
             type="button"
             onClick={dismiss}
             aria-label="Close"
-            className="grid size-8 shrink-0 place-items-center rounded-md border border-stone-700 text-stone-400 hover:text-stone-100"
+            className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/20 text-fg/60 hover:text-fg"
           >
             <X size={16} aria-hidden />
           </button>
         </header>
 
         <div className="flex flex-col gap-1.5">
-          <p id="projector-prompt-message" className="text-sm text-stone-300">
+          <p id="projector-prompt-message" className="text-sm text-fg/80">
             Please turn on the projector before launching queue items to the display.
           </p>
-          <p className="truncate text-xs font-semibold text-stone-500" title={prompt.label}>
+          <p className="truncate text-xs font-semibold text-fg/50" title={prompt.label}>
             {prompt.label}
           </p>
         </div>
@@ -64,7 +64,7 @@ export function ProjectorPrompt() {
           <button
             type="button"
             onClick={() => prompt.turnOnAndGo()}
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 text-xs font-bold tracking-wider text-stone-950 uppercase shadow-md shadow-amber-950/40 hover:bg-amber-400"
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 text-xs font-bold tracking-wider text-on-accent uppercase shadow-md shadow-black/40 hover:brightness-110"
           >
             <Presentation size={14} aria-hidden /> Turn On Projector &amp; Go Live
           </button>
@@ -75,11 +75,11 @@ export function ProjectorPrompt() {
               <button
                 type="button"
                 onClick={() => prompt.skip?.()}
-                className="flex h-11 w-full items-center justify-center rounded-lg border border-stone-600 bg-stone-900 px-4 text-xs font-bold tracking-wider text-stone-100 uppercase hover:border-stone-400"
+                className="flex h-11 w-full items-center justify-center rounded-lg border border-fg/30 bg-panel-2 px-4 text-xs font-bold tracking-wider text-fg uppercase hover:border-fg/50"
               >
                 Skip, test without projector
               </button>
-              <p className="text-center text-[11px] text-stone-500">
+              <p className="text-center text-[11px] text-fg/50">
                 Goes live in the app only. Won&apos;t ask again until you turn the projector on.
               </p>
             </div>
@@ -90,7 +90,7 @@ export function ProjectorPrompt() {
             <button
               type="button"
               onClick={dismiss}
-              className="h-9 px-3 text-xs font-bold tracking-wider text-stone-400 uppercase hover:text-stone-100"
+              className="h-9 px-3 text-xs font-bold tracking-wider text-fg/60 uppercase hover:text-fg"
             >
               Cancel
             </button>

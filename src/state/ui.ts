@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Lang } from '../../shared/live.js';
+import { ACTION_IDS, DEFAULT_SHORTCUTS, sanitizeShortcuts, shortcutsFromKeymap, type Shortcut } from '../../shared/shortcuts.js';
+import { DEFAULT_DISPLAY_NAMES } from './shortcut-labels';
 import { DEFAULT_REGION_SETTINGS, type RegionSettings } from './region';
 
 export type ViewKey =
@@ -18,6 +20,7 @@ export type ViewKey =
   | 'goLive'
   | 'settings';
 
+/** The four actions the top bar and the original hotkeys drive. Shortcuts can run more: see src/operator/shortcuts.ts. */
 export type HotkeyAction = 'announcements' | 'welcome' | 'blackout' | 'clear';
 
 export interface LaunchItem {
@@ -38,13 +41,6 @@ export type PendingFocus =
   | { kind: 'media'; id: number }
   | { kind: 'reading'; date: string; readingType: string };
 
-export const DEFAULT_KEYMAP: Record<HotkeyAction, string> = {
-  announcements: 'F9',
-  welcome: 'F10',
-  blackout: 'F11',
-  clear: 'F12',
-};
-
 interface UiState {
   lang: Lang;
   /** How times and dates are displayed. Saved with the other operator preferences. */
@@ -56,7 +52,8 @@ interface UiState {
   /** The floating live preview is on screen. Toggled by the Preview button in the top bar. */
   previewOpen: boolean;
   capturingHotkey: boolean;
-  keymap: Record<HotkeyAction, string>;
+  /** The keyboard shortcuts. One per action, each with the key combo that runs it. */
+  shortcuts: Shortcut[];
   launchpad: LaunchItem[];
   pendingFocus: PendingFocus | null;
   /** Shown when a queue item is played while the projector is off. Not persisted. */
@@ -115,7 +112,7 @@ export const useUi = create<UiState>()(
       queueOpen: false,
       previewOpen: false,
       capturingHotkey: false,
-      keymap: DEFAULT_KEYMAP,
+      shortcuts: DEFAULT_SHORTCUTS,
       launchpad: [],
       pendingFocus: null,
       projectorPrompt: null,
@@ -129,7 +126,21 @@ export const useUi = create<UiState>()(
     {
       name: 'apccmma.ui',
       // Only operator preferences survive restarts; transient UI does not.
-      partialize: ({ lang, region, collapsed, keymap, launchpad }) => ({ lang, region, collapsed, keymap, launchpad }),
+      partialize: ({ lang, region, collapsed, shortcuts, launchpad }) => ({ lang, region, collapsed, shortcuts, launchpad }),
+      // Version 0 kept one key per action under `keymap`. Version 1 keeps a list of shortcuts that can be added to and removed.
+      version: 1,
+      migrate: (persisted, version) => {
+        const old = (persisted ?? {}) as Record<string, unknown>;
+        if (version >= 1) return old as unknown as UiState;
+        const { keymap, ...rest } = old;
+        return { ...rest, shortcuts: shortcutsFromKeymap(keymap, DEFAULT_DISPLAY_NAMES) } as unknown as UiState;
+      },
+      // A damaged saved list must not leave the operator without shortcuts, or with two on one key.
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<UiState>;
+        const shortcuts = Array.isArray(saved.shortcuts) ? sanitizeShortcuts(saved.shortcuts, [...ACTION_IDS]) : current.shortcuts;
+        return { ...current, ...saved, shortcuts };
+      },
     },
   ),
 );
@@ -137,8 +148,8 @@ export const useUi = create<UiState>()(
 export const setUi = useUi.setState;
 
 export function exportSettings() {
-  const { lang, keymap, launchpad } = useUi.getState();
-  const blob = new Blob([JSON.stringify({ app: 'apccmma', version: 1, lang, keymap, launchpad }, null, 2)], {
+  const { lang, shortcuts, launchpad } = useUi.getState();
+  const blob = new Blob([JSON.stringify({ app: 'apccmma', version: 2, lang, shortcuts, launchpad }, null, 2)], {
     type: 'application/json',
   });
   const a = document.createElement('a');
@@ -153,7 +164,12 @@ export async function importSettings(file: File) {
   if (data?.app !== 'apccmma') throw new Error('Not an APCCMMA settings file');
   setUi({
     lang: ['en', 'tl', 'ceb'].includes(data.lang) ? data.lang : useUi.getState().lang,
-    keymap: { ...DEFAULT_KEYMAP, ...data.keymap },
+    // A file from before shortcuts could be added carries a one-key-per-action `keymap`.
+    shortcuts: Array.isArray(data.shortcuts)
+      ? sanitizeShortcuts(data.shortcuts, [...ACTION_IDS])
+      : data.keymap
+        ? shortcutsFromKeymap(data.keymap, DEFAULT_DISPLAY_NAMES)
+        : useUi.getState().shortcuts,
     launchpad: Array.isArray(data.launchpad) ? data.launchpad : [],
   });
 }

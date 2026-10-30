@@ -63,7 +63,7 @@ test('stop keeps the operator\'s choice', () => {
 
 test('live.ts no longer clears the Lower 3rd for a segment with no cue', () => {
   const live = read('src/praise-worship/live.ts');
-  const start = live.indexOf('if (!before?.onAir || before.segmentKey !== segment.key) {');
+  const start = live.indexOf('if (newSegment || newSong) {');
   const block = live.slice(start, live.indexOf('\n    }', start));
   assert.doesNotMatch(block, /lowerThird\/clear/, 'a slide change does not clear it');
   assert.match(block, /else dispatch\(\{ type: 'lowerThird\/stage', value \}\);/, 'a segment with no cue only stages its value');

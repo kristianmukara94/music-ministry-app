@@ -5,7 +5,7 @@ import { DATE_FORMATS, formatDayAndClock, timeZoneOptions, useSystemRegion, type
 import { useRegion } from '../state/useRegion';
 import { useNow } from '../operator/useNow';
 
-const SELECT = 'h-11 rounded-md border border-line-strong bg-canvas px-3 text-sm outline-none focus:border-accent';
+const SELECT = 'h-11 rounded-md border border-fg/15 bg-panel-2 px-3 text-sm outline-none focus:border-accent';
 
 /** The Region card: Auto follows the laptop, Manual sets the zone and formats by hand. Saved in the UI settings store. */
 export function RegionSettings() {
@@ -27,8 +27,8 @@ export function RegionSettings() {
   };
 
   return (
-    <section className="flex flex-col gap-5 rounded-xl border border-line bg-panel p-5 backdrop-blur-md">
-      <h2 className="mb-1 border-b border-line pb-2 text-xl font-black uppercase condensed">Region</h2>
+    <section className="flex flex-col gap-5 rounded-xl border border-line bg-panel p-5">
+      <h2 className="mb-1 border-b border-line pb-2 text-xl font-bold tracking-tight">Region</h2>
 
       <label className="flex flex-col gap-2">
         <span className="eyebrow flex items-center gap-2">
@@ -68,7 +68,7 @@ export function RegionSettings() {
         </div>
       )}
 
-      <p aria-live="polite" className="rounded-md border border-line-strong bg-canvas px-3 py-2 font-mono text-sm text-fg">
+      <p aria-live="polite" className="rounded-md border border-fg/15 bg-panel-2 px-3 py-2 font-mono text-sm text-fg">
         {`${region.mode === 'auto' ? 'Auto' : 'Manual'} · ${region.timeZone} · ${formatDayAndClock(now, region)}`}
       </p>
       <p className="text-xs text-muted">

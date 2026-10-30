@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { hymnAfterChange, withHymn } from '../../shared/hymn-cache.js';
 import { persist } from 'zustand/middleware';
-import { groupOrdered, type PwHymnTag, type PwResolved, type PwSegment } from '../../shared/pw.js';
+import { addLineupCard, chainOf, groupOrdered, newLineupCard, removeLineupCard, type PwHymnTag, type PwResolved, type PwSegment, type PwType } from '../../shared/pw.js';
+import type { LibraryDragBatch } from '../../shared/pw-attach.js';
 import { bridge } from '../live/bridge';
 import type { Hymn } from '../lyrics/types';
 import type { Note } from '../notes/types';
@@ -33,8 +34,8 @@ interface PwState {
   error: string | null;
   /** Set by Replace: the next Add from the library replaces this song instead of adding one. */
   replacing: { segment: number; hymnId: number | null } | null;
-  /** The song being dragged from the Song List, while it is dragged. Lineup slots read it to show where it can go. */
-  songDrag: number | null;
+  /** The Library item (song, prayer or reading) being dragged, while it is dragged. Lineup cards read it to show where it can go. */
+  libDrag: LibraryDragBatch | null;
   /** Bumped when a song changes in Song Lyrics, so the song list reloads. */
   libraryRevision: number;
   /** The lineup slot whose item is being dragged within the lineup, or null. */
@@ -57,7 +58,7 @@ export const usePw = create<PwState>()(
       saveState: 'idle',
       error: null,
       replacing: null,
-      songDrag: null,
+      libDrag: null,
       libraryRevision: 0,
       slotDrag: null,
     }),
@@ -89,7 +90,7 @@ bridge.lyrics.onChanged((id) => void songChanged(id));
 /** Loads the hymns these segments use and are not cached yet. */
 async function loadHymns(segments: PwSegment[]) {
   const have = usePw.getState().hymns;
-  const ids = [...new Set(segments.flatMap((s) => (s.content.kind === 'song' ? s.content.hymnIds : [])))].filter((id) => !have[id]);
+  const ids = [...new Set(segments.flatMap((s) => s.content.hymnIds))].filter((id) => !have[id]);
   if (ids.length === 0) return;
   const loaded = await Promise.all(ids.map((id) => bridge.lyrics.getHymn(id)));
   setPw((s) => ({ hymns: { ...s.hymns, ...Object.fromEntries(loaded.filter((h): h is Hymn => Boolean(h)).map((h) => [h.id, h])) } }));
@@ -210,6 +211,25 @@ export function updateSegment(index: number, patch: Partial<PwSegment>) {
   commitSegments(segments.map((s, i) => (i === index ? { ...s, ...patch } : s)));
 }
 
+/** Adds an empty card of `type` straight after the selected one, in its group, and selects it. */
+export function addCard(type: PwType, name: string) {
+  const { session, selected } = usePw.getState();
+  if (!session) return;
+  // A key is only held by one card for good, so the time it was made keeps it unique within the lineup.
+  const key = `custom_${Date.now().toString(36)}`;
+  const result = addLineupCard(session.segments, session.groups, selected, newLineupCard({ key, name, type }));
+  commitSegments(result.segments, result.index);
+}
+
+/** Removes the card at `index`. The selection moves to the card that takes its place. A pending Replace is cleared, since it points at an index. */
+export function removeCard(index: number) {
+  const { session } = usePw.getState();
+  if (!session) return;
+  const result = removeLineupCard(session.segments, session.groups, index);
+  setPw({ replacing: null });
+  commitSegments(result.segments, result.index);
+}
+
 export function updateSession(patch: { name?: string; liturgicalDate?: string }) {
   const { session } = usePw.getState();
   if (!session) return;
@@ -225,23 +245,28 @@ export async function setTag(hymnId: number, segmentKey: string, on: boolean) {
 /** What a segment's slides are built from, out of the loaded libraries. */
 export function resolvedFor(segment: PwSegment, state: Pick<PwState, 'hymns' | 'prayers' | 'day'>): PwResolved {
   const c = segment.content;
-  if (c.kind === 'song') {
-    return {
-      hymns: c.hymnIds
-        .map((id) => state.hymns[id])
-        .filter((h): h is Hymn => Boolean(h))
-        .map((h) => ({ id: h.id, title: h.title, category: h.category, stanzas: h.stanzas, style: h.style ?? null })),
-    };
-  }
-  if (c.kind === 'prayer') {
-    const note = state.prayers.find((n) => n.id === c.noteId);
-    return { prayer: note ? { title: note.title, body: note.body, split: note.split ?? null, align: note.style?.textAlign ?? 'center' } : null };
-  }
-  if (c.kind === 'lectionary') {
-    const row = state.day?.readings.find((r) => r.readingType === c.readingType);
-    return { reading: row ? { citation: row.citation, rawText: row.rawText } : null };
-  }
-  return {};
+  // Every card resolves its songs, whatever its first item is.
+  const hymns = c.hymnIds
+    .map((id) => state.hymns[id])
+    .filter((h): h is Hymn => Boolean(h))
+    .map((h) => ({ id: h.id, title: h.title, category: h.category, stanzas: h.stanzas, style: h.style ?? null }));
+  // The chained items resolve in the same order as the chain, so each entry lines up with its item.
+  const more = chainOf(segment).map((item) => (item.kind === 'prayer' ? { prayer: prayerFor(item.noteId, state) } : { reading: readingFor(item.readingType, state) }));
+  if (c.kind === 'prayer') return { hymns, prayer: c.noteId != null ? prayerFor(c.noteId, state) : null, more };
+  if (c.kind === 'lectionary') return { hymns, reading: readingFor(c.readingType, state), more };
+  return { hymns, more };
+}
+
+/** A prayer from Notes & Prayers, as slides read it. Null when the note is gone or not loaded. */
+function prayerFor(noteId: number, state: Pick<PwState, 'prayers'>): PwResolved['prayer'] {
+  const note = state.prayers.find((n) => n.id === noteId);
+  return note ? { title: note.title, body: note.body, split: note.split ?? null, align: note.style?.textAlign ?? 'center' } : null;
+}
+
+/** A day's reading from the lectionary. Null until the day is loaded, or when the day has no such reading. */
+function readingFor(readingType: string, state: Pick<PwState, 'day'>): PwResolved['reading'] {
+  const row = state.day?.readings.find((r) => r.readingType === readingType);
+  return row ? { citation: row.citation, rawText: row.rawText } : null;
 }
 
 export const setPwState = setPw;

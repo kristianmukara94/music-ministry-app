@@ -1,5 +1,5 @@
 import { useEffect, useState, type DragEvent, type MouseEvent } from 'react';
-import { Film, Image as ImageIcon, Music, Play, Trash2, Upload, X } from 'lucide-react';
+import { Film, Image as ImageIcon, MoreHorizontal, Music, Play, Trash2, Upload, X } from 'lucide-react';
 import type { MediaFrame } from '../../shared/live.js';
 import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
@@ -17,7 +17,41 @@ const toFrame = (m: MediaAsset): MediaFrame | null =>
   m.mediaType === 'audio' ? null : { kind: 'media', mediaType: m.mediaType, src: m.src, title: m.filename };
 
 const button =
-  'flex h-9 items-center gap-2 rounded-md border border-line-strong px-3 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40';
+  'flex h-9 items-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs font-semibold tracking-wide uppercase text-fg/85 transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
+const LABEL = 'text-[11px] font-semibold tracking-wider text-fg/60 uppercase';
+
+/**
+ * A library thumbnail. If the preview picture cannot be loaded, an image falls back to the file itself, and then to an icon, instead of showing
+ * the browser's broken-image mark.
+ */
+function Thumb({ asset }: { asset: MediaAsset }) {
+  const [stage, setStage] = useState<'thumb' | 'file' | 'icon'>(asset.thumbSrc ? 'thumb' : 'icon');
+  if (stage !== 'icon') {
+    const src = (stage === 'thumb' ? asset.thumbSrc : asset.src) ?? undefined;
+    return (
+      <img
+        key={stage}
+        src={src}
+        alt=""
+        loading="lazy"
+        draggable={false}
+        onError={() => setStage(stage === 'thumb' && asset.mediaType === 'image' ? 'file' : 'icon')}
+        className="h-full w-full object-cover"
+      />
+    );
+  }
+  return (
+    <div className="grid h-full place-items-center text-fg/50">
+      {asset.mediaType === 'audio' ? (
+        <Music size={28} strokeWidth={1.6} aria-hidden />
+      ) : asset.mediaType === 'video' ? (
+        <Film size={28} strokeWidth={1.6} aria-hidden />
+      ) : (
+        <ImageIcon size={28} strokeWidth={1.6} aria-hidden />
+      )}
+    </div>
+  );
+}
 
 /** The filter tabs, in the order the operator reads them. */
 const TABS: { type: MediaType; label: string; banner: string; empty: string }[] = [
@@ -193,6 +227,12 @@ export function MediaLibrary() {
     e.dataTransfer.setData(MEDIA_DRAG, JSON.stringify({ id: m.id, label: m.filename }));
   };
 
+  /** The same menu from the ... button on a card: placed under the button, kept on screen. */
+  const openMenuFromButton = (e: MouseEvent<HTMLButtonElement>, m: MediaAsset) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMenu({ asset: m, x: Math.max(8, Math.min(rect.right - 256, window.innerWidth - 264)), y: Math.min(rect.bottom + 4, window.innerHeight - 300) });
+  };
+
   const openMenu = (e: MouseEvent, m: MediaAsset) => {
     e.preventDefault();
     // Keeps the menu on screen when the click is near an edge.
@@ -213,22 +253,25 @@ export function MediaLibrary() {
 
   return (
     <div className="flex min-h-[calc(100vh-88px)] flex-col">
-      <header className="flex flex-wrap items-start justify-between gap-6 border-b border-line px-6 pt-5 pb-4">
+      <header className="flex flex-wrap items-start justify-between gap-6 px-5 pt-5 pb-3">
         <div>
-          <div className="eyebrow text-fg">{t('eyebrow')}</div>
-          <h1 className="mt-1 text-[56px] leading-none font-black uppercase condensed">{t('title')}</h1>
-          <p className="mt-2 text-[15px] text-muted">{t('subtitle')}</p>
+          <div className="text-sm font-semibold tracking-wider text-accent uppercase">{t('eyebrow')}</div>
+          <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{t('title')}</h1>
+          <p className="mt-1 text-sm text-fg/70">{t('subtitle')}</p>
         </div>
 
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-lg border border-line-strong bg-panel px-4 py-3">
-              <div className="eyebrow">{t('stagedBackground')}</div>
+            <div className="min-w-44 rounded-[10px] border border-line bg-panel px-4 py-3">
+              <div className={LABEL}>{t('stagedBackground')}</div>
               <div className="mt-1 truncate font-semibold">{stagedName ?? t('nothingStaged')}</div>
             </div>
-            <div className="rounded-lg border border-line-strong bg-panel px-4 py-3">
-              <div className="eyebrow">{t('liveBackground')}</div>
-              <div className="mt-1 truncate font-semibold">{liveName ?? t('none')}</div>
+            <div className="min-w-44 rounded-[10px] border border-line bg-panel px-4 py-3">
+              <div className={LABEL}>{t('liveBackground')}</div>
+              <div className={`mt-1 flex items-center gap-2 truncate font-semibold ${liveName ? 'text-ok' : 'text-fg'}`}>
+                {liveName && <span className="size-2 shrink-0 animate-pulse rounded-full bg-ok" aria-hidden />}
+                {liveName ?? t('none')}
+              </div>
             </div>
           </div>
           {background.staged?.mediaType === 'video' && (
@@ -251,7 +294,7 @@ export function MediaLibrary() {
                       : 'This video could not be played.',
                   );
                 }}
-                className="aspect-video w-48 shrink-0 rounded-md border border-line-strong bg-black object-contain"
+                className="aspect-video w-48 shrink-0 rounded-md border border-fg/15 bg-black object-contain"
               />
               {videoError && <p role="alert" className="text-sm text-danger">{videoError}</p>}
             </div>
@@ -264,7 +307,7 @@ export function MediaLibrary() {
               type="button"
               onClick={takeBackground}
               disabled={!stagedIsNew}
-              className="flex h-9 items-center gap-2 rounded-md bg-accent px-4 text-xs font-extrabold uppercase text-on-accent hover:brightness-105 disabled:opacity-40"
+              className="flex h-9 items-center gap-2 rounded-md border border-accent bg-accent px-4 text-xs font-extrabold tracking-wide uppercase text-on-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Play size={14} aria-hidden /> {t('takeToScreen')}
             </button>
@@ -275,13 +318,13 @@ export function MediaLibrary() {
         </div>
       </header>
 
-      <div className="px-6 pt-5">
+      <div className="px-5 pt-3">
         <LowerThirdDeck />
       </div>
 
       {/* Segmented filter: the active tab is a bright pill, the others are muted. */}
-      <div className="flex flex-col gap-3 px-6 pt-5">
-        <div role="tablist" aria-label="Media type" className="inline-flex w-fit gap-1 rounded-xl border border-stone-800 bg-stone-900/80 p-1">
+      <div className="flex flex-col gap-3 px-5 pt-5">
+        <div role="tablist" aria-label="Media type" className="inline-flex w-fit gap-1 rounded-lg border border-line bg-panel p-1">
           {TABS.map((tb) => (
             <button
               key={tb.type}
@@ -289,29 +332,29 @@ export function MediaLibrary() {
               role="tab"
               aria-selected={tab === tb.type}
               onClick={() => setTab(tb.type)}
-              className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-xs tracking-wider uppercase transition ${
-                tab === tb.type ? 'bg-stone-100 font-bold text-stone-950 shadow-sm' : 'font-semibold text-stone-400 hover:text-stone-200'
+              className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-xs font-semibold tracking-wider uppercase transition ${
+                tab === tb.type ? 'bg-accent text-on-accent' : 'text-fg/70 hover:bg-fg/10 hover:text-fg'
               }`}
             >
               {tb.label}
-              <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] tabular-nums ${tab === tb.type ? 'bg-stone-950/10' : 'bg-stone-800'}`}>{counts[tb.type]}</span>
+              <span className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] tabular-nums ${tab === tb.type ? 'bg-on-accent/15' : 'bg-fg/10'}`}>{counts[tb.type]}</span>
             </button>
           ))}
         </div>
         {/* What the current tab accepts, and how its items are used. */}
-        <p role="note" className="rounded-lg border border-stone-800 bg-stone-900/60 px-4 py-2 text-xs text-stone-300">
+        <p role="note" className="rounded-lg border border-line bg-fg/[0.03] px-4 py-2 text-xs text-fg/75">
           {current.banner}
         </p>
       </div>
 
       {(error || notice) && (
-        <div role={error ? 'alert' : 'status'} className={`mt-4 border-b px-6 py-2 text-sm ${error ? 'border-crimson/40 bg-crimson/10 text-danger' : 'border-line text-muted'}`}>
+        <div role={error ? 'alert' : 'status'} className={`mx-5 mt-4 rounded-lg border px-4 py-2 text-sm ${error ? 'border-danger/50 bg-danger/10 text-danger' : 'border-ok/50 bg-ok/10 text-ok'}`}>
           {error ?? notice}
         </div>
       )}
 
       {playing && (
-        <div className="mx-6 mt-4 flex items-center gap-3 rounded-lg border border-line-strong bg-panel px-4 py-2">
+        <div className="mx-5 mt-4 flex items-center gap-3 rounded-[10px] border border-line bg-panel px-4 py-2">
           <Music size={15} aria-hidden />
           <span className="flex-1 truncate text-sm font-semibold">{playing.filename}</span>
           {/* The preview plays in this window only. Projector output is unaffected. */}
@@ -321,16 +364,19 @@ export function MediaLibrary() {
 
       {items.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center p-10 text-center">
-          <div className="grid size-16 place-items-center rounded-xl border border-line-strong bg-panel">
+          <div className="grid size-16 place-items-center rounded-[10px] border border-line bg-panel text-accent">
             <Film size={26} strokeWidth={1.6} aria-hidden />
           </div>
-          <h2 className="mt-5 text-3xl font-black uppercase condensed">{t('emptyTitle')}</h2>
-          <p className="mt-2 max-w-md text-sm text-muted">{t('emptyBody')}</p>
+          <h2 className="mt-5 text-3xl font-bold tracking-tight text-fg">{t('emptyTitle')}</h2>
+          <p className="mt-2 max-w-md text-sm text-fg/70">{t('emptyBody')}</p>
+          <button type="button" onClick={importMedia} disabled={busy} className="mt-5 flex h-10 items-center gap-2 rounded-md border border-accent bg-accent px-5 text-xs font-extrabold tracking-wide text-on-accent uppercase transition hover:brightness-110 disabled:opacity-40">
+            <Upload size={14} aria-hidden /> {busy ? t('importing') : t('importMedia')}
+          </button>
         </div>
       ) : visible.length === 0 ? (
-        <p className="p-6 text-sm text-muted">{current.empty}</p>
+        <p className="p-6 text-sm text-fg/60">{current.empty}</p>
       ) : (
-        <ul className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4 p-6">
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4 px-5 py-5">
           {visible.map((m) => {
             const isLive = background.live?.src === m.src;
             const isStaged = background.staged?.src === m.src && !isLive;
@@ -341,7 +387,7 @@ export function MediaLibrary() {
                 draggable
                 onDragStart={(e) => onDragStart(e, m)}
                 onContextMenu={(e) => openMenu(e, m)}
-                className="group relative cursor-grab overflow-hidden rounded-lg border border-line bg-panel transition hover:border-stone-600"
+                className={`group relative cursor-grab overflow-hidden rounded-[10px] border bg-panel transition hover:border-fg/30 ${isLive ? 'border-ok/60' : isStaged ? 'border-warn/60' : 'border-line'}`}
               >
                 <button
                   type="button"
@@ -349,33 +395,32 @@ export function MediaLibrary() {
                   aria-label={isAudio ? `Play ${m.filename}` : `Project ${m.filename}`}
                   className="relative block aspect-video w-full bg-canvas"
                 >
-                  {m.thumbSrc ? (
-                    <img src={m.thumbSrc} alt="" loading="lazy" draggable={false} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="grid h-full place-items-center text-muted">
-                      {isAudio ? (
-                        <Music size={28} strokeWidth={1.6} aria-hidden />
-                      ) : m.mediaType === 'video' ? (
-                        <Film size={28} strokeWidth={1.6} aria-hidden />
-                      ) : (
-                        <ImageIcon size={28} strokeWidth={1.6} aria-hidden />
-                      )}
-                    </div>
-                  )}
-                  {isLive && <span className="absolute top-2 right-2 rounded bg-accent px-1.5 py-0.5 text-[10px] font-extrabold text-on-accent uppercase">{t('live')}</span>}
-                  {isStaged && <span className="absolute top-2 right-2 rounded bg-amber px-1.5 py-0.5 text-[10px] font-extrabold text-on-accent uppercase">{t('staged')}</span>}
+                  <Thumb asset={m} />
+                  {isLive && <span className="absolute top-2 right-2 rounded bg-ok px-1.5 py-0.5 text-[10px] font-extrabold text-canvas uppercase">{t('live')}</span>}
+                  {isStaged && <span className="absolute top-2 right-2 rounded bg-warn px-1.5 py-0.5 text-[10px] font-extrabold text-canvas uppercase">{t('staged')}</span>}
                   {isAudio && playingId === m.id && (
-                    <span className="absolute top-2 right-2 rounded bg-emerald-500 px-1.5 py-0.5 text-[10px] font-extrabold text-black uppercase">Playing</span>
+                    <span className="absolute top-2 right-2 rounded bg-ok px-1.5 py-0.5 text-[10px] font-extrabold text-canvas uppercase">Playing</span>
                   )}
                 </button>
                 <div className="flex items-center gap-2 px-3 py-2">
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">{m.filename}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-fg" title={m.filename}>{m.filename}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => openMenuFromButton(e, m)}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    aria-haspopup="menu"
+                    aria-label={`More actions for ${m.filename}`}
+                    title="More actions"
+                    className="grid size-7 shrink-0 place-items-center rounded text-fg/60 opacity-70 transition hover:bg-fg/10 hover:text-fg group-hover:opacity-100 focus:opacity-100"
+                  >
+                    <MoreHorizontal size={15} aria-hidden />
+                  </button>
                   <button
                     type="button"
                     onClick={() => void remove(m)}
                     aria-label={t('deleteLabel', { name: m.filename })}
                     title={t('delete')}
-                    className="grid size-7 shrink-0 place-items-center rounded text-muted opacity-0 transition hover:text-danger group-hover:opacity-100 focus:opacity-100"
+                    className="grid size-7 shrink-0 place-items-center rounded text-fg/60 opacity-70 transition hover:text-danger group-hover:opacity-100 focus:opacity-100"
                   >
                     <Trash2 size={13} aria-hidden />
                   </button>
@@ -429,7 +474,7 @@ function ContextMenu({ state, onClose, onStage, onQueue, onDefault, onRename, on
       style={{ left: state.x, top: state.y }}
       // A click inside the menu must not reach the window listener, which would close it before the item runs.
       onPointerDown={(e) => e.stopPropagation()}
-      className="fixed z-50 flex w-64 flex-col gap-0.5 rounded-lg border border-stone-700 bg-stone-950 p-1 shadow-2xl"
+      className="fixed z-50 flex w-64 flex-col gap-0.5 rounded-lg border border-fg/20 bg-panel p-1 shadow-2xl"
     >
       {items.map((item) => (
         <button
@@ -442,7 +487,7 @@ function ContextMenu({ state, onClose, onStage, onQueue, onDefault, onRename, on
             item.run();
           }}
           className={`rounded-md px-3 py-2 text-left text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 ${
-            item.danger ? 'text-red-400 hover:bg-red-500/10' : 'text-stone-200 hover:bg-stone-800'
+            item.danger ? 'text-danger hover:bg-danger/10' : 'text-fg/90 hover:bg-fg/10'
           }`}
         >
           {item.label}

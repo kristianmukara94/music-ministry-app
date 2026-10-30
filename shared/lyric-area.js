@@ -85,12 +85,20 @@ export function lyricBottomOf(frame) {
   return top + height / STAGE_H;
 }
 
+/** The tallest the band may be with no text on screen, as a share of the frame's height. */
+export const MAX_BAND_SHARE = 0.32;
+
 /**
  * The band's sizes beside the text above it: `lyricBottomShare` is that text's bottom as a share of the height, or null for no text. With no
  * text, the band is at full size. Returns `{ titlePx, composerPx }`.
  */
 export function bandSizesBelow(value, lyricBottomShare) {
-  if (lyricBottomShare == null) return { titlePx: LOWER_THIRD_BAND.titlePx, composerPx: fitBand(value, Infinity).composerPx };
+  if (lyricBottomShare == null) {
+    // With no text on screen the band is at full size, unless that would make it tall: a long title shrinks, down to the minimum, to stay
+    // within MAX_BAND_SHARE of the frame, so it never fills the screen.
+    const fit = fitBand(value, MAX_BAND_SHARE * STAGE_H);
+    return fit ? { titlePx: fit.titlePx, composerPx: fit.composerPx } : { titlePx: LOWER_THIRD_MIN.titlePx, composerPx: LOWER_THIRD_MIN.composerPx };
+  }
   const fit = fitBand(value, roomBelowPx(lyricBottomShare * STAGE_H));
   if (fit) return { titlePx: fit.titlePx, composerPx: fit.composerPx };
   return { titlePx: LOWER_THIRD_MIN.titlePx, composerPx: LOWER_THIRD_MIN.composerPx };

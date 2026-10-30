@@ -45,11 +45,11 @@ interface Draft {
 }
 
 const button =
-  'flex h-10 items-center gap-2 rounded-md border border-line-strong px-4 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40';
-const input = 'rounded-md border border-line-strong bg-canvas px-3 py-2 text-sm outline-none focus:border-accent';
+  'flex h-10 items-center gap-2 rounded-md border border-fg/15 px-4 text-xs font-bold uppercase hover:bg-fg/10 disabled:opacity-40';
+const input = 'rounded-md border border-fg/15 bg-panel-2 px-3 py-2 text-sm outline-none focus:border-accent';
 // Prayer and meditation text. Extra padding and a minimum height keep the first line clear of the top border.
 const textarea =
-  'w-full min-h-[120px] resize-y rounded-lg border border-line-strong bg-canvas p-3 text-sm leading-relaxed text-fg outline-none focus:border-accent';
+  'w-full min-h-[120px] resize-y rounded-lg border border-fg/15 bg-panel-2 p-3 text-sm leading-relaxed text-fg outline-none focus:border-accent';
 const label = 'mb-2 block text-xs font-semibold uppercase tracking-wider text-fg/70';
 
 const enLabel = (key: RosaryKey) => rosaryT('en', key);
@@ -155,7 +155,7 @@ function SlideSplitBar({
           type="button"
           onClick={onTogglePreview}
           aria-expanded={previewOpen}
-          className="flex h-10 items-center rounded-md border border-amber-500/40 bg-amber-500/20 px-4 text-xs font-bold uppercase text-amber-300 hover:bg-amber-500/30"
+          className="flex h-10 items-center rounded-md border border-accent/40 bg-accent/20 px-4 text-xs font-bold uppercase text-accent hover:bg-accent/30"
         >
           Auto-split preview
         </button>
@@ -171,7 +171,7 @@ function SlideSplitBar({
           ) : (
             slides.map((s) => (
               <li key={s.partIndex} className="rounded-md border border-line bg-canvas p-3">
-                <p className="mb-1 text-xs font-bold tabular-nums text-amber-300">
+                <p className="mb-1 text-xs font-bold tabular-nums text-accent">
                   Slide {s.partIndex}/{s.totalParts}
                 </p>
                 <p className="text-sm whitespace-pre-line">{s.text}</p>
@@ -322,8 +322,8 @@ export function RosarySettings() {
 
   return (
     <div className="w-full max-w-4xl space-y-6">
-      <section className="rounded-xl border border-line bg-panel p-5 backdrop-blur-md">
-        <h2 className="mb-4 border-b border-line pb-2 text-xl font-black uppercase condensed">Rosary backup</h2>
+      <section className="rounded-xl border border-line bg-panel p-5">
+        <h2 className="mb-4 border-b border-line pb-2 text-xl font-bold tracking-tight">Rosary backup</h2>
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted">
             Export saves every mystery and prayer, in English, Tagalog and Cebuano, with its approval status, to a JSON file. Import
@@ -341,8 +341,8 @@ export function RosarySettings() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-line bg-panel p-5 backdrop-blur-md">
-        <h2 className="mb-4 border-b border-line pb-2 text-xl font-black uppercase condensed">Rosary text</h2>
+      <section className="rounded-xl border border-line bg-panel p-5">
+        <h2 className="mb-4 border-b border-line pb-2 text-xl font-bold tracking-tight">Rosary text</h2>
 
         <div className="flex flex-col gap-5">
           <label className="flex max-w-md flex-col gap-2">
@@ -379,7 +379,7 @@ export function RosarySettings() {
                             <button
                               type="button"
                               onClick={() => insertBreak(lang.code, column)}
-                              className="flex h-8 items-center rounded-md border border-line-strong px-3 text-xs font-bold uppercase hover:bg-panel-2"
+                              className="flex h-8 items-center rounded-md border border-fg/15 px-3 text-xs font-bold uppercase hover:bg-fg/10"
                             >
                               Insert slide break (---)
                             </button>

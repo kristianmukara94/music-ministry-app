@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_TEMPLATE, segmentFromTemplate, slidesFor } from './pw.js';
 import { LOWER_THIRD_MIN, LYRIC_PX, STAGE_H, bandHeightPx, fitBand } from './lower-third-layout.js';
 import { LYRIC_BAND_GAP_PX } from './lower-third-layout.js';
-import { blockBottomPx, blockHeightPx, bandBeside, findSlideIndex, fitPagesToBand, lyricBottomOf, lyricPagesFor, maxBlockPx, roomBelowPx } from './lyric-area.js';
+import { MAX_BAND_SHARE, bandSizesBelow, blockBottomPx, blockHeightPx, bandBeside, findSlideIndex, fitPagesToBand, lyricBottomOf, lyricPagesFor, maxBlockPx, roomBelowPx } from './lyric-area.js';
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), 'utf8');
 const words = (text) => String(text).split(/\s+/).filter(Boolean);
@@ -107,4 +107,21 @@ test('turning the band on or off keeps the operator’s place: the same stanza, 
   const back = findSlideIndex(off, on[index]);
   assert.equal(off[back].position, shown.position, 'and back again');
   assert.equal(findSlideIndex(on, { kind: 'lyrics', hymnId: 5, position: 99, part: 0 }), null, 'a stanza that is not there');
+});
+
+test('with no text on screen the band is capped, so a long title never fills the frame', () => {
+  // Four songs on one line, as a segment of several songs once produced.
+  const LONG = {
+    tag: 'Prayer to Take Authority',
+    line1: 'Adlaw-Adlaw · DAGHANG SALAMAT MARIA · OH I LOVE YOU WITH THE LOVE OF THE LORD · Come Holy Spirit fall on me now · Hosanna',
+    line2: 'MJ Flores',
+  };
+  const sizes = bandSizesBelow(LONG, null);
+  assert.ok(sizes.titlePx < 72, 'a long title is set smaller than full size');
+  assert.ok(sizes.titlePx >= LOWER_THIRD_MIN.titlePx, 'and never below the smallest size');
+  assert.ok(bandHeightPx(LONG, sizes.titlePx) <= MAX_BAND_SHARE * STAGE_H || sizes.titlePx === LOWER_THIRD_MIN.titlePx, 'the band stays within its share of the frame');
+});
+
+test('with no text on screen a short title keeps the full size', () => {
+  assert.equal(bandSizesBelow(BAND, null).titlePx, 72);
 });

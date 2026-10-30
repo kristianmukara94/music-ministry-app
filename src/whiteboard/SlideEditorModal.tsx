@@ -16,12 +16,12 @@ import { SlideCanvas } from './SlideCanvas';
 import { AddBibleVerseModal } from './AddBibleVerseModal';
 import type { WhiteboardSlideInput, WhiteboardVerse } from './types';
 
-const SECTION = 'flex flex-col gap-4 rounded-lg border border-stone-800 bg-stone-900/60 p-4';
-const LABEL = 'text-[11px] font-bold tracking-wider text-stone-400 uppercase';
-const FIELD = 'w-full rounded-md border border-stone-700 bg-stone-950 px-3 py-2 text-sm text-stone-100 outline-none focus:border-amber-400';
+const SECTION = 'flex flex-col gap-4 rounded-lg border border-line bg-panel-2/60 p-4';
+const LABEL = 'text-[11px] font-bold tracking-wider text-fg/60 uppercase';
+const FIELD = 'w-full rounded-md border border-fg/20 bg-panel px-3 py-2 text-sm text-fg outline-none focus:border-accent';
 const CHIP = 'rounded-md border px-3 py-1.5 text-xs font-bold tracking-wider uppercase transition-colors';
-const CHIP_OFF = 'border-stone-700 bg-stone-950 text-stone-300 hover:border-amber-500/40 hover:text-amber-300';
-const CHIP_ON = 'border-amber-500/50 bg-amber-500/20 text-amber-300';
+const CHIP_OFF = 'border-fg/20 bg-panel text-fg/80 hover:border-accent/40 hover:text-accent';
+const CHIP_ON = 'border-accent/50 bg-accent/20 text-accent';
 
 const FONT_LABELS: Record<string, string> = {
   roboto: 'Sans Serif (Clean)',
@@ -57,12 +57,12 @@ function Range({ label, value, min, max, unit, onChange }: {
     <label className="flex flex-col gap-2">
       <span className="flex items-center justify-between">
         <span className={LABEL}>{label}</span>
-        <span className="rounded-full border border-amber-500/30 bg-stone-950 px-2.5 py-0.5 font-mono text-xs font-semibold text-amber-300 tabular-nums">
+        <span className="rounded-full border border-accent/30 bg-panel px-2.5 py-0.5 font-mono text-xs font-semibold text-accent tabular-nums">
           {value}
           {unit}
         </span>
       </span>
-      <input type="range" min={min} max={max} step={1} value={value} onChange={(e) => onChange(Number(e.target.value))} className="h-1.5 w-full cursor-pointer accent-amber-400" />
+      <input type="range" min={min} max={max} step={1} value={value} onChange={(e) => onChange(Number(e.target.value))} className="h-1.5 w-full cursor-pointer accent-accent" />
     </label>
   );
 }
@@ -70,9 +70,9 @@ function Range({ label, value, min, max, unit, onChange }: {
 /** An on/off switch, lit gold when on. */
 function Toggle({ label, on, onChange }: { label: string; on: boolean; onChange: (on: boolean) => void }) {
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className="flex items-center gap-2 text-sm text-stone-200">
-      <span className={`relative h-5 w-9 rounded-full border transition ${on ? 'border-amber-400 bg-amber-500' : 'border-stone-700 bg-stone-900'}`}>
-        <span className={`absolute top-0.5 size-3.5 rounded-full transition-all ${on ? 'left-[18px] bg-stone-950' : 'left-0.5 bg-stone-400'}`} aria-hidden />
+    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className="flex items-center gap-2 text-sm text-fg/90">
+      <span className={`relative h-5 w-9 rounded-full border transition ${on ? 'border-accent bg-accent' : 'border-fg/20 bg-panel-2'}`}>
+        <span className={`absolute top-0.5 size-3.5 rounded-full transition-all ${on ? 'left-[18px] bg-panel' : 'left-0.5 bg-fg/50'}`} aria-hidden />
       </span>
       {label}
     </button>
@@ -102,7 +102,7 @@ function Group({ title, children, action }: { title: string; children: ReactNode
   return (
     <section className={SECTION}>
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-xs font-black tracking-widest text-amber-300 uppercase">{title}</h3>
+        <h3 className="text-[11px] font-semibold tracking-wider text-accent uppercase">{title}</h3>
         {action}
       </div>
       {children}
@@ -166,14 +166,14 @@ export function SlideEditorModal({ initial, onSave, onClose, onUseTemplate, mode
   return (
     <div role="dialog" aria-modal="true" aria-label={mode === 'create' ? 'Create new slide' : 'Edit slide'} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
       {addingVerse && <AddBibleVerseModal onAdd={addVerseFromBible} onClose={() => setAddingVerse(false)} />}
-      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-stone-700 bg-stone-950 shadow-2xl">
-        <header className="flex items-start justify-between gap-4 border-b border-stone-800 px-6 py-4">
+      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-fg/20 bg-panel shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-line px-6 py-4">
           <div>
-            <div className="text-[11px] font-bold tracking-[0.2em] text-stone-500 uppercase">Slide</div>
-            <h2 className="mt-0.5 text-lg font-black tracking-widest text-stone-100 uppercase">{mode === 'create' ? 'Create new slide' : 'Edit slide'}</h2>
-            <p className="text-xs text-stone-400">Customize your presentation slide</p>
+            <div className="text-[11px] font-bold tracking-[0.2em] text-fg/50 uppercase">Slide</div>
+            <h2 className="mt-0.5 text-lg font-bold tracking-tight text-fg">{mode === 'create' ? 'Create new slide' : 'Edit slide'}</h2>
+            <p className="text-xs text-fg/60">Customize your presentation slide</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-md border border-stone-700 text-stone-400 hover:text-stone-100">
+          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-md border border-fg/20 text-fg/60 hover:text-fg">
             <X size={16} aria-hidden />
           </button>
         </header>
@@ -271,26 +271,26 @@ export function SlideEditorModal({ initial, onSave, onClose, onUseTemplate, mode
             <Group
               title="Bible verses"
               action={
-                <button type="button" onClick={() => setAddingVerse(true)} disabled={design.verses.length >= MAX_VERSES} className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-stone-950 hover:bg-amber-500 disabled:opacity-40">
+                <button type="button" onClick={() => setAddingVerse(true)} disabled={design.verses.length >= MAX_VERSES} className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-bold text-on-accent hover:bg-accent disabled:opacity-40">
                   <Plus size={12} aria-hidden /> Add Verse
                 </button>
               }
             >
               {design.verses.length === 0 && (
-                <p className="flex items-center gap-2 rounded-md border border-dashed border-stone-700 px-3 py-3 text-xs text-stone-400">
+                <p className="flex items-center gap-2 rounded-md border border-dashed border-fg/20 px-3 py-3 text-xs text-fg/60">
                   <BookOpen size={14} aria-hidden /> No verses added yet. Click &apos;Add Verse&apos; to include scripture
                 </p>
               )}
               {design.verses.map((v, i) => (
-                <div key={i} className="flex items-start gap-2 rounded-md border border-stone-800 bg-stone-950 p-3">
+                <div key={i} className="flex items-start gap-2 rounded-md border border-line bg-panel p-3">
                   <div className="min-w-0 flex-1">
-                    <div className="text-xs font-bold tracking-wider text-amber-300 uppercase">{v.reference}</div>
-                    <div className="mt-1 line-clamp-3 text-sm text-stone-300">{v.text}</div>
-                    <div className="mt-1 font-mono text-[10px] text-stone-500">
+                    <div className="text-xs font-bold tracking-wider text-accent uppercase">{v.reference}</div>
+                    <div className="mt-1 line-clamp-3 text-sm text-fg/80">{v.text}</div>
+                    <div className="mt-1 font-mono text-[10px] text-fg/50">
                       {v.style} • {v.position} • {v.align} • {v.fontSize}px
                     </div>
                   </div>
-                  <button type="button" onClick={() => set({ verses: design.verses.filter((_, j) => j !== i) })} aria-label={`Remove ${v.reference || 'verse'}`} className="grid size-7 shrink-0 place-items-center rounded text-stone-400 hover:text-red-400">
+                  <button type="button" onClick={() => set({ verses: design.verses.filter((_, j) => j !== i) })} aria-label={`Remove ${v.reference || 'verse'}`} className="grid size-7 shrink-0 place-items-center rounded text-fg/60 hover:text-danger">
                     <Trash2 size={13} aria-hidden />
                   </button>
                 </div>
@@ -299,17 +299,17 @@ export function SlideEditorModal({ initial, onSave, onClose, onUseTemplate, mode
           </div>
 
           <div className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-0 lg:self-start">
-            <div className="text-[11px] font-bold tracking-widest text-stone-400 uppercase">Live preview</div>
-            <div className="aspect-video w-full overflow-hidden rounded-xl border-[3px] border-amber-400 shadow-xl">
+            <div className="text-[11px] font-bold tracking-widest text-fg/60 uppercase">Live preview</div>
+            <div className="aspect-video w-full overflow-hidden rounded-xl border-[3px] border-accent shadow-xl">
               <SlideCanvas slide={preview} className="h-full w-full" />
             </div>
-            <p className="text-xs text-stone-500">The slide updates as you change it. Double-clicking it in the library projects it.</p>
+            <p className="text-xs text-fg/50">The slide updates as you change it. Double-clicking it in the library projects it.</p>
           </div>
         </div>
 
-        {error && <div role="alert" className="border-t border-red-500/40 bg-red-500/10 px-6 py-2 text-sm text-red-300">{error}</div>}
+        {error && <div role="alert" className="border-t border-danger/40 bg-danger/10 px-6 py-2 text-sm text-danger">{error}</div>}
 
-        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-stone-800 px-6 py-4">
+        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-4">
           <button type="button" onClick={onUseTemplate} className={`${CHIP} ${CHIP_OFF}`}>
             Use template
           </button>
@@ -317,7 +317,7 @@ export function SlideEditorModal({ initial, onSave, onClose, onUseTemplate, mode
             <button type="button" onClick={onClose} className={`${CHIP} ${CHIP_OFF}`}>
               Cancel
             </button>
-            <button type="button" onClick={save} disabled={saving} className="rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold tracking-wider text-stone-950 uppercase shadow-md shadow-amber-950/40 transition-all hover:bg-amber-400 disabled:opacity-40">
+            <button type="button" onClick={save} disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-xs font-bold tracking-wider text-on-accent uppercase shadow-md shadow-black/40 transition-all hover:brightness-110 disabled:opacity-40">
               {mode === 'create' ? 'Create slide' : 'Save changes'}
             </button>
           </div>

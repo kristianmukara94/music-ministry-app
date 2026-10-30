@@ -3,15 +3,30 @@ export const PW_TYPES: readonly PwType[];
 export const PRAYER_PLACEHOLDER: string;
 export const GOSPEL_ACCLAMATION: string;
 export const MAX_SONGS: number;
+export const MAX_CHAIN: number;
+export const MAX_SEGMENTS: number;
 
-export type PwContent =
-  /** `maxSongs` is how many songs the slot takes. `category` is a hymn category that fits it without a tag. */
-  | { kind: 'song'; hymnIds: number[]; maxSongs: number; category: string | null }
+/** An item chained after a card's first item. `minutes` is its share of the card's runtime. */
+export type PwChainItem = { kind: 'prayer'; noteId: number; minutes: number } | { kind: 'lectionary'; readingType: string; minutes: number };
+
+/**
+ * A card's content. Its first item is the kind: a song card has none, a prayer card has a note (or none yet), a title card is the title
+ * slide, and a lectionary card is a reading. Every card also holds its songs in `hymnIds` and its chain of prayers and readings in `more`.
+ */
+export type PwContent = (
+  /** `maxSongs` is the card's own song limit, kept at or above the songs it holds. `category` is a hymn category that fits it without a tag. */
+  | { kind: 'song'; maxSongs: number; category: string | null }
   /** A projectable note from Notes & Prayers. Null shows the placeholder slide. */
   | { kind: 'prayer'; noteId: number | null }
   | { kind: 'title' }
   /** Read from the lectionary on the session date. Falls back to a title slide. */
-  | { kind: 'lectionary'; readingType: string };
+  | { kind: 'lectionary'; readingType: string }
+) & {
+  /** The card's songs, in sung order. Any card can hold songs. */
+  hymnIds: number[];
+  /** The items chained after the first item, in order. */
+  more?: PwChainItem[];
+};
 
 export interface PwCues {
   /** Show the segment and song on the lower third when the segment starts. */
@@ -87,11 +102,21 @@ export interface PwHymnTag {
   segmentKey: string;
 }
 
+/** A prayer as the planner loads it: its text, its saved split and its alignment. */
+export interface PwResolvedPrayer {
+  title: string;
+  body: string;
+  align?: 'left' | 'center' | 'right';
+  split?: { mode: 'auto'; of?: string } | { mode: 'manual'; at: number[]; of?: string } | null;
+}
+
 export interface PwResolved {
   hymns?: PwHymn[];
   /** The prayer's saved split from Notes & Prayers, if any. */
-  prayer?: { title: string; body: string; align?: 'left' | 'center' | 'right'; split?: { mode: 'auto'; of?: string } | { mode: 'manual'; at: number[]; of?: string } | null } | null;
+  prayer?: PwResolvedPrayer | null;
   reading?: { citation: string; rawText: string } | null;
+  /** One entry per chained item, in the same order as the card's chain. */
+  more?: { prayer?: PwResolvedPrayer | null; reading?: { citation: string; rawText: string } | null }[];
 }
 
 export type PwSlide =
@@ -107,7 +132,31 @@ export interface PwPosition {
 export function segmentFromTemplate(t: PwTemplateSegment): PwSegment;
 export function segmentStatus(segment: PwSegment): PwStatus;
 export function readiness(segments: PwSegment[]): { ready: number; total: number; missingSongs: number };
+export function chainOf(segment: PwSegment): PwChainItem[];
+/** The songs on a card, in sung order. */
+export function songsOf(segment: PwSegment): number[];
+/** The card's own minutes plus each chained item's minutes. */
+export function runtimeOf(segment: PwSegment): number;
 export function totalMinutes(segments: { minutes: number }[]): number;
+export function primaryOf(segment: PwSegment): PwChainItem | null;
+export function chainAccepts(segment: PwSegment, item: PwChainItem): boolean;
+export function holdsItem(segment: PwSegment, item: PwChainItem): boolean;
+/** Null when the card refuses the item: wrong kind, already in the card, or full. */
+export function chainAssignment(segment: PwSegment, item: PwChainItem): Pick<PwSegment, 'content'> | null;
+export function withChain(segment: PwSegment, more: PwChainItem[]): Pick<PwSegment, 'content'>;
+export function shiftItem<T>(list: T[], index: number, delta: 1 | -1): T[];
+/** Null when the song cannot move (off either end, or the card holds no songs). */
+export function moveSong(segment: PwSegment, index: number, delta: 1 | -1): Pick<PwSegment, 'content'> | null;
+/** Null when the song is not on the card. The song's arrangement is dropped with it. */
+export function removeSong(segment: PwSegment, hymnId: number): Pick<PwSegment, 'content' | 'arrangement'> | null;
+export function moveItem<T>(list: T[], from: number, to: number): T[];
+export function reorderSong(segment: PwSegment, from: number, to: number): Pick<PwSegment, 'content'> | null;
+export function reorderChainItem(segment: PwSegment, from: number, to: number): Pick<PwSegment, 'content'> | null;
+export function moveChainItem(segment: PwSegment, index: number, delta: 1 | -1): Pick<PwSegment, 'content'> | null;
+export function removeChainItem(segment: PwSegment, index: number): Pick<PwSegment, 'content'> | null;
+export function newLineupCard(card: { key: string; name: string; type: PwType; minutes?: number }): PwSegment;
+export function addLineupCard(segments: PwSegment[], groups: PwGroup[], after: number, card: PwSegment): { segments: PwSegment[]; index: number };
+export function removeLineupCard(segments: PwSegment[], groups: PwGroup[], index: number): { segments: PwSegment[]; index: number };
 export function groupMinutes(segments: PwSegment[], groupKey: string): number;
 export function formatRunTime(minutes: number): string;
 export function fitsSegment(hymn: { id: number; category?: string }, segment: PwSegment, tags: PwHymnTag[]): boolean;

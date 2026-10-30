@@ -61,18 +61,14 @@ export function Launchpad() {
     body = <AddForm onDone={() => setAdding(false)} />;
   } else if (items.length === 0) {
     body = (
-      <div className="m-4 flex flex-col items-center gap-3 rounded-lg border border-dashed border-line-strong px-6 py-8 text-center">
-        <div className="grid size-11 place-items-center rounded-lg border border-line-strong bg-canvas">
-          <Zap size={18} aria-hidden />
+      <div className="m-4 flex flex-col items-center gap-3 rounded-[10px] border-2 border-dashed border-fg/20 px-6 py-8 text-center">
+        <div className="grid place-items-center text-fg/60">
+          <Zap size={44} strokeWidth={1.4} aria-hidden />
         </div>
         <div>
-          <div className="text-sm font-bold text-fg">{t('pad.emptyTitle')}</div>
-          <p className="mx-auto mt-1.5 max-w-xs text-xs leading-relaxed font-normal text-fg/60">{t('pad.emptyBody')}</p>
+          <div className="text-base font-semibold text-fg">{t('pad.emptyTitle')}</div>
+          <p className="mx-auto mt-1.5 max-w-xs text-sm leading-relaxed font-normal text-fg/65">{t('pad.emptyBody')}</p>
         </div>
-        <button type="button" onClick={() => setAdding(true)}
-          className="mt-1 flex h-8 items-center gap-1.5 rounded-md border border-accent/50 bg-accent/15 px-3.5 text-xs font-bold text-accent transition hover:bg-accent/25">
-          {t('pad.addShortcut')}
-        </button>
       </div>
     );
   } else {
@@ -100,7 +96,16 @@ export function Launchpad() {
   }
 
   return (
-    <Panel eyebrow={t('pad.eyebrow')} title={t('pad.title')}>
+    <Panel
+      eyebrow={t('pad.eyebrow')}
+      title={t('pad.title')}
+      action={!adding && (
+        <button type="button" onClick={() => setAdding(true)}
+          className="flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-dashed border-fg/30 px-3 text-sm font-medium text-fg transition hover:border-accent hover:text-accent">
+          {t('pad.addShortcut')}
+        </button>
+      )}
+    >
       {body}
     </Panel>
   );

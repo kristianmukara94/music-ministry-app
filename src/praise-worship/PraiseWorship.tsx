@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Play } from 'lucide-react';
+import { Check, Play } from 'lucide-react';
 import { PlanView } from './PlanView';
 import { LiveView } from './LiveView';
 import { OutputTemplates } from './OutputTemplates';
@@ -8,8 +8,9 @@ import { errorText, flushSave, initPw, refreshLibraries, saveAsTemplate, setPwSt
 import { usePwT } from './strings';
 
 const TABS: PwTab[] = ['plan', 'live', 'outputs'];
-const BTN = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line-strong px-4 text-sm font-semibold transition hover:bg-panel-2 disabled:opacity-40';
-const BTN_ACCENT = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-accent px-5 text-sm font-bold text-on-accent transition hover:opacity-90 disabled:opacity-40';
+const BTN = 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-4 text-sm font-semibold text-fg/85 transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
+const BTN_ACCENT = 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-accent bg-accent px-5 text-sm font-bold text-on-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40';
+const BTN_GO = 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-ok bg-ok px-5 text-sm font-extrabold text-canvas shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40';
 
 function SaveTemplateForm({ onDone }: { onDone: (message: string | null) => void }) {
   const t = usePwT();
@@ -26,7 +27,7 @@ function SaveTemplateForm({ onDone }: { onDone: (message: string | null) => void
     }
   };
   return (
-    <form onSubmit={submit} className="flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-panel p-4">
+    <form onSubmit={submit} className="flex flex-wrap items-end gap-3 rounded-[10px] border border-line bg-panel p-4">
       <label className="flex min-w-60 flex-1 flex-col gap-1 text-xs text-muted">
         {t('templateName')}
         <input
@@ -35,7 +36,7 @@ function SaveTemplateForm({ onDone }: { onDone: (message: string | null) => void
           maxLength={120}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="h-11 rounded-xl border border-line-strong bg-canvas/40 px-3 text-sm text-fg outline-none focus:border-accent"
+          className="h-10 rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
         />
       </label>
       <button type="submit" className={BTN_ACCENT}>{t('saveTemplate')}</button>
@@ -64,31 +65,37 @@ export function PraiseWorship() {
   }, []);
 
   return (
-    <div className="@container/pw flex flex-col gap-5 px-5 pb-10">
+    <div className="@container/pw flex flex-col gap-5 p-5 pb-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <nav aria-label={t('views')} className="flex gap-1 rounded-2xl border border-line bg-panel p-1">
+        <nav aria-label={t('views')} className="flex gap-1 rounded-lg border border-line bg-panel p-1">
           {TABS.map((id) => (
             <button
               key={id}
               type="button"
               aria-current={tab === id ? 'page' : undefined}
               onClick={() => setPwState({ tab: id })}
-              className={`min-h-11 rounded-xl px-5 text-[15px] font-semibold transition ${tab === id ? 'bg-panel-2 text-accent' : 'text-muted hover:text-fg'}`}
+              className={`h-10 rounded-md px-5 text-sm font-semibold uppercase tracking-wide transition ${tab === id ? 'bg-accent text-on-accent' : 'text-fg/70 hover:bg-fg/10 hover:text-fg'}`}
             >
               {t(`tab_${id}`)}
             </button>
           ))}
         </nav>
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs text-muted" aria-live="polite">
-            {saveState === 'saving' ? t('saving') : saveState === 'saved' ? t('saved') : ''}
+          <span aria-live="polite" className="min-w-20 text-right">
+            {saveState === 'saving' ? (
+              <span className="text-xs text-fg/60">{t('saving')}</span>
+            ) : saveState === 'saved' ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-ok/50 bg-ok/10 px-2.5 py-0.5 text-[11px] font-bold text-ok">
+                <Check size={12} aria-hidden /> {t('saved')}
+              </span>
+            ) : null}
           </span>
           <button type="button" className={BTN} disabled={!session} aria-expanded={templateOpen} onClick={() => setTemplateOpen((v) => !v)}>
             {t('saveTemplate')}
           </button>
           <button
             type="button"
-            className={BTN_ACCENT}
+            className={BTN_GO}
             disabled={!session}
             onClick={async () => {
               await flushSave();
@@ -109,8 +116,8 @@ export function PraiseWorship() {
           }}
         />
       )}
-      {notice && <p role="status" className="text-sm text-ok">{notice}</p>}
-      {error && <p role="alert" className="rounded-xl border border-danger px-4 py-3 text-sm text-danger">{error}</p>}
+      {notice && <p role="status" className="rounded-lg border border-ok/50 bg-ok/10 px-4 py-2 text-sm text-ok">{notice}</p>}
+      {error && <p role="alert" className="rounded-lg border border-danger/50 bg-danger/10 px-4 py-3 text-sm text-danger">{error}</p>}
 
       {tab === 'plan' && <PlanView />}
       {tab === 'live' && <LiveView />}

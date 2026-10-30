@@ -4,6 +4,7 @@
 
 /** The canvas (the top bar's background) and the foreground (the symbols) for each theme. */
 export const TITLE_BAR_COLOURS = {
+  obsidian: { canvas: '#0c0d10', fg: '#f1f1f4' },
   default: { canvas: '#100306', fg: '#f7eef0' },
   light: { canvas: '#faf6f4', fg: '#2a0f17' },
   classic: { canvas: '#0d1b2e', fg: '#f2f5fa' },

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
-import { ChevronLeft, ChevronRight, Minus, Plus, Scissors, Search, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Minus, Plus, Scissors, Search, X } from 'lucide-react';
 import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
 import type { Frame, PassageMark } from '../../shared/live.js';
@@ -85,7 +85,7 @@ function saveStyle(style: TextStyle) {
 /** LIVE is filled gold, as in the Announcements deck. */
 function LiveBadge({ children }: { children: string }) {
   return (
-    <span className="ml-2 inline-flex items-center rounded border border-amber-500/50 bg-amber-500/20 px-1.5 py-0.5 align-middle text-[10px] font-extrabold uppercase text-amber-300">
+    <span className="ml-2 inline-flex items-center rounded border border-ok/60 bg-ok/15 px-1.5 py-0.5 align-middle text-[10px] font-extrabold uppercase text-ok">
       {children}
     </span>
   );
@@ -93,18 +93,21 @@ function LiveBadge({ children }: { children: string }) {
 
 /** Low-profile pill for every action. Primary actions take the gold gradient. */
 const PILL =
-  'flex h-9 shrink-0 items-center gap-2 rounded-full border border-fg/10 bg-fg/[0.03] px-4 text-[11px] font-bold uppercase tracking-[0.12em] text-fg/80 transition hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40';
+  'flex h-9 shrink-0 items-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-4 text-[11px] font-semibold uppercase tracking-wider text-fg/85 transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
 /** Square icon-only control for the text-size buttons. Kept apart from PILL so no horizontal padding applies. */
 const ICON =
-  'grid size-9 shrink-0 place-items-center rounded-full border border-fg/10 bg-fg/[0.03] text-fg/80 transition hover:border-accent/30 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40';
-const PRIMARY =
-  'border-accent bg-gradient-to-r from-accent/20 to-accent/10 text-accent shadow-[0_0_15px_color-mix(in_oklab,var(--color-accent)_20%,transparent)]';
+  'grid size-9 shrink-0 place-items-center rounded-md border border-fg/15 bg-panel-2 text-fg/80 transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
+/** The search button is the one solid accent button on the page. It has its own full set of classes: stacking it on PILL would leave two backgrounds and two text colours fighting, and the dark one wins. */
+const SEARCH_BUTTON =
+  'flex h-9 shrink-0 items-center gap-2 rounded-md border border-accent bg-accent px-5 text-[11px] font-extrabold uppercase tracking-wider text-on-accent transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-accent/50 disabled:cursor-not-allowed disabled:opacity-40';
 /** Inputs sit on dark glass so they stay legible over every theme. */
-const FIELD = 'h-9 rounded-full border border-fg/10 bg-black/30 px-3 text-xs text-fg outline-none transition focus:border-accent/50';
-const GLASS = 'surface-glass flex min-h-0 min-w-0 flex-col gap-3 rounded-2xl p-4';
+const FIELD = 'h-9 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs text-fg outline-none transition focus:border-accent focus:ring-1 focus:ring-accent/40';
+const GLASS = 'flex min-h-0 min-w-0 flex-col gap-3 rounded-[10px] border border-line bg-panel p-4';
+/** Small section labels above each column, the same as the dashboard. */
+const LABEL = 'text-[11px] font-semibold tracking-wider text-fg/70 uppercase';
 /** The small control that marks a manual slide break, placed at the top-right of a selected verse. */
 const SPLIT =
-  'absolute top-3 right-3 flex h-7 items-center gap-1 rounded-full border px-2.5 text-[10px] font-bold uppercase tracking-[0.12em] transition disabled:opacity-40';
+  'absolute top-3 right-3 flex h-7 items-center gap-1 rounded-md border px-2.5 text-[10px] font-bold uppercase tracking-[0.12em] transition disabled:opacity-40';
 
 /** Search hits wrap matched words in « and ». Splitting on them keeps the markup out of the snippet text. */
 function Snippet({ text }: { text: string }) {
@@ -159,6 +162,19 @@ export function BibleDeck() {
   const [planId, setPlanId] = useState<number | null>(null);
   const [block, setBlock] = useState<LiturgicalBlock>('word');
   const flashRef = useRef<HTMLButtonElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+
+  // Pressing / from anywhere outside a field jumps to the search box.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+      if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     api
@@ -282,6 +298,30 @@ export function BibleDeck() {
     setBreaks([]);
     setPreviewIndex(0);
     setFlash(null);
+  };
+
+  /** One chapter back or forward. At the end of a book it carries on into the next or previous book. */
+  const bookIndex = books.findIndex((b) => b.number === bookNumber);
+  const chapterCount = (bookIndex >= 0 ? books[bookIndex].chapters : null) ?? chapters.length;
+  const canStepBack = chapter !== null && bookIndex >= 0 && (chapter > 1 || bookIndex > 0);
+  const canStepForward = chapter !== null && bookIndex >= 0 && (chapter < chapterCount || bookIndex < books.length - 1);
+  const stepChapter = (delta: 1 | -1) => {
+    if (chapter === null || bookIndex < 0) return;
+    const next = chapter + delta;
+    if (next >= 1 && next <= chapterCount) {
+      chooseChapter(next);
+      return;
+    }
+    const neighbour = books[bookIndex + delta];
+    if (!neighbour) return;
+    setTestament(neighbour.testament);
+    setBookNumber(neighbour.number);
+    setChapter(delta === 1 ? 1 : (neighbour.chapters ?? 1));
+    setSelected([]);
+    setBreaks([]);
+    setPreviewIndex(0);
+    setFlash(null);
+    setHits(null);
   };
 
   const scopeValue = (): string => {
@@ -621,19 +661,21 @@ export function BibleDeck() {
   return (
     <section aria-labelledby="bible-heading" className="flex flex-col gap-5 p-5">
       {/* Title and search share one header: the search is an embedded glass field, not a separate form. */}
-      <header className="flex flex-wrap items-end justify-between gap-5 border-b border-fg/[0.06] pb-5">
+      <header className="flex flex-wrap items-end justify-between gap-5">
         <div>
-          <h1 id="bible-heading" className="font-serif text-[46px] leading-none font-semibold tracking-wide text-accent">{t('title')}</h1>
-          <p className="mt-2 text-[15px] text-muted">{t('subtitle')}</p>
+          <h1 id="bible-heading" className="text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{t('title')}</h1>
+          <p className="mt-1 text-sm text-fg/70">{t('subtitle')}</p>
         </div>
 
         <form
           onSubmit={runSearch}
           role="search"
-          className="flex max-w-2xl min-w-[min(100%,34rem)] flex-1 items-center gap-2 rounded-xl border border-fg/10 bg-black/30 p-1.5 pl-3 transition focus-within:border-accent/50 focus-within:shadow-[0_0_20px_color-mix(in_oklab,var(--color-accent)_15%,transparent)]"
+          className="flex max-w-2xl min-w-[min(100%,34rem)] flex-1 items-center gap-2 rounded-[10px] border border-line bg-panel p-1.5 pl-3 transition focus-within:border-accent/50 focus-within:shadow-[0_0_20px_color-mix(in_oklab,var(--color-accent)_15%,transparent)]"
         >
           <Search size={15} className="shrink-0 text-muted" aria-hidden />
           <input
+            ref={searchRef}
+            title={t('searchTip')}
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -652,7 +694,7 @@ export function BibleDeck() {
             <option value="nt">{t('scopeNt')}</option>
             <option value="book" disabled={bookNumber === null}>{t('scopeBook')}</option>
           </select>
-          <button type="submit" className={`${PILL} ${PRIMARY}`}>
+          <button type="submit" className={SEARCH_BUTTON}>
             {t('search')}
           </button>
         </form>
@@ -677,8 +719,8 @@ export function BibleDeck() {
           <div className="grid min-h-0 gap-4 xl:min-h-[calc(100vh-19rem)] xl:grid-cols-[17rem_11rem_minmax(0,1fr)]">
             {/* Column 1: books, with a segmented Old/New Testament control. */}
             <div className={GLASS}>
-              <h2 className="eyebrow">{t('booksHeading')}</h2>
-              <div className="grid grid-cols-2 gap-1 rounded-xl bg-black/40 p-1">
+              <h2 className={LABEL}>{t('booksHeading')}</h2>
+              <div className="grid grid-cols-2 gap-1 rounded-xl bg-fg/[0.05] p-1">
                 {(['OT', 'NT'] as const).map((tab) => (
                   <button
                     key={tab}
@@ -706,10 +748,10 @@ export function BibleDeck() {
                           type="button"
                           aria-current={active ? 'true' : undefined}
                           onClick={() => chooseBook(b.number)}
-                          className={`flex w-full items-center gap-2 rounded-lg border-l-2 px-3 py-2 text-left text-sm transition ${
+                          className={`flex w-full items-center gap-2 rounded-lg border-l-[3px] px-3 py-2 text-left text-sm transition ${
                             active
-                              ? 'border-accent bg-accent/10 font-semibold text-accent'
-                              : 'border-transparent text-muted hover:border-accent/60 hover:bg-fg/[0.03] hover:text-fg'
+                              ? 'border-accent bg-gradient-to-r from-accent/20 to-accent/5 font-semibold text-accent'
+                              : 'border-transparent text-fg/80 hover:bg-fg/[0.06] hover:text-fg'
                           }`}
                         >
                           <span className="flex-1 truncate font-serif text-[15px]">{b.name}</span>
@@ -725,7 +767,7 @@ export function BibleDeck() {
 
             {/* Column 2: square chapter tiles. */}
             <div className={GLASS}>
-              <h2 className="eyebrow">{t('chaptersHeading')}</h2>
+              <h2 className={LABEL}>{t('chaptersHeading')}</h2>
               {bookNumber === null ? (
                 <p className="text-sm text-muted">{t('chooseChapter')}</p>
               ) : (
@@ -741,7 +783,7 @@ export function BibleDeck() {
                         className={`flex aspect-square items-center justify-center rounded-lg border font-mono text-sm tabular-nums transition ${
                           active
                             ? 'border-accent bg-accent font-bold text-on-accent shadow-[0_0_15px_color-mix(in_oklab,var(--color-accent)_40%,transparent)]'
-                            : 'border-fg/[0.06] bg-fg/[0.02] text-fg/80 hover:border-accent/40 hover:bg-accent/10'
+                            : 'border-line bg-fg/[0.02] text-fg/80 hover:border-accent/40 hover:bg-accent/10'
                         }`}
                       >
                         {c.chapter}
@@ -754,10 +796,22 @@ export function BibleDeck() {
 
             {/* Column 3: the reader, or search results in the same place. */}
             <div className={`${GLASS} min-w-0`}>
-              <div className="flex flex-wrap items-center gap-2 border-b border-fg/[0.06] pb-3">
-                <h2 className="mr-auto font-serif text-3xl tracking-wide text-accent">
-                  {hits !== null ? t('resultsHeading') : bookName && chapter !== null ? `${bookName} ${chapter}` : t('readerHeading')}
-                </h2>
+              <div className="flex flex-wrap items-center gap-2 border-b border-line pb-3">
+                <div className="mr-auto flex items-center gap-2">
+                  {hits === null && chapter !== null && (
+                    <button type="button" onClick={() => stepChapter(-1)} disabled={!canStepBack} aria-label={t('prevChapter')} title={t('prevChapter')} className={ICON}>
+                      <ChevronLeft size={16} aria-hidden />
+                    </button>
+                  )}
+                  <h2 className="text-2xl font-bold tracking-tight text-fg">
+                    {hits !== null ? t('resultsHeading') : bookName && chapter !== null ? `${bookName} ${chapter}` : t('readerHeading')}
+                  </h2>
+                  {hits === null && chapter !== null && (
+                    <button type="button" onClick={() => stepChapter(1)} disabled={!canStepForward} aria-label={t('nextChapter')} title={t('nextChapter')} className={ICON}>
+                      <ChevronRight size={16} aria-hidden />
+                    </button>
+                  )}
+                </div>
                 <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-muted">
                   {t('translation')}
                   <select value={translationId} onChange={(e) => changeTranslation(e.target.value)} className={FIELD}>
@@ -780,25 +834,10 @@ export function BibleDeck() {
                 <OperatorListFontStepper value={operatorListFontSize} onChange={setOperatorListFontSize} />
               </div>
 
-              {/* Quick selectors: the same choices as the columns, plus a verse range, in one row. */}
+              {/* Verse range: the books and chapters are in the columns, so this row only picks which verses. */}
               {hits === null && bookNumber !== null && chapter !== null && (
                 <div role="group" aria-label={t('quickSelect')} className="flex flex-wrap items-center gap-2">
-                  <select aria-label={t('testamentLabel')} value={testament} onChange={(e) => setTestament(e.target.value as Testament)} className={FIELD}>
-                    <option value="OT">{t('oldTab')}</option>
-                    <option value="NT">{t('newTab')}</option>
-                  </select>
-                  <select aria-label={t('bookLabel')} value={bookNumber} onChange={(e) => chooseBook(Number(e.target.value))} className={`${FIELD} max-w-[12rem]`}>
-                    {books
-                      .filter((b) => b.testament === testament)
-                      .map((b) => (
-                        <option key={b.number} value={b.number}>{b.name}</option>
-                      ))}
-                  </select>
-                  <select aria-label={t('chapterLabel')} value={chapter} onChange={(e) => chooseChapter(Number(e.target.value))} className={FIELD}>
-                    {chapters.map((c) => (
-                      <option key={c.chapter} value={c.chapter}>{c.chapter}</option>
-                    ))}
-                  </select>
+                  <span className={LABEL}>{t('verseFrom')}</span>
                   <select
                     aria-label={t('verseFrom')}
                     value={rangeFrom ?? ''}
@@ -813,6 +852,7 @@ export function BibleDeck() {
                       <option key={n} value={n}>{n}</option>
                     ))}
                   </select>
+                  <span className={LABEL}>{t('verseTo')}</span>
                   <select
                     aria-label={t('verseTo')}
                     value={rangeTo ?? ''}
@@ -887,11 +927,11 @@ export function BibleDeck() {
                             }
                             projectVerse(v);
                           }}
-                          className={`flex w-full gap-3 rounded-xl border p-4 text-left transition-all duration-300 select-none ${
+                          className={`flex w-full gap-3 rounded-lg border p-4 text-left transition-all duration-300 select-none ${
                             isSelected
                               ? 'border-accent bg-accent/[0.06] shadow-[0_0_20px_color-mix(in_oklab,var(--color-accent)_12%,transparent)]'
-                              : 'border-fg/[0.04] bg-fg/[0.015] hover:border-accent/20'
-                          } ${isFlash ? 'ring-2 ring-accent/60' : ''} ${isLive ? 'border-amber-500/50 shadow-[0_0_18px_rgba(245,158,11,0.25)]' : ''} ${isSelected && v.verse !== selected[0] ? 'pr-16' : ''}`}
+                              : 'border-fg/10 bg-fg/[0.03] hover:border-accent/30'
+                          } ${isFlash ? 'ring-2 ring-accent/60' : ''} ${isLive ? 'border-ok/60 shadow-[0_0_18px_color-mix(in_oklab,var(--color-ok)_25%,transparent)]' : ''} ${isSelected && v.verse !== selected[0] ? 'pr-16' : ''}`}
                         >
                           <span className="w-7 shrink-0 pt-0.5 text-right font-mono text-sm font-bold text-accent tabular-nums">{v.verse}</span>
                           <span className="flex-1 font-serif leading-relaxed text-fg">
@@ -911,7 +951,7 @@ export function BibleDeck() {
                             aria-label={t('splitHere')}
                             title={t('splitHere')}
                             className={`${SPLIT} ${
-                              isBreak ? 'border-accent bg-accent text-on-accent' : 'border-fg/15 bg-black/30 text-muted hover:border-accent/40 hover:text-accent'
+                              isBreak ? 'border-accent bg-accent text-on-accent' : 'border-fg/15 bg-panel-2 text-muted hover:border-accent/40 hover:text-accent'
                             }`}
                           >
                             <Scissors size={11} aria-hidden />
@@ -930,7 +970,7 @@ export function BibleDeck() {
           {hits === null && shownSlide && (
             <section aria-label={t('previewHeading')} className={GLASS}>
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="eyebrow mr-auto">{t('previewHeading')}</h2>
+                <h2 className={`${LABEL} mr-auto`}>{t('previewHeading')}</h2>
                 <button
                   type="button"
                   onClick={() => setPreviewIndex(Math.max(0, shownIndex - 1))}
@@ -951,23 +991,30 @@ export function BibleDeck() {
                   <ChevronRight size={14} aria-hidden />
                 </button>
               </div>
-              <StyleToolbar style={style} onChange={changeStyle} />
-              <div className="flex flex-wrap items-end gap-3">
-                <ColorField
-                  label={t('backgroundColor')}
-                  prefix={t('backgroundColor')}
-                  value={style.bgColor}
-                  presets={BACKGROUND_COLORS}
-                  onChange={(hex) => changeStyle({ bgColor: hex })}
-                  clearLabel={t('noColor')}
-                />
-              </div>
               <SlidePreview
                 text={shownSlide.map((line) => line.text).join('\n')}
                 bgSrc={null}
                 style={sanitizeTextStyle(style)}
-                className="aspect-video w-full rounded-xl border border-fg/10"
+                className="aspect-video w-full rounded-[10px] border border-fg/15"
               />
+              {/* The style is set once and kept, so it stays folded away until it is needed. */}
+              <details className="group rounded-lg border border-line bg-fg/[0.03]">
+                <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+                  <span className={LABEL}>{t('stylePanel')}</span>
+                  <ChevronDown size={16} className="text-fg/60 transition group-open:rotate-180" aria-hidden />
+                </summary>
+                <div className="flex flex-col gap-3 border-t border-line p-3">
+                  <StyleToolbar style={style} onChange={changeStyle} />
+                  <ColorField
+                    label={t('backgroundColor')}
+                    prefix={t('backgroundColor')}
+                    value={style.bgColor}
+                    presets={BACKGROUND_COLORS}
+                    onChange={(hex) => changeStyle({ bgColor: hex })}
+                    clearLabel={t('noColor')}
+                  />
+                </div>
+              </details>
             </section>
           )}
 
@@ -992,60 +1039,66 @@ export function BibleDeck() {
 
           {/* Bottom action toolbar: one row. The attribution sits beneath it in small type. */}
           {hits === null && (
-            <footer className="flex shrink-0 flex-col gap-2">
-              <div className="surface-glass flex flex-nowrap items-center gap-2 overflow-x-auto rounded-2xl px-3 py-2">
-                <span className="shrink-0 rounded-full bg-accent/15 px-3 py-1 font-mono text-[11px] font-bold text-accent tabular-nums">
-                  {selected.length > 0 ? t('selectedCount', { count: selected.length }) : t('selectHint')}
-                </span>
-                {slideCount > 0 && (
-                  <span className="shrink-0 font-mono text-[11px] text-muted tabular-nums">{t('slidesCount', { n: slideCount })}</span>
-                )}
-                <button type="button" onClick={handleClearSelection} disabled={!selected.length} className={PILL}>
-                  <X size={14} aria-hidden /> {t('clearSelection')}
-                </button>
-                <button type="button" onClick={clearProjection} disabled={!projection} className={PILL}>
-                  Clear projector
-                </button>
-                <button type="button" onClick={() => setBreaks([])} disabled={activeBreaks.length === 0} className={PILL}>
-                  <Scissors size={14} aria-hidden /> {t('clearBreaks')}
-                </button>
-                <span className="mx-1 h-6 w-px shrink-0 bg-fg/10" aria-hidden />
-                <label className="flex shrink-0 items-center gap-2 text-[10px] font-bold tracking-[0.14em] text-muted uppercase">
-                  {t('blockLabel')}
-                  <select value={block} onChange={(e) => setBlock(e.target.value as LiturgicalBlock)} className={FIELD}>
-                    {BLOCKS.map((b) => (
-                      <option key={b.id} value={b.id}>{pt(b.titleKey)}</option>
-                    ))}
-                  </select>
-                </label>
-                {noteOverlay && (
-                  <button type="button" onClick={() => dispatch({ type: 'noteOverlay/clear' })} className={PILL}>
-                    Clear note overlay
+            <footer className="sticky bottom-3 z-10 flex shrink-0 flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-[10px] border border-line bg-panel px-4 py-3 shadow-lg shadow-black/20">
+                {/* What is selected, and the controls that change the selection or the screen. */}
+                <div role="group" aria-label={t('selectionGroup')} className="flex flex-wrap items-center gap-2">
+                  <span className="shrink-0 rounded-full border border-accent/40 bg-accent/15 px-3 py-1 font-mono text-[11px] font-bold text-accent tabular-nums">
+                    {selected.length > 0 ? t('selectedCount', { count: selected.length }) : t('selectHint')}
+                  </span>
+                  {slideCount > 0 && <span className="shrink-0 font-mono text-[11px] text-fg/60 tabular-nums">{t('slidesCount', { n: slideCount })}</span>}
+                  <button type="button" onClick={handleClearSelection} disabled={!selected.length} className={PILL}>
+                    <X size={14} aria-hidden /> {t('clearSelection')}
                   </button>
-                )}
-                <button type="button" onClick={() => setNoteOpen(true)} disabled={!canUseSelection} className={PILL}>
-                  Add note overlay
-                </button>
-                <button type="button" onClick={sendToQueue} disabled={!canUseSelection} className={PILL}>
-                  {t('addToQueue')}
-                </button>
-                <label className="flex min-w-[10rem] flex-1 shrink items-center gap-2 text-[10px] font-bold tracking-[0.14em] text-muted uppercase">
-                  {t('planLabel')}
-                  <select
-                    value={planId ?? ''}
-                    onChange={(e) => setPlanId(Number(e.target.value))}
-                    disabled={plans.length === 0}
-                    className={`${FIELD} min-w-0 flex-1`}
-                  >
-                    {plans.length === 0 && <option value="">{t('noPlanYet')}</option>}
-                    {plans.map((p) => (
-                      <option key={p.id} value={p.id}>{p.liturgicalDate} · {p.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <button type="button" onClick={sendToPlan} disabled={!canUseSelection || planId === null} className={PILL}>
-                  {t('addToPlan')}
-                </button>
+                  <button type="button" onClick={() => setBreaks([])} disabled={activeBreaks.length === 0} className={PILL}>
+                    <Scissors size={14} aria-hidden /> {t('clearBreaks')}
+                  </button>
+                  <button type="button" onClick={clearProjection} disabled={!projection} className={PILL}>
+                    Clear projector
+                  </button>
+                </div>
+
+                <span className="hidden h-8 w-px bg-fg/10 xl:block" aria-hidden />
+
+                {/* Where the selection goes: the Mass queue, a plan, or a note on the screen. */}
+                <div role="group" aria-label={t('sendGroup')} className="flex flex-1 flex-wrap items-center gap-2">
+                  <label className="flex shrink-0 items-center gap-2 text-[10px] font-bold tracking-[0.14em] text-fg/60 uppercase">
+                    {t('blockLabel')}
+                    <select value={block} onChange={(e) => setBlock(e.target.value as LiturgicalBlock)} className={FIELD}>
+                      {BLOCKS.map((b) => (
+                        <option key={b.id} value={b.id}>{pt(b.titleKey)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="button" onClick={sendToQueue} disabled={!canUseSelection} className={PILL}>
+                    {t('addToQueue')}
+                  </button>
+                  <label className="flex min-w-[12rem] flex-1 items-center gap-2 text-[10px] font-bold tracking-[0.14em] text-fg/60 uppercase">
+                    {t('planLabel')}
+                    <select
+                      value={planId ?? ''}
+                      onChange={(e) => setPlanId(Number(e.target.value))}
+                      disabled={plans.length === 0}
+                      className={`${FIELD} min-w-0 flex-1`}
+                    >
+                      {plans.length === 0 && <option value="">{t('noPlanYet')}</option>}
+                      {plans.map((p) => (
+                        <option key={p.id} value={p.id}>{p.liturgicalDate} · {p.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="button" onClick={sendToPlan} disabled={!canUseSelection || planId === null} className={PILL}>
+                    {t('addToPlan')}
+                  </button>
+                  <button type="button" onClick={() => setNoteOpen(true)} disabled={!canUseSelection} className={PILL}>
+                    Add note overlay
+                  </button>
+                  {noteOverlay && (
+                    <button type="button" onClick={() => dispatch({ type: 'noteOverlay/clear' })} className={PILL}>
+                      Clear note overlay
+                    </button>
+                  )}
+                </div>
               </div>
               <p className="px-2 text-[10px] text-faint">
                 {currentTranslation && (
@@ -1064,7 +1117,7 @@ export function BibleDeck() {
 
 function Kbd({ children }: { children: string }) {
   return (
-    <kbd className="rounded border border-stone-700 bg-stone-800 px-1.5 py-0.5 font-mono text-[11px] font-bold text-stone-200 shadow-sm">{children}</kbd>
+    <kbd className="rounded border border-fg/20 bg-fg/10 px-1.5 py-0.5 font-mono text-[11px] font-bold text-fg/90 shadow-sm">{children}</kbd>
   );
 }
 
@@ -1079,11 +1132,11 @@ function ShortcutHint() {
     'Shift+click to select multiple',
   ];
   return (
-    <div role="note" className="flex flex-wrap items-center gap-x-2 gap-y-2 rounded-lg border border-stone-800 bg-stone-950 px-3 py-2 text-xs text-stone-300">
-      <span aria-hidden className="text-stone-400">ⓘ</span>
+    <div role="note" className="flex flex-wrap items-center gap-x-2 gap-y-2 rounded-lg border border-line bg-panel px-3 py-2 text-xs text-fg/80">
+      <span aria-hidden className="text-fg/60">ⓘ</span>
       {items.map((item, i) => (
         <span key={i} className="flex items-center gap-2">
-          {i > 0 && <span aria-hidden className="text-stone-600">•</span>}
+          {i > 0 && <span aria-hidden className="text-fg/40">•</span>}
           {item}
         </span>
       ))}
@@ -1127,19 +1180,19 @@ function CompareVerseModal({ verse, bookNumber, bookName, chapter, translations,
 
   return (
     <div role="dialog" aria-modal="true" aria-label={`${bookName} ${chapter}:${verse.verse}`} className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-2xl flex-col gap-4 rounded-xl border border-stone-700 bg-stone-950 p-5 shadow-2xl">
+      <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-2xl flex-col gap-4 rounded-xl border border-fg/20 bg-panel p-5 shadow-2xl">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-serif text-2xl text-accent">{bookName} {chapter}:{verse.verse}</h2>
-          <button type="button" onClick={onClose} className="rounded-md border border-stone-700 px-3 py-1 text-xs font-bold uppercase text-stone-300 hover:text-stone-100">Close</button>
+          <button type="button" onClick={onClose} className="rounded-md border border-fg/20 px-3 py-1 text-xs font-bold uppercase text-fg/80 hover:text-fg">Close</button>
         </div>
         {rows === null ? (
-          <p className="text-sm text-stone-400">Loading translations…</p>
+          <p className="text-sm text-fg/60">Loading translations…</p>
         ) : (
           <ul className="flex flex-col gap-3">
             {rows.map(({ translation, text }) => (
-              <li key={translation.id} className="rounded-lg border border-stone-800 bg-stone-900/60 p-3">
-                <div className="mb-1 text-[11px] font-bold tracking-widest text-stone-400 uppercase">{translation.name}</div>
-                <p className="font-serif text-base leading-relaxed text-stone-100">{text ?? 'Not in this translation.'}</p>
+              <li key={translation.id} className="rounded-lg border border-line bg-panel-2 p-3">
+                <div className="mb-1 text-[11px] font-bold tracking-widest text-fg/60 uppercase">{translation.name}</div>
+                <p className="font-serif text-base leading-relaxed text-fg">{text ?? 'Not in this translation.'}</p>
               </li>
             ))}
           </ul>
@@ -1167,7 +1220,7 @@ function OperatorListFontStepper({ value, onChange }: { value: number; onChange:
         disabled={value <= OPERATOR_LIST_FONT_MIN}
         aria-label="Smaller verse text"
         title="Smaller verse text"
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-stone-800 bg-stone-900 text-stone-300 transition-colors hover:border-amber-500/40 hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-fg/15 bg-panel-2 text-fg/80 transition-colors hover:border-accent/50 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Minus size={14} aria-hidden />
       </button>
@@ -1191,9 +1244,9 @@ function OperatorListFontStepper({ value, onChange }: { value: number; onChange:
             if (e.key === 'Enter') e.currentTarget.blur();
           }}
           aria-label="Verse text size in pixels"
-          className="h-8 w-14 rounded-lg border border-stone-800 bg-stone-900 pr-4 text-center text-sm font-semibold text-amber-300 focus:border-amber-400 focus:outline-none"
+          className="h-8 w-14 rounded-lg border border-fg/15 bg-panel-2 pr-4 text-center text-sm font-semibold text-accent focus:border-accent focus:outline-none"
         />
-        <span aria-hidden className="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 text-[10px] text-stone-500">px</span>
+        <span aria-hidden className="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 text-[10px] text-fg/50">px</span>
       </div>
 
       <button
@@ -1202,7 +1255,7 @@ function OperatorListFontStepper({ value, onChange }: { value: number; onChange:
         disabled={value >= OPERATOR_LIST_FONT_MAX}
         aria-label="Larger verse text"
         title="Larger verse text"
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-stone-800 bg-stone-900 text-stone-300 transition-colors hover:border-amber-500/40 hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-fg/15 bg-panel-2 text-fg/80 transition-colors hover:border-accent/50 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Plus size={14} aria-hidden />
       </button>

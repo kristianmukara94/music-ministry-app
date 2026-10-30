@@ -1,3 +1,4 @@
+import { Moon, Sun } from 'lucide-react';
 import { useUi } from '../state/ui';
 import { formatClock, formatDay, formatWeekday } from '../state/region';
 import { useRegion } from '../state/useRegion';
@@ -17,19 +18,30 @@ export function BoothClock() {
   const now = useNow();
   const time = formatClock(now, region, { seconds: true });
   const date = `${formatWeekday(now, region, DATE_LOCALES[lang])}, ${formatDay(now, region)}`;
+  // Sun by day, moon by night, from the hour the clock itself shows. It is a readout, not a switch.
+  const hour = Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23', timeZone: region.timeZone }).format(now));
+  const night = hour < 6 || hour >= 18;
 
   return (
-    <Panel eyebrow={t('clock.eyebrow')} title={t('clock.title')}>
-      <div className="flex h-full flex-col justify-center gap-2 px-5 py-5">
+    <Panel
+      eyebrow={t('clock.eyebrow')}
+      action={
+        <span className="flex shrink-0 items-center gap-2" title={night ? 'Night' : 'Day'} role="img" aria-label={night ? 'Night' : 'Day'}>
+          <Moon size={18} aria-hidden className={night ? 'text-accent' : 'text-fg/45'} />
+          <Sun size={18} aria-hidden className={night ? 'text-fg/45' : 'text-accent'} />
+        </span>
+      }
+    >
+      <div className="flex h-full flex-col items-center justify-center gap-1 px-5 py-5 text-center">
+        <div className="text-lg font-medium text-accent">{t('clock.title')}</div>
         <time
           dateTime={now.toISOString()}
-          className="font-mono text-[44px] leading-none font-extrabold tracking-tight text-fg tabular-nums drop-shadow-[0_0_12px_rgba(236,201,138,0.12)]"
+          className="font-mono text-5xl leading-none font-bold tracking-tight xl:text-[64px] text-accent tabular-nums [text-shadow:0_0_20px_color-mix(in_oklab,var(--color-accent)_45%,transparent),0_0_40px_color-mix(in_oklab,var(--color-accent)_15%,transparent)]"
           aria-live="off"
         >
           {time}
         </time>
-        <div className="h-px w-16 bg-accent/50" aria-hidden />
-        <div className="text-sm font-medium tracking-wide text-fg/70">{date}</div>
+        <div className="mt-2 text-lg font-medium tracking-wide text-accent">{date}</div>
       </div>
     </Panel>
   );

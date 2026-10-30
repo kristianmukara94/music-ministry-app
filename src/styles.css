@@ -49,6 +49,10 @@
   --color-amber: #f5b92e;
   --color-royal: #1f4fb8;
   --color-crimson: #9e2424;
+
+  /* Status colours that need a darker variant on light themes. Dark themes use these as they are. */
+  --color-warn: #f59e0b;
+  --color-info: #60a5fa;
 }
 
 /* ─── Signature ─── */
@@ -68,6 +72,23 @@
   --color-ok: #7fd18b;
 }
 
+/* Obsidian: the Service Console look. Charcoal canvas, slate cards with hairline borders, warm amber accent. */
+[data-theme="obsidian"] {
+  --color-canvas: #0c0d10;
+  --color-panel: #161820;
+  --color-panel-2: #1b1e28;
+  --color-line: rgb(255 255 255 / 0.08);
+  --color-line-strong: #2a2e3b;
+  --color-fg: #f1f1f4;
+  --color-muted: #b4b7c2;
+  --color-faint: #8d909c;
+  --color-accent: #f59e0b;
+  --color-on-accent: #120b00;
+  --color-gold: #f59e0b;
+  --color-danger: #ef4444;
+  --color-ok: #22c55e;
+}
+
 [data-theme="light"] {
   --color-canvas: #faf6f4;
   --color-panel: rgb(255 255 255 / 0.86);
@@ -82,6 +103,8 @@
   --color-gold: #6b1d33;
   --color-danger: #8a1c22;
   --color-ok: #1f6b35;
+  --color-warn: #8a4b08;
+  --color-info: #1d4ed8;
 }
 
 [data-theme="classic"] {
@@ -212,6 +235,8 @@
   --color-gold: #1a5f8a;
   --color-danger: #8a1c22;
   --color-ok: #1f6b35;
+  --color-warn: #8a4b08;
+  --color-info: #1d4ed8;
 }
 
 [data-theme="mint"] {
@@ -228,6 +253,8 @@
   --color-gold: #17663f;
   --color-danger: #8a1c22;
   --color-ok: #1f6b35;
+  --color-warn: #8a4b08;
+  --color-info: #1d4ed8;
 }
 
 [data-theme="sage"] {
@@ -244,6 +271,8 @@
   --color-gold: #4a6b2a;
   --color-danger: #8a1c22;
   --color-ok: #1f6b35;
+  --color-warn: #8a4b08;
+  --color-info: #1d4ed8;
 }
 
 [data-theme="linen"] {
@@ -260,6 +289,8 @@
   --color-gold: #8a5a1c;
   --color-danger: #8a1c22;
   --color-ok: #1f6b35;
+  --color-warn: #8a4b08;
+  --color-info: #1d4ed8;
 }
 
 [data-theme="shell"] {
@@ -276,6 +307,8 @@
   --color-gold: #5b3f8c;
   --color-danger: #8a1c22;
   --color-ok: #1f6b35;
+  --color-warn: #8a4b08;
+  --color-info: #1d4ed8;
 }
 
 /* Condensed display cut of Archivo — headlines, labels, the booth clock. */

@@ -17,7 +17,7 @@ const withoutSoftBreaks = (s) => s.split(SOFT_BREAK).join('');
 test('the band is anchored to the bottom of the frame, on the lyrics’ side margin and footer line', () => {
   const face = read('src/praise-worship/PwSlideFace.tsx');
   assert.match(face, /inset-x-\[6cqw\]/, 'the lyrics use a 6% side margin');
-  assert.match(face, /bottom-\[7cqh\]/, 'the slide footer sits 7% from the bottom');
+  assert.match(face, /bottom-\[3\.938cqw\]/, 'the slide footer sits 7% of the frame height from the bottom (3.938cqw on a 16:9 frame)');
   assert.equal(LOWER_THIRD_BAND.left, 6, 'the band uses the same side margin');
   assert.equal(LOWER_THIRD_BAND.bottom, 7, 'the band sits on the same bottom line');
 });

@@ -9,20 +9,20 @@ import { addLowerThirdBrowserSource, loadObsSettings, obs, saveObsSettings, test
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-const CARD = 'flex flex-col gap-4 rounded-xl border border-stone-800 bg-stone-900/60 p-5 shadow-lg';
-const HEADING = 'text-sm font-black tracking-widest text-stone-100 uppercase';
-const SUB = 'text-xs text-stone-400';
-const PRIMARY = 'flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-xs font-bold tracking-wider text-stone-950 uppercase shadow-md shadow-amber-950/40 transition-all hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40';
-const SECONDARY = 'flex items-center gap-2 rounded-lg border border-stone-700 bg-stone-900 px-3 py-2 text-xs font-bold tracking-wider text-stone-200 uppercase transition-colors hover:border-amber-500/40 hover:text-amber-300 disabled:cursor-not-allowed disabled:opacity-40';
-const RESET = 'flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-stone-400 uppercase transition-colors hover:text-amber-300';
-const FIELD = 'h-9 rounded-lg border border-stone-700 bg-stone-950 px-3 text-sm text-stone-100 outline-none focus:border-amber-400';
+const CARD = 'flex flex-col gap-4 rounded-xl border border-line bg-panel-2/60 p-5 shadow-lg';
+const HEADING = 'text-[11px] font-semibold tracking-wider text-fg/70 uppercase';
+const SUB = 'text-xs text-fg/60';
+const PRIMARY = 'flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold tracking-wider text-on-accent uppercase shadow-md shadow-black/40 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40';
+const SECONDARY = 'flex items-center gap-2 rounded-lg border border-fg/20 bg-panel-2 px-3 py-2 text-xs font-bold tracking-wider text-fg/90 uppercase transition-colors hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40';
+const RESET = 'flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-fg/60 uppercase transition-colors hover:text-accent';
+const FIELD = 'h-9 rounded-lg border border-fg/20 bg-panel px-3 text-sm text-fg outline-none focus:border-accent';
 
 /** Gold switch, lit when on. */
 function GoldSwitch({ label, on, onChange }: { label: string; on: boolean; onChange: (on: boolean) => void }) {
   return (
     <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className="flex shrink-0 items-center">
-      <span className={`relative h-5 w-9 rounded-full border transition ${on ? 'border-amber-400 bg-amber-500' : 'border-stone-700 bg-stone-900'}`}>
-        <span className={`absolute top-0.5 size-3.5 rounded-full transition-all ${on ? 'left-[18px] bg-stone-950' : 'left-0.5 bg-stone-400'}`} aria-hidden />
+      <span className={`relative h-5 w-9 rounded-full border transition ${on ? 'border-accent bg-accent' : 'border-fg/20 bg-panel-2'}`}>
+        <span className={`absolute top-0.5 size-3.5 rounded-full transition-all ${on ? 'left-[18px] bg-panel' : 'left-0.5 bg-fg/50'}`} aria-hidden />
       </span>
     </button>
   );
@@ -36,7 +36,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
   onChange: (id: T) => void;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1 rounded-lg border border-stone-800 bg-stone-950 p-1">
+    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1 rounded-lg border border-line bg-panel p-1">
       {options.map((o) => (
         <button
           key={o.id}
@@ -45,7 +45,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
           aria-checked={value === o.id}
           onClick={() => onChange(o.id)}
           className={`rounded-md px-3 py-1.5 text-[11px] font-bold tracking-wider uppercase transition-colors ${
-            value === o.id ? 'border border-amber-500/40 bg-amber-500/20 text-amber-300' : 'border border-transparent text-stone-400 hover:text-stone-200'
+            value === o.id ? 'border border-accent/40 bg-accent/20 text-accent' : 'border border-transparent text-fg/60 hover:text-fg/90'
           }`}
         >
           {o.text}
@@ -71,8 +71,8 @@ function Slider({ label, value, range, unit, onCommit }: {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-stone-100">{label}</span>
-        <span className="rounded-full border border-amber-500/30 bg-stone-950 px-2.5 py-0.5 font-mono text-xs font-semibold text-amber-300 tabular-nums">
+        <span className="text-sm font-semibold text-fg">{label}</span>
+        <span className="rounded-full border border-accent/30 bg-panel px-2.5 py-0.5 font-mono text-xs font-semibold text-accent tabular-nums">
           {draft}
           {unit}
         </span>
@@ -88,7 +88,7 @@ function Slider({ label, value, range, unit, onCommit }: {
         onPointerUp={commit}
         onKeyUp={commit}
         onBlur={commit}
-        className="h-1.5 w-full cursor-pointer accent-amber-400"
+        className="h-1.5 w-full cursor-pointer accent-accent"
       />
     </div>
   );
@@ -106,14 +106,14 @@ function ColorField({ label, value, presets, onCommit }: {
   const normal = (raw: string) => (/^#[0-9a-fA-F]{6}$/.test(raw) ? raw.toUpperCase() : null);
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-sm font-semibold text-stone-100">{label}</span>
+      <span className="text-sm font-semibold text-fg">{label}</span>
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="color"
           value={normal(value) ?? '#000000'}
           aria-label={`${label} picker`}
           onChange={(e) => onCommit(e.target.value.toUpperCase())}
-          className="h-9 w-10 cursor-pointer rounded-md border border-stone-700 bg-stone-950 p-1"
+          className="h-9 w-10 cursor-pointer rounded-md border border-fg/20 bg-panel p-1"
         />
         <input
           value={text}
@@ -134,7 +134,7 @@ function ColorField({ label, value, presets, onCommit }: {
               aria-label={`${label} ${p.label}`}
               title={p.label}
               onClick={() => onCommit(p.hex)}
-              className={`size-6 rounded-full border ${value.toUpperCase() === p.hex ? 'border-amber-300' : 'border-stone-600'}`}
+              className={`size-6 rounded-full border ${value.toUpperCase() === p.hex ? 'border-accent' : 'border-fg/30'}`}
               style={{ backgroundColor: p.hex }}
             />
           ))}
@@ -149,7 +149,7 @@ function Row({ title, detail, children }: { title: string; detail?: string; chil
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold text-stone-100">{title}</div>
+        <div className="text-sm font-semibold text-fg">{title}</div>
         {detail && <div className={SUB}>{detail}</div>}
       </div>
       <div className="shrink-0">{children}</div>
@@ -160,8 +160,8 @@ function Row({ title, detail, children }: { title: string; detail?: string; chil
 /** A callout with an info icon, for the notes that explain a control. */
 function Callout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex gap-3 rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-3 text-xs leading-relaxed text-amber-100/90">
-      <Info size={14} className="mt-0.5 shrink-0 text-amber-300" aria-hidden />
+    <div className="flex gap-3 rounded-lg border border-accent/25 bg-accent/5 px-4 py-3 text-xs leading-relaxed text-accent/90">
+      <Info size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden />
       <div>{children}</div>
     </div>
   );
@@ -179,6 +179,8 @@ export function LowerThirdSettings() {
   const style = useLive((s) => s.state.lowerStyle);
   const lowerLive = useLive((s) => s.state.lowerThird.live);
   const [displays, setDisplays] = useState<DisplayInfo[]>([]);
+  // The saved display, when it cannot be used: it is the primary display, or it is no longer connected. Not judged until the list has loaded.
+  const targetUnusable = style.target !== null && displays.length > 0 && !displays.some((d) => d.id === style.target && !d.primary);
   const [urls, setUrls] = useState<{ local: string; lan: string | null } | null>(null);
   const [conn, setConn] = useState<ObsSettings>(loadObsSettings);
   // The password is only kept while the page is open. It is never written to disk.
@@ -247,32 +249,32 @@ export function LowerThirdSettings() {
       {/* Header, the OBS status banner, and the note that OBS is optional. */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="text-[11px] font-bold tracking-[0.2em] text-stone-500 uppercase">Output</div>
-          <h1 className="mt-1 text-4xl font-black tracking-wide text-stone-100 uppercase">Lower 3rd &amp; OBS</h1>
-          <p className="mt-2 max-w-xl text-sm text-stone-400">Style the lower 3rd overlay for your stream and connect to OBS.</p>
+          <div className="text-[11px] font-bold tracking-[0.2em] text-fg/50 uppercase">Output</div>
+          <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">Lower 3rd &amp; OBS</h1>
+          <p className="mt-2 max-w-xl text-sm text-fg/60">Style the lower 3rd overlay for your stream and connect to OBS.</p>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-stone-900/80 px-3 py-1 text-xs font-semibold text-amber-300/90 shadow-sm">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-panel-2/80 px-3 py-1 text-xs font-semibold text-accent/90 shadow-sm">
           <CheckCircle2 size={13} aria-hidden /> Changes save automatically
         </span>
       </header>
 
-      {error && <div role="alert" className="rounded-md border border-danger/40 bg-stone-900 px-4 py-2 text-sm text-danger">{error}</div>}
-      {obsNote && !error && <div role="status" className="rounded-md border border-stone-800 bg-stone-900 px-4 py-2 text-sm text-stone-300">{obsNote}</div>}
+      {error && <div role="alert" className="rounded-md border border-danger/40 bg-panel-2 px-4 py-2 text-sm text-danger">{error}</div>}
+      {obsNote && !error && <div role="status" className="rounded-md border border-line bg-panel-2 px-4 py-2 text-sm text-fg/80">{obsNote}</div>}
 
-      <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-stone-800 bg-stone-900/60 p-5">
+      <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-line bg-panel-2/60 p-5">
         <div className="flex flex-wrap items-center gap-4">
-          <div className="grid size-12 shrink-0 place-items-center rounded-lg border border-amber-500/30 bg-stone-950 text-amber-300">
+          <div className="grid size-12 shrink-0 place-items-center rounded-lg border border-accent/30 bg-panel text-accent">
             <Camera size={22} aria-hidden />
           </div>
           <div>
             <span
               className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-bold tracking-wider uppercase ${
-                connected ? 'border-amber-500/40 bg-amber-500/20 text-amber-300' : 'border-stone-700 bg-stone-800 text-stone-400'
+                connected ? 'border-accent/40 bg-accent/20 text-accent' : 'border-fg/20 bg-fg/10 text-fg/60'
               }`}
             >
               {connected ? '● Connected' : '○ Not connected'}
             </span>
-            <p className="mt-1.5 text-sm text-stone-400">Optional connection at {conn.address}:{conn.port}</p>
+            <p className="mt-1.5 text-sm text-fg/60">Optional connection at {conn.address}:{conn.port}</p>
           </div>
         </div>
         <button type="button" onClick={connect} disabled={connected || obsStatus === 'connecting'} className={PRIMARY}>
@@ -281,7 +283,7 @@ export function LowerThirdSettings() {
       </section>
 
       <Callout>
-        <span className="font-bold text-amber-200">Connecting to OBS is optional:</span> the browser source works without it. Connect when you want the app to add the lower 3rd to OBS or control OBS.
+        <span className="font-bold text-accent">Connecting to OBS is optional:</span> the browser source works without it. Connect when you want the app to add the lower 3rd to OBS or control OBS.
       </Callout>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
@@ -290,13 +292,13 @@ export function LowerThirdSettings() {
           <section className={CARD} aria-labelledby="obs-source-heading">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 id="obs-source-heading" className={HEADING}>Lower 3rd in OBS</h2>
-              <span className="rounded-full border border-amber-500/40 bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-bold tracking-wider text-amber-300 uppercase">● Ready for OBS</span>
+              <span className="rounded-full border border-accent/40 bg-accent/15 px-2.5 py-0.5 text-[11px] font-bold tracking-wider text-accent uppercase">● Ready for OBS</span>
             </div>
             {(['Local URL', 'LAN network URL'] as const).map((label, i) => {
               const value = i === 0 ? urls?.local ?? '' : urls?.lan ?? '';
               return (
                 <label key={label} className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold tracking-wider text-stone-400 uppercase">{label}</span>
+                  <span className="text-xs font-bold tracking-wider text-fg/60 uppercase">{label}</span>
                   <div className="flex flex-wrap gap-2">
                     <input readOnly value={value || 'Not available: no network connection found'} aria-label={label} className={`${FIELD} min-w-[12rem] flex-1 font-mono text-xs`} />
                     <button type="button" onClick={() => copy(value)} disabled={!value} className={SECONDARY}>
@@ -318,7 +320,7 @@ export function LowerThirdSettings() {
           <section className={CARD} aria-labelledby="target-heading">
             <div>
               <h2 id="target-heading" className={HEADING}>Lower 3rd window</h2>
-              <p className={SUB}>Where the lower third appears besides the projector.</p>
+              <p className={SUB}>An extra screen for the lower third, such as a second projector or a stream monitor. It never opens on the primary display, where this console runs.</p>
             </div>
             <div role="radiogroup" aria-label="Lower third window" className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
               <button
@@ -327,37 +329,47 @@ export function LowerThirdSettings() {
                 aria-checked={style.target === null}
                 onClick={() => save({ target: null })}
                 className={`flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition ${
-                  style.target === null ? 'border-amber-400 bg-amber-500/10' : 'border-stone-800 bg-stone-950/60 hover:border-stone-600'
+                  style.target === null ? 'border-accent bg-accent/10' : 'border-line bg-panel/60 hover:border-fg/30'
                 }`}
               >
-                <span className="text-sm font-bold text-stone-100">No window</span>
-                <span className="text-[11px] text-stone-400">OBS browser source only</span>
-                {style.target === null && <span className="mt-1 rounded border border-amber-500/40 bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-amber-300 uppercase">Selected</span>}
+                <span className="text-sm font-bold text-fg">No window</span>
+                <span className="text-[11px] text-fg/60">OBS browser source only</span>
+                {style.target === null && <span className="mt-1 rounded border border-accent/40 bg-accent/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-accent uppercase">Selected</span>}
               </button>
               {displays.map((d) => {
-                const selected = style.target === d.id;
+                const selected = style.target === d.id && !d.primary;
                 return (
                   <button
                     key={d.id}
                     type="button"
                     role="radio"
                     aria-checked={selected}
+                    aria-disabled={d.primary || undefined}
+                    disabled={d.primary}
+                    title={d.primary ? 'This is the primary display, where the console runs. The lower third window never opens here.' : undefined}
                     onClick={() => save({ target: d.id })}
                     className={`flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition ${
-                      selected ? 'border-amber-400 bg-amber-500/10' : 'border-stone-800 bg-stone-950/60 hover:border-stone-600'
+                      d.primary ? 'cursor-not-allowed border-line bg-panel/40 opacity-60' : selected ? 'border-accent bg-accent/10' : 'border-line bg-panel/60 hover:border-fg/30'
                     }`}
                   >
-                    <span className="flex items-center gap-2 text-sm font-bold text-stone-100">
+                    <span className="flex items-center gap-2 text-sm font-bold text-fg">
                       <Monitor size={14} aria-hidden /> Display {d.index}
                     </span>
-                    <span className="font-mono text-[11px] text-stone-400">
+                    <span className="font-mono text-[11px] text-fg/60">
                       {d.width} × {d.height}
                     </span>
-                    {d.primary && <span className="rounded border border-stone-600 bg-stone-800 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-stone-300 uppercase">Primary</span>}
+                    {d.primary && <span className="rounded border border-fg/30 bg-fg/10 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-fg/80 uppercase">Console screen · not available</span>}
+                    {selected && <span className="mt-1 rounded border border-accent/40 bg-accent/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-accent uppercase">Selected</span>}
                   </button>
                 );
               })}
             </div>
+            {targetUnusable && (
+              <p role="alert" className="flex gap-3 rounded-lg border border-warn/50 bg-warn/10 px-4 py-3 text-xs leading-relaxed text-warn">
+                <Info size={14} className="mt-0.5 shrink-0" aria-hidden />
+                <span>The display saved for the Lower 3rd window is the primary display, or is not connected, so no window opens. The lower third still shows on the projector and in the OBS browser source. Choose another display, or No window.</span>
+              </p>
+            )}
             <Callout>Changes apply right away, even while the Lower 3rd is on. The OBS browser source keeps showing it.</Callout>
           </section>
 
@@ -370,10 +382,10 @@ export function LowerThirdSettings() {
                   key={id}
                   type="button"
                   onClick={() => save({ ...preset.values })}
-                  className="flex flex-col items-start gap-1 rounded-lg border border-stone-800 bg-stone-950/60 p-3 text-left transition hover:border-amber-500/40 hover:bg-stone-900"
+                  className="flex flex-col items-start gap-1 rounded-lg border border-line bg-panel/60 p-3 text-left transition hover:border-accent/40 hover:bg-fg/10"
                 >
-                  <span className="text-sm font-bold text-stone-100">{preset.label}</span>
-                  <span className="text-[11px] leading-snug text-stone-400">{preset.description}</span>
+                  <span className="text-sm font-bold text-fg">{preset.label}</span>
+                  <span className="text-[11px] leading-snug text-fg/60">{preset.description}</span>
                 </button>
               ))}
             </div>
@@ -487,11 +499,11 @@ export function LowerThirdSettings() {
             <h2 id="ws-heading" className={HEADING}>OBS WebSocket connection</h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_8rem]">
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-bold tracking-wider text-stone-400 uppercase">Address</span>
+                <span className="text-xs font-bold tracking-wider text-fg/60 uppercase">Address</span>
                 <input value={conn.address} onChange={(e) => changeConn({ ...conn, address: e.target.value })} className={`${FIELD} font-mono`} />
               </label>
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-bold tracking-wider text-stone-400 uppercase">Port</span>
+                <span className="text-xs font-bold tracking-wider text-fg/60 uppercase">Port</span>
                 <input
                   type="number"
                   min={1}
@@ -503,7 +515,7 @@ export function LowerThirdSettings() {
               </label>
             </div>
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold tracking-wider text-stone-400 uppercase">Password (optional)</span>
+              <span className="text-xs font-bold tracking-wider text-fg/60 uppercase">Password (optional)</span>
               <input
                 type="password"
                 autoComplete="off"
@@ -520,7 +532,7 @@ export function LowerThirdSettings() {
               <button type="button" onClick={connect} disabled={connected || obsStatus === 'connecting'} className={PRIMARY}>
                 Connect
               </button>
-              <span className="self-center text-xs text-stone-400">{statusLabel}</span>
+              <span className="self-center text-xs text-fg/60">{statusLabel}</span>
             </div>
             <Callout>In OBS, enable WebSocket server in Tools, then match the address, port, and password here.</Callout>
           </section>
@@ -530,18 +542,18 @@ export function LowerThirdSettings() {
         <aside className="flex flex-col gap-3 xl:sticky xl:top-4 xl:self-start">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-black tracking-widest text-stone-100 uppercase">Live preview</h2>
+              <h2 className="text-[11px] font-semibold tracking-wider text-fg/70 uppercase">Live preview</h2>
               <p className={SUB}>This mirrors the lower 3rd output styling.</p>
             </div>
-            <span className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-amber-300 uppercase">
+            <span className="shrink-0 rounded-full border border-accent/40 bg-accent/15 px-2 py-0.5 text-[10px] font-bold tracking-wider text-accent uppercase">
               Updates in real time
             </span>
           </div>
-          <div className="relative aspect-video w-full max-w-full overflow-hidden rounded-lg border border-amber-500/30 bg-gradient-to-br from-stone-800 to-stone-950 [container-type:inline-size]">
-            <div className="absolute inset-0 flex items-center justify-center text-xs tracking-widest text-stone-600 uppercase">Screen</div>
+          <div className="relative aspect-video w-full max-w-full overflow-hidden rounded-lg border border-accent/30 bg-gradient-to-br from-fg/10 to-panel [container-type:inline-size]">
+            <div className="absolute inset-0 flex items-center justify-center text-xs tracking-widest text-fg/40 uppercase">Screen</div>
             <LowerThirdStage value={{ ...SAMPLE, template: SAMPLE.template }} />
           </div>
-          <p className="text-[11px] text-stone-500">
+          <p className="text-[11px] text-fg/50">
             {lowerLive ? 'A lower third is on the output now.' : 'Nothing is on the output. The preview uses sample text.'}
           </p>
         </aside>

@@ -2,8 +2,10 @@ import { useEffect, useRef } from 'react';
 import { Calendar, ListOrdered, X } from 'lucide-react';
 import { dispatch, useLive } from '../live/store';
 import { useT } from '../i18n/strings';
-import { setUi, useUi, type HotkeyAction } from '../state/ui';
-import { liveCommands, toggleFullscreen } from './actions';
+import { setUi, useUi } from '../state/ui';
+import { comboOf } from '../../shared/shortcuts.js';
+import { toggleFullscreen } from './actions';
+import { runShortcut } from './shortcuts';
 import { AnnouncementsDeck } from '../announcements/AnnouncementsDeck';
 import { SongLyrics } from '../lyrics/SongLyrics';
 import { LectionaryDeck } from '../lectionary/LectionaryDeck';
@@ -64,10 +66,12 @@ function useGlobalHotkeys() {
       // The Rosary Guide handles its own Space, arrow and Enter keys, so the global step does not run too.
       if (ui.view === 'rosary' && [' ', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) return;
 
-      const action = (Object.keys(ui.keymap) as HotkeyAction[]).find((a) => ui.keymap[a] === e.key);
-      if (action) {
+      // A saved shortcut runs its action. A shortcut still waiting for a key has an empty combo and never matches.
+      const combo = comboOf(e);
+      const shortcut = combo ? ui.shortcuts.find((s) => s.key === combo) : undefined;
+      if (shortcut) {
         e.preventDefault();
-        liveCommands[action]();
+        runShortcut(shortcut);
         return;
       }
       // Presentation clickers send PageUp/PageDown. While Praise & Worship is on air they step its lineup instead.
@@ -90,7 +94,7 @@ function ModulePlaceholder() {
     <div className="p-5">
       <div className="rounded-xl border border-line bg-panel p-8">
         <nav.icon size={28} strokeWidth={1.6} aria-hidden />
-        <h1 className="mt-4 text-4xl font-black uppercase condensed">{t(nav.label)}</h1>
+        <h1 className="mt-4 text-4xl font-extrabold tracking-tight">{t(nav.label)}</h1>
         <p className="mt-2 max-w-xl text-muted">{t('module.soon')}</p>
       </div>
     </div>
@@ -101,7 +105,7 @@ function EdgeTabs() {
   const t = useT();
   const queueCount = useLive((s) => s.state.queue.length);
   // Each tab slides a little toward the centre on hover, so the edge reads as a set of buttons.
-  const tab = 'group relative flex h-[150px] w-12 flex-col items-center justify-center gap-2.5 rounded-l-xl border border-r-0 border-line-strong bg-canvas transition-transform duration-200 hover:-translate-x-1.5 hover:bg-panel-2';
+  const tab = 'group relative flex h-[150px] w-12 flex-col items-center justify-center gap-2.5 rounded-l-xl border border-r-0 border-fg/15 bg-panel-2 transition-transform duration-200 hover:-translate-x-1.5 hover:bg-fg/10';
   const label = 'text-[13px] font-black tracking-[0.2em] uppercase condensed [writing-mode:vertical-rl]';
   const icon = 'text-accent transition-transform duration-200 group-hover:scale-110';
   return (
@@ -176,7 +180,7 @@ function QueueDrawer() {
         ref={drawerRef}
         // Clicks inside the drawer never reach the outside-click listener.
         onMouseDown={(e) => e.stopPropagation()}
-        className="fixed top-12 right-0 z-40 flex h-[calc(100vh-3rem)] w-[380px] flex-col border-l border-stone-800 bg-stone-950 shadow-2xl"
+        className="fixed top-12 right-0 z-40 flex h-[calc(100vh-3rem)] w-[380px] flex-col border-l border-line bg-panel shadow-2xl"
         aria-label={t('card.queue')}
         // A media card dropped here joins the queue, in the introductory rites. The queue then stages it.
         onDragOver={(e) => {
@@ -192,16 +196,16 @@ function QueueDrawer() {
           );
         }}
       >
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-stone-800 px-4 py-3">
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-3">
           <div className="flex items-center gap-2.5">
-            <h2 className="text-base font-black tracking-widest text-stone-100 uppercase">Mass Queue</h2>
-            <span className="rounded-full bg-amber-500/20 px-2 py-0.5 font-mono text-xs font-bold text-amber-300 tabular-nums">{queue.length}</span>
+            <h2 className="text-base font-bold tracking-tight text-fg">Mass Queue</h2>
+            <span className="rounded-full bg-accent/20 px-2 py-0.5 font-mono text-xs font-bold text-accent tabular-nums">{queue.length}</span>
           </div>
           <button
             type="button"
             onClick={close}
             aria-label="Close queue"
-            className="grid size-8 place-items-center rounded-md border border-stone-800 text-stone-400 transition hover:border-stone-600 hover:text-stone-100"
+            className="grid size-8 place-items-center rounded-md border border-line text-fg/60 transition hover:border-fg/30 hover:text-fg"
           >
             <X size={16} aria-hidden />
           </button>

@@ -1,6 +1,6 @@
 /** The theme catalogue. Each id has a matching [data-theme] block in src/styles.css. */
 export type ThemeId =
-  | 'default' | 'light' | 'classic' | 'olive'
+  | 'obsidian' | 'default' | 'light' | 'classic' | 'olive'
   | 'black-gold' | 'deep-teal' | 'burgundy' | 'wine' | 'slate'
   | 'ice-blue' | 'mint' | 'sage' | 'linen' | 'shell';
 
@@ -13,6 +13,7 @@ export interface ThemeInfo {
 }
 
 export const THEMES: ThemeInfo[] = [
+  { id: 'obsidian', name: 'Obsidian Console', group: 'signature' },
   { id: 'default', name: 'APCCMMA Default', group: 'signature' },
   { id: 'light', name: 'APCCMMA Light', group: 'signature' },
   { id: 'classic', name: 'Classic', group: 'signature' },

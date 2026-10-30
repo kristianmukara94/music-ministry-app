@@ -22,13 +22,13 @@ const EXPORT_LABEL: Record<ExportKey, string> = {
   songs: 'Song library (titles, categories, languages, keys)',
 };
 
-const BUTTON = 'flex h-10 items-center rounded-md border border-stone-600 px-4 text-xs font-bold uppercase text-stone-100 hover:bg-stone-800 disabled:opacity-40';
-const PRIMARY = 'flex h-10 items-center rounded-md bg-amber-500 px-4 text-xs font-bold uppercase text-stone-950 hover:bg-amber-400 disabled:opacity-40';
+const BUTTON = 'flex h-10 items-center rounded-md border border-fg/30 px-4 text-xs font-bold uppercase text-fg hover:bg-fg/10 disabled:opacity-40';
+const PRIMARY = 'flex h-10 items-center rounded-md bg-accent px-4 text-xs font-bold uppercase text-on-accent hover:brightness-110 disabled:opacity-40';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-stone-800 bg-stone-950/60 p-5">
-      <h3 className="text-sm font-black tracking-widest text-stone-100 uppercase">{title}</h3>
+    <section className="flex flex-col gap-4 rounded-lg border border-line bg-panel/60 p-5">
+      <h3 className="text-[11px] font-semibold tracking-wider text-fg/70 uppercase">{title}</h3>
       {children}
     </section>
   );
@@ -64,18 +64,18 @@ function ExportSection() {
       <div className="flex flex-col gap-2 text-sm">
         {EXPORT_KEYS.map((key) => (
           <label key={key} className="flex items-center gap-3">
-            <input type="checkbox" checked={options[key]} onChange={(e) => setOptions({ ...options, [key]: e.target.checked })} className="size-4 accent-amber-500" />
+            <input type="checkbox" checked={options[key]} onChange={(e) => setOptions({ ...options, [key]: e.target.checked })} className="size-4 accent-accent" />
             {EXPORT_LABEL[key]}
           </label>
         ))}
       </div>
 
-      <div className="flex flex-col gap-2 rounded-md border border-stone-800 p-3">
+      <div className="flex flex-col gap-2 rounded-md border border-line p-3">
         <label className="flex items-center gap-3 text-sm font-semibold">
-          <input type="checkbox" checked={options.lyrics} onChange={(e) => setOptions({ ...options, lyrics: e.target.checked })} className="size-4 accent-amber-500" />
+          <input type="checkbox" checked={options.lyrics} onChange={(e) => setOptions({ ...options, lyrics: e.target.checked })} className="size-4 accent-accent" />
           Include lyrics (off by default)
         </label>
-        <p className={`text-xs ${options.lyrics ? 'text-amber-400' : 'text-stone-400'}`}>
+        <p className={`text-xs ${options.lyrics ? 'text-accent' : 'text-fg/60'}`}>
           Warning: lyrics leave this laptop in this file. Only share the file with people you trust.
         </p>
       </div>
@@ -84,10 +84,10 @@ function ExportSection() {
         <button type="button" onClick={save} disabled={busy || !anyChosen} className={PRIMARY}>
           {busy ? 'Saving…' : 'Save file…'}
         </button>
-        {message && <span className="text-xs text-stone-300">{message}</span>}
+        {message && <span className="text-xs text-fg/80">{message}</span>}
       </div>
       {error && (
-        <p role="alert" className="text-sm text-red-400">
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
@@ -134,7 +134,7 @@ function ImportSection() {
 
   return (
     <Section title="Import">
-      <p className="text-xs text-stone-400">Imports add only what is new. Nothing is deleted, and nothing is saved until you press Import.</p>
+      <p className="text-xs text-fg/60">Imports add only what is new. Nothing is deleted, and nothing is saved until you press Import.</p>
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={open} disabled={busy} className={BUTTON}>
           Choose file…
@@ -146,11 +146,11 @@ function ImportSection() {
           <p className="text-base font-semibold">
             {preview.totals.new} new, {preview.totals.same} already here (skipped), {preview.totals.changed} changed (you choose)
           </p>
-          <p className="text-xs text-stone-400">
+          <p className="text-xs text-fg/60">
             From {preview.laptop || 'another laptop'}, exported {new Date(preview.exportedAt).toLocaleString()}.{' '}
             {preview.includesLyrics ? 'The file includes lyrics.' : 'The file has no lyrics.'}
           </p>
-          <ul className="flex flex-col gap-1 text-xs text-stone-300">
+          <ul className="flex flex-col gap-1 text-xs text-fg/80">
             {TYPES.map((type) => (
               <li key={type}>
                 {TYPE_LABEL[type]}: {preview.counts[type].new} new · {preview.counts[type].same} already here · {preview.counts[type].changed} changed
@@ -158,16 +158,16 @@ function ImportSection() {
             ))}
           </ul>
           {preview.notes.map((note) => (
-            <p key={note} className="text-xs text-amber-400">
+            <p key={note} className="text-xs text-accent">
               {note}
             </p>
           ))}
 
           {preview.changed.length > 0 && (
             <div className="flex flex-col gap-3">
-              <p className="text-xs font-bold tracking-wider text-stone-300 uppercase">Changed: choose which version to keep</p>
+              <p className="text-xs font-bold tracking-wider text-fg/80 uppercase">Changed: choose which version to keep</p>
               {preview.changed.map((item) => (
-                <fieldset key={item.key} className="flex flex-col gap-2 rounded-md border border-stone-800 p-3">
+                <fieldset key={item.key} className="flex flex-col gap-2 rounded-md border border-line p-3">
                   <legend className="px-1 text-sm font-semibold">
                     {TYPE_LABEL[item.type]}: {item.name || 'Untitled'}
                   </legend>
@@ -177,7 +177,7 @@ function ImportSection() {
                       name={item.key}
                       checked={(choices[item.key] ?? 'keep') === 'keep'}
                       onChange={() => setChoices({ ...choices, [item.key]: 'keep' })}
-                      className="accent-amber-500"
+                      className="accent-accent"
                     />
                     Keep this laptop&apos;s version (default)
                   </label>
@@ -187,7 +187,7 @@ function ImportSection() {
                       name={item.key}
                       checked={choices[item.key] === 'use'}
                       onChange={() => setChoices({ ...choices, [item.key]: 'use' })}
-                      className="accent-amber-500"
+                      className="accent-accent"
                     />
                     Use the imported version
                   </label>
@@ -205,7 +205,7 @@ function ImportSection() {
       )}
 
       {summary && (
-        <div className="flex flex-col gap-1 rounded-md border border-stone-700 p-3 text-sm">
+        <div className="flex flex-col gap-1 rounded-md border border-fg/20 p-3 text-sm">
           <p className="font-semibold">Import finished.</p>
           <p>
             Added: {TYPES.map((t) => `${summary.added[t]} ${TYPE_LABEL[t].toLowerCase()}`).join(', ')}.
@@ -220,7 +220,7 @@ function ImportSection() {
       )}
 
       {error && (
-        <p role="alert" className="text-sm text-red-400">
+        <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
@@ -244,14 +244,14 @@ export function LibraryTransferDialog({ onClose }: { onClose: () => void }) {
         if (e.target === e.currentTarget) close();
       }}
     >
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-5 overflow-y-auto rounded-xl border border-stone-700 bg-stone-900 p-6 text-stone-100 shadow-2xl">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-5 overflow-y-auto rounded-xl border border-fg/20 bg-panel-2 p-6 text-fg shadow-2xl">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-black uppercase">Library: export and import</h2>
+          <h2 className="text-xl font-bold tracking-tight">Library: export and import</h2>
           <button type="button" onClick={close} className={BUTTON}>
             Close
           </button>
         </div>
-        <p className="text-xs text-stone-400">Plans, setlists, Praise &amp; Worship sessions and songs move between laptops in one .apccmma file.</p>
+        <p className="text-xs text-fg/60">Plans, setlists, Praise &amp; Worship sessions and songs move between laptops in one .apccmma file.</p>
         <ExportSection />
         <ImportSection />
       </div>

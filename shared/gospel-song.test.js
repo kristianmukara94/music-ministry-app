@@ -15,21 +15,23 @@ test('the Gospel Acclamation slot takes a song as well as the reading', () => {
   assert.equal(acceptsTab(gospel(), 'scripture'), true, 'the reading still goes in');
 });
 
-test('attaching a song replaces the reading with the song, and the slot shows Ready', () => {
+test('attaching a song keeps the reading, and the card still fills from the lectionary', () => {
   const seg = gospel();
   assert.equal(segmentStatus(seg), 'auto', 'before a song, the slot is Auto');
   const patch = songAssignment(seg, 42, null);
-  assert.equal(patch.content.kind, 'song');
+  assert.equal(patch.content.kind, 'lectionary', 'the reading stays the first item');
   assert.deepEqual(patch.content.hymnIds, [42]);
-  assert.equal(segmentStatus({ ...seg, ...patch }), 'ready', 'after a song, the slot is Ready');
+  assert.equal(segmentStatus({ ...seg, ...patch }), 'auto', 'the reading still fills the slot');
 });
 
-test('the attached song projects its lyric slides, not the reading', () => {
+test('the attached song projects its lyric slides, and the reading still shows after them', () => {
   const seg = { ...gospel(), ...songAssignment(gospel(), 42, null) };
   const slides = slidesFor(seg, { hymns: [HYMN], reading: READING }, {});
   const lyrics = slides.filter((s) => s.kind === 'lyrics');
   assert.ok(lyrics.length > 0, 'the song is on the screen');
-  assert.ok(!slides.some((s) => String(s.text ?? '').includes('Spirit and life')), 'the reading does not show');
+  assert.ok(slides.some((s) => String(s.text ?? '').includes('Spirit and life')), 'the reading shows too');
+  // A card plays its first item, then its songs, then its chain: the reading comes before the song.
+  assert.ok(slides.findIndex((s) => String(s.text ?? '').includes('Spirit and life')) < slides.findIndex((s) => s.kind === 'lyrics'), 'the reading plays before the song');
 });
 
 test('without an attached song, the slot still projects the reading', () => {

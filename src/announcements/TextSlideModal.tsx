@@ -163,13 +163,13 @@ export function TextSlideModal({
   };
 
   const button =
-    'flex h-9 items-center gap-2 rounded-md border border-line-strong px-3 text-xs font-bold uppercase hover:bg-panel-2 disabled:opacity-40';
+    'flex h-9 items-center gap-2 rounded-md border border-fg/15 px-3 text-xs font-bold uppercase hover:bg-fg/10 disabled:opacity-40';
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-6" role="dialog" aria-modal="true" aria-label={tr('modalTitle')}>
-      <div className="flex max-h-full w-full max-w-[1200px] flex-col overflow-hidden rounded-xl border border-line-strong bg-panel">
+      <div className="flex max-h-full w-full max-w-[1200px] flex-col overflow-hidden rounded-xl border border-fg/15 bg-panel">
         <header className="flex items-center justify-between border-b border-line px-6 py-4">
-          <h2 className="text-2xl font-black uppercase condensed">{tr('modalTitle')}</h2>
+          <h2 className="text-2xl font-bold tracking-tight">{tr('modalTitle')}</h2>
           <button type="button" onClick={cancel} aria-label={tr('cancel')} className="text-muted hover:text-fg">
             <X size={18} />
           </button>
@@ -207,7 +207,7 @@ export function TextSlideModal({
               onChange={(e) => setMaster(e.target.value)}
               rows={12}
               spellCheck={false}
-              className="min-h-[240px] resize-y rounded-md border border-line-strong bg-canvas p-3 font-mono text-sm leading-relaxed outline-none focus:border-accent"
+              className="min-h-[240px] resize-y rounded-md border border-fg/15 bg-panel-2 p-3 font-mono text-sm leading-relaxed outline-none focus:border-accent"
             />
             <p className="text-xs text-faint">{tr('textHint')}</p>
 
@@ -236,7 +236,7 @@ export function TextSlideModal({
               text={pages[current] ?? tr('noText')}
               bgSrc={bgSrc}
               style={checked}
-              className="aspect-video w-full rounded-lg border border-line-strong"
+              className="aspect-video w-full rounded-lg border border-fg/15"
             />
             {pages.length > 0 && (
               <div className="flex items-center justify-between text-sm">
@@ -267,7 +267,7 @@ export function TextSlideModal({
               type="button"
               onClick={save}
               disabled={busy || pages.length === 0}
-              className="h-10 rounded-md bg-accent px-5 text-[13px] font-extrabold uppercase condensed text-on-accent hover:brightness-105 disabled:opacity-40"
+              className="h-10 rounded-md bg-accent px-5 text-xs font-extrabold tracking-wider uppercase text-on-accent hover:brightness-105 disabled:opacity-40"
             >
               {tr('saveSequence', { n: pages.length })}
             </button>

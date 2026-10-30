@@ -45,7 +45,7 @@ export function RecentlyDeleted({ onRestored }: { onRestored: () => void }) {
                 <span className="min-w-0 truncate text-sm">
                   {h.title} <span className="text-xs text-muted">· {t('deletedOn', { date: new Date(h.deletedAt).toLocaleDateString() })}</span>
                 </span>
-                <button type="button" aria-label={t('undoDeleteLabel', { title: h.title })} onClick={() => void undo(h.id)} className="shrink-0 rounded border border-line-strong px-2 py-1 text-xs font-bold hover:bg-panel-2">
+                <button type="button" aria-label={t('undoDeleteLabel', { title: h.title })} onClick={() => void undo(h.id)} className="shrink-0 rounded border border-fg/15 px-2 py-1 text-xs font-bold hover:bg-fg/10">
                   {t('undoDelete')}
                 </button>
               </li>

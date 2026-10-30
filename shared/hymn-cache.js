@@ -16,7 +16,7 @@ export function withHymn(cache, id, hymn) {
 
 /** Whether any song slot in the lineup uses this song. */
 export function usesHymn(segments, id) {
-  return segments.some((s) => s.content.kind === 'song' && s.content.hymnIds.includes(id));
+  return segments.some((s) => (s.content.hymnIds ?? []).includes(id));
 }
 
 /**
