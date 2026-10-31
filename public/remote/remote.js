@@ -16,16 +16,21 @@
     el('title').textContent = snapshot.title || '';
     el('position').textContent = snapshot.position || '';
     el('lines').replaceChildren(...lineElements(snapshot.lines));
+    window.ApccmmaRemote.showSlideImage(snapshot);
     el('next-lines').replaceChildren(...lineElements(snapshot.nextLines));
     el('next-slide-empty').hidden = snapshot.nextLines.length > 0;
+    // Praise & Worship steps on into the next item, so a count of "no more slides" would be wrong; the next item is named below.
+    document.querySelector('.coming').hidden = Boolean(snapshot.sections && snapshot.sections.steps);
     el('next-item').textContent = snapshot.next || 'Nothing after this';
 
     el('paused').hidden = !snapshot.paused;
     const section = snapshot.sections;
     const canStep = Boolean(section) && !snapshot.paused;
-    prev.disabled = !canStep || section.index <= 0;
-    next.disabled = !canStep || section.index >= section.count - 1;
+    // Praise & Worship carries on into the next segment, so its buttons stay on at either end of a slide set.
+    prev.disabled = !canStep || (!section.steps && section.index <= 0);
+    next.disabled = !canStep || (!section.steps && section.index >= section.count - 1);
     renderSections(section, snapshot.paused);
+    renderLineup(snapshot.lineup, snapshot.paused);
     if (!snapshot.paused) controlError.textContent = '';
   }
 
@@ -60,6 +65,41 @@
     for (const button of sectionsList.children) {
       const current = Number(button.dataset.index) === section.index;
       button.setAttribute('aria-current', current ? 'true' : 'false');
+      button.disabled = paused;
+    }
+  }
+
+  // One row per item of the Praise & Worship lineup. Tapping a row puts that item on air. Rebuilt only when the list changes.
+  const lineupList = el('lineup');
+  let lineupKey = '';
+  function renderLineup(lineup, paused) {
+    el('lineup-panel').hidden = !lineup || lineup.items.length === 0;
+    el('lineup-heading').textContent = (lineup && lineup.title) || 'Lineup';
+    if (!lineup) {
+      lineupKey = '';
+      return;
+    }
+    const key = JSON.stringify(lineup.items);
+    if (key !== lineupKey) {
+      lineupKey = key;
+      lineupList.replaceChildren(
+        ...lineup.items.map((item, i) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.dataset.index = String(i);
+          const no = document.createElement('span');
+          no.className = 'no';
+          no.textContent = String(i + 1).padStart(2, '0');
+          const name = document.createElement('span');
+          name.textContent = item.name;
+          button.append(no, name);
+          button.addEventListener('click', () => control({ action: 'segment', index: i }));
+          return button;
+        }),
+      );
+    }
+    for (const button of lineupList.children) {
+      button.setAttribute('aria-current', Number(button.dataset.index) === lineup.current ? 'true' : 'false');
       button.disabled = paused;
     }
   }

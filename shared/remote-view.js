@@ -115,7 +115,7 @@ export function presentFrame(frame, welcome) {
       return { title: frame.segmentName, position: counted(frame.index + 1, frame.total), lines: linesOf(lines.join('\n')) };
     }
     case 'image':
-      return { title: frame.title, position: null, lines: [] };
+      return { title: frame.title, position: frame.deck ? counted(frame.deck.index + 1, frame.deck.slides.length) : null, lines: [] };
     default:
       return { title: '', position: null, lines: [] };
   }
@@ -125,6 +125,7 @@ export function presentFrame(frame, welcome) {
 export function sectionsOf(frame) {
   if (frame?.kind === 'deck') return { index: frame.index, count: frame.slides.length };
   if (frame?.kind === 'psalm') return { index: frame.index, count: frame.pages.length };
+  if (frame?.kind === 'image' && frame.deck) return { index: frame.deck.index, count: frame.deck.slides.length };
   return null;
 }
 
@@ -155,6 +156,12 @@ export function secondaryViewSnapshot(state, now = Date.now()) {
   return { ...base, live, frame: frameSnapshot(state, frame, base) };
 }
 
+/** The Announcements slide id in a slide picture's address (`apcc-media://slide/<id>`), or null for anything else. */
+export function slideIdOf(src) {
+  const match = /^apcc-media:\/\/slide\/(\d+)$/.exec(String(src ?? ''));
+  return match ? match[1] : null;
+}
+
 /** The Media Library id in a library address (`apcc-media://media/<id>`), or null for anything else. */
 export function mediaIdOf(src) {
   const match = /^apcc-media:\/\/media\/(\d+)$/.exec(String(src ?? ''));
@@ -168,7 +175,7 @@ export function mediaIdOf(src) {
  */
 function frameSnapshot(state, frame, base) {
   const kind = base.screen === 'live' ? 'slide' : base.screen === 'blackout' ? 'blackout' : base.screen === 'idle' ? 'idle' : 'off';
-  if (kind !== 'slide') return { kind, title: '', lines: [], mediaId: null, font: null, fontScale: 1 };
+  if (kind !== 'slide') return { kind, title: '', lines: [], image: null, mediaId: null, font: null, fontScale: 1 };
   const look = outputLookOf(state);
   const settings = frame.kind === 'welcome' ? look.welcome : frame.kind === 'pw' ? look.welcome.slideBackground : null;
   const bg = settings ? welcomeBackground(settings) : { color: null, media: null, shade: false };
@@ -176,6 +183,7 @@ function frameSnapshot(state, frame, base) {
     kind,
     title: base.title,
     lines: base.lines,
+    image: base.image,
     color: bg.color,
     mediaId: bg.media ? mediaIdOf(bg.media.src) : null,
     mediaKind: bg.media ? bg.media.kind : null,
@@ -186,6 +194,9 @@ function frameSnapshot(state, frame, base) {
     fontScale: outputLookOf(state).slideFontScale ?? 1,
   };
 }
+
+/** Frames whose own panel steps them (by its own keys), so a phone's Next and Previous are always offered for them. */
+const STEPPED_BY_PANEL = new Set(['lyrics', 'text', 'rosary']);
 
 /** The snapshot of one display's target: its live switch, the frame it shows, and whether it is paused. */
 function snapshotOf(state, target, now) {
@@ -199,6 +210,8 @@ function snapshotOf(state, target, now) {
     lines: [],
     nextLines: [],
     sections: null,
+    image: null,
+    lineup: state.pw && state.pwLineup ? { items: state.pwLineup, current: state.pwLineup.findIndex((x) => x.key === state.pw.segmentKey) } : null,
     paused: target.paused,
     updatedAt: now,
   };
@@ -210,16 +223,41 @@ function snapshotOf(state, target, now) {
   if (frame.kind === 'blackout' || frame.kind === 'black') return { ...base, screen: 'blackout' };
 
   const shown = presentFrame(frame, outputLookOf(state).welcome);
-  const sections = sectionsOf(frame);
-  const following = sections && sections.index + 1 < sections.count ? presentFrame({ ...frame, index: frame.index + 1 }, outputLookOf(state).welcome) : null;
+  // For Praise & Worship, what comes after this is the next item of its lineup, not of the Mass queue.
+  const lineup = frame.kind === 'pw' ? base.lineup : null;
+  const nextInLineup = lineup && lineup.current >= 0 ? lineup.items[lineup.current + 1]?.name ?? null : undefined;
+  // Praise & Worship has no list of slides to jump to. Next and Previous cross from one segment to the next, so they stay on (`steps`).
+  // A panel that publishes its own steps and sections (the Rosary) is mirrored: the phone shows them and drives them.
+  const panel = state.remotePanel && state.remotePanel.panel === frame.kind ? state.remotePanel : null;
+  const sections = panel
+    ? { index: panel.step.index, count: panel.step.count }
+    : frame.kind === 'pw'
+      ? { index: frame.index, count: frame.total, steps: true }
+      : STEPPED_BY_PANEL.has(frame.kind)
+        ? { index: 0, count: 1, steps: true }
+        : sectionsOf(frame);
+  // A picture has no text, so what comes next is the title of the next picture.
+  const following = sections && !sections.steps && sections.index + 1 < sections.count
+    ? frame.kind === 'image'
+      ? { lines: [frame.deck.slides[sections.index + 1].title] }
+      : presentFrame({ ...frame, index: frame.index + 1 }, outputLookOf(state).welcome)
+    : null;
   return {
     ...base,
     screen: 'live',
     title: current?.label ?? shown.title,
+    ...(nextInLineup !== undefined ? { next: nextInLineup } : {}),
     position: shown.position,
     lines: shown.lines,
     nextLines: following?.lines ?? [],
     sections,
+    ...(panel
+      ? {
+          position: `${panel.step.index + 1} of ${panel.step.count}`,
+          lineup: { title: panel.title, items: panel.sections.map((x) => ({ key: x.label, name: x.label })), current: panel.sections.findIndex((x) => x.current) },
+        }
+      : {}),
+    image: frame.kind === 'image' ? slideIdOf(frame.src) : null,
   };
 }
 
@@ -229,7 +267,7 @@ function snapshotOf(state, target, now) {
  */
 export function snapshotForRole(snapshot, role) {
   if (role === 'primary') return snapshot;
-  const { nextLines, sections, paused, ...viewer } = snapshot;
+  const { nextLines, sections, paused, lineup, ...viewer } = snapshot;
   return viewer;
 }
 
@@ -244,6 +282,46 @@ export function controlAction(state, request) {
     return { ok: false, status: 409, error: 'Nothing this remote controls is on air. Turn the projector on, or set Remote to follow it.' };
   }
   if (state.projector.paused) return { ok: false, status: 409, error: 'Paused by operator' };
+
+  // A panel that publishes its own steps and sections (the Rosary) is driven through that panel, the same as its own buttons.
+  const onAir = state.projector.live;
+  const panel = state.remotePanel && onAir?.kind === state.remotePanel.panel ? state.remotePanel : null;
+  if (panel) {
+    if (request.action === 'next' || request.action === 'previous') {
+      return { ok: true, action: { type: 'remote/command', command: { action: 'step', delta: request.action === 'next' ? 1 : -1 } } };
+    }
+    if (request.action === 'jump' || request.action === 'segment') {
+      const limit = request.action === 'jump' ? panel.step.count : panel.sections.length;
+      if (!Number.isInteger(request.index) || request.index < 0 || request.index >= limit) return { ok: false, status: 409, error: 'That is not in this item.' };
+      return { ok: true, action: { type: 'remote/command', command: { action: request.action === 'jump' ? 'jump' : 'section', index: request.index } } };
+    }
+  }
+  if (STEPPED_BY_PANEL.has(onAir?.kind) && (request.action === 'next' || request.action === 'previous')) {
+    return { ok: true, action: { type: 'remote/command', command: { action: 'step', delta: request.action === 'next' ? 1 : -1 } } };
+  }
+
+  // Picking a segment of the lineup puts its first slide on air.
+  if (request.action === 'segment') {
+    const count = state.pwLineup?.length ?? 0;
+    if (!state.pw || !Number.isInteger(request.index) || request.index < 0 || request.index >= count) {
+      return { ok: false, status: 409, error: 'That item is not in the lineup.' };
+    }
+    return { ok: true, action: { type: 'remote/pwstep', segment: request.index } };
+  }
+
+  // Praise & Worship steps through its own lineup (slides, then the next segment). The operator window carries the step out.
+  // Whatever the on-air flag says, a Praise & Worship slide on screen is stepped through its lineup.
+  if (state.pw && state.projector.live?.kind === 'pw') {
+    if (request.action === 'next' || request.action === 'previous') {
+      return { ok: true, action: { type: 'remote/pwstep', delta: request.action === 'next' ? 1 : -1 } };
+    }
+    if (request.action === 'jump') {
+      const total = state.projector.live.total;
+      if (!Number.isInteger(request.index) || request.index < 0 || request.index >= total) return { ok: false, status: 409, error: 'That slide is not in this item.' };
+      return { ok: true, action: state.projector.live.index === request.index ? null : { type: 'remote/pwstep', index: request.index } };
+    }
+    return { ok: false, status: 400, error: 'The request was not understood.' };
+  }
 
   const sections = sectionsOf(state.projector.staged);
   if (request.action === 'next' || request.action === 'previous') {

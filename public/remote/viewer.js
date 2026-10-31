@@ -16,6 +16,7 @@
         return line;
       }),
     );
+    window.ApccmmaRemote.showSlideImage(snapshot);
     el('next-item').textContent = snapshot.next || 'Nothing after this';
   }
 

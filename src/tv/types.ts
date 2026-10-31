@@ -3,6 +3,8 @@ export interface SecondaryFrame {
   kind: 'slide' | 'blackout' | 'idle' | 'off';
   title: string;
   lines: string[];
+  /** The Announcements slide id of a picture slide (a PowerPoint's slide) to show full screen, or null. */
+  image?: string | null;
   /** The background colour, or null to keep the screen's own dark colour. */
   color: string | null;
   /** The Media Library id of the background picture or video, or null. */

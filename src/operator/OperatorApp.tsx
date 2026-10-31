@@ -26,7 +26,8 @@ import { useTheme } from '../theme/store';
 import { ServiceQueue } from '../planner/ServiceQueue';
 import { stepQueue } from '../planner/routing';
 import { watchProjectorPromptChoice } from '../live/prompt-choice';
-import { watchSlideScale } from '../praise-worship/live';
+import { watchRemoteCommands } from '../live/remoteBridge';
+import { watchRemoteSteps, watchSlideScale } from '../praise-worship/live';
 import { stepLive } from '../praise-worship/live';
 import { CommandPalette } from './CommandPalette';
 import { ProjectorPrompt } from './ProjectorPrompt';
@@ -225,6 +226,8 @@ export function OperatorApp() {
   // Keeps the projector-prompt choice in step with the projector and the loaded queue or session.
   useEffect(() => watchProjectorPromptChoice(), []);
   useEffect(() => watchSlideScale(), []);
+  useEffect(() => watchRemoteSteps(), []);
+  useEffect(() => watchRemoteCommands(), []);
   // A song or prayer on the projector follows its edits, and the operator is told when it was deleted.
   useEffect(() => startLiveSongWatch(), []);
   const view = useUi((s) => s.view);

@@ -33,7 +33,7 @@ import { sanitizeWelcomeSettings } from '../shared/welcome-settings.js';
 import { sanitizeLowerThirdStyle } from '../shared/lower-third-style.js';
 import { createLowerThirdServer, LOWER_THIRD_PORT, lanAddress } from './lower-third-server.js';
 import { createRemoteViewServer, localNetworkAddress } from './remote-view-server.js';
-import { mediaFileFor } from './protocol.js';
+import { mediaFileFor, slideFileFor } from './protocol.js';
 import {
   REMOTE_DEVICE_LIMIT,
   REMOTE_HOTSPOT_WARN_ABOVE,
@@ -344,10 +344,11 @@ const remoteViews = {
     role: 'primary',
     canConnect: canAcceptPhone,
     onControl: controlFromPhone,
+    slideFile: slideFileFor,
     // The TV page's port, from the saved Secondary viewer settings, so the helper page links to the right address.
     tvPort: () => readConfig(app.getPath('userData')).remote_view.secondary.port,
   }),
-  secondary: createRemoteViewServer({ distDir: path.join(__dirname, '../dist'), role: 'secondary', canConnect: canAcceptPhone, mediaFile: mediaFileFor }),
+  secondary: createRemoteViewServer({ distDir: path.join(__dirname, '../dist'), role: 'secondary', canConnect: canAcceptPhone, mediaFile: mediaFileFor, slideFile: slideFileFor }),
 };
 // Why each viewer is not running when it is turned on. Null when it runs, or when it is off.
 const remoteViewErrors = { primary: null, secondary: null };

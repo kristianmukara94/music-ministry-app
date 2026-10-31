@@ -134,8 +134,27 @@
     pinInput.select();
   });
 
+  /**
+   * Shows the slide's picture (a PowerPoint slide) in place of its text lines, or the lines when there is no picture. The picture's
+   * address is built from a slide id the laptop sent as digits only.
+   */
+  function showSlideImage(snapshot) {
+    const image = document.getElementById('slide-image');
+    const lines = document.getElementById('lines');
+    const id = /^[0-9]+$/.test(String(snapshot.image ?? '')) ? String(snapshot.image) : null;
+    if (id) {
+      const src = '/api/remote/slide/' + id;
+      if (image.getAttribute('src') !== src) image.setAttribute('src', src);
+    } else {
+      image.removeAttribute('src');
+    }
+    image.hidden = !id;
+    lines.hidden = Boolean(id);
+  }
+
   window.ApccmmaRemote = {
     SCREEN_TEXT,
+    showSlideImage,
     /** Starts the page. `handler` is called with each snapshot the laptop sends. */
     start(handler) {
       onSnapshot = handler;

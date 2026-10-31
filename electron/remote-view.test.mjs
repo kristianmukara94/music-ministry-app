@@ -34,7 +34,9 @@ test('a phone sees the live text, the item title, and the next item', () => {
     position: 'Verse 1',
     lines: ['Amazing grace', 'how sweet the sound'],
     nextLines: [],
-    sections: null,
+    sections: { index: 0, count: 1, steps: true },
+    image: null,
+    lineup: null,
     paused: false,
     updatedAt: 5,
   });
@@ -372,7 +374,7 @@ test('the Primary sees the next slide and the section list; the Secondary sees n
   assert.equal(remoteViewSnapshot(deckOn(2)).nextLines.length, 0, 'the last slide has nothing after it');
 
   const viewer = snapshotForRole(snapshot, 'secondary');
-  assert.deepEqual(Object.keys(viewer).sort(), ['lines', 'next', 'position', 'screen', 'title', 'updatedAt']);
+  assert.deepEqual(Object.keys(viewer).sort(), ['image', 'lines', 'next', 'position', 'screen', 'title', 'updatedAt']);
   assert.deepEqual(viewer.lines, ['Slide one']);
   assert.equal(viewer.next, 'Alleluia');
   assert.equal(snapshotForRole(snapshot, 'primary'), snapshot);

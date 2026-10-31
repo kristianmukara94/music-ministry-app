@@ -57,6 +57,23 @@ export function outputLookOf(state: LiveState): OutputLook;
 /** The state with the on-air look in place of the working one. The same object when the two looks are the same. */
 export function applyLook(state: LiveState): LiveState;
 
+/** The picture slides one image belongs to, in order, and which of them is shown (0-based). */
+export interface ImageDeck {
+  slides: { title: string; src: string; notes?: string }[];
+  index: number;
+}
+
+/** A command a phone sends for the open panel to carry out: step the slides, jump to a slide, or pick a section. */
+export type RemoteCommand = { action: 'step'; delta: 1 | -1 } | { action: 'jump'; index: number } | { action: 'section'; index: number };
+
+/** What the open panel offers a phone: its steps, and its sections. `panel` is the kind of frame it puts on the projector. */
+export interface RemotePanel {
+  panel: string;
+  title: string;
+  step: { index: number; count: number };
+  sections: { label: string; current: boolean }[];
+}
+
 export type Frame =
   | { kind: 'idle' }
   | { kind: 'blackout' }
@@ -66,7 +83,8 @@ export type Frame =
   | { kind: 'announcements'; lang: Lang }
   | { kind: 'deck'; title: string; slides: SlideLine[][]; index: number; passage?: PassageMark; style?: TextStyle | null }
   /** `notes` are the presenter's cues (for a PDF page, the page's text). Only the operator's windows show them. */
-  | { kind: 'image'; title: string; src: string; notes?: string }
+  /** `deck` lists the slides this picture belongs to (a PowerPoint's slides), so Next, Previous and Jump can move through them. */
+  | { kind: 'image'; title: string; src: string; notes?: string; deck?: ImageDeck }
   /** `notes` are the presenter's cues. Only the operator's windows show them. The projector never renders them. */
   /** `headline` is the large title above the body. Absent for manual text slides, which show `text` alone. */
   | { kind: 'text'; title: string; headline?: string; text: string; bg: string | null; notes?: string; style?: TextStyle | null; page?: { index: number; total: number }; key?: string; top?: number; centred?: boolean }
@@ -193,6 +211,14 @@ export interface LiveState {
   /** Index of the item last opened from the queue, or -1 before the first. */
   queueCursor: number;
   pw: PwLive | null;
+  /** The latest phone request to step Praise & Worship. `seq` changes on every request, so the operator window can tell a new one. */
+  pwStep?: { delta?: 1 | -1; index?: number; segment?: number; seq: number };
+  /** The Praise & Worship lineup's segments, in order, so a phone can offer them. Set by the operator window while a session is loaded. */
+  /** The latest command from a phone. `seq` changes on every command, so the operator window can tell a new one. */
+  remoteCmd?: RemoteCommand & { seq: number };
+  /** What the open panel offers a phone. Set by the panel while it is open. */
+  remotePanel?: RemotePanel;
+  pwLineup?: { key: string; name: string; minutes: number }[];
 }
 
 export type LiveAction =
@@ -232,7 +258,12 @@ export type LiveAction =
   | { type: 'queue/cursor'; index: number }
   | { type: 'pw/load'; sessionId: number }
   | { type: 'pw/cursor'; segmentKey: string; slide: number; now: number }
-  | { type: 'pw/end' };
+  | { type: 'pw/end' }
+  /** A phone asked to step the Praise & Worship lineup (`delta`), or jump to a slide of the segment on air (`index`, 0-based). The operator window carries it out, since only it holds the lineup's slides. */
+  | { type: 'remote/pwstep'; delta?: 1 | -1; index?: number; segment?: number }
+  | { type: 'remote/command'; command: RemoteCommand }
+  | { type: 'remote/panel'; panel: RemotePanel | null }
+  | { type: 'pw/lineup'; items: { key: string; name: string; minutes: number }[] };
 
 export const OUTPUTS: OutputKey[];
 export function initialLiveState(): LiveState;

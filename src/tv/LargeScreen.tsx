@@ -48,7 +48,9 @@ export function LargeScreen({ frame, mediaBase = '' }: { frame: SecondaryFrame; 
       )}
       {src && frame.shade && <div aria-hidden className="pointer-events-none absolute inset-0 bg-black/45" />}
 
-      {live ? (
+      {live && frame.image ? (
+        <img key={frame.image} src={`${mediaBase}/api/remote/slide/${frame.image}`} alt="" draggable={false} className="absolute inset-0 h-full w-full bg-black object-contain" />
+      ) : live ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center px-[6cqw] text-center">
           {frame.title && (
             <p className="absolute top-[7cqh] left-[6cqw] font-bold tracking-[0.2em] text-[#d6a94f] uppercase" style={{ fontFamily, fontSize: scaledSize('1.6cqw', scale) }}>

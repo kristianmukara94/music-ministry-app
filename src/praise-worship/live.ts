@@ -48,6 +48,49 @@ export function watchSlideScale(): () => void {
   });
 }
 
+/** Carries out the phones' Next and Previous while Praise & Worship is on air, the same step as the operator's arrow keys. */
+export function watchRemoteSteps(): () => void {
+  let seen = useLive.getState().state.pwStep?.seq ?? 0;
+  // Keep the phones' lineup list current: the segments of the loaded session, in order.
+  const publish = () => {
+    const session = liveSession();
+    if (!session) return;
+    const items = session.segments.map((s) => ({ key: s.key, name: s.name, minutes: s.minutes }));
+    // Only a changed list is sent, so a busy planner does not flood the main process.
+    if (JSON.stringify(items) !== JSON.stringify(useLive.getState().state.pwLineup ?? null)) dispatch({ type: 'pw/lineup', items });
+  };
+  publish();
+  const stopSession = usePw.subscribe(publish);
+  const stopLive = useLive.subscribe((next) => {
+    if (next.state.pw && !next.state.pwLineup) publish();
+  });
+  const stopSteps = useLive.subscribe((next) => {
+    const request = next.state.pwStep;
+    if (!request || request.seq === seen) return;
+    seen = request.seq;
+    const pw = next.state.pw;
+    // A picked lineup item goes on air from its first slide, even before the session has started.
+    if (request.segment !== undefined) {
+      if (pw) jumpTo(request.segment, 0);
+      return;
+    }
+    if (!pw) return;
+    if (request.index === undefined) {
+      void stepLive(request.delta ?? 1);
+      return;
+    }
+    // A jump stays in the segment on air.
+    const session = liveSession();
+    const at = session ? livePosition(session.segments, pw) : null;
+    if (at) jumpTo(at.segment, request.index);
+  });
+  return () => {
+    stopSession();
+    stopLive();
+    stopSteps();
+  };
+}
+
 function repaginateOnAir() {
   const state = useLive.getState().state;
   const session = usePw.getState().session;

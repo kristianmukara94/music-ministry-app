@@ -31,6 +31,13 @@ export function mediaFileFor(id) {
   return rel ? resolveAsset(getAssetRoot(), rel) : null;
 }
 
+/** The file of an Announcements picture slide, by its id, or null. Same resolution as the `apcc-media://slide/<id>` route. */
+export function slideFileFor(id) {
+  const resolve = routes.get('slide');
+  const rel = resolve ? resolve(String(id)) : null;
+  return rel ? resolveAsset(getAssetRoot(), rel) : null;
+}
+
 export function registerMediaRoute(host, resolveRelative) {
   routes.set(host, resolveRelative);
 }

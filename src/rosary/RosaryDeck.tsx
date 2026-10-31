@@ -4,6 +4,7 @@ import type { Frame } from '../../shared/live.js';
 import { rosaryT } from '../../shared/rosary-i18n.js';
 import { BACKGROUND_COLORS, fontCss, parseTextStyle, sanitizeTextStyle } from '../../shared/text-style.js';
 import type { TextStyle } from '../../shared/text-style';
+import { publishRemotePanel, registerRemoteHandler } from '../live/remoteBridge';
 import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
 import { useUi } from '../state/ui';
@@ -327,6 +328,43 @@ export function RosaryDeck() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
+
+  /** The sections a phone can pick: the introduction, each decade, then the closing prayers, with the step each starts at. */
+  const remoteSections = () => {
+    if (!mysteries) return [];
+    const at = stepAt(position);
+    return [
+      { label: t('section_intro'), start: positionOfIntro(), current: at.section === 'intro' },
+      ...Array.from({ length: DECADES }, (_, i) => i + 1).map((d) => {
+        const m = mysteries.find((x) => x.mysteryType === type && x.decadeNumber === d);
+        return { label: `${d}. ${m ? localized(lang, m.titleEn, m.titleTl, m.titleCeb).text : ''}`, start: positionOfDecade(d), current: at.section === 'decade' && at.decade === d };
+      }),
+      { label: t('prayer_hail_holy_queen'), start: positionOfClosing('hail_holy_queen'), current: at.kind === 'hail_holy_queen' },
+      { label: t('prayer_litany_loreto'), start: positionOfClosing('litany_loreto'), current: at.kind === 'litany_loreto' },
+    ];
+  };
+
+  // The Remote view mirrors this panel: it shows the step and the sections, and a phone's Next, Previous, number and section taps run here.
+  useEffect(() => {
+    if (!mysteries) return;
+    publishRemotePanel({
+      panel: 'rosary',
+      title: t('title'),
+      step: { index: position, count: TOTAL_POSITIONS },
+      sections: remoteSections().map(({ label, current }) => ({ label, current })),
+    });
+  }, [position, type, mysteries, lang]);
+  useEffect(() => () => publishRemotePanel(null), []);
+  useEffect(() =>
+    registerRemoteHandler((command) => {
+      if (command.action === 'step') stepSlide(command.delta);
+      else if (command.action === 'jump') goTo(command.index);
+      else {
+        const target = remoteSections()[command.index];
+        if (target) goTo(target.start);
+      }
+    }),
+  );
 
   if (error) {
     return (

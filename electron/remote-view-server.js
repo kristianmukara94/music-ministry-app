@@ -106,7 +106,7 @@ export function deviceLabel(userAgent = '') {
  * Secondary port is refused whatever the page sends. `/api/remote/stream` sends the live screen as the laptop changes it.
  * When a PIN is set, every route needs an unlocked session, and each viewer has its own session cookie.
  */
-export function createRemoteViewServer({ distDir, role = 'primary', canConnect = () => true, onControl = () => ({ ok: false, status: 409, error: 'Control is not set up.' }), mediaFile = () => null, tvPort = () => REMOTE_VIEW_PORTS.secondary }) {
+export function createRemoteViewServer({ distDir, role = 'primary', canConnect = () => true, onControl = () => ({ ok: false, status: 409, error: 'Control is not set up.' }), mediaFile = () => null, slideFile = () => null, tvPort = () => REMOTE_VIEW_PORTS.secondary }) {
   let server = null;
   let bound = null;
   let starting = null;
@@ -227,18 +227,18 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
    * A library picture or video for the TV screen, on the Secondary port only, behind the PIN. Only a library id is accepted, never a path, so
    * the request cannot reach any file except the ones in the Media Library. Byte ranges are answered, so a video can seek and loop.
    */
-  function media(req, res, pathname) {
-    if (role !== 'secondary') return sendJson(res, 404, { ok: false, error: 'Not found' });
+  function media(req, res, pathname, { prefix = '/api/remote/media/', lookup = mediaFile, secondaryOnly = true } = {}) {
+    if (secondaryOnly && role !== 'secondary') return sendJson(res, 404, { ok: false, error: 'Not found' });
     if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { ok: false }, { Allow: 'GET, HEAD' });
     if (!unlocked(req)) return sendJson(res, 401, { ok: false, error: 'Enter the PIN first.' });
     let id;
     try {
-      id = decodeURIComponent(pathname.slice('/api/remote/media/'.length));
+      id = decodeURIComponent(pathname.slice(prefix.length));
     } catch {
       return sendJson(res, 400, { ok: false, error: 'The request was not understood.' });
     }
     if (!/^\d{1,12}$/.test(id)) return sendJson(res, 404, { ok: false, error: 'Not found' });
-    const file = mediaFile(id);
+    const file = lookup(id);
     if (!file || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return sendJson(res, 404, { ok: false, error: 'Not found' });
     const type = MIME_BY_EXT[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
     const headers = { ...SECURITY_HEADERS, 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-cache' };
@@ -341,6 +341,8 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
       return;
     }
     if (pathname.startsWith('/api/remote/media/')) return media(req, res, pathname);
+    // A picture slide (a PowerPoint's slide) for either viewer. Only an Announcements slide id is accepted, never a path.
+    if (pathname.startsWith('/api/remote/slide/')) return media(req, res, pathname, { prefix: '/api/remote/slide/', lookup: slideFile, secondaryOnly: false });
     // The TV screen is read-only, so its page and files are served only on the Secondary port.
     if (role === 'secondary' && (pathname === '/tv' || pathname.startsWith('/assets/'))) return serveTv(req, res, pathname);
     // The TV screen's address on the control port: a helper page points to the Secondary port, so a wrong address is not a blank 404.

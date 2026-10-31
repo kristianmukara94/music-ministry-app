@@ -132,6 +132,15 @@ main {
   color: var(--muted);
 }
 
+.slide-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 16px 0;
+  border-radius: 8px;
+  background: #000;
+}
+
 .lines {
   flex: 1;
   display: flex;
@@ -282,6 +291,55 @@ main {
 }
 
 .sections button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+#lineup-panel {
+  margin-top: 20px;
+}
+
+/* The lineup: one row per item, the one on air in gold. */
+.lineup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.lineup button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 0 14px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: left;
+  color: var(--fg);
+  background: #111;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.lineup button .no {
+  min-width: 2ch;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.lineup button[aria-current='true'] {
+  color: #000;
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.lineup button[aria-current='true'] .no {
+  color: #000;
+}
+
+.lineup button:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }

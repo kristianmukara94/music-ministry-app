@@ -58,12 +58,20 @@ export function WhiteboardDeck() {
     void reload();
   }, []);
 
+  /** The PowerPoint pictures in list order, so a phone's Next and Previous move through them. Absent for a lone picture. */
+  const deckOf = (slide: WhiteboardSlide) => {
+    const pictures = slides.filter((s) => s.image);
+    const index = pictures.findIndex((s) => s.id === slide.id);
+    if (pictures.length < 2 || index < 0) return undefined;
+    return { slides: pictures.map((s) => ({ title: s.title, src: s.image as string, ...(s.notes ? { notes: s.notes } : {}) })), index };
+  };
+
   /** Puts one slide on the screen, as a full slide, straight away. */
   const project = (slide: WhiteboardSlide) => {
     dispatch({
       type: 'projector/stage',
       frame: slide.image
-        ? { kind: 'image', title: slide.title, src: slide.image, notes: slide.notes ?? undefined }
+        ? { kind: 'image', title: slide.title, src: slide.image, notes: slide.notes ?? undefined, deck: deckOf(slide) }
         : { kind: 'whiteboard', slide: { title: slide.title, content: slide.content, design: slide.design } },
     });
     dispatch({ type: 'projector/take' });

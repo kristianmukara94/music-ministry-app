@@ -198,6 +198,13 @@ function reduce(s, a) {
 
     case 'projector/step': {
       const f = s.projector.staged;
+      // A picture that belongs to a deck of pictures (a PowerPoint) steps to the neighbouring picture.
+      if (f.kind === 'image' && f.deck) {
+        const index = Math.min(Math.max(f.deck.index + a.delta, 0), f.deck.slides.length - 1);
+        if (index === f.deck.index) return s;
+        const { title, src, notes } = f.deck.slides[index];
+        return { ...s, projector: showFrame(s.projector, { kind: 'image', title, src, ...(notes ? { notes } : {}), deck: { slides: f.deck.slides, index } }) };
+      }
       const count = f.kind === 'deck' ? f.slides.length : f.kind === 'psalm' ? f.pages.length : 0;
       if (count === 0) return s;
       const index = Math.min(Math.max(f.index + a.delta, 0), count - 1);
@@ -354,8 +361,27 @@ function reduce(s, a) {
       };
     }
 
-    case 'pw/end':
-      return s.pw ? { ...s, pw: null } : s;
+    case 'pw/end': {
+      if (!s.pw) return s;
+      const { pwLineup, ...rest } = s;
+      return { ...rest, pw: null };
+    }
+
+    // The segment names a phone can pick from. Sent by the operator window, which holds the lineup.
+    case 'pw/lineup':
+      return JSON.stringify(s.pwLineup ?? null) === JSON.stringify(a.items) ? s : { ...s, pwLineup: a.items };
+
+    case 'remote/command':
+      return { ...s, remoteCmd: { ...a.command, seq: (s.remoteCmd?.seq ?? 0) + 1 } };
+
+    case 'remote/panel': {
+      if (JSON.stringify(s.remotePanel ?? null) === JSON.stringify(a.panel)) return s;
+      const { remotePanel, ...rest } = s;
+      return a.panel ? { ...rest, remotePanel: a.panel } : rest;
+    }
+
+    case 'remote/pwstep':
+      return { ...s, pwStep: { ...(Number.isInteger(a.segment) ? { segment: a.segment } : Number.isInteger(a.index) ? { index: a.index } : { delta: a.delta === -1 ? -1 : 1 }), seq: (s.pwStep?.seq ?? 0) + 1 } };
 
     default:
       return s;

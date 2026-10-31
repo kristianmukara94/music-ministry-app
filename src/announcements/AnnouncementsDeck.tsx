@@ -47,9 +47,17 @@ function savePlayback(playback: Playback) {
 /** `null` is the virtual "All Slides" folder. */
 type FolderId = number | null;
 
-const toFrame = (s: AnnouncementSlide): Frame =>
+/** The pictures in `list` that sit in the slide's folder, so a phone's Next and Previous can move through them. Absent for a lone picture. */
+const deckOf = (s: AnnouncementSlide, list: AnnouncementSlide[]) => {
+  const pictures = list.filter((x) => x.slideType === 'image' && x.src && x.folderId === s.folderId);
+  const index = pictures.findIndex((x) => x.id === s.id);
+  if (pictures.length < 2 || index < 0) return undefined;
+  return { slides: pictures.map((x) => ({ title: x.name, src: x.src as string, ...(x.notes ? { notes: x.notes } : {}) })), index };
+};
+
+const toFrame = (s: AnnouncementSlide, list: AnnouncementSlide[] = []): Frame =>
   s.slideType === 'image' && s.src
-    ? { kind: 'image', title: s.name, src: s.src, notes: s.notes ?? undefined }
+    ? { kind: 'image', title: s.name, src: s.src, notes: s.notes ?? undefined, deck: deckOf(s, list) }
     : { kind: 'text', title: s.name, headline: s.headline ?? undefined, text: s.text ?? '', bg: s.bgSrc, notes: s.notes ?? undefined, style: s.style };
 
 /** Whether the projector is already showing this slide. */
@@ -130,7 +138,7 @@ export function AnnouncementsDeck() {
         }
         pendingSlide.current = slide.id;
         setFolderId(slide.folderId);
-        dispatch({ type: 'projector/stage', frame: toFrame(slide) });
+        dispatch({ type: 'projector/stage', frame: toFrame(slide, list) });
       })
       .catch((err) => setError(errorText(err)));
   }, []);
@@ -217,7 +225,7 @@ export function AnnouncementsDeck() {
   /** A single click loads the slide into the staged slot without touching the projector. */
   const stage = (slide: AnnouncementSlide) => {
     setActiveId(slide.id);
-    dispatch({ type: 'projector/stage', frame: toFrame(slide) });
+    dispatch({ type: 'projector/stage', frame: toFrame(slide, slides) });
   };
 
   // ── Playback: step by hand or on a timer. While the timer runs, each slide it reaches goes live. ──
@@ -228,7 +236,7 @@ export function AnnouncementsDeck() {
     const slide = slides[index];
     if (!slide) return;
     setActiveId(slide.id);
-    dispatch({ type: 'projector/stage', frame: toFrame(slide) });
+    dispatch({ type: 'projector/stage', frame: toFrame(slide, slides) });
     if (take) dispatch({ type: 'projector/take' });
   };
 
