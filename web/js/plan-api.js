@@ -1,6 +1,6 @@
-// The plan editor's calls to the server. Each one returns the parsed body, or throws an Error whose message is the server's plain
+// The planner's calls to the server. Each one returns the parsed body, or throws an Error whose message is the server's plain
 // message, or a neutral line when the server gave none. The session cookie is sent by the browser; nothing is kept in storage.
-const API = '/.netlify/functions';
+const API = '/api';
 const NEUTRAL = 'Something went wrong. Try again.';
 const UNREACHABLE = 'Cannot reach the planner. Check your connection and try again.';
 
@@ -16,6 +16,15 @@ async function request(name, { method = 'GET', query = '', body } = {}) {
     });
   } catch {
     throw new Error(UNREACHABLE);
+  }
+  // A session that ended (it lasts 12 hours, and a password change or a disabled account ends it). A read goes back to sign-in.
+  // A save stays on the page, so unsaved changes are not lost: signing in again in another tab lets the save be tried again.
+  if (res.status === 401) {
+    if (method === 'GET') {
+      location.replace(`${document.documentElement.dataset.base ?? ''}login.html`);
+      throw new Error('Your session has ended. Sign in again.');
+    }
+    throw new Error('Your session has ended, so this was not saved. Sign in again in another tab, then try again here.');
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(typeof data.error === 'string' && data.error.length <= 200 ? data.error : NEUTRAL);
@@ -36,3 +45,12 @@ export const savePlan = (payload) => request('plan-save', { method: 'POST', body
 
 /** Creates a plan with the UUID the browser made. Returns { plan } or throws the server's plain message. */
 export const createPlan = (plan) => request('plan-create', { method: 'POST', body: plan });
+
+/** The church's linked laptops, its recent sync activity, and whether this user may link or unlink (canManage). */
+export const listDevices = () => request('devices-list');
+
+/** A one-time link code for a new laptop (admins only). Returns { code, expiresAt }. */
+export const createLinkCode = () => request('link-code-create', { method: 'POST' });
+
+/** Unlinks one of the church's laptops by its device id (admins only). */
+export const unlinkDevice = (deviceId) => request('device-unlink', { method: 'POST', body: { deviceId } });

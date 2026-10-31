@@ -1,18 +1,6 @@
-// Sample data for the Web Planner, phase 1. Every page reads its data from here, so phase 2 can replace this one file
-// with calls to the cloud sync API. Song titles, categories, languages and keys only: no lyrics and no Bible text.
+// The fixed shapes the Web Planner builds on: the Mass and Praise & Worship templates, the song categories and the languages.
+// Plans, songs, users and laptops come from the server. Song titles, categories, languages and keys only: no lyrics and no Bible text.
 
-/** The laptop's sync state, shown in the sidebar and on the Plans page. */
-export const SYNC = {
-  title: 'Laptop synced',
-  when: '2 min ago',
-  account: 'Church account',
-};
-
-
-/**
- * The song list from the church laptop: [title, category, language, key]. The Songs page shows all of them; the Mass
- * editor offers the ones in the step's category.
- */
 // The same names the church laptop files songs under (shared/mass-flow.js). A test keeps the two lists equal.
 export const SONG_CATEGORIES = [
   'Entrance Procession', 'Kyrie', 'Gloria', 'Responsorial Psalm', 'Gospel Acclamation', 'Preparation of the Gifts',
@@ -21,34 +9,6 @@ export const SONG_CATEGORIES = [
 ];
 export const LANGUAGES = ['English', 'Tagalog', 'Cebuano'];
 export const LANGUAGE_CODE = { English: 'EN', Tagalog: 'TL', Cebuano: 'CEB' };
-export const SONGS_SYNCED = 'Synced 2 min ago';
-
-export const SONGS = [
-  ['Praise to the Lord, the Almighty', 'Entrance Procession', 'English', 'D'],
-  ['Be Thou My Vision', 'Entrance Procession', 'English', 'Eb'],
-  ['Tipunon Kita', 'Entrance Procession', 'Cebuano', 'G'],
-  ['Lord, have mercy (Mass setting)', 'Kyrie', 'English', 'G'],
-  ['Gloria (Mass setting)', 'Gloria', 'English', 'C'],
-  ['Psalm 24 setting', 'Responsorial Psalm', 'English', 'F'],
-  ['Alleluia, alleluia', 'Gospel Acclamation', 'English', 'C'],
-  ['Aleluya', 'Gospel Acclamation', 'Tagalog', 'D'],
-  ['Take my life and let it be', 'Preparation of the Gifts', 'English', 'G'],
-  ['Holy, Holy, Holy (Mass setting)', 'Holy, Holy, Holy', 'English', 'D'],
-  ['Christ has died (Mass setting)', 'Memorial Acclamation', 'English', 'Am'],
-  ['Great Amen (Mass setting)', 'Great Amen', 'English', 'D'],
-  ['Our Father (chant)', 'Our Father', 'English', 'G'],
-  ['Ama Namin', 'Our Father', 'Tagalog', 'F'],
-  ['Lamb of God (Mass setting)', 'Lamb of God', 'English', 'C'],
-  ['I am the Bread of Life', 'Communion Procession', 'English', 'Bb'],
-  ['Taste and see', 'Communion Procession', 'English', 'E'],
-  ['Tinapay sa Kinabuhi', 'Communion Procession', 'Cebuano', 'D'],
-  ['Now thank we all our God', 'Thanksgiving', 'English', 'F'],
-  ['For All the Saints', 'Recessional', 'English', 'Bb'],
-  ['Hail, Holy Queen enthroned above', 'Recessional', 'English', 'D'],
-  ['Lord, I lift your name on high', '', 'English', 'G'],
-  ['Our God is an awesome God', '', 'English', 'E'],
-  ['Be still and know', '', 'English', 'A'],
-];
 
 /**
  * The Mass plan being edited. Each row: [n, name, kind, song category, value, source, optional, hint].
@@ -141,28 +101,3 @@ export const PRAISE_PLAN = {
     { ok: false, text: 'Speaker is not confirmed', sub: 'Add a note on step 7' },
   ],
 };
-
-export const DEVICES = [
-  { name: 'Church laptop (Operator booth)', meta: 'Windows · App 1.0.8 · Linked 12 Oct 2026', status: 'Synced 2 min ago', tone: 'ok' },
-  { name: 'Ministry lead laptop', meta: 'Windows · App 1.0.7 · Linked 3 Sep 2026', status: 'Offline since Friday', tone: 'idle' },
-];
-
-export const ACTIVITY = [
-  { time: 'Today 9:12', text: 'Web edit saved: All Saints, Sunday Mass', tag: 'Conflict', tone: 'warn' },
-  { time: 'Today 8:58', text: 'Laptop pushed 124 song titles and categories', tag: 'Done', tone: 'ok' },
-  { time: 'Yesterday', text: 'Laptop pulled Praise & Worship: Charismatic Prayer Night', tag: 'Done', tone: 'ok' },
-  { time: 'Yesterday', text: 'Web edit saved: Charismatic Prayer Night', tag: 'Done', tone: 'ok' },
-  { time: '19 Oct', text: 'Ministry lead laptop could not reach the server', tag: 'Retried', tone: 'idle' },
-];
-
-/** The plan edited in two places. Each version lists the songs that differ. */
-export const CONFLICT = {
-  count: 1,
-  title: 'All Saints, Sunday Mass was edited in two places',
-  detail: 'Someone changed it on the web while the laptop was offline. Choose which version to keep. The other is kept for 30 days.',
-  web: { edited: 'Edited today, 9:12 AM', lines: ['Entrance: Praise to the Lord, the Almighty', 'Communion: I am the Bread of Life', 'Recessional: For All the Saints'] },
-  laptop: { edited: 'Edited yesterday, 8:40 PM', lines: ['Entrance: Be Thou My Vision', 'Communion: I am the Bread of Life', 'Recessional: Hail, Holy Queen enthroned above'] },
-};
-
-/** The link code shown first. "New code" makes a fresh one in the same form. */
-export const LINK_CODE = 'K7QM-4XD2';

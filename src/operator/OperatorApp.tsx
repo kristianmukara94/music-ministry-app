@@ -261,17 +261,17 @@ export function OperatorApp() {
   }, []);
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-canvas text-fg" style={{ '--topbar-h': `${barHeight}px` } as CSSProperties}>
+    <div className="relative flex h-screen w-screen flex-col overflow-clip bg-canvas text-fg" style={{ '--topbar-h': `${barHeight}px` } as CSSProperties}>
       {/* The top bar spans the full width. The queue drawer, planner tab and command palette are overlays above it. */}
       <div ref={barRef} className="relative z-20 w-full shrink-0">
         <TopBar />
       </div>
       <LiveNoticeBanner />
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-clip">
         <Sidebar />
         {/* pt-6 keeps headings and the first cards clear of the top bar. pr-14 leaves room for the edge tabs. */}
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pt-6 pr-14">
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pt-6 pr-14">
           {view === 'dashboard' && <Dashboard />}
           {view === 'announcements' && <AnnouncementsDeck />}
           {view === 'lyrics' && <SongLyrics />}

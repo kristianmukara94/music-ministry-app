@@ -154,7 +154,7 @@ export function WhiteboardDeck() {
   const isLive = (slide: WhiteboardSlide) => live.kind === 'whiteboard' && live.slide.title === slide.title && live.slide.content === slide.content;
 
   return (
-    <div className="flex min-h-[calc(100vh-88px)] flex-col">
+    <div className="flex flex-1 flex-col">
       {/* Header: the category, the title, the status line, and the actions. */}
       <header className="flex shrink-0 flex-wrap items-start justify-between gap-5 px-6 pt-5 pb-3">
         <div>

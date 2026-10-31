@@ -402,7 +402,7 @@ export function MassPlanner() {
   const cycle = currentPlan ? sundayCycle(new Date(`${currentPlan.liturgicalDate}T12:00:00`)) : null;
 
   return (
-    <div className="flex min-h-[calc(100vh-88px)] flex-col">
+    <div className="flex flex-1 flex-col">
       <header className="px-5 pt-5 pb-4">
         <div className="text-sm font-semibold tracking-wider text-accent uppercase">{t('eyebrow')}</div>
         <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{t('title')}</h1>

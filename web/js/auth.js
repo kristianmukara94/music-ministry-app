@@ -1,7 +1,7 @@
 // Sign-in for the planner pages. Each page calls guard() before it shows anything. guard() asks the server who is signed in,
 // sends the browser to the sign-in page if nobody is, and shows the change-password screen before anything else when the
 // password is temporary. The session lives in an HttpOnly cookie that scripts cannot read. Nothing is kept in localStorage.
-const API = '/.netlify/functions';
+const API = '/api';
 const pageRoot = () => document.documentElement.dataset.base ?? '';
 
 /** The signed-in user, or null when nobody is signed in. Throws when the server cannot be reached. */
@@ -39,6 +39,14 @@ export async function guard() {
   // Admin-only links appear only for an admin. The server still refuses the requests of anyone else.
   document.querySelectorAll('[data-admin-only]').forEach((link) => {
     link.hidden = user.role !== 'admin';
+  });
+  // The sidebar names who is signed in, from the server's answer. textContent, so a name is never read as markup.
+  const ROLE_LABEL = { admin: 'Church admin', planner: 'Planner', viewer: 'Viewer' };
+  document.querySelectorAll('[data-account-name]').forEach((el) => {
+    el.textContent = user.displayName || user.username || '';
+  });
+  document.querySelectorAll('[data-account-role]').forEach((el) => {
+    el.textContent = ROLE_LABEL[user.role] ?? '';
   });
   document.documentElement.classList.remove('auth-pending');
   return user;

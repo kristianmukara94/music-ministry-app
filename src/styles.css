@@ -438,9 +438,11 @@
   body,
   #root {
     height: 100%;
+    overflow: clip;
   }
   /* The app shell follows the active theme. Text is the theme's own foreground, never pure white. */
   body {
+    overflow: clip;
     background: var(--color-canvas);
     color: var(--color-fg);
     font-family: var(--font-sans);

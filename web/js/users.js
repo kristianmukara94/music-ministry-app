@@ -5,7 +5,7 @@ import { guard } from './auth.js';
 
 mountSidebar();
 
-const API = '/.netlify/functions';
+const API = '/api';
 const ROLE_LABEL = { admin: 'Admin', planner: 'Planner', viewer: 'Viewer' };
 const STATUS = {
   active: { label: 'Active', fg: '#8fd9ae', bg: '#12301f' },
@@ -19,12 +19,23 @@ const setError = (id, text) => {
 };
 
 async function call(path, method, body) {
-  const res = await fetch(`${API}/${path}`, {
-    method,
-    credentials: 'same-origin',
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch(`${API}/${path}`, {
+      method,
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new Error('Cannot reach the planner. Check your connection and try again.');
+  }
+  // A session that ended goes back to sign-in. Nothing typed here is worth keeping across it: a new user's form is short.
+  if (res.status === 401) {
+    location.replace('login.html');
+    throw new Error('Your session has ended. Sign in again.');
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Could not do that (${res.status}).`);
   return data;

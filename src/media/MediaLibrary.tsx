@@ -252,7 +252,7 @@ export function MediaLibrary() {
   const playing = items.find((m) => m.id === playingId && m.mediaType === 'audio') ?? null;
 
   return (
-    <div className="flex min-h-[calc(100vh-88px)] flex-col">
+    <div className="flex flex-1 flex-col">
       <header className="flex flex-wrap items-start justify-between gap-6 px-5 pt-5 pb-3">
         <div>
           <div className="text-sm font-semibold tracking-wider text-accent uppercase">{t('eyebrow')}</div>

@@ -144,7 +144,7 @@ test('Check now goes to the saved address', async () => {
   await createCloudDevice({ storage, file, fetchFn: recordingFetch(calls), baseUrl: OLD }).link('K7QM-4XD2', 'Booth');
   calls.length = 0;
   await createCloudDevice({ storage, file, fetchFn: recordingFetch(calls), baseUrl: NEW }).status();
-  assert.equal(calls[0].url, `${NEW}/.netlify/functions/device-status`);
+  assert.equal(calls[0].url, `${NEW}/api/device-status`);
   assert.equal(calls[0].auth, `Bearer ${TOKEN}`, 'the token goes to the cloud only');
 });
 

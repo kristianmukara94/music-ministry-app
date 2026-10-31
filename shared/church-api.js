@@ -1,7 +1,7 @@
 // The church API's request logic, separate from HTTP and from the database. The church a request acts on always comes from
 // its token. Nothing in the body or the query string can choose the church: those fields are never read for that purpose.
 //
-// `store` is the data layer. This file ships with an in-memory store for tests. The production store (Neon, Netlify Blobs
+// `store` is the data layer. This file ships with an in-memory store for tests. The production store (Neon, blob storage
 // or both) must implement the same methods and filter every query by church_id.
 import { randomUUID, randomBytes } from 'node:crypto';
 import { DEFAULT_BRANDING, checkBrandingChange, checkLogo, displayCodeFrom, sanitiseBranding } from './church.js';

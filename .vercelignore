@@ -1,0 +1,20 @@
+# Vercel serves only the website (web/) and the API (api/ with server/lib and server/functions). The desktop app, its
+# resources, the tests and the admin scripts are not uploaded.
+/src
+/electron
+/resources
+/public
+/build
+/dist
+/release
+/out
+/tools
+/db
+/server/test
+/server/scripts
+/index.html
+/tv.html
+/vite.config.ts
+/tsconfig.json
+/scratchpad-*.txt
+/.github

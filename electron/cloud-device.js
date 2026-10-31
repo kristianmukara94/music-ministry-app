@@ -1,9 +1,12 @@
 // Linking this laptop to a church's cloud. The device token is kept only in an encrypted file, made with Electron's
 // safeStorage. It is never written in plain text, never put in localStorage, never stored in the database, and never sent to
-// the screen. The app talks to Netlify functions only; it has no database address.
+// the screen. The app talks to the cloud API (/api/<name>) only; it has no database address.
 //
 // The dependencies are passed in (safeStorage, the file, fetch) so the logic can be tested without Electron.
 import { checkChurchSetup, checkWebUser } from '../shared/cloud-device.js';
+
+/** How long one request to the cloud may take before it is given up as unreachable. */
+export const REQUEST_TIMEOUT_MS = 20_000;
 
 export const MESSAGES = {
   notLinked: 'This laptop is not linked to a church yet. Link it first.',
@@ -32,7 +35,7 @@ const serverMessage = (res) => {
 };
 
 export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () => Date.now() }) {
-  const url = (name) => `${baseUrl.replace(/\/+$/, '')}/.netlify/functions/${name}`;
+  const url = (name) => `${baseUrl.replace(/\/+$/, '')}/api/${name}`;
   // How far the server's clock is ahead of this laptop's, from the Date header of the last reply. Edit times are compared on server
   // time by correcting the laptop's stamps with this. It is zero until the first reply.
   let serverOffsetMs = 0;
@@ -42,7 +45,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
     if (!Number.isNaN(parsed)) serverOffsetMs = parsed - now();
   };
 
-  /** Calls a Netlify function. Returns { ok, status, body } or throws the neutral network message. */
+  /** Calls a cloud API function. Returns { ok, status, body } or throws the neutral network message. */
   async function call(name, { method = 'GET', body, token } = {}) {
     let res;
     try {
@@ -51,6 +54,10 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: body === undefined ? undefined : JSON.stringify(body),
         cache: 'no-store',
+        // The API never redirects. Refusing one keeps the device token from being sent on to another address.
+        redirect: 'error',
+        // A request that hangs is given up, so a stalled connection never leaves linking or sync waiting for ever.
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch {
       throw new Error(MESSAGES.offline);

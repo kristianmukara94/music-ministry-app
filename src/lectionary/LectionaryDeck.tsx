@@ -245,7 +245,7 @@ export function LectionaryDeck() {
   const dateLabel = `${formatIsoWeekday(date, DATE_LOCALE[lang])}, ${formatIsoDay(date, region)}`;
 
   return (
-    <div className="flex min-h-[calc(100vh-88px)] flex-col gap-5 p-5 pb-6">
+    <div className="flex flex-1 flex-col gap-5 p-5 pb-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <div className="text-sm font-semibold tracking-wider text-accent uppercase">{t('eyebrow')}</div>

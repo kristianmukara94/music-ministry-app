@@ -1,5 +1,4 @@
 // The parts every signed-in page shares: the sidebar, and escaping for text written into markup.
-import { SYNC } from './sample-data.js';
 import { signOut } from './auth.js';
 
 // Sign out from any page's sidebar. The button is drawn by mountSidebar, so the handler is on the document.
@@ -63,12 +62,12 @@ export function mountSidebar() {
       <div style="display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #3a1523; border-radius: 12px; background: #1b0a13">
         <span style="width: 8px; height: 8px; border-radius: 50%; background: #8fd9ae"></span>
         <div style="display: flex; flex-direction: column; line-height: 1.3">
-          <span style="font-size: 13px; font-weight: 600">${esc(SYNC.title)}</span>
-          <span style="font-size: 12px; color: #b48d99">${esc(SYNC.when)}</span>
+          <span data-account-name style="font-size: 13px; font-weight: 600; overflow-wrap: anywhere"></span>
+          <span data-account-role style="font-size: 12px; color: #b48d99"></span>
         </div>
       </div>
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 0">
-        <span style="font-size: 13px; color: #dbb3bf">${esc(SYNC.account)}</span>
+        <span style="font-size: 13px; color: #dbb3bf">Signed in</span>
         <button type="button" data-sign-out style="border: 0; background: transparent; padding: 0; cursor: pointer; font-size: 13px; color: #ecc98a; font-weight: 600">Sign out</button>
       </div>
     </div>

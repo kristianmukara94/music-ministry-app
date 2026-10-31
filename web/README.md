@@ -1,18 +1,18 @@
 # APCCMMA Web Planner
 
-A static site for planning Masses and Praise & Worship nights from a browser. Phase 1 runs on sample data only: nothing is
-saved. Sign-in is real: every page asks the server who is signed in, and the planner needs an account from your church's admin.
-The desktop app is not part of this folder and is not affected by it.
+A static site for planning Masses and Praise & Worship nights from a browser, hosted on Vercel. Plans, songs, users and linked
+laptops come from the cloud API in `api/` (code in `server/`), backed by Neon Postgres. Every page asks the server who is signed
+in, and the planner needs an account from your church's admin. The desktop app is not part of this folder.
 
 ## Sign-in
 
-- Accounts are created by a church's first admin with `netlify/functions/scripts/create-admin.mjs`, run in a terminal. Set
+- Accounts are created by a church's first admin with `server/scripts/create-admin.mjs`, run in a terminal. Set
   `DATABASE_URL` in that terminal only, for example `set DATABASE_URL=...` in Command Prompt, and close the window afterwards.
   The script asks for the password at a hidden prompt, so it stays out of the shell history.
 - Each new account must change its password the first time it signs in. Passwords are at least 10 characters.
-- The sign-in functions need `DATABASE_URL` and `TOKEN_SECRET` (at least 32 characters) set in Netlify. Neither is in the repo.
-- Local testing without Netlify: `node netlify/functions/test/local-server.mjs`, then open http://localhost:8888. It uses a
-  test database in memory and its own test accounts. It is not a substitute for `netlify dev` with the real Neon database.
+- The API needs `DATABASE_URL` and `TOKEN_SECRET` (at least 32 characters) set in Vercel. Neither is in the repo.
+- Local testing without Vercel: `node server/test/local-server.mjs`, then open http://localhost:8888. It uses a test database
+  in memory and its own test accounts. It is not a substitute for `vercel dev` with the real Neon database.
 
 ## Pages
 
@@ -25,7 +25,8 @@ The desktop app is not part of this folder and is not affected by it.
 | Song list | `songs.html` |
 | Devices & sync | `devices.html` |
 
-All sample data is in `js/sample-data.js`. Phase 2 replaces that file with calls to the cloud sync API.
+`js/sample-data.js` holds only the fixed templates (the Mass steps, the Praise & Worship lineup, song categories and
+languages). Everything else comes from the API.
 
 ## Run it locally
 
@@ -44,24 +45,35 @@ python -m http.server 8000 --directory web
 
 Then open the address it prints (for example http://localhost:3000 or http://localhost:8000).
 
-## Deploy to Netlify
+## How the site and the API fit together
 
-`netlify.toml` at the repo root already sets `publish = "web"`, and there is no build step.
+- `vercel.json` publishes `web/` as the site. There is no build step.
+- `api/[name].js` is one Vercel function that serves every API route: `/api/<name>` runs `server/functions/<name>.js`. Only the
+  names listed in `server/lib/vercel-adapter.js` are served; any other name gets 404.
+- Desktop apps released before the move to Vercel call `/.netlify/functions/<name>`. `vercel.json` rewrites that path to
+  `/api/<name>`, so those laptops keep syncing. Keep that rewrite until every church laptop has updated.
+- `vercel.json` also sets the security headers (Content-Security-Policy, no framing, nosniff) and `no-store` on the API.
+- `.vercelignore` keeps the desktop app, its resources, the tests and the admin scripts out of the upload.
 
-- **From Git:** in Netlify, choose Add new site, then Import an existing project, and pick this repository. Netlify reads
-  `netlify.toml`, so leave the build command empty.
-- **From your computer:** install the Netlify CLI (`npm install -g netlify-cli`), run `netlify login`, then from the repo
-  root run `netlify deploy` for a preview, and `netlify deploy --prod` to publish.
+## Deploy to Vercel
+
+- **From Git:** when the Vercel project is connected to this repository, a push to `main` deploys. Leave the framework preset as
+  Other; `vercel.json` sets the install command, the build command and the output folder.
+- **From your computer:** install the Vercel CLI (`npm install -g vercel`), run `vercel login` and `vercel link`, then from the
+  repo root run `vercel` for a preview and `vercel --prod` to publish.
 
 ## Before deploying
 
-1. In Netlify, set two environment variables for the site: `DATABASE_URL` (the Neon connection string) and `TOKEN_SECRET`
-   (at least 32 random characters). Neither is in the repo, and neither should be pasted into a file or a chat.
-2. Run the site locally against the Neon database with `netlify dev`. This needs the Netlify CLI and a link to the site
-   (`netlify link`). Set `DATABASE_URL` and `TOKEN_SECRET` in your terminal only for that session, or use `netlify env`.
-   Check: wrong password, unknown user and correct password behave as described under Sign-in; five wrong passwords lock
-   the account; a viewer cannot open Users; and the first admin can add, reset and unlock a user.
-3. Only then deploy. Do not change the site's visibility or the "Make public" setting to test. Leave them as they are.
+1. In Vercel (Project Settings, Environment Variables), set `DATABASE_URL` (the Neon connection string) and `TOKEN_SECRET`
+   (at least 32 random characters) for Production and Preview. Neither is in the repo, and neither should be pasted into a
+   file or a chat. Changing `TOKEN_SECRET` signs everyone out and unlinks every laptop, so set it once.
+2. Set the function region (Project Settings, Functions) to the region nearest the Neon database, so each query does not cross
+   an ocean.
+3. Run the site locally against the Neon database with `vercel dev` (`vercel env pull` copies the variables for that session).
+   Check: wrong password, unknown user and correct password behave as described under Sign-in; five wrong passwords lock the
+   account; a viewer cannot open Users; the first admin can add, reset and unlock a user; and an admin can make a link code on
+   Devices & sync that a laptop accepts.
+4. Run the tests: `node --test server/test/*.test.mjs`.
 
 ## Rules for this site
 

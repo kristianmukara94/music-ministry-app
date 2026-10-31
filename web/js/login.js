@@ -35,7 +35,7 @@ form.addEventListener('submit', async (event) => {
 
   button.disabled = true;
   try {
-    const res = await fetch('/.netlify/functions/login', {
+    const res = await fetch('/api/login', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
