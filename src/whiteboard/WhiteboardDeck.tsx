@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
-import { Copy, FileUp, Layers, Monitor, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { Copy, FileUp, Layers, ListPlus, Monitor, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { addToQueue } from '../planner/plan-api';
 import { templateStart } from './templates';
 import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
@@ -59,8 +60,38 @@ export function WhiteboardDeck() {
 
   /** Puts one slide on the screen, as a full slide, straight away. */
   const project = (slide: WhiteboardSlide) => {
-    dispatch({ type: 'projector/stage', frame: { kind: 'whiteboard', slide: { title: slide.title, content: slide.content, design: slide.design } } });
+    dispatch({
+      type: 'projector/stage',
+      frame: slide.image
+        ? { kind: 'image', title: slide.title, src: slide.image, notes: slide.notes ?? undefined }
+        : { kind: 'whiteboard', slide: { title: slide.title, content: slide.content, design: slide.design } },
+    });
     dispatch({ type: 'projector/take' });
+  };
+
+  /** Adds a PowerPoint slide to the Service Queue, which is what Go Live plays. The queue's plan is the one that receives it. */
+  const addToGoLive = async (slide: WhiteboardSlide) => {
+    if (slide.slideId == null) return;
+    setError(null);
+    try {
+      await addToQueue([{ block: 'word', module: 'announcements', sourceId: String(slide.slideId), label: slide.title }]);
+      setNotice(`"${slide.title}" added to Go Live.`);
+    } catch (err) {
+      setError(errorText(err));
+    }
+  };
+
+  /** Adds every PowerPoint slide shown to Go Live, in the order they appear. */
+  const addAllToGoLive = async () => {
+    const pictures = visible.filter((s) => s.slideId != null);
+    if (pictures.length === 0) return;
+    setError(null);
+    try {
+      await addToQueue(pictures.map((s) => ({ block: 'word' as const, module: 'announcements' as const, sourceId: String(s.slideId), label: s.title })));
+      setNotice(`Added ${pictures.length} ${pictures.length === 1 ? 'slide' : 'slides'} to Go Live.`);
+    } catch (err) {
+      setError(errorText(err));
+    }
   };
 
   const openNew = () => setEditor({ key: Date.now(), mode: 'create', initial: blank() });
@@ -112,7 +143,8 @@ export function WhiteboardDeck() {
     setNotice(null);
     try {
       const added = await api.importPowerPoint();
-      if (added > 0) setNotice(`Added ${added} ${added === 1 ? 'slide' : 'slides'} from PowerPoint.`);
+      if (added != null && added > 0) setNotice(`Added ${added} ${added === 1 ? 'slide' : 'slides'} from PowerPoint.`);
+      else if (added === 0) setNotice('That PowerPoint has no visible slides to import (hidden slides are skipped).');
       await reload();
     } catch (err) {
       setError(errorText(err));
@@ -151,7 +183,9 @@ export function WhiteboardDeck() {
   const reorderable = !search;
 
   /** Whether the projector is already showing this slide. */
-  const isLive = (slide: WhiteboardSlide) => live.kind === 'whiteboard' && live.slide.title === slide.title && live.slide.content === slide.content;
+  const isLive = (slide: WhiteboardSlide) =>
+    slide.image ? live.kind === 'image' && live.src === slide.image : live.kind === 'whiteboard' && live.slide.title === slide.title && live.slide.content === slide.content;
+  const hasPictures = slides.some((s) => s.slideId != null);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -173,6 +207,11 @@ export function WhiteboardDeck() {
           <button type="button" onClick={importPowerPoint} disabled={busy} className="flex h-10 items-center gap-2 rounded-lg border border-fg/20 bg-panel-2 px-3 text-xs font-bold tracking-wider text-fg/90 uppercase transition-colors hover:border-accent/40 hover:text-accent disabled:opacity-40">
             <FileUp size={14} aria-hidden /> {busy ? 'Importing…' : 'Import PowerPoint'}
           </button>
+          {hasPictures && (
+            <button type="button" onClick={() => void addAllToGoLive()} className="flex h-10 items-center gap-2 rounded-lg border border-fg/20 bg-panel-2 px-3 text-xs font-bold tracking-wider text-fg/90 uppercase transition-colors hover:border-accent/40 hover:text-accent">
+              <ListPlus size={14} aria-hidden /> Add PowerPoint to Go Live
+            </button>
+          )}
           <button type="button" onClick={openNew} className="flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-xs font-bold tracking-wider text-on-accent uppercase shadow-md shadow-black/40 transition-all hover:brightness-110">
             <Plus size={14} aria-hidden /> New slide
           </button>
@@ -206,7 +245,7 @@ export function WhiteboardDeck() {
                 <Monitor size={26} aria-hidden />
               </div>
               <h2 className="mt-5 text-2xl font-bold tracking-tight text-fg">No slides yet</h2>
-              <p className="mt-2 max-w-md text-sm text-fg/60">Create a slide, or import a PowerPoint (.pptx) to turn its text into editable slides.</p>
+              <p className="mt-2 max-w-md text-sm text-fg/60">Create a slide, or import a PowerPoint (.pptx or .ppt). Each slide keeps its full design and can be added to Go Live.</p>
               <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
                 <button type="button" onClick={openNew} className="flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-xs font-bold tracking-wider text-on-accent uppercase shadow-md shadow-black/40 hover:brightness-110">
                   <Plus size={14} aria-hidden /> New slide
@@ -216,7 +255,7 @@ export function WhiteboardDeck() {
                 </button>
               </div>
               <p className="mt-6 max-w-lg text-xs text-fg/50">
-                To show a deck exactly as designed, import it in Announcements instead: each slide becomes a full-quality image.
+                Slides are drawn by Microsoft PowerPoint (or LibreOffice), so one of them must be installed on this computer.
               </p>
             </div>
           ) : (
@@ -281,7 +320,11 @@ export function WhiteboardDeck() {
                   >
                     <div className="relative aspect-video w-full overflow-hidden">
                       <div className="absolute inset-0">
-                        <SlideCanvas slide={slide} className="h-full w-full" />
+                        {slide.image ? (
+                          <img src={slide.image} alt="" draggable={false} className="h-full w-full bg-black object-contain" />
+                        ) : (
+                          <SlideCanvas slide={slide} className="h-full w-full" />
+                        )}
                       </div>
                       <span className="absolute top-2 left-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[11px] font-bold text-fg/90">{slides.indexOf(slide) + 1}</span>
                       {isLive(slide) && (
@@ -291,14 +334,16 @@ export function WhiteboardDeck() {
                     <div className="truncate px-3 py-2.5 text-sm font-semibold text-fg">{slide.title || 'Untitled slide'}</div>
                   </button>
                   <div className="absolute top-2 right-2 flex gap-1 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
-                    {(
-                      [
-                        { label: 'Project', icon: Monitor, run: () => project(slide), hover: 'hover:text-accent' },
-                        { label: 'Edit', icon: Pencil, run: () => openEdit(slide), hover: 'hover:text-accent' },
-                        { label: 'Duplicate', icon: Copy, run: () => void duplicate(slide), hover: 'hover:text-accent' },
-                        { label: 'Delete', icon: Trash2, run: () => void remove(slide), hover: 'hover:text-danger' },
-                      ] as const
-                    ).map(({ label, icon: Icon, run, hover }) => (
+                    {[
+                      { label: 'Project', icon: Monitor, run: () => project(slide), hover: 'hover:text-accent', show: true },
+                      { label: 'Add to Go Live', icon: ListPlus, run: () => void addToGoLive(slide), hover: 'hover:text-accent', show: slide.slideId != null },
+                      // A PowerPoint slide is a picture, so there is no text or design to edit or copy.
+                      { label: 'Edit', icon: Pencil, run: () => openEdit(slide), hover: 'hover:text-accent', show: !slide.image },
+                      { label: 'Duplicate', icon: Copy, run: () => void duplicate(slide), hover: 'hover:text-accent', show: !slide.image },
+                      { label: 'Delete', icon: Trash2, run: () => void remove(slide), hover: 'hover:text-danger', show: true },
+                    ]
+                      .filter((action) => action.show)
+                      .map(({ label, icon: Icon, run, hover }) => (
                       <button
                         key={label}
                         type="button"

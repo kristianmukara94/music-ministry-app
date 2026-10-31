@@ -963,7 +963,7 @@ app.whenReady().then(() => {
   seedRosary(announcements.db);
   setupRosary(announcements.db);
   setupNotes(announcements.db);
-  setupWhiteboard(announcements.db);
+  setupWhiteboard(announcements.db, announcements.service);
   // The browser source: the lower third at http://127.0.0.1:3002/lower-third, updated live.
   lowerThirdServer = createLowerThirdServer({ distDir: path.join(__dirname, '../dist') });
   void lowerThirdServer.start();

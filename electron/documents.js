@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import mammoth from 'mammoth';
 import JSZip from 'jszip';
+import { slideParts } from './pptx-html.js';
 
 /**
  * Text documents become projector-ready slides. A page holds at most this many body characters, about
@@ -148,7 +149,8 @@ function linesOfShape(shape) {
 export function sectionFromSlideXml(xml) {
   let title = null;
   const paragraphs = [];
-  for (const shape of xml.matchAll(/<p:sp\b[\s\S]*?<\/p:sp>/g)) {
+  // Text shapes, and graphic frames (tables, whose cells hold their text in the same <a:p> paragraphs), in slide order.
+  for (const shape of xml.matchAll(/<p:sp\b[\s\S]*?<\/p:sp>|<p:graphicFrame\b[\s\S]*?<\/p:graphicFrame>/g)) {
     const body = shape[0];
     const lines = linesOfShape(body);
     if (lines.length === 0) continue;
@@ -205,10 +207,8 @@ async function sectionsFromDocx(filePath) {
  */
 export async function readPptxSlides(filePath) {
   const zip = await JSZip.loadAsync(await fs.promises.readFile(filePath));
-  const slides = Object.keys(zip.files)
-    .map((name) => ({ name, number: /^ppt\/slides\/slide(\d+)\.xml$/.exec(name)?.[1] }))
-    .filter((s) => s.number !== undefined)
-    .sort((a, b) => Number(a.number) - Number(b.number));
+  // The order the presentation lists them in, which differs from the file numbers once slides have been moved.
+  const slides = (await slideParts(zip)).map((name) => ({ name }));
   if (slides.length === 0) throw new Error('This PowerPoint file has no slides.');
 
   const result = [];

@@ -8,10 +8,11 @@ import { parseTextStyle, sanitizeTextStyle } from '../shared/text-style.js';
 import { createPdfConverter } from './pdf-converter.js';
 import os from 'node:os';
 import { DOCUMENT_EXTENSIONS, findSoffice, pptxToPdf, readDocumentPages, readPptxSlides, renderWithPowerPoint } from './documents.js';
+import { renderWithBuiltIn } from './pptx-render.js';
 import { HYMN_DELETE_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } from './lyrics.js';
 import { LECTIONARY_ACCLAMATION_MIGRATIONS, LECTIONARY_MIGRATIONS, LECTIONARY_STYLE_MIGRATIONS } from './lectionary.js';
 import { MEDIA_AUDIO_MIGRATIONS, MEDIA_MIGRATIONS } from './media.js';
-import { WHITEBOARD_MIGRATIONS } from './whiteboard.js';
+import { WHITEBOARD_MIGRATIONS, WHITEBOARD_POWERPOINT_MIGRATIONS } from './whiteboard.js';
 import { MASS_PLAN_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_NOTES_MIGRATIONS } from './mass-plans.js';
 import { PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, setupNotes } from './notes.js';
 import { ROSARY_LITANY_MIGRATIONS } from './rosary.js';
@@ -128,6 +129,7 @@ const ALL_MIGRATIONS = [
   ...PLAN_SYNC_MIGRATIONS,
   ...HYMN_DELETE_MIGRATIONS,
   ...PRAYER_NOTES_SPLIT_MIGRATIONS,
+  ...WHITEBOARD_POWERPOINT_MIGRATIONS,
 ];
 
 const SLIDE_SELECT = `
@@ -366,7 +368,13 @@ export function createAnnouncementService(db, root, deps) {
         console.warn(`[pptx] LibreOffice could not render ${name}: ${err.message}`);
       }
     }
-    throw new Error(`${name} could not be shown as slides. Install Microsoft PowerPoint or LibreOffice on this computer, then import it again.`);
+    // Neither program is usable here, so the app reads the .pptx itself.
+    try {
+      return await renderWithBuiltIn(source, workDir, convertPdf);
+    } catch (err) {
+      console.warn(`[pptx] The built-in renderer could not render ${name}: ${err.message}`);
+      throw new Error(`${name} could not be shown as slides: ${err.message}`);
+    }
   }
 
   /**
@@ -618,6 +626,7 @@ export function setupAnnouncements({ loadRoute, preload, dbPath }) {
   return {
     db,
     root,
+    service,
     convertPdf: (file, mode) => converter.convert(file, mode),
     close() {
       converter.dispose();
