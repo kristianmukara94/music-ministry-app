@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { bridge } from '../live/bridge';
 import { useLive } from '../live/store';
 import { BackgroundControls } from '../settings/BackgroundControls';
+import { BackgroundEverywhereToggle } from './BackgroundEverywhereToggle';
 import { SLIDE_CANVAS_COLOR } from '../../shared/welcome-settings.js';
 
 /**
@@ -33,6 +34,7 @@ export function BackgroundPanel({ onClose }: { onClose: () => void }) {
           <X size={16} aria-hidden />
         </button>
       </header>
+      <BackgroundEverywhereToggle compact />
       <BackgroundControls value={slide} save={(patch) => bridge.welcome.save({ slideBackground: { ...slide, ...patch } })} unsetColor={SLIDE_CANVAS_COLOR} />
     </section>
   );

@@ -10,27 +10,66 @@ import { parseSourceId } from '../../shared/bible-ref.js';
 import { bibleT } from '../../shared/bible-i18n.js';
 import { setUi, useUi } from '../state/ui';
 import { stagePrayer, takePrayer } from '../notes/present';
+import { stanzaFrame } from '../lyrics/frames';
+import { announcementFrame } from '../announcements/frames';
+
+/** How a queue item is played. `inPlace` shows songs, announcements and media where the operator is (the Go Live console), without switching panels. */
+export interface PlayOptions {
+  inPlace?: boolean;
+}
+
+/** Stages a song's first stanza. Resolves false when the song is gone or has no stanzas. */
+async function stageSong(sourceId: string): Promise<boolean> {
+  const hymn = await bridge.lyrics.getHymn(Number(sourceId));
+  const frame = hymn && !hymn.deletedAt ? stanzaFrame(hymn, 0) : null;
+  if (!frame) return false;
+  dispatch({ type: 'projector/stage', frame });
+  return true;
+}
+
+/** Stages an Announcements slide, with the pictures of its folder around it. Resolves false when the slide is gone. */
+async function stageAnnouncement(sourceId: string): Promise<boolean> {
+  const list = await bridge.announcements.slides(null);
+  const slide = list.find((s) => s.id === Number(sourceId));
+  if (!slide) return false;
+  dispatch({ type: 'projector/stage', frame: announcementFrame(slide, list.filter((s) => s.folderId === slide.folderId)) });
+  return true;
+}
+
+/** Puts a Media Library picture or video on the background layer. Audio plays in the Media Library, so it is skipped. */
+async function showMedia(sourceId: string): Promise<void> {
+  const asset = (await bridge.media.list()).find((m) => m.id === Number(sourceId));
+  if (!asset || asset.mediaType === 'audio') return;
+  dispatch({ type: 'background/stage', media: { kind: 'media', mediaType: asset.mediaType, src: asset.src, title: asset.filename } });
+  dispatch({ type: 'background/take' });
+}
 
 /**
  * Opens a Service Queue entry in the module that owns it and stages it there. Resolves true when it staged a frame
  * that should go live now, so the caller takes it. A song takes its first stanza itself once the hymn has loaded.
  */
-export async function openQueueItem(item: QueueItem, index: number): Promise<boolean> {
+export async function openQueueItem(item: QueueItem, index: number, opts: PlayOptions = {}): Promise<boolean> {
   // A missing source has nothing to stage, so it cannot be opened.
   if (item.stale) return false;
   dispatch({ type: 'queue/cursor', index });
   switch (item.module) {
     case 'lyrics':
+      if (opts.inPlace) return stageSong(item.sourceId);
       // The song deck loads the hymn, then takes its first stanza live on the queue's account.
       setUi({ view: 'lyrics', pendingFocus: { kind: 'hymn', id: Number(item.sourceId) } });
       return false;
 
     case 'announcements':
+      if (opts.inPlace) return stageAnnouncement(item.sourceId);
       // The deck switches to the slide's folder and stages it.
       setUi({ view: 'announcements', pendingFocus: { kind: 'slide', id: Number(item.sourceId) } });
       return false;
 
     case 'media':
+      if (opts.inPlace) {
+        await showMedia(item.sourceId);
+        return false;
+      }
       // Staged on the background layer; the library shows it as staged.
       setUi({ view: 'media', pendingFocus: { kind: 'media', id: Number(item.sourceId) } });
       return false;
@@ -80,7 +119,7 @@ export async function openQueueItem(item: QueueItem, index: number): Promise<boo
  * Puts a queue item on the projector. Notes are looked up first, so an operator-only note never reaches the screen.
  * The take is tagged as coming from the Mass Queue, so the queue keeps its CURRENT selection.
  */
-export async function takeQueueItem(item: QueueItem, index: number): Promise<void> {
+export async function takeQueueItem(item: QueueItem, index: number, opts: PlayOptions = {}): Promise<void> {
   if (item.module === 'notes') {
     const note = await bridge.notes.get(Number(item.sourceId));
     if (note?.display === 'full') {
@@ -92,7 +131,7 @@ export async function takeQueueItem(item: QueueItem, index: number): Promise<voi
     }
     return;
   }
-  if (await openQueueItem(item, index)) dispatch({ type: 'projector/take', source: 'MASS_QUEUE' });
+  if (await openQueueItem(item, index, opts)) dispatch({ type: 'projector/take', source: 'MASS_QUEUE' });
 }
 
 /**
@@ -100,14 +139,14 @@ export async function takeQueueItem(item: QueueItem, index: number): Promise<voi
  * With no output live (the projector or the Remote view), the operator is asked to turn the projector on, and that prompt does the take.
  * A live Remote view is enough to go straight ahead.
  */
-export async function playQueueAt(index: number): Promise<void> {
+export async function playQueueAt(index: number, opts: PlayOptions = {}): Promise<void> {
   const state = useLive.getState().state;
   const item = state.queue[index];
   if (!item) return;
   if (!isAnyOutputLive(state)) {
     // The operator chose to skip for this session: go live in the app only, with no prompt and no projector window.
     if (useUi.getState().projectorPromptChoice === 'skip') {
-      await takeQueueItem(item, index);
+      await takeQueueItem(item, index, opts);
       return;
     }
     setUi({
@@ -116,26 +155,26 @@ export async function playQueueAt(index: number): Promise<void> {
         turnOnAndGo: () => {
           setUi({ projectorPrompt: null });
           turnOnProjectorAndGo(() => {
-            void takeQueueItem(item, index).catch((err) => window.alert(err instanceof Error ? err.message : String(err)));
+            void takeQueueItem(item, index, opts).catch((err) => window.alert(err instanceof Error ? err.message : String(err)));
           });
         },
         // Live without the projector: no window opens and the startup helper is not used. The preview shows the item.
         skip: () => {
           setUi({ projectorPrompt: null, projectorPromptChoice: 'skip' });
-          void takeQueueItem(item, index).catch((err) => window.alert(err instanceof Error ? err.message : String(err)));
+          void takeQueueItem(item, index, opts).catch((err) => window.alert(err instanceof Error ? err.message : String(err)));
         },
       },
     });
     return;
   }
-  await takeQueueItem(item, index);
+  await takeQueueItem(item, index, opts);
 }
 
 /**
  * Moves the Service Queue position one entry forward (+1) or back (-1), skipping entries whose source is
  * missing, and puts that entry live. Used by Next, Previous and Ctrl+Up / Ctrl+Down.
  */
-export async function stepQueue(delta: 1 | -1): Promise<void> {
+export async function stepQueue(delta: 1 | -1, opts: PlayOptions = {}): Promise<void> {
   const { queue, queueCursor } = useLive.getState().state;
   if (queue.length === 0) return;
   // Nothing is selected yet: Previous selects the top item. It does not take it live.
@@ -146,7 +185,7 @@ export async function stepQueue(delta: 1 | -1): Promise<void> {
   let index = queueCursor + delta;
   while (index >= 0 && index < queue.length && queue[index].stale) index += delta;
   if (index < 0 || index >= queue.length) return;
-  await playQueueAt(index);
+  await playQueueAt(index, opts);
 }
 
 /** Stages a saved reading straight from the database, so it works without the deck's editor state. Resolves true when staged. */

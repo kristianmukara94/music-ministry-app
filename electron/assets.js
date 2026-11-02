@@ -5,7 +5,7 @@ import path from 'node:path';
 // a shared drive takes its files with it. The database stores only relative paths such as
 // `media/<uuid>.mp4`, which resolve against whichever folder the database is opened from.
 export const ASSET_DIR_NAME = 'apccmma_assets';
-export const ASSET_FOLDERS = ['announcements', 'media', 'thumbnails', 'presentations'];
+export const ASSET_FOLDERS = ['announcements', 'media', 'thumbnails', 'presentations', 'whiteboard'];
 
 // Every file we write is named by a UUID. Anything else is refused, which also blocks traversal.
 const ASSET_NAME = /^[0-9a-f-]{36}\.[a-z0-9]{2,4}$/i;

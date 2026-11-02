@@ -1,9 +1,11 @@
 import { ipcMain } from 'electron';
-import { CATEGORIES, LANGUAGES, parseLyrics } from '../shared/lyrics-parser.js';
+import { CATEGORIES, LANGUAGES, parseLyrics, toTaggedLyrics } from '../shared/lyrics-parser.js';
+import { arrangementWithSplit } from '../shared/pw-hot-edit.js';
 import { parseTextStyle, sanitizeTextStyle } from '../shared/text-style.js';
 import { SONG_CATEGORY_REQUIRED_EN, isSongCategoryMissing } from '../shared/hymn-category.js';
 import { createSongCategoryService, resolveSongCategory } from './song-categories.js';
 import { matchStanzaIds } from '../shared/stanza-ids.js';
+import { isPrimaryCategory, legacyCategoryFor, normalizePrimary, scopesShownBy, DEFAULT_PRIMARY } from '../shared/song-taxonomy.js';
 
 const MAX_TITLE = 120;
 const MAX_COMPOSER = 80;
@@ -86,14 +88,18 @@ function checkedHymnInput(input) {
   const title = String(input.title ?? '').trim();
   if (!title || title.length > MAX_TITLE) throw new Error(`Title must be 1 to ${MAX_TITLE} characters.`);
   const composer = String(input.composer ?? '').trim().slice(0, MAX_COMPOSER);
-  const category = requireOneOf(input.category, CATEGORIES, 'Category');
+  // The legacy Mass slot follows from the scope and song category (see legacyCategoryFor). A caller that names one still gets it.
+  const category = input.category == null || input.category === '' ? null : requireOneOf(input.category, CATEGORIES, 'Category');
+  // A caller that sends no scope (an older form, a file import) saves a General song, which shows under every scope.
+  const primaryCategory = input.primaryCategory == null || input.primaryCategory === '' ? DEFAULT_PRIMARY : input.primaryCategory;
+  if (!isPrimaryCategory(primaryCategory)) throw new Error('Primary category must be General, Mass or Praise & Worship.');
   const language = requireOneOf(input.language, LANGUAGES, 'Language');
   // The musical key, as written: C, Bb, F#m, and so on.
   const musicalKey = String(input.musicalKey ?? '').trim().slice(0, MAX_KEY);
 
   const parsed = parseLyrics(input.raw);
   if (parsed.errors.length) throw new Error(parsed.errors[0]);
-  return { title, composer, category, language, musicalKey, stanzas: parsed.stanzas, warnings: parsed.warnings };
+  return { title, composer, category, primaryCategory, language, musicalKey, stanzas: parsed.stanzas, warnings: parsed.warnings };
 }
 
 /** Data access and lyric parsing for Song Lyrics. Pure: takes a database handle. */
@@ -123,20 +129,21 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
   const songCategories = createSongCategoryService(db);
   const q = {
     list: db.prepare(`
-      SELECT h.id, h.title, h.composer, h.category, h.language, h.musical_key AS musicalKey, h.song_category AS songCategory,
+      SELECT h.id, h.title, h.composer, h.category, h.language, h.musical_key AS musicalKey, h.song_category AS songCategory, h.primary_category AS primaryCategory,
              (SELECT COUNT(*) FROM hymn_stanzas s WHERE s.hymn_id = h.id) AS stanzaCount
       FROM hymns h
       WHERE h.deleted_at IS NULL
         AND (@category IS NULL OR h.category = @category)
         AND (@language IS NULL OR h.language = @language)
         AND (@songCategory IS NULL OR h.song_category = @songCategory COLLATE NOCASE)
+        AND (@scopeA IS NULL OR h.primary_category IN (@scopeA, @scopeB))
         AND (@term IS NULL
              OR h.title LIKE @term ESCAPE '\\'
              OR h.composer LIKE @term ESCAPE '\\'
              OR h.musical_key LIKE @term ESCAPE '\\'
              OR EXISTS (SELECT 1 FROM hymn_stanzas s WHERE s.hymn_id = h.id AND s.lyrics_text LIKE @term ESCAPE '\\'))
       ORDER BY h.title COLLATE NOCASE`),
-    hymn: db.prepare('SELECT id, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory, style AS styleJson, deleted_at AS deletedAt FROM hymns WHERE id = ?'),
+    hymn: db.prepare('SELECT id, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory, primary_category AS primaryCategory, style AS styleJson, deleted_at AS deletedAt FROM hymns WHERE id = ?'),
     // A hymn in the library: not deleted. Used by the plans, so a deleted hymn is shown as deleted rather than as present.
     liveHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NULL'),
     deletedHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NOT NULL'),
@@ -151,14 +158,14 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
     stanzas: db.prepare(`
       SELECT id, stanza_type AS stanzaType, lyrics_text AS lyricsText, display_order AS "order"
       FROM hymn_stanzas WHERE hymn_id = ? ORDER BY display_order, id`),
-    insertHymn: db.prepare('INSERT INTO hymns (title, composer, category, language, musical_key, song_category) VALUES (?, ?, ?, ?, ?, ?)'),
+    insertHymn: db.prepare('INSERT INTO hymns (title, composer, category, language, musical_key, song_category, primary_category) VALUES (?, ?, ?, ?, ?, ?, ?)'),
     insertStanza: db.prepare('INSERT INTO hymn_stanzas (hymn_id, stanza_type, lyrics_text, display_order) VALUES (?, ?, ?, ?)'),
     // An edit keeps each stanza's id, so an id is passed in; null gives the stanza a new one.
     insertStanzaWithId: db.prepare('INSERT INTO hymn_stanzas (id, hymn_id, stanza_type, lyrics_text, display_order) VALUES (?, ?, ?, ?, ?)'),
     stanzaIds: db.prepare(`
       SELECT id, stanza_type AS stanzaType, lyrics_text AS lyricsText, display_order AS position
       FROM hymn_stanzas WHERE hymn_id = ? ORDER BY display_order, id`),
-    updateHymn: db.prepare('UPDATE hymns SET title = ?, composer = ?, category = ?, language = ?, musical_key = ?, song_category = ? WHERE id = ?'),
+    updateHymn: db.prepare('UPDATE hymns SET title = ?, composer = ?, category = ?, language = ?, musical_key = ?, song_category = ?, primary_category = ? WHERE id = ?'),
     clearStanzas: db.prepare('DELETE FROM hymn_stanzas WHERE hymn_id = ?'),
     setlists: db.prepare('SELECT id, date, name FROM setlists ORDER BY date DESC, id DESC'),
     setlist: db.prepare('SELECT id, date, name FROM setlists WHERE id = ?'),
@@ -174,8 +181,8 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
     insertItem: db.prepare('INSERT INTO setlist_items (setlist_id, hymn_id, position) VALUES (?, ?, ?)'),
   };
 
-  const insertHymnWithStanzas = db.transaction((title, composer, category, language, musicalKey, songCategory, stanzas) => {
-    const { lastInsertRowid } = q.insertHymn.run(title, composer, category, language, musicalKey, songCategory);
+  const insertHymnWithStanzas = db.transaction((title, composer, category, language, musicalKey, songCategory, primaryCategory, stanzas) => {
+    const { lastInsertRowid } = q.insertHymn.run(title, composer, category, language, musicalKey, songCategory, primaryCategory);
     stanzas.forEach((s, i) => q.insertStanza.run(lastInsertRowid, s.stanzaType, s.lyricsText, i + 1));
     return Number(lastInsertRowid);
   });
@@ -184,6 +191,28 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
    * Takes the id out of every saved lineup arrangement that names it, so a lineup never points at a stanza that no longer exists. Other
    * stanzas keep their place in the arrangement. Returns how many lineup segments changed. A database without the lineup tables has none.
    */
+  /**
+   * After a stanza is split, the second half follows the first in every saved lineup arrangement that names the first, so a lineup that sings
+   * the song in its own order keeps all of the words. Returns how many lineup segments changed. A database without the lineup tables has none.
+   */
+  const insertSplitIntoLineups = (hymnId, firstId, secondId) => {
+    let rows;
+    try {
+      rows = db.prepare('SELECT id, arrangement FROM pw_segments WHERE arrangement LIKE ?').all(`%"${hymnId}":%`);
+    } catch {
+      return 0;
+    }
+    let changed = 0;
+    for (const row of rows) {
+      const arrangement = JSON.parse(row.arrangement || '{}');
+      const next = arrangementWithSplit(arrangement, hymnId, firstId, secondId);
+      if (next === arrangement) continue;
+      db.prepare('UPDATE pw_segments SET arrangement = ? WHERE id = ?').run(JSON.stringify(next), row.id);
+      changed += 1;
+    }
+    return changed;
+  };
+
   const dropStanzaIdsFromLineups = (hymnId, droppedIds) => {
     const gone = new Set(droppedIds.map(String));
     let rows;
@@ -212,7 +241,7 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
     const before = q.stanzaIds.all(id);
     const ids = matchStanzaIds(before, hymn.stanzas);
     const dropped = before.filter((o) => !ids.includes(o.id));
-    q.updateHymn.run(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, hymn.songCategory, id);
+    q.updateHymn.run(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, hymn.songCategory, hymn.primaryCategory, id);
     q.clearStanzas.run(id);
     hymn.stanzas.forEach((s, i) => q.insertStanzaWithId.run(ids[i], id, s.stanzaType, s.lyricsText, i + 1));
     const lineupsChanged = dropped.length ? dropStanzaIdsFromLineups(id, dropped.map((d) => d.id)) : 0;
@@ -236,10 +265,15 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
       // Matches the title, the composer, and any line of any stanza. The term is escaped so that a typed % or _ is literal.
       const term = String(filter.search ?? '').trim();
       const escaped = term.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+      // A filter scope limits the list to that scope's songs and the General ones. General, or no scope, limits nothing.
+      const [scopeA = null, scopeB = null] = scopesShownBy(normalizePrimary(filter.primaryCategory)) ?? [];
       return q.list.all({
+        scopeA,
+        scopeB,
         category: CATEGORIES.includes(filter.category) ? filter.category : null,
         language: LANGUAGES.includes(filter.language) ? filter.language : null,
-        songCategory: filter.songCategory ? String(filter.songCategory) : null,
+        // Exactly this song category (letter case aside): no prefix, no part of a name. Blank, or nothing, means every category.
+        songCategory: String(filter.songCategory ?? '').trim() || null,
         term: term ? `%${escaped}%` : null,
       });
     },
@@ -258,9 +292,26 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
       if (isSongCategoryMissing(input.songCategory)) throw new Error(SONG_CATEGORY_REQUIRED_EN);
       const hymn = checkedHymnInput(input);
       const songCategory = resolveSongCategory(db, input.songCategory);
-      const id = insertHymnWithStanzas(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, songCategory, hymn.stanzas);
+      hymn.category ??= legacyCategoryFor(hymn.primaryCategory, songCategory);
+      const id = insertHymnWithStanzas(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, songCategory, hymn.primaryCategory, hymn.stanzas);
       changed(id);
       return { id, warnings: hymn.warnings };
+    },
+
+    /**
+     * Saves several songs, each as `createHymn` would. Each is saved on its own, so one that is refused does not stop the rest. Resolves to
+     * one result per input, in order: `{ id, title }` when it was saved, or `{ error }` with the reason it was not.
+     */
+    createHymns(inputs = []) {
+      if (!Array.isArray(inputs)) throw new Error('No songs were given.');
+      return inputs.map((input) => {
+        try {
+          const { id } = this.createHymn(input);
+          return { id, title: String(input?.title ?? '').trim() };
+        } catch (err) {
+          return { error: err instanceof Error ? err.message : String(err) };
+        }
+      });
     },
 
     /** Updates the hymn's details and replaces its stanzas with a fresh parse of `raw`. */
@@ -273,11 +324,50 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
       if (current.deletedAt) throw new Error('That hymn was deleted. Undo the delete to change it.');
       const hymn = checkedHymnInput(input);
       hymn.songCategory = resolveSongCategory(db, input.songCategory, current.songCategory);
+      // Untouched scope and song category keep the slot the song has, so an edit to the lyrics never changes where the lineup finds it. A change
+      // to either follows the new pair.
+      const sameFiling = current.primaryCategory === hymn.primaryCategory && current.songCategory.toLowerCase() === hymn.songCategory.toLowerCase();
+      hymn.category ??= sameFiling ? current.category : legacyCategoryFor(hymn.primaryCategory, hymn.songCategory);
       const { dropped, lineupsChanged } = replaceHymn(id, hymn);
       // Each removed stanza is reported, so the operator knows its place in a lineup arrangement was taken out.
       const removed = dropped.map((d) => `${d.stanzaType} (stanza ${d.position}) was removed by this edit, and taken out of ${lineupsChanged} saved lineup arrangement${lineupsChanged === 1 ? '' : 's'}.`);
       changed(id);
       return { id, warnings: [...hymn.warnings, ...removed] };
+    },
+
+    /**
+     * Splits one stanza into two that follow each other, both under the stanza's own label, for a stanza too long for one slide. The song keeps
+     * its details, filing and Mass slot. The first half keeps the stanza's id, so a lineup or a slide on screen that points at it stays put, and
+     * every saved lineup that sings the song in its own order gets the second half straight after the first.
+     */
+    splitStanza(id, index, parts) {
+      const hymn = this.getHymn(id);
+      if (!hymn || hymn.deletedAt) throw new Error('That hymn no longer exists.');
+      const at = Number(index);
+      const stanza = Number.isInteger(at) ? hymn.stanzas[at] : undefined;
+      if (!stanza) throw new Error('That stanza is not in the song any more.');
+      const [first, second] = (Array.isArray(parts) ? parts : []).map((part) => String(part ?? '').trim());
+      if (!first || !second) throw new Error('Both halves of a split stanza need words.');
+      const stanzas = [
+        ...hymn.stanzas.slice(0, at),
+        { stanzaType: stanza.stanzaType, lyricsText: first },
+        { stanzaType: stanza.stanzaType, lyricsText: second },
+        ...hymn.stanzas.slice(at + 1),
+      ];
+      const result = this.editHymn(id, {
+        title: hymn.title,
+        composer: hymn.composer,
+        language: hymn.language,
+        musicalKey: hymn.musicalKey,
+        songCategory: hymn.songCategory,
+        primaryCategory: hymn.primaryCategory,
+        raw: toTaggedLyrics(stanzas),
+      });
+      const saved = q.stanzas.all(id);
+      const firstId = saved[at]?.id ?? null;
+      const secondId = saved[at + 1]?.id ?? null;
+      const lineupsChanged = firstId === stanza.id && secondId !== null ? insertSplitIntoLineups(id, firstId, secondId) : 0;
+      return { ...result, firstId, secondId, lineupsChanged };
     },
 
     /** Saves how this song is set on the projector. Null returns it to the default look. */
@@ -367,10 +457,12 @@ export function setupLyrics(db, options = {}) {
   handle('listHymns', (filter) => service.listHymns(filter));
   handle('getHymn', (id) => service.getHymn(Number(id)));
   handle('createHymn', (input) => service.createHymn(input));
+  handle('createHymns', (inputs) => service.createHymns(inputs));
   handle('deleteHymn', (id) => service.deleteHymn(Number(id)));
   handle('listDeletedHymns', () => service.listDeletedHymns());
   handle('undoDeleteHymn', (id) => service.undoDeleteHymn(Number(id)));
   handle('editHymn', (id, input) => service.editHymn(Number(id), input));
+  handle('splitStanza', (id, index, parts) => service.splitStanza(Number(id), Number(index), parts));
   handle('setStyle', (id, style) => service.setStyle(Number(id), style));
   handle('listSetlists', () => service.listSetlists());
   handle('createSetlist', (input) => service.createSetlist(input));

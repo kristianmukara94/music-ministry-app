@@ -1,14 +1,17 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Frame, MediaFrame, SlideLine } from '../../shared/live.js';
 import { presentedFrame } from '../../shared/live.js';
 import { OnAirLook, useOutput } from './outputState';
+import { dispatch } from '../live/store';
+import { pwT } from '../../shared/pw-i18n.js';
+import { useUi } from '../state/ui';
 import { translate } from '../i18n/strings';
 import { LOGO_SRC } from '../brand/logo';
 import { getSlideImageUrl, onSlideImageError } from './slideImage';
 import { LowerThirdOverlay } from './LowerThirdView';
 import { customSizes, fontCss, scaledSize, slideFontCss } from '../../shared/text-style.js';
 import { charsPerLine, slideLine, slideText } from '../../shared/text-wrap.js';
-import { aspectRatioOf, type ProjectorSettings } from '../../shared/projector-settings.js';
+import { OVERLAP_TRANSITIONS, aspectRatioOf, type ProjectorSettings } from '../../shared/projector-settings.js';
 import { NoteCallout } from './NoteCallout';
 import { WelcomeFrame } from './WelcomeScreen';
 import { SlideCanvas } from '../whiteboard/SlideCanvas';
@@ -19,6 +22,8 @@ import { lyricBottomOf } from '../../shared/lyric-area.js';
 import { textAreaShare } from '../../shared/text-area.js';
 import { welcomeBackground } from '../../shared/welcome-settings.js';
 import { SlideBackgroundLayer } from './BackgroundMedia';
+import { useTextAutoFit } from './useTextAutoFit';
+import { lineCountOf, lineHeightFor } from '../../shared/text-fit.js';
 
 /** The slide font the operator chose, as CSS. Undefined keeps each slide's own face. */
 const useSlideFont = (): string | undefined => useOutput((s) => slideFontCss(s.settings.slideFont));
@@ -203,11 +208,17 @@ function FittedPrayer({ label, text, className, style = null }: { label: string;
   );
 }
 
-function FrameView({ frame }: { frame: Frame }) {
+/**
+ * One frame. `sharedBackground` is set by the projector when the Media Library's background is on screen behind every slide: the Live set's
+ * slides then draw no background of their own, so it shows through them.
+ */
+function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBackground?: boolean }) {
   const slideFont = useSlideFont();
   const slideScale = useSlideScale();
   // The background behind the Live set's slides: its own saved setting, separate from the Welcome background.
-  const pwBackground = welcomeBackground(useOutput((s) => s.welcome.slideBackground));
+  const ownBackground = welcomeBackground(useOutput((s) => s.welcome.slideBackground));
+  // A face that has media draws no colour of its own; the shared layer below already has its shade, so the face adds none.
+  const pwBackground = sharedBackground ? SEE_THROUGH : ownBackground;
   switch (frame.kind) {
     case 'idle':
     case 'blackout':
@@ -251,28 +262,8 @@ function FrameView({ frame }: { frame: Frame }) {
           )}
         </>
       );
-    case 'lyrics': {
-      // Centred by default. The shadow keeps the text legible over moving backgrounds. A song's own style replaces the
-      // default size, face, colour and alignment, and keeps the shadow.
-      const sizes = customSizes(frame.style);
-      return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center px-[6cqw] text-center" style={{ textAlign: frame.style?.textAlign ?? 'center' }}>
-          <div className="mb-[3cqh] font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase">{frame.label}</div>
-          <p
-            className={`max-w-[88cqw] leading-[1.18] font-bold whitespace-pre-line ${sizes ? '' : 'text-[clamp(36px,4.6cqw,96px)] text-white'}`}
-            style={{
-              textShadow: '0 2px 14px rgba(0,0,0,0.85), 0 0 3px rgba(0,0,0,0.6)',
-              color: frame.style?.textColor,
-              fontFamily: fontCss(frame.style) ?? slideFont,
-              fontSize: scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'clamp(36px,4.6cqw,96px)', slideScale),
-              textAlign: frame.style?.textAlign ?? 'center',
-            }}
-          >
-            {slideText(frame.text, charsPerLine(0.88, sizes ? sizes.body : 4.6 * 19.2))}
-          </p>
-        </div>
-      );
-    }
+    case 'lyrics':
+      return <SongLyricsSlide label={frame.label} text={frame.text} style={frame.style ?? null} slideFont={slideFont} slideScale={slideScale} song={frame.song ?? null} />;
     case 'text':
       return (
         <>
@@ -376,34 +367,113 @@ function FrameView({ frame }: { frame: Frame }) {
  * Keeps the last foreground frame on screen while it fades out after a clear, so text
  * does not snap off mid-Mass. Blackout and new content still switch instantly.
  */
-function useFadedFrame(live: Frame, fadeMs: number) {
+function useFadedFrame(live: Frame, fadeMs: number, overlap = false) {
   const [shown, setShown] = useState<Frame>(live);
   const [fading, setFading] = useState(false);
   // Counts each new foreground frame, so the foreground re-mounts and plays its entrance animation.
   const [serial, setSerial] = useState(0);
+  // The slide that is leaving, kept on screen under the new one while a dissolve or a push plays. Null otherwise.
+  const [leaving, setLeaving] = useState<{ frame: Frame; serial: number } | null>(null);
   // Every state update from the main process brings a fresh copy of the frame, so the object's identity changes even when
   // the frame does not (a queue edit, for example). The content key tells a new frame apart, so only a real change replays.
   const key = JSON.stringify(live);
   const latest = useRef(live);
   latest.current = live;
+  // What is on screen now, read by the next change without waiting for a render.
+  const current = useRef({ frame: live, serial: 0 });
 
   useEffect(() => {
     const frame = latest.current;
+    const before = current.current;
     if (frame.kind !== 'idle') {
       setShown(frame);
       setFading(false);
-      setSerial((n) => n + 1);
-      return;
+      // The same slide with new words (a live edit): swapped in place, with no transition and nothing leaving.
+      if (before.frame.kind !== 'idle' && slideIdentity(before.frame) === slideIdentity(frame)) {
+        current.current = { frame, serial: before.serial };
+        return;
+      }
+      const next = before.serial + 1;
+      current.current = { frame, serial: next };
+      setSerial(next);
+      if (!overlap || fadeMs <= 0 || before.frame.kind === 'idle') {
+        setLeaving(null);
+        return;
+      }
+      setLeaving({ frame: before.frame, serial: before.serial });
+      const timer = window.setTimeout(() => setLeaving(null), fadeMs);
+      return () => window.clearTimeout(timer);
     }
+    setLeaving(null);
     setFading(true);
     const timer = window.setTimeout(() => {
+      current.current = { frame: IDLE, serial: before.serial };
       setShown(IDLE);
       setFading(false);
     }, fadeMs);
     return () => window.clearTimeout(timer);
-  }, [key, fadeMs]);
+  }, [key, fadeMs, overlap]);
 
-  return { frame: shown, fading, serial };
+  return { frame: shown, fading, serial, leaving };
+}
+
+/**
+ * A song's stanza on the projector, the mirror and the previews. The stanza is set at the song's size (times the text scale) and shrinks to fit
+ * when it is too long for the slide: it stays inside 90% of the room left by a padding of 4% top and bottom and 6% at the sides, centred both
+ * ways, and is clipped there at worst, never past the slide's edge (see useTextAutoFit). A short chorus keeps its size; a long verse gets
+ * tighter line spacing as well as a smaller size. Centred by default. The shadow keeps the text legible over moving backgrounds. A song's own
+ * style replaces the default size, face, colour and alignment, and keeps the shadow.
+ */
+function SongLyricsSlide({ label, text, style, slideFont, slideScale, song }: { label: string; text: string; style: TextStyle | null; slideFont: string | undefined; slideScale: number; song: { hymnId: number; position: number } | null }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const labelRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLParagraphElement>(null);
+  const sizes = customSizes(style);
+  const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'clamp(36px,4.6cqw,96px)', slideScale);
+  const shown = slideText(text, charsPerLine(0.88, sizes ? sizes.body : 4.6 * 19.2));
+  const { isTruncated } = useTextAutoFit({ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: [shown, style, slideFont] });
+  // True on the congregation's projector, false on the operator's mirror and previews. The warning is for the operator only.
+  const audience = useContext(OnAirLook);
+  return (
+    <div ref={boxRef} className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden px-[6cqw] py-[4cqh] text-center" style={{ textAlign: style?.textAlign ?? 'center' }}>
+      <div ref={labelRef} className="mb-[3cqh] shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase">{label}</div>
+      <p
+        ref={textRef}
+        className={`max-w-[88cqw] overflow-hidden font-bold whitespace-pre-line ${sizes ? '' : 'text-white'}`}
+        style={{
+          textShadow: '0 2px 14px rgba(0,0,0,0.85), 0 0 3px rgba(0,0,0,0.6)',
+          color: style?.textColor,
+          fontFamily: fontCss(style) ?? slideFont,
+          fontSize: naturalSize,
+          lineHeight: lineHeightFor(lineCountOf(shown)),
+          textAlign: style?.textAlign ?? 'center',
+        }}
+      >
+        {shown}
+      </p>
+      {!audience && isTruncated && song && <TextCutBadge song={song} />}
+    </div>
+  );
+}
+
+/**
+ * The operator's warning on a stanza whose last lines are cut off: drawn on the mirror and the previews, never on the projector (see
+ * OnAirLook). Pressing it asks the operator window to open the stanza for splitting, which works from the mirror's own window too.
+ */
+function TextCutBadge({ song }: { song: { hymnId: number; position: number } }) {
+  const lang = useUi((s) => s.lang);
+  return (
+    <button
+      type="button"
+      data-operator-only
+      onClick={() => dispatch({ type: 'operator/splitStanza', hymnId: song.hymnId, position: song.position })}
+      title={pwT(lang, 'textCutOffTip')}
+      className="absolute right-[1.5cqw] bottom-[1.5cqh] z-20 inline-flex items-center gap-[0.5cqw] rounded-full border border-amber-300/70 bg-amber-500/90 px-[1.1cqw] py-[0.5cqh] text-[max(10px,1.05cqw)] font-bold text-stone-950 shadow-lg transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-amber-200 focus-visible:outline-none"
+    >
+      <span aria-hidden>⚠</span>
+      {pwT(lang, 'textCutOff')}
+    </button>
+  );
 }
 
 /** The note overlay, kept on screen while it fades out so a cleared note does not snap away. A new note fades in. */
@@ -449,15 +519,55 @@ function BackgroundLayer({ media }: { media: MediaFrame }) {
 
 const ENTER_ANIMATION: Record<ProjectorSettings['transitionStyle'], string> = {
   fade: 'apcc-enter-fade',
+  dissolve: 'apcc-enter-fade',
+  push: 'apcc-enter-push',
   slideLeft: 'apcc-enter-left',
   slideRight: 'apcc-enter-right',
   slideUp: 'apcc-enter-up',
   zoomIn: 'apcc-enter-zoom',
 };
 
+/** A push eases out hard, so the slides settle rather than stop. */
+const PUSH_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
 /** The entrance animation for a new foreground frame. A zero duration (transitions off) means none. */
 const enterAnimation = (style: ProjectorSettings['transitionStyle'], ms: number) =>
-  ms > 0 ? `${ENTER_ANIMATION[style]} ${ms}ms ease-out both` : undefined;
+  ms > 0 ? `${ENTER_ANIMATION[style]} ${ms}ms ${style === 'push' ? PUSH_EASING : 'ease-out'} both` : undefined;
+
+/** The exit animation of the slide that leaves, for the transitions that keep it on screen while the next one arrives. */
+const EXIT_ANIMATION: Partial<Record<ProjectorSettings['transitionStyle'], string>> = { dissolve: 'apcc-exit-fade', push: 'apcc-exit-push' };
+const exitAnimation = (style: ProjectorSettings['transitionStyle'], ms: number) =>
+  `${EXIT_ANIMATION[style] ?? 'apcc-exit-fade'} ${ms}ms ${style === 'push' ? PUSH_EASING : 'ease-in-out'} both`;
+
+/** The Live set's slide face with no background of its own, so the Media Library's background shows through it. */
+const SEE_THROUGH = { color: null, media: { kind: 'image' as const, src: '', fit: 'cover' as const, loop: false }, shade: false };
+
+/**
+ * What makes two frames the same slide. A lyric slide is its song and stanza, so an edit to the words on screen swaps them in place, with no
+ * transition. Anything else is the frame itself.
+ */
+function slideIdentity(frame: Frame): string {
+  if (frame.kind === 'lyrics' && frame.key && frame.song) return `lyrics|${frame.key}|${frame.song.position}`;
+  // A lineup lyric slide is its card, its place in the card, and the stanza page it shows.
+  if (frame.kind === 'pw' && frame.slide.kind === 'lyrics') {
+    return `pw|${frame.segmentName}|${frame.index}|${frame.slide.hymnId}|${frame.slide.sectionId}|${frame.slide.part ?? 0}`;
+  }
+  return JSON.stringify(frame);
+}
+
+/**
+ * The advanced output styling, as custom properties and the class that applies them to every line of slide text. Off gives nothing, and
+ * each slide keeps its own look.
+ */
+function advancedTextLook(settings: ProjectorSettings): { className: string; style: Record<string, string> } {
+  if (!settings.advancedOutput) return { className: '', style: {} };
+  const style: Record<string, string> = {
+    '--apcc-text-shadow': settings.textShadow > 0 ? `0 0.12cqw ${(0.2 + settings.textShadow * 0.6).toFixed(2)}cqw rgba(0, 0, 0, ${settings.textShadow})` : 'none',
+    '--apcc-text-stroke': settings.textOutline > 0 ? `0.07cqw rgba(0, 0, 0, ${settings.textOutline})` : '0 transparent',
+  };
+  if (settings.textColor) style['--apcc-text-color'] = settings.textColor;
+  return { className: `apcc-advanced-text${settings.textColor ? ' apcc-text-color' : ''}`, style };
+}
 
 /** What shows when nothing is live: black (nothing), the parish crest, or a static image from the Media Library. */
 function IdleScreen({ mode, media }: { mode: ProjectorSettings['idle']; media: string | null }) {
@@ -507,6 +617,27 @@ export function ProjectorView(props: { mirror?: boolean; embedded?: boolean }) {
   );
 }
 
+/**
+ * One frame drawn as the projector draws it, filling its box. For the operator's previews (the next slide, a slide not yet shown): nothing
+ * here is on air, so it uses the working look and has no fades, background video or lower third.
+ */
+export function FramePreview({ frame }: { frame: Frame }) {
+  const introSlideMode = useOutput((s) => s.introSlideMode);
+  const shown = presentedFrame(frame, introSlideMode);
+  return (
+    <OnAirLook.Provider value={false}>
+      <div className="relative isolate h-full w-full overflow-hidden bg-stone-950 text-white select-none [container-type:size]">
+        {(shown.kind === 'lyrics' || shown.kind === 'rosary') && shown.style?.bgColor && (
+          <div className="absolute inset-0" style={{ backgroundColor: shown.style.bgColor }} />
+        )}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <FrameView frame={shown} />
+        </div>
+      </div>
+    </OnAirLook.Provider>
+  );
+}
+
 function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: boolean; embedded?: boolean }) {
   const projector = useOutput((s) => s.projector);
   const projectorOn = useOutput((s) => s.outputs.projector);
@@ -521,7 +652,9 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
   // The intro slide shows as its title card or as black, by the operator's choice on the Live panel.
   const introSlideMode = useOutput((s) => s.introSlideMode);
   const picture = presentedFrame(mirror && projector.paused ? projector.staged : projector.live, introSlideMode);
-  const { frame, fading, serial } = useFadedFrame(picture, transitionMs);
+  const overlap = (OVERLAP_TRANSITIONS as readonly string[]).includes(settings.transitionStyle);
+  const { frame, fading, serial, leaving } = useFadedFrame(picture, transitionMs, overlap);
+  const textLook = advancedTextLook(settings);
 
   // Blackout hides the background as well as the foreground, and keeps it queued for when it lifts.
   const blackedOut = picture.kind === 'blackout';
@@ -531,6 +664,8 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
   // The operator mirror is a separate monitor with its own toggle, so it is not gated by this switch.
   const outputShowing = mirror || projectorOn;
   const background = blackedOut || !outputShowing ? null : projector.background?.live ?? null;
+  // The Media Library's background over every slide: the Live set's slides show it in place of their own background.
+  const sharedBackground = Boolean(background && settings.backgroundEverywhere);
   const shownFrame = outputShowing ? frame : IDLE;
   // The lower third is drawn over the picture while it is live. Blackout and a switched-off projector hide it,
   // and it fades out rather than cutting.
@@ -566,7 +701,7 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
     {/* Every size inside the stage is a share of the stage, so text keeps its proportions in any window. */}
     <div className="relative isolate overflow-hidden [container-type:size]" style={stageStyle}>
       {background && <BackgroundLayer media={background} />}
-      {slideMedia && <SlideBackgroundLayer media={slideMedia} visible={outputShowing && !blackedOut && shownFrame.kind === 'pw'} />}
+      {slideMedia && <SlideBackgroundLayer media={slideMedia} visible={outputShowing && !blackedOut && shownFrame.kind === 'pw' && !sharedBackground} />}
       {/* A song's or prayer's background colour fills the screen only when no motion background is playing, so it never covers the media. */}
       {!background && shownFrame.kind === 'idle' && <IdleScreen mode={settings.idle} media={settings.idleMedia} />}
       {shownFrame.kind === 'black' && <div className="absolute inset-0 bg-black" />}
@@ -574,15 +709,29 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
         <div className="absolute inset-0" style={{ backgroundColor: shownFrame.style.bgColor }} />
       )}
 
+      {/* The shade over a background sits outside the slides, so it holds still while they change. */}
+      {background && <div className="absolute inset-0 bg-black/40" />}
+
+      {/* The slide that is leaving, during a dissolve or a push. It is drawn under the new one and is gone when the transition ends. */}
+      {leaving && outputShowing && (
+        <div
+          key={`leaving-${leaving.serial}`}
+          aria-hidden
+          className={`pointer-events-none absolute inset-0 flex items-center justify-center will-change-[opacity,transform] ${clearance} ${textLook.className}`}
+          style={{ ...textLook.style, animation: exitAnimation(settings.transitionStyle, transitionMs) }}
+        >
+          <FrameView frame={leaving.frame} sharedBackground={sharedBackground} />
+        </div>
+      )}
+
       <div
         key={serial}
         className={`absolute inset-0 flex items-center justify-center transition-[padding,opacity,transform] ${
           fading ? 'opacity-0' : 'opacity-100'
-        } ${clearance}`}
-        style={{ transitionDuration: `${transitionMs}ms`, animation: enterAnimation(settings.transitionStyle, transitionMs) }}
+        } ${leaving ? 'will-change-[opacity,transform]' : ''} ${clearance} ${textLook.className}`}
+        style={{ ...textLook.style, transitionDuration: `${transitionMs}ms`, animation: enterAnimation(settings.transitionStyle, transitionMs) }}
       >
-        {background && <div className="absolute inset-0 bg-black/40" />}
-        <FrameView frame={shownFrame} />
+        <FrameView frame={shownFrame} sharedBackground={sharedBackground} />
       </div>
 
       <LowerThirdOverlay value={lowerThirdValue} lyricBottomShare={lyricBottomOf(shownFrame)} />

@@ -53,6 +53,14 @@ export interface DisplaysApi {
   identify(): Promise<void>;
 }
 
+/** Quick Live: a song shown straight from search. */
+export interface QuickLiveApi {
+  /** True when the projector window exists. */
+  projectorOpen(): Promise<boolean>;
+  /** Records an off-plan song in the service history. */
+  logSpontaneous(input: { songId: number | string; title: string }): Promise<number>;
+}
+
 export interface ProjectorApi {
   save(patch: Partial<ProjectorSettings>): Promise<ProjectorSettings>;
 }
@@ -136,6 +144,7 @@ interface ElectronApi {
   notes: NotesApi;
   displays: DisplaysApi;
   projector: ProjectorApi;
+  quickLive: QuickLiveApi;
   welcome: WelcomeApi;
   lowerThird: LowerThirdApi;
   cloud: CloudApi;
@@ -274,6 +283,11 @@ const offlineNotes: NotesApi = {
   remove: async () => offlineError(),
 };
 
+const offlineQuickLive: QuickLiveApi = {
+  projectorOpen: async () => false,
+  logSpontaneous: async () => offlineError(),
+};
+
 const offlineDisplays: DisplaysApi = {
   list: async () => [],
   identify: async () => offlineError(),
@@ -283,7 +297,24 @@ const offlineWhiteboard: WhiteboardApi = {
   list: async () => [],
   save: async () => offlineError(),
   remove: async () => offlineError(),
+  get: async () => null,
+  makeEditable: async () => offlineError(),
+  restorePicture: async () => offlineError(),
+  pptxSource: async () => null,
+  layersFromFile: async () => offlineError(),
+  openEditor: async () => false,
+  onChanged: () => () => undefined,
+  onEditorFlush: () => () => undefined,
+  editorFlushed: () => undefined,
+  closeEditor: () => undefined,
+  removeMany: async () => offlineError(),
+  rename: async () => offlineError(),
   reorder: async () => offlineError(),
+  folders: async () => [],
+  createFolder: async () => offlineError(),
+  renameFolder: async () => offlineError(),
+  deleteFolder: async () => offlineError(),
+  move: async () => offlineError(),
   importPowerPoint: async () => offlineError(),
 };
 
@@ -469,6 +500,7 @@ const offlineLyrics: LyricsApi = {
   listHymns: async () => [],
   getHymn: async () => null,
   createHymn: async () => offlineError(),
+  createHymns: async () => offlineError(),
   deleteHymn: async () => offlineError(),
   listDeletedHymns: async () => [],
   undoDeleteHymn: async () => offlineError(),
@@ -479,11 +511,14 @@ const offlineLyrics: LyricsApi = {
   saveSetlist: async () => offlineError(),
   setStyle: async () => offlineError(),
   importFile: async () => offlineError(),
+  pickBatchFile: async () => offlineError(),
+  readBatchFile: async () => offlineError(),
   listSongCategories: async () => [],
   createSongCategory: async () => offlineError(),
   renameSongCategory: async () => offlineError(),
   deleteSongCategory: async () => offlineError(),
   editHymn: async () => offlineError(),
+  splitStanza: async () => offlineError(),
 };
 
 const offlineLectionary: LectionaryApi = {
@@ -588,6 +623,7 @@ function createBrowserBridge(): LiveBridge {
     notes: offlineNotes,
     displays: offlineDisplays,
     projector: offlineProjector,
+    quickLive: offlineQuickLive,
     welcome: offlineWelcome,
     lowerThird: offlineLowerThird,
     cloud: offlineCloud,

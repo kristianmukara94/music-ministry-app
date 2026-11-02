@@ -117,6 +117,34 @@ test('a push with nothing changed counts as unchanged', async () => {
   assert.deepEqual(JSON.parse(res.body), { created: 0, updated: 0, unchanged: 1, removed: 0 });
 });
 
+// ---- Scope ----
+
+const scopeOf = async (id) => (await pg.query('SELECT scope FROM songs WHERE church_id = $1 AND id = $2', [CHURCH_A, id])).rows[0]?.scope;
+
+test('a song\'s scope is saved, changing it counts as an update, and the same scope is unchanged', async () => {
+  await push(laptopA, { songs: [laptopSong(HYMN_1, 'Praise to the Lord', { scope: 'MASS' })] });
+  assert.equal(await scopeOf(HYMN_1), 'MASS');
+  const same = await push(laptopA, { songs: [laptopSong(HYMN_1, 'Praise to the Lord', { scope: 'MASS' })] });
+  assert.deepEqual(JSON.parse(same.body), { created: 0, updated: 0, unchanged: 1, removed: 0 });
+  const moved = await push(laptopA, { songs: [laptopSong(HYMN_1, 'Praise to the Lord', { scope: 'PRAISE_AND_WORSHIP' })] });
+  assert.deepEqual(JSON.parse(moved.body), { created: 0, updated: 1, unchanged: 0, removed: 0 });
+  assert.equal(await scopeOf(HYMN_1), 'PRAISE_AND_WORSHIP');
+});
+
+test('a laptop from before scopes sends none: a new song is General, and a song keeps the scope it has', async () => {
+  await push(laptopA, { songs: [laptopSong(HYMN_1, 'Old laptop song'), laptopSong(HYMN_2, 'Scoped song', { scope: 'MASS' })] });
+  assert.equal(await scopeOf(HYMN_1), 'GENERAL');
+  const again = await push(laptopA, { songs: [laptopSong(HYMN_1, 'Old laptop song'), laptopSong(HYMN_2, 'Scoped song')] });
+  assert.deepEqual(JSON.parse(again.body), { created: 0, updated: 0, unchanged: 2, removed: 0 });
+  assert.equal(await scopeOf(HYMN_2), 'MASS', 'a push without a scope does not reset it');
+});
+
+test('a scope that is not General, Mass or Praise & Worship is refused as a whole', async () => {
+  const res = await push(laptopA, { songs: [laptopSong(HYMN_1, 'Praise', { scope: 'CHOIR' })] });
+  assert.equal(res.statusCode, 400);
+  assert.match(JSON.parse(res.body).error, /scope/);
+});
+
 // ---- Removing ----
 
 test('a song the laptop no longer has is marked removed, drops out of the picker, and keeps its row', async () => {

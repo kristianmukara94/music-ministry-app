@@ -250,9 +250,15 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
     const record = readRecord();
     if (record === null) throw Object.assign(new Error(MESSAGES.notLinked), { revoked: true });
     if (record === 'unreadable') throw Object.assign(new Error(MESSAGES.unreadable), { revoked: true });
+    const send = (list) => call('songs-sync-push', { method: 'POST', body: { songs: list }, token: record.token });
     let res;
     try {
-      res = await call('songs-sync-push', { method: 'POST', body: { songs }, token: record.token });
+      res = await send(songs);
+      // A planner server from before scopes refuses the whole list for the field it does not know. The list is sent again without the scope,
+      // so syncing keeps working until the server is updated.
+      if (res.status === 400 && songs.some((s) => 'scope' in s) && /field the planner does not accept/i.test(String(res.body?.error ?? ''))) {
+        res = await send(songs.map(({ scope, ...rest }) => rest));
+      }
     } catch {
       throw Object.assign(new Error(MESSAGES.offline), { offline: true });
     }

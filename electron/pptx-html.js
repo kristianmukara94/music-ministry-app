@@ -542,6 +542,47 @@ export async function slideParts(zip) {
 }
 
 /**
+ * Runs in the deck page, after it is laid out. `readLayers()` lists each slide's text boxes as the slide editor's boxes: place and size as
+ * percentages of the slide, the words as shown (bullets and capitals included), and the look of the box's first run. Each box read is
+ * marked, and `hideTaken()` then hides those words, so the page can be printed as each slide's background with its words taken out. Text
+ * written sideways and the text in tables stay part of the background.
+ */
+const LAYER_SCRIPT = String.raw`
+function hexOf(c){var m=/rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c||'');if(!m)return '#000000';return '#'+[m[1],m[2],m[3]].map(function(v){return ('0'+Number(v).toString(16)).slice(-2)}).join('').toUpperCase()}
+function paraText(div){var out='';div.childNodes.forEach(function(c){if(c.nodeName==='BR'){out+='\n';return}if(c.nodeType!==1)return;var t=c.textContent.replace(/​/g,'');if(c.style.display==='inline-block'){if(t.trim())out+=t.trim()+' ';return}if(getComputedStyle(c).textTransform==='uppercase')t=t.toUpperCase();out+=t});return out}
+function pct(v,of){return Math.round(v/of*10000)/100}
+function lookOf(run,para){var rs=getComputedStyle(run);var ta=getComputedStyle(para).textAlign;return {size:Math.round(parseFloat(rs.fontSize)*10)/10,font:(rs.fontFamily||'').split(',')[0].replace(/["']/g,'').trim(),color:hexOf(rs.color),bold:parseInt(rs.fontWeight,10)>=600,italic:rs.fontStyle==='italic',underline:/underline/.test(rs.textDecorationLine),align:ta==='center'?'center':ta==='right'||ta==='end'?'right':ta==='justify'?'justify':'left'}}
+function sameLook(a,b){return a.size===b.size&&a.font===b.font&&a.color===b.color&&a.bold===b.bold&&a.italic===b.italic&&a.underline===b.underline&&a.align===b.align}
+function firstRun(para){return Array.prototype.find.call(para.querySelectorAll(':scope > span'),function(s){return s.style.display!=='inline-block'&&s.textContent.replace(/\u200b/g,'').trim()})}
+function trimLines(t){return t.replace(/^(\s*\n)+/,'').replace(/(\n\s*)+$/,'')}
+function readLayers(){return Array.prototype.map.call(document.querySelectorAll('.slide'),function(slide){
+var W=slide.offsetWidth,H=slide.offsetHeight,S=slide.getBoundingClientRect(),boxes=[];
+slide.querySelectorAll('.tx').forEach(function(tx){
+var cs=getComputedStyle(tx);if(/^vertical/.test(cs.writingMode)||tx.style.transform)return;
+var paras=Array.prototype.slice.call(tx.querySelectorAll('.txi > div'));
+if(!paras.some(function(d){return paraText(d).trim()}))return;
+var x=0,y=0,n=tx;while(n&&n!==slide){x+=n.offsetLeft;y+=n.offsetTop;n=n.offsetParent}if(n!==slide)return;
+var pl=parseFloat(cs.paddingLeft)||0,pr=parseFloat(cs.paddingRight)||0,pt=parseFloat(cs.paddingTop)||0,pb=parseFloat(cs.paddingBottom)||0;
+var inner=tx.querySelector('.txi');var left=x+pl,width=Math.max(1,tx.offsetWidth-pl-pr);
+var rot=0;var el=tx.parentElement;var m=el&&/rotate\((-?[\d.]+)deg\)/.exec(el.style.transform||'');if(m)rot=Number(m[1]);
+var valign=cs.justifyContent==='center'?'middle':cs.justifyContent==='flex-end'?'bottom':'top';
+// Paragraphs that look the same stay together; where the look changes (a heading over its body), a new box starts. Blank lines join the
+// group they follow. A turned box is kept whole, as its paragraphs' places on the page are turned too.
+var groups=[];paras.forEach(function(d){var run=firstRun(d);var look=run?lookOf(run,d):null;var g=groups[groups.length-1];
+if(!g||(look&&g.look&&!sameLook(look,g.look)&&!rot))groups.push(g={look:look,paras:[]});if(!g.look)g.look=look;g.paras.push(d)});
+groups=groups.filter(function(g){return g.look&&g.paras.some(function(d){return paraText(d).trim()})});
+if(groups.length<=1){var g0=groups[0];var h=Math.max(tx.offsetHeight-pt-pb,inner?inner.offsetHeight:0);
+var t0=trimLines(paras.map(paraText).join('\n'));
+boxes.push(Object.assign({text:t0,x:pct(left,W),y:pct(y+pt,H),w:pct(width,W),h:pct(Math.max(1,h),H),valign:valign,rot:rot},g0.look));}
+else groups.forEach(function(g){var shown=g.paras.filter(function(d){return paraText(d).trim()});
+var top=shown[0].getBoundingClientRect().top-S.top,bottom=shown[shown.length-1].getBoundingClientRect().bottom-S.top;
+var t=trimLines(g.paras.map(paraText).join('\n'));
+boxes.push(Object.assign({text:t,x:pct(left,W),y:pct(top,H),w:pct(width,W),h:pct(Math.max(1,bottom-top),H),valign:'top',rot:0},g.look));});
+tx.setAttribute('data-taken','1')});return boxes})}
+function hideTaken(){var s=document.createElement('style');s.textContent='.slide [data-taken] .txi{visibility:hidden}';document.head.appendChild(s);return true}
+`;
+
+/**
  * Builds the page for a deck. `media(zipPath)` receives a media file's path in the package and returns a URL the page can load.
  * Resolves to { html, slideWidth, slideHeight, count }, where `count` is the number of visible slides, in slide order.
  */
@@ -661,6 +702,7 @@ html,body{margin:0;padding:0;background:#fff;overflow:hidden}
 function loadImages(){var urls={};document.querySelectorAll('[style*="url("]').forEach(function(e){(e.getAttribute('style').match(/url[(]'[^']+'[)]/g)||[]).forEach(function(x){urls[x.slice(5,-2)]=1})});document.querySelectorAll('image').forEach(function(e){var h=e.getAttribute('href');if(h)urls[h]=1});return Promise.all(Object.keys(urls).map(function(u){return new Promise(function(r){var i=new Image();i.onload=i.onerror=function(){r()};i.src=u})}))}
 function fitAll(){document.querySelectorAll('.slide').forEach(fitText);return true;}
 function fitText(root){root.querySelectorAll('[data-fit]').forEach(function(box){var inner=box.firstElementChild;if(!inner)return;var avail=box.clientHeight-parseFloat(box.dataset.pad||0);var k=parseFloat(box.dataset.k||1);box.style.setProperty('--k',k);if(box.dataset.fit==='fixed')return;for(var n=0;n<24&&inner.offsetHeight>avail+1&&k>0.3;n++){k*=0.94;box.style.setProperty('--k',k);}});}
+${LAYER_SCRIPT}
 </script></body></html>`;
   return { html, slideWidth: SLIDE_WIDTH_PX, slideHeight: pageH, count: slides.length };
   }

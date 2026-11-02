@@ -44,8 +44,8 @@ test('the projector, the praise and worship face, the TV and the settings panel 
   assert.match(read('src/output/ProjectorView.tsx'), /const useSlideFont = \(\): string \| undefined => useOutput\(\(s\) => slideFontCss\(s\.settings\.slideFont\)\);/);
   assert.match(read('src/praise-worship/PwSlideFace.tsx'), /fontFamily: slideFont/);
   assert.match(read('src/tv/LargeScreen.tsx'), /const fontFamily = slideFontCss\(frame\.font\);/);
-  assert.match(read('src/settings/ProjectorSettings.tsx'), /aria-label="Slide font"/);
-  assert.match(read('src/settings/ProjectorSettings.tsx'), /save\(\{ slideFont: e\.target\.value \|\| null \}\)/);
+  assert.match(read('src/settings/OutputSettingsPanel.tsx'), /aria-label="Slide font"/);
+  assert.match(read('src/settings/OutputSettingsPanel.tsx'), /save\(\{ slideFont: e\.target\.value \|\| null \}\)/);
 });
 
 test('a slide\'s own font still wins: every styled text face falls back to the slide font, not over it', () => {

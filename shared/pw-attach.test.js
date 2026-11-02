@@ -159,7 +159,7 @@ test('a batch that attaches nothing hands back the same card', () => {
 });
 
 test('the Library drags its whole selection, and the rail highlights one card by its key', () => {
-  const library = readFileSync(fileURLToPath(new URL('../src/praise-worship/Library.tsx', import.meta.url)), 'utf8');
+  const library = ['Library', 'LibrarySearchContainer', 'SongSearchResultCard'].map((n) => readFileSync(fileURLToPath(new URL(`../src/praise-worship/${n}.tsx`, import.meta.url)), 'utf8')).join('\n');
   const rail = readFileSync(fileURLToPath(new URL('../src/praise-worship/LineupRail.tsx', import.meta.url)), 'utf8');
   assert.match(library, /rows\.filter\(\(r\) => r\.drag && ticked\.includes\(r\.key\)\)/, 'a selected card drags every selected row');
   assert.match(library, /items: dragged\.flatMap/, 'the payload carries the items as an array');

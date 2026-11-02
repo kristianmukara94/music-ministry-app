@@ -84,8 +84,17 @@ function showFrame(p, frame) {
 }
 
 /** The settings the outputs draw from, as the operator has set them. The Preview and the thumbnails read these. */
+/** The advanced text styling, which the audience sees as it was at a pause, like the font. */
+const TEXT_LOOK_KEYS = ['advancedOutput', 'textColor', 'textShadow', 'textOutline'];
+
 function lookOf(s) {
-  return { slideFont: s.settings.slideFont, slideFontScale: s.settings.slideFontScale, introSlideMode: s.introSlideMode, welcome: s.welcome };
+  return {
+    slideFont: s.settings.slideFont,
+    slideFontScale: s.settings.slideFontScale,
+    introSlideMode: s.introSlideMode,
+    welcome: s.welcome,
+    text: Object.fromEntries(TEXT_LOOK_KEYS.map((k) => [k, s.settings[k]])),
+  };
 }
 
 /**
@@ -103,11 +112,13 @@ export function applyLook(s) {
     look.slideFont === s.settings.slideFont &&
     look.slideFontScale === s.settings.slideFontScale &&
     look.introSlideMode === s.introSlideMode &&
-    look.welcome === s.welcome;
+    look.welcome === s.welcome &&
+    // A look captured before the text styling was part of it has none, and leaves the working styling in place.
+    TEXT_LOOK_KEYS.every((k) => !look.text || look.text[k] === s.settings[k]);
   if (same) return s;
   return {
     ...s,
-    settings: { ...s.settings, slideFont: look.slideFont, slideFontScale: look.slideFontScale },
+    settings: { ...s.settings, slideFont: look.slideFont, slideFontScale: look.slideFontScale, ...(look.text ?? {}) },
     introSlideMode: look.introSlideMode,
     welcome: look.welcome,
   };
@@ -228,8 +239,12 @@ function reduce(s, a) {
     }
 
     // Background layer: stage a media item, then take it live. Blackout hides it without clearing it.
-    case 'background/stage':
-      return { ...s, projector: { ...s.projector, background: { ...backgroundOf(s.projector), staged: a.media } } };
+    // With the background on every slide, a staged background goes on screen at once, unless the projector is paused (a take waits then too).
+    case 'background/stage': {
+      const background = { ...backgroundOf(s.projector), staged: a.media };
+      if (s.settings?.backgroundEverywhere && !s.projector.paused) background.live = a.media;
+      return { ...s, projector: { ...s.projector, background } };
+    }
 
     case 'background/take': {
       const bg = backgroundOf(s.projector);
@@ -370,6 +385,12 @@ function reduce(s, a) {
     // The segment names a phone can pick from. Sent by the operator window, which holds the lineup.
     case 'pw/lineup':
       return JSON.stringify(s.pwLineup ?? null) === JSON.stringify(a.items) ? s : { ...s, pwLineup: a.items };
+
+    // The operator asked, from a mirror or a preview, to split a stanza cut off on the slide. The operator window opens the split for it.
+    case 'operator/splitStanza':
+      return Number.isInteger(a.hymnId) && Number.isInteger(a.position)
+        ? { ...s, splitRequest: { hymnId: a.hymnId, position: a.position, seq: (s.splitRequest?.seq ?? 0) + 1 } }
+        : s;
 
     case 'remote/command':
       return { ...s, remoteCmd: { ...a.command, seq: (s.remoteCmd?.seq ?? 0) + 1 } };

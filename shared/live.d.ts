@@ -51,6 +51,8 @@ export interface OutputLook {
   slideFontScale: number;
   introSlideMode: LiveState['introSlideMode'];
   welcome: LiveState['welcome'];
+  /** The advanced text styling. Missing from a look captured before it was part of one. */
+  text?: Pick<ProjectorSettings, 'advancedOutput' | 'textColor' | 'textShadow' | 'textOutline'>;
 }
 export function outputLookOf(state: LiveState): OutputLook;
 
@@ -216,6 +218,8 @@ export interface LiveState {
   /** The Praise & Worship lineup's segments, in order, so a phone can offer them. Set by the operator window while a session is loaded. */
   /** The latest command from a phone. `seq` changes on every command, so the operator window can tell a new one. */
   remoteCmd?: RemoteCommand & { seq: number };
+  /** The last request to split a stanza that is cut off on the slide. `seq` counts requests, so asking twice opens it twice. */
+  splitRequest?: { hymnId: number; position: number; seq: number };
   /** What the open panel offers a phone. Set by the panel while it is open. */
   remotePanel?: RemotePanel;
   pwLineup?: { key: string; name: string; minutes: number }[];
@@ -259,6 +263,7 @@ export type LiveAction =
   | { type: 'pw/load'; sessionId: number }
   | { type: 'pw/cursor'; segmentKey: string; slide: number; now: number }
   | { type: 'pw/end' }
+  | { type: 'operator/splitStanza'; hymnId: number; position: number }
   /** A phone asked to step the Praise & Worship lineup (`delta`), or jump to a slide of the segment on air (`index`, 0-based). The operator window carries it out, since only it holds the lineup's slides. */
   | { type: 'remote/pwstep'; delta?: 1 | -1; index?: number; segment?: number }
   | { type: 'remote/command'; command: RemoteCommand }

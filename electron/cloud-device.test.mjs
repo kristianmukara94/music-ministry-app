@@ -577,6 +577,23 @@ test('the song list goes through the link with the token, and the counts come ba
   assert.equal(server.calls.find((c) => c.name === 'songs-sync-push').auth, `Bearer ${TOKEN}`, 'the token goes to the cloud only');
 });
 
+test('a server from before scopes refuses the field, and the list is sent again without it so syncing keeps working', async () => {
+  let seen = 0;
+  const { device, server } = await linkedLaptop({
+    'songs-sync-push': (opts) => {
+      seen += 1;
+      return JSON.parse(opts.body).songs.some((s) => 'scope' in s)
+        ? respond(400, { error: 'A song has a field the planner does not accept. Nothing was sent.' })
+        : respond(200, { created: 1, updated: 0, unchanged: 0, removed: 0 });
+    },
+  });
+  const counts = await device.pushSongs([{ ...SONGS[0], scope: 'MASS' }]);
+  assert.equal(counts.created, 1);
+  assert.equal(seen, 2, 'one try with the scope, one without');
+  const last = JSON.parse(server.calls.filter((c) => c.name === 'songs-sync-push').at(-1).body);
+  assert.equal('scope' in last.songs[0], false);
+});
+
 test('an unreachable cloud is marked offline, and the message names no network detail', async () => {
   const file = memoryFile();
   const storage = realisticStorage();

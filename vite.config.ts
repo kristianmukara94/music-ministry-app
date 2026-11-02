@@ -12,6 +12,8 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   // Two pages: the Electron app (index.html) and the TV screen served at /tv on the Secondary port (tv.html).
   build: {
+    // Older syntax, so a Smart TV's browser can run the TV page. The app itself runs the same code on a newer engine.
+    target: 'es2017',
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),

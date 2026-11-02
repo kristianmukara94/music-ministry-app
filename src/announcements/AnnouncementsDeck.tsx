@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent, type MutableRefObject } from 'react';
+import { announcementFrame } from './frames';
 import { ChevronsLeft, ChevronsRight, Folder, FolderPlus, GripVertical, Info, Megaphone, Pause, Pencil, Play, Trash2, Type, Upload } from 'lucide-react';
 import type { Frame } from '../../shared/live.js';
 import { bridge } from '../live/bridge';
@@ -47,18 +48,7 @@ function savePlayback(playback: Playback) {
 /** `null` is the virtual "All Slides" folder. */
 type FolderId = number | null;
 
-/** The pictures in `list` that sit in the slide's folder, so a phone's Next and Previous can move through them. Absent for a lone picture. */
-const deckOf = (s: AnnouncementSlide, list: AnnouncementSlide[]) => {
-  const pictures = list.filter((x) => x.slideType === 'image' && x.src && x.folderId === s.folderId);
-  const index = pictures.findIndex((x) => x.id === s.id);
-  if (pictures.length < 2 || index < 0) return undefined;
-  return { slides: pictures.map((x) => ({ title: x.name, src: x.src as string, ...(x.notes ? { notes: x.notes } : {}) })), index };
-};
-
-const toFrame = (s: AnnouncementSlide, list: AnnouncementSlide[] = []): Frame =>
-  s.slideType === 'image' && s.src
-    ? { kind: 'image', title: s.name, src: s.src, notes: s.notes ?? undefined, deck: deckOf(s, list) }
-    : { kind: 'text', title: s.name, headline: s.headline ?? undefined, text: s.text ?? '', bg: s.bgSrc, notes: s.notes ?? undefined, style: s.style };
+const toFrame = announcementFrame;
 
 /** Whether the projector is already showing this slide. */
 const isShowing = (frame: Frame, s: AnnouncementSlide) =>

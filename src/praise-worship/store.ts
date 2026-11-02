@@ -3,6 +3,7 @@ import { hymnAfterChange, withHymn } from '../../shared/hymn-cache.js';
 import { persist } from 'zustand/middleware';
 import { addLineupCard, chainOf, groupOrdered, newLineupCard, removeLineupCard, type PwHymnTag, type PwResolved, type PwSegment, type PwType } from '../../shared/pw.js';
 import type { LibraryDragBatch } from '../../shared/pw-attach.js';
+import { arrangementWithSplit } from '../../shared/pw-hot-edit.js';
 import { bridge } from '../live/bridge';
 import type { Hymn } from '../lyrics/types';
 import type { Note } from '../notes/types';
@@ -202,6 +203,23 @@ export function commitSegments(segments: PwSegment[], selected?: number) {
   void loadHymns(segments);
   window.clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => void saveNow(), SAVE_DELAY_MS);
+}
+
+/**
+ * A stanza of a song was split in two (see the library's splitStanza). The open lineup's cards that sing the song in their own order get the
+ * second half after the first, as the saved lineups already have, so the lineup's next save keeps it rather than writing the old order back.
+ */
+export function applySplitToSession(hymnId: number, firstId: number, secondId: number) {
+  const segments = usePw.getState().session?.segments;
+  if (!segments) return;
+  let changed = false;
+  const next = segments.map((segment) => {
+    const arrangement = arrangementWithSplit(segment.arrangement, hymnId, firstId, secondId);
+    if (arrangement === segment.arrangement) return segment;
+    changed = true;
+    return { ...segment, arrangement };
+  });
+  if (changed) commitSegments(next);
 }
 
 /** Changes one segment. */

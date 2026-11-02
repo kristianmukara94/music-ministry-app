@@ -13,6 +13,7 @@ import { SCHEMA_VERSION, openDatabase, setupAnnouncements } from './announcement
 import { DB_FILTERS, backupFileName, exportBackup, importBackup } from './database-backup.js';
 import { databaseCounts } from './db-check.js';
 import { purgeDeletedHymns, setupLyrics } from './lyrics.js';
+import { setupSpontaneousLog } from './spontaneous-log.js';
 import { registerLyricsImport } from './lyrics-import.js';
 import { setupNotes } from './notes.js';
 import { setupWhiteboard } from './whiteboard.js';
@@ -78,6 +79,90 @@ let dbStatus = { connected: false, path: null, fallback: false, error: null };
 const windows = { operator: null, projector: null, lowerThird: null, preview: null };
 
 const ROUTES = { projector: 'projector', lowerThird: 'lower-third', preview: 'preview' };
+
+// The slide editors: one window per Whiteboard slide being edited, keyed by the slide's id. They are views of the live state like any other
+// window, so they are told of every change to it.
+const editorWindows = new Map();
+
+/** Tells every open window that a Whiteboard slide or folder changed, so a list on screen in any of them reloads. */
+function announceWhiteboardChange() {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('whiteboard:changed');
+  }
+}
+
+/**
+ * Opens a slide in its own editor window, or brings the open one forward. The window is an ordinary one, so it can be moved, resized and put on
+ * another screen. Closing it first asks the page to write any change still waiting; the window goes when the page says so, or after a moment.
+ */
+function openSlideEditor(slideId) {
+  const existing = editorWindows.get(slideId);
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
+    existing.show();
+    existing.focus();
+    return;
+  }
+  // The window opens near the operator's, nudged for each one already open, so several do not sit exactly on top of each other.
+  const anchor = windows.operator && !windows.operator.isDestroyed() ? windows.operator.getBounds() : null;
+  const nudge = 28 * editorWindows.size;
+  const win = new BrowserWindow({
+    width: 1180,
+    height: 840,
+    minWidth: 820,
+    minHeight: 600,
+    ...(anchor ? { x: anchor.x + 70 + nudge, y: anchor.y + 50 + nudge } : {}),
+    show: false,
+    backgroundColor: '#100306',
+    title: 'APCCMMA — Edit slide',
+    icon: APP_ICON,
+    autoHideMenuBar: true,
+    webPreferences,
+  });
+  win.setMenuBarVisibility(false);
+  win.once('ready-to-show', () => win.show());
+  editorWindows.set(slideId, win);
+
+  let closing = false;
+  win.on('close', (event) => {
+    if (closing || win.isDestroyed()) return;
+    event.preventDefault();
+    closing = true;
+    const finish = () => {
+      clearTimeout(timer);
+      if (!win.isDestroyed()) win.destroy();
+    };
+    const timer = setTimeout(finish, 3000);
+    win.once('editor-flushed', finish);
+    win.webContents.send('editor:flush');
+  });
+  win.on('closed', () => {
+    editorWindows.delete(slideId);
+    // The operator window is gone and was waiting on this one: the app can now quit.
+    if (!windows.operator) app.quit();
+  });
+  load(win, `editor/${slideId}`);
+}
+
+/**
+ * The editor page asks for its window to be closed. It goes through the window's own close, so the save-before-closing step runs. A page that
+ * closes itself with `window.close()` is closed at once by Electron, with no close event, and would lose a change still waiting to be saved.
+ */
+ipcMain.on('editor:close', (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.close();
+});
+
+/** The editor page says its pending changes are written. */
+ipcMain.on('editor:flushed', (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.emit('editor-flushed');
+});
+
+ipcMain.handle('whiteboard:openEditor', (_event, slideId) => {
+  const id = Number(slideId);
+  if (!Number.isInteger(id) || id < 1) return false;
+  openSlideEditor(id);
+  return true;
+});
 
 const webPreferences = {
   preload: path.join(__dirname, 'preload.cjs'),
@@ -465,6 +550,9 @@ function broadcast() {
   }
   for (const win of Object.values(windows)) {
     if (win && !win.isDestroyed()) win.webContents.send('live:state', state);
+  }
+  for (const win of editorWindows.values()) {
+    if (!win.isDestroyed()) win.webContents.send('live:state', state);
   }
 }
 
@@ -964,7 +1052,9 @@ app.whenReady().then(() => {
   seedRosary(announcements.db);
   setupRosary(announcements.db);
   setupNotes(announcements.db);
-  setupWhiteboard(announcements.db, announcements.service);
+  // The projector is open when its window exists, whatever its title. Quick Live asks this before it shows a song.
+  setupSpontaneousLog(announcements.db, { isProjectorOpen: () => Boolean(windows.projector && !windows.projector.isDestroyed()) });
+  setupWhiteboard(announcements.db, announcements.service, { onChanged: announceWhiteboardChange, convertPdf: announcements.convertPdf });
   // The browser source: the lower third at http://127.0.0.1:3002/lower-third, updated live.
   lowerThirdServer = createLowerThirdServer({ distDir: path.join(__dirname, '../dist') });
   void lowerThirdServer.start();

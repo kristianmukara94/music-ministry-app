@@ -108,7 +108,12 @@ export function presentFrame(frame, welcome) {
         lines: linesOf(frame.text),
       };
     case 'whiteboard':
-      return { title: frame.slide.title, position: null, lines: linesOf(frame.slide.content) };
+      // A slide's words are its content and, for a slide from PowerPoint, its text boxes, read in the order they are drawn.
+      return {
+        title: frame.slide.title,
+        position: null,
+        lines: linesOf([frame.slide.content, ...(frame.slide.design?.boxes ?? []).map((b) => b.text)].filter((t) => t && t.trim()).join('\n')),
+      };
     case 'pw': {
       const slide = frame.slide;
       const lines = slide.kind === 'title' ? [slide.label, slide.subtitle] : linesOf(slide.text);

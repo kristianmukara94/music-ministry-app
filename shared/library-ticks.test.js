@@ -63,7 +63,7 @@ test('ticks of one tab do not add items of the other', () => {
 });
 
 test('the Library’s cards select through clickTick, and "Add selected" attaches to the selected card', () => {
-  const library = readFileSync(fileURLToPath(new URL('../src/praise-worship/Library.tsx', import.meta.url)), 'utf8');
+  const library = ['Library', 'LibrarySearchContainer', 'SongSearchResultCard'].map((n) => readFileSync(fileURLToPath(new URL(`../src/praise-worship/${n}.tsx`, import.meta.url)), 'utf8')).join('\n');
   assert.match(library, /clickTick\(\s*ticked,/, 'each song and prayer card is selected through clickTick');
   assert.match(library, /attachMany\(segment, drags\)/, '"Add selected" attaches through attachMany');
   assert.doesNotMatch(library, /no empty slot left/, 'a card is never refused for want of an empty slot');
@@ -82,9 +82,10 @@ test('a range works upward as well as downward, and a repeat is not added twice'
 });
 
 test('the Library has no checkboxes: the card selects, Add is its own button, and a range starts from the last click', () => {
-  const library = readFileSync(fileURLToPath(new URL('../src/praise-worship/Library.tsx', import.meta.url)), 'utf8');
+  const library = ['Library', 'LibrarySearchContainer', 'SongSearchResultCard'].map((n) => readFileSync(fileURLToPath(new URL(`../src/praise-worship/${n}.tsx`, import.meta.url)), 'utf8')).join('\n');
   assert.doesNotMatch(library, /type="checkbox"/, 'no standalone checkbox');
-  assert.match(library, /onClick=\{\(e\) => handleCardClick\(e, i, row\)\}/, 'the whole card is clickable');
+  assert.match(library, /onCardClick=\{\(e\) => onCardClick\(e, i, row\)\}/, 'the whole card is clickable');
+  assert.match(library, /onClick=\{onCardClick\}/, 'the card takes the click');
   assert.match(library, /useState<number \| null>\(null\)/, 'the last clicked row is tracked');
   assert.match(library, /e\.stopPropagation\(\);\s+row\.insert\(\);/, 'Add inserts without touching the selection');
   assert.match(library, /border-l-accent/, 'a selected card has the accent edge');

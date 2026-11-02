@@ -1,4 +1,4 @@
-// The church's song list, sent from a linked laptop. The laptop sends the full list each time, with metadata only: title, category,
+// The church's song list, sent from a linked laptop. The laptop sends the full list each time, with metadata only: title, category, scope,
 // language, key, and its own song id. Lyrics, slides, media and Bible text never come here. A batch that carries any of those
 // fields is refused as a whole, so a bad sync is noticed rather than trimmed. A song the laptop no longer has is marked removed,
 // not deleted, so the plans that use it keep their reference. The church comes from the laptop's token, never from the request.
@@ -12,7 +12,9 @@ export const SONGS_PUSH_LIMIT = { requests: 10, windowMs: 10 * 60 * 1000 };
 export const LANGUAGES = ['English', 'Tagalog', 'Cebuano'];
 const MAX_SONGS = 5000;
 export const MAX_REMOVALS_PER_PUSH = 5;
-const ALLOWED = ['id', 'title', 'category', 'language', 'key'];
+const ALLOWED = ['id', 'title', 'category', 'scope', 'language', 'key'];
+// Where a song is used. A laptop from before scopes sends none, and the song keeps the scope it has.
+export const SCOPES = ['GENERAL', 'MASS', 'PRAISE_AND_WORSHIP'];
 // Field names that would carry lyrics, slides, media or Bible text. Refused by name, so nothing is silently dropped.
 const FORBIDDEN = /lyric|stanza|slide|media|bible|verse|scripture|audio|video|image|file|text|hymn/i;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -61,9 +63,11 @@ export function checkSong(song) {
   const category = typeof song.category === 'string' ? song.category.trim() : '';
   if (category.length > 40) throw new ApiError(400, 'A song category can be up to 40 characters. Nothing was sent.');
   if (!LANGUAGES.includes(song.language)) throw new ApiError(400, 'A song language must be English, Tagalog or Cebuano. Nothing was sent.');
+  if (song.scope !== undefined && !SCOPES.includes(song.scope)) throw new ApiError(400, 'A song scope must be General, Mass or Praise & Worship. Nothing was sent.');
+  const scope = song.scope ?? null;
   const musicalKey = typeof song.key === 'string' ? song.key.trim() : '';
   if (musicalKey.length > 10) throw new ApiError(400, 'A song key can be up to 10 characters. Nothing was sent.');
-  return { id, title, category, language: song.language, musicalKey };
+  return { id, title, category, scope, language: song.language, musicalKey };
 }
 
 export function createSongsSyncApi({ sql, transaction, secret, now = () => new Date() }) {
@@ -115,7 +119,7 @@ export function createSongsSyncApi({ sql, transaction, secret, now = () => new D
       }
       step.name = 'read';
       // Only this church's rows are read and written, so another church's songs are never touched.
-      const existing = await tx`SELECT id, title, category, language, musical_key, removed_at FROM songs WHERE church_id = ${churchId}`;
+      const existing = await tx`SELECT id, title, category, scope, language, musical_key, removed_at FROM songs WHERE church_id = ${churchId}`;
       if (songs.length === 0 && existing.some((r) => !r.removed_at)) {
         throw new ApiError(409, 'The song list is empty, so nothing was changed. Check the song list on the laptop and try again.');
       }
@@ -132,16 +136,17 @@ export function createSongsSyncApi({ sql, transaction, secret, now = () => new D
       step.name = 'write';
       for (const s of songs) {
         const old = byId.get(s.id);
-        const same = old && !old.removed_at && old.title === s.title && old.category === s.category && old.language === s.language && old.musical_key === s.musicalKey;
+        const same = old && !old.removed_at && old.title === s.title && old.category === s.category && (s.scope === null || old.scope === s.scope) && old.language === s.language && old.musical_key === s.musicalKey;
         if (same) {
           counts.unchanged += 1;
           continue;
         }
         // A new song, a changed one, or one that was removed and is back. The same id is the same row, so a rename updates it.
         await tx`
-          INSERT INTO songs (id, church_id, title, category, language, musical_key, removed_at, updated_at)
-          VALUES (${s.id}, ${churchId}, ${s.title}, ${s.category}, ${s.language}, ${s.musicalKey}, NULL, ${at})
+          INSERT INTO songs (id, church_id, title, category, scope, language, musical_key, removed_at, updated_at)
+          VALUES (${s.id}, ${churchId}, ${s.title}, ${s.category}, COALESCE(${s.scope}::text, 'GENERAL'), ${s.language}, ${s.musicalKey}, NULL, ${at})
           ON CONFLICT (church_id, id) DO UPDATE SET title = EXCLUDED.title, category = EXCLUDED.category,
+            scope = COALESCE(${s.scope}::text, songs.scope),
             language = EXCLUDED.language, musical_key = EXCLUDED.musical_key, removed_at = NULL, updated_at = EXCLUDED.updated_at`;
         if (old) counts.updated += 1;
         else counts.created += 1;

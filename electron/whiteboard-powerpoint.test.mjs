@@ -7,13 +7,13 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { WHITEBOARD_MIGRATIONS, WHITEBOARD_POWERPOINT_MIGRATIONS, createWhiteboardService } = await import('./whiteboard.js');
+const { WHITEBOARD_FOLDER_MIGRATIONS, WHITEBOARD_RESTORE_MIGRATIONS, WHITEBOARD_LAYER_MIGRATIONS, WHITEBOARD_MIGRATIONS, WHITEBOARD_POWERPOINT_MIGRATIONS, createWhiteboardService } = await import('./whiteboard.js');
 
 function setup(pictures) {
   const db = new DatabaseSync(':memory:');
   // Only the part of Announcements the Whiteboard reads: the image slides, and their notes.
   db.exec('CREATE TABLE announcement_slides (id INTEGER PRIMARY KEY, notes TEXT)');
-  for (const sql of [...WHITEBOARD_MIGRATIONS, ...WHITEBOARD_POWERPOINT_MIGRATIONS]) db.exec(sql);
+  for (const sql of [...WHITEBOARD_MIGRATIONS, ...WHITEBOARD_POWERPOINT_MIGRATIONS, ...WHITEBOARD_FOLDER_MIGRATIONS, ...WHITEBOARD_RESTORE_MIGRATIONS, ...WHITEBOARD_LAYER_MIGRATIONS]) db.exec(sql);
   for (const p of pictures) db.prepare('INSERT INTO announcement_slides (id, notes) VALUES (?, ?)').run(p.id, p.notes ?? null);
   // node:sqlite has no .transaction(); the service only needs it for the import.
   db.transaction = (fn) => () => fn();

@@ -1,20 +1,22 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { stanzaFrame } from './frames';
 import { ArrowDown, ArrowUp, Check, ListMusic, Music, Pencil, Play, Plus, Search, Trash2, Type } from 'lucide-react';
 import { BACKGROUND_COLORS, sanitizeTextStyle } from '../../shared/text-style.js';
 import type { TextStyle } from '../../shared/text-style';
 import { ColorField, StyleToolbar } from '../announcements/StyleControls';
-import type { Frame } from '../../shared/live.js';
-import { CATEGORIES, LANGUAGES } from '../../shared/lyrics-parser.js';
 import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
 import { setUi, useUi } from '../state/ui';
 import { ShowAllVerses } from '../components/ShowAllVerses';
 import { RecentlyDeleted } from './RecentlyDeleted';
 import { useAnnT } from '../announcements/strings';
-import { CreateHymnModal } from './CreateHymnModal';
-import { SongCategoriesModal } from './SongCategoriesModal';
+import { AddSongModal, type AddSongTab } from './AddSongModal';
+import { HymnLibraryHeader, type LibraryTab } from './HymnLibraryHeader';
+import { SongCategoriesEditor } from './SongCategoriesEditor';
+import { SongFilterBar } from './SongFilterBar';
+import { useSongFilter } from './useSongFilter';
 import { useLyT } from './strings';
-import type { Hymn, HymnCategory, HymnLanguage, HymnSummary, Setlist, SetlistEntry } from './types';
+import type { Hymn, HymnSummary, Setlist, SetlistEntry } from './types';
 
 const api = bridge.lyrics;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -41,15 +43,6 @@ const SECTION_TONE: Record<string, string> = {
   Tag: 'border-fg/15 bg-panel-2 text-fg/80 hover:bg-panel',
 };
 
-/** The projector frame for one stanza of a hymn, or null when there is no such stanza. */
-function stanzaFrame(hymn: Hymn, index: number): Frame | null {
-  const stanza = hymn.stanzas[index];
-  // The song and the stanza's position let the projector follow an edit to this song while it is live.
-  return stanza
-    ? { kind: 'lyrics', title: hymn.title, label: stanza.stanzaType, text: stanza.lyricsText, style: hymn.style, key: `song:${hymn.id}`, song: { hymnId: hymn.id, position: index, count: hymn.stanzas.length } }
-    : null;
-}
-
 /** Today's date in local time (toISOString would give yesterday's date before 08:00 in Manila). */
 const todayIso = () => {
   const d = new Date();
@@ -68,15 +61,21 @@ export function SongLyrics() {
   const openedFromQueue = useRef(false);
   // Whether the hymn on screen came from the Mass Queue. Its takes stay on the queue's account; any other hymn is a direct take.
   const hymnFromQueue = useRef(false);
-  const [showCreate, setShowCreate] = useState(false);
-  const [showCategories, setShowCategories] = useState(false);
+  // The Add song dialog, open on one of its tabs; null when closed.
+  const [adding, setAdding] = useState<AddSongTab | null>(null);
+  // What the library panel shows: the songs, or the song categories.
+  const [libraryTab, setLibraryTab] = useState<LibraryTab>('library');
   const [editing, setEditing] = useState<Hymn | null>(null);
 
   // Library
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState<HymnCategory | ''>('');
-  const [language, setLanguage] = useState<HymnLanguage | ''>('');
-  const [hymns, setHymns] = useState<HymnSummary[]>([]);
+  // The search, the scope (General, Mass, Praise & Worship) and the song category, with the list they give. It is read again when the tab changes.
+  const filter = useSongFilter({ refreshKey: libraryTab });
+  const { hymns, query } = filter;
+  // A new filter starts the list from its top, so the first result of the new list is the one in view.
+  const listRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: 0 });
+  }, [filter.scope, filter.songCategory, filter.language]);
 
   // Setlist
   const [setlists, setSetlists] = useState<Setlist[]>([]);
@@ -100,7 +99,7 @@ export function SongLyrics() {
   const [error, setError] = useState<string | null>(null);
   const dragRef = useRef<DragSource | null>(null);
   const fail = (err: unknown) => setError(errorText(err));
-  const modalOpen = showCreate || editing !== null;
+  const modalOpen = adding !== null || editing !== null;
   const inSetlist = new Set(entries.map((e) => e.hymnId));
   const onAirTitle = liveFrame.kind === 'lyrics' ? liveFrame.title : null;
 
@@ -121,12 +120,7 @@ export function SongLyrics() {
     if (selected !== null) setFocusedId(null);
   }, [selected]);
 
-  // Library search is debounced so typing does not send a request per keystroke.
-  const reloadHymns = () => api.listHymns({ search: query, category, language }).then(setHymns).catch(fail);
-  useEffect(() => {
-    const timer = window.setTimeout(() => void reloadHymns(), 150);
-    return () => window.clearTimeout(timer);
-  }, [query, category, language]);
+  const reloadHymns = filter.reload;
 
   /** Reloads the setlist names and selects `preferId`, or the first setlist when it is null. */
   const reloadSetlists = (preferId: number | null) =>
@@ -177,6 +171,19 @@ export function SongLyrics() {
       })
       .catch(fail);
   }, [activeHymnId, queueRequest]);
+
+  // The open song changed somewhere else (split from the mirror, edited on air from a cue panel): its cues are read again, on the same stanza.
+  const openHymnId = hymn?.id ?? null;
+  useEffect(() => {
+    if (openHymnId === null) return undefined;
+    return api.onChanged((id) => {
+      if (id !== openHymnId) return;
+      api
+        .getHymn(id)
+        .then((fresh) => fresh && !fresh.deletedAt && setHymn(fresh))
+        .catch(() => undefined);
+    });
+  }, [openHymnId]);
 
   /** Stages one stanza. It shows in the staged slot, and the screen does not change until it is taken live. */
   const stage = (index: number) => {
@@ -305,7 +312,7 @@ export function SongLyrics() {
 
   /** After an edit, the stanzas may have changed, so the open cue card is reloaded too. */
   const afterSave = async () => {
-    setShowCreate(false);
+    setAdding(null);
     setEditing(null);
     await reloadHymns();
     if (setlistId != null) setEntries(await api.getSetlist(setlistId));
@@ -343,55 +350,41 @@ export function SongLyrics() {
         <p className="mt-1 text-sm text-fg/70">{t('subtitle')}</p>
       </header>
 
-      {error && (
+      {(error ?? filter.error) && (
         <div role="alert" className="mx-5 mb-4 rounded-lg border border-danger/50 bg-danger/10 px-4 py-2 text-sm text-danger">
-          {error}
+          {error ?? filter.error}
         </div>
       )}
 
-      <div className="grid min-h-0 grid-cols-1 gap-5 px-5 pb-5 xl:flex-1 xl:grid-cols-[360px_minmax(0,1fr)_minmax(0,1.1fr)]">
+      <div className="grid min-h-0 grid-cols-1 gap-5 px-5 pb-5 xl:flex-1 xl:grid-cols-[380px_minmax(0,1fr)_minmax(0,1.1fr)]">
         {/* ── Library ── */}
         <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-[10px] border border-line bg-panel">
           <div className="flex flex-col gap-3 border-b border-line p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('libraryTitle')}</span>
-              <div className="flex items-center gap-2">
-              <button type="button" onClick={() => setShowCategories(true)} className="h-9 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs font-semibold tracking-wide whitespace-nowrap uppercase transition hover:bg-fg/10">
-                {t('songCategoriesButton')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowCreate(true)}
-                className="flex h-9 items-center gap-1.5 rounded-md border border-accent bg-accent px-3 text-xs font-extrabold tracking-wide uppercase text-on-accent transition hover:brightness-110"
-              >
-                <Plus size={14} strokeWidth={2.5} aria-hidden /> {t('createHymn')}
-              </button>
-              </div>
-            </div>
+            <HymnLibraryHeader tab={libraryTab} onTab={setLibraryTab} count={hymns.length} onAdd={setAdding} t={t} />
+            {libraryTab === 'library' && (
+            <>
             <label className="relative">
               <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" aria-hidden />
               <input
                 type="search"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => filter.setQuery(e.target.value)}
                 placeholder={t('search')}
                 className="h-10 w-full rounded-md border border-fg/15 bg-panel-2 pr-3 pl-9 text-sm outline-none focus:border-accent"
               />
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <select value={category} onChange={(e) => setCategory(e.target.value as HymnCategory | '')} className={selectClass} aria-label={t('fieldCategory')}>
-                <option value="">{t('allCategories')}</option>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{t(`cat_${c}`)}</option>)}
-              </select>
-              <select value={language} onChange={(e) => setLanguage(e.target.value as HymnLanguage | '')} className={selectClass} aria-label={t('fieldLanguage')}>
-                <option value="">{t('allLanguages')}</option>
-                {LANGUAGES.map((l) => <option key={l} value={l}>{t(`lang_${l}`)}</option>)}
-              </select>
-            </div>
-            <p className="text-xs text-fg/60 tabular-nums">{t('hymnCount', { n: hymns.length })}</p>
+            <SongFilterBar filter={filter} t={t} />
+            </>
+            )}
           </div>
 
-          <ul className="min-h-0 flex-1 overflow-y-auto p-2">
+          {libraryTab === 'categories' ? (
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <SongCategoriesEditor />
+            </div>
+          ) : (
+          <>
+          <ul ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-2">
             {hymns.length === 0 && <li className="p-4 text-sm text-fg/60">{t('noHymns')}</li>}
             {hymns.map((h) => (
               <li
@@ -447,6 +440,8 @@ export function SongLyrics() {
             ))}
           </ul>
           <RecentlyDeleted onRestored={() => void reloadHymns()} />
+          </>
+          )}
         </section>
 
         {/* ── Sunday setlist ── */}
@@ -698,9 +693,26 @@ export function SongLyrics() {
         </section>
       </div>
 
-      {showCategories && <SongCategoriesModal onClose={() => setShowCategories(false)} />}
-      {showCreate && <CreateHymnModal onClose={() => setShowCreate(false)} onSaved={() => void afterSave()} />}
-      {editing && <CreateHymnModal hymn={editing} onClose={() => setEditing(null)} onSaved={() => void afterSave()} />}
+      {(adding || editing) && (
+        <AddSongModal
+          key={editing ? `edit-${editing.id}` : 'add'}
+          hymn={editing}
+          initialTab={adding ?? 'type'}
+          onClose={() => {
+            setAdding(null);
+            setEditing(null);
+          }}
+          onSaved={() => void afterSave()}
+          onImported={() => void reloadHymns()}
+          onOpenSong={(id) => {
+            // A song added from a file opens in the cue controller, ready to go live; it is not put on the projector.
+            setAdding(null);
+            setSelected(null);
+            setFocusedId(id);
+            setQueueRequest((n) => n + 1);
+          }}
+        />
+      )}
     </div>
   );
 }

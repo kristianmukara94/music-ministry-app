@@ -12,16 +12,17 @@ import { renderWithBuiltIn } from './pptx-render.js';
 import { HYMN_DELETE_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } from './lyrics.js';
 import { LECTIONARY_ACCLAMATION_MIGRATIONS, LECTIONARY_MIGRATIONS, LECTIONARY_STYLE_MIGRATIONS } from './lectionary.js';
 import { MEDIA_AUDIO_MIGRATIONS, MEDIA_MIGRATIONS } from './media.js';
-import { WHITEBOARD_MIGRATIONS, WHITEBOARD_POWERPOINT_MIGRATIONS } from './whiteboard.js';
+import { WHITEBOARD_FOLDER_MIGRATIONS, WHITEBOARD_MIGRATIONS, WHITEBOARD_POWERPOINT_MIGRATIONS, WHITEBOARD_RESTORE_MIGRATIONS, WHITEBOARD_LAYER_MIGRATIONS } from './whiteboard.js';
 import { MASS_PLAN_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_NOTES_MIGRATIONS } from './mass-plans.js';
 import { PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, setupNotes } from './notes.js';
 import { ROSARY_LITANY_MIGRATIONS } from './rosary.js';
 import { BIBLE_MIGRATIONS } from './bible-seed.js';
 import { ROSARY_MIGRATIONS } from './rosary.js';
 import { PW_MIGRATIONS } from './pw-sessions.js';
-import { SONG_CATEGORY_MIGRATIONS } from './song-categories.js';
+import { SONG_CATEGORY_MIGRATIONS, SONG_SCOPE_MIGRATIONS } from './song-categories.js';
 import { TRANSFER_MIGRATIONS } from './transfer.js';
 import { PLAN_SYNC_MIGRATIONS } from './plan-sync-schema.js';
+import { SPONTANEOUS_LOG_MIGRATIONS } from './spontaneous-log.js';
 import { MEDIA_SCHEME, installMediaProtocol, registerMediaRoute } from './protocol.js';
 import { assetRootFor, migrateAbsolutePaths, relPath, resolveAsset, setActiveAssetRoot } from './assets.js';
 
@@ -130,6 +131,11 @@ const ALL_MIGRATIONS = [
   ...HYMN_DELETE_MIGRATIONS,
   ...PRAYER_NOTES_SPLIT_MIGRATIONS,
   ...WHITEBOARD_POWERPOINT_MIGRATIONS,
+  ...WHITEBOARD_FOLDER_MIGRATIONS,
+  ...WHITEBOARD_RESTORE_MIGRATIONS,
+  ...WHITEBOARD_LAYER_MIGRATIONS,
+  ...SPONTANEOUS_LOG_MIGRATIONS,
+  ...SONG_SCOPE_MIGRATIONS,
 ];
 
 const SLIDE_SELECT = `

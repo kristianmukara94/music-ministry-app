@@ -1,9 +1,11 @@
-// Sends the church's song list to the cloud: title, category, language, key and the laptop's own song id. Never the lyrics, the
+// Sends the church's song list to the cloud: title, category, scope, language, key and the laptop's own song id. Never the lyrics, the
 // composer, the style, media or Bible text. The list is the full list each time, so a song the laptop no longer has is marked
 // removed on the server. A hymn saved here asks for a send a moment later (notify), and the timer keeps retrying a send that failed,
 // with backoff, so a save made while offline is sent when the connection returns.
 //
 // Pure apart from the injected database read, push, clock and timer, so the tests run in Node with fakes.
+
+const SCOPES = ['GENERAL', 'MASS', 'PRAISE_AND_WORSHIP'];
 
 /** The laptop's language codes, as the server stores them. */
 export const LANGUAGE_NAMES = { EN: 'English', TL: 'Tagalog', CEB: 'Cebuano' };
@@ -17,7 +19,7 @@ const BACKOFF_MS = [30 * 1000, 60 * 1000, 2 * 60 * 1000, 5 * 60 * 1000, 10 * 60 
  * A song with no uuid is left out until the laptop gives it one; the database trigger does that on insert.
  */
 export const SONG_ROWS_SQL = `
-  SELECT uuid, title, song_category, language, musical_key
+  SELECT uuid, title, song_category, primary_category, language, musical_key
   FROM hymns WHERE uuid IS NOT NULL AND deleted_at IS NULL ORDER BY id`;
 
 /**
@@ -38,6 +40,8 @@ export function buildSongList(rows) {
       id: row.uuid,
       title,
       category: typeof row.song_category === 'string' ? row.song_category.trim() : '',
+      // Where the song is used. A row with no readable scope is General, which every scope shows.
+      scope: SCOPES.includes(row.primary_category) ? row.primary_category : 'GENERAL',
       language,
       key: typeof row.musical_key === 'string' ? row.musical_key.trim() : '',
     });

@@ -123,14 +123,12 @@ export function TvView() {
 
   if (phase === 'pin') {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-black text-white">
-        <form onSubmit={unlock} autoComplete="off" className="flex flex-col items-center gap-[2.5vh] text-[2.4vh]">
+      <div className="tv-pin">
+        <form onSubmit={unlock} autoComplete="off">
           <label htmlFor="pin-input">Enter the PIN to show the service</label>
-          <input id="pin-input" name="pin" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={8} required className="w-[20vw] bg-stone-900 px-4 py-2 text-center font-mono text-[4vh]" />
-          <button type="submit" className="bg-amber-500 px-6 py-2 font-bold text-stone-950">
-            Open
-          </button>
-          {pinError && <p role="alert" className="text-amber-300">{pinError}</p>}
+          <input id="pin-input" name="pin" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={8} required />
+          <button type="submit">Open</button>
+          {pinError && <p role="alert">{pinError}</p>}
         </form>
       </div>
     );
@@ -138,8 +136,7 @@ export function TvView() {
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center bg-black outline-none"
-      style={{ cursor: 'none' }}
+      className="tv-stage"
       tabIndex={0}
       autoFocus
       onClick={requestPageFullscreen}
@@ -149,16 +146,10 @@ export function TvView() {
         requestPageFullscreen();
       }}
     >
-      <div className="aspect-video h-auto w-[min(100vw,calc(100vh*16/9))]">
-        {snapshot ? <LargeScreen frame={snapshot.frame} /> : <div className="h-full w-full bg-black" />}
-      </div>
-      {!isFullscreen && (
-        <p className="pointer-events-none fixed top-[3vh] right-[3vw] rounded-md bg-black/70 px-4 py-2 text-[1.8vh] text-amber-300">
-          Click screen or press OK on TV Remote for Fullscreen
-        </p>
-      )}
+      <div className="tv-frame-wrap">{snapshot ? <LargeScreen frame={snapshot.frame} /> : <div className="tv-frame" />}</div>
+      {!isFullscreen && <p className="tv-hint">Click screen or press OK on TV Remote for Fullscreen</p>}
       {phase === 'offline' && (
-        <p role="status" className="fixed inset-x-0 bottom-0 bg-black/80 px-4 py-2 text-center text-[2vh] text-amber-300">
+        <p role="status" className="tv-offline">
           Cannot reach the laptop. The screen will reconnect when it can.
         </p>
       )}

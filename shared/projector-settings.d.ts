@@ -2,7 +2,8 @@ export const PROJECTOR_ASPECTS: readonly ['16:9', '4:3'];
 export const PROJECTOR_FITS: readonly ['contain', 'fill'];
 export const PROJECTOR_IDLE: readonly ['black', 'crest', 'media'];
 export const PROJECTOR_STARTUP: readonly ['welcome', 'black', 'last'];
-export const TRANSITION_STYLES: readonly ['fade', 'slideLeft', 'slideRight', 'slideUp', 'zoomIn'];
+export const TRANSITION_STYLES: readonly ['fade', 'dissolve', 'push', 'slideLeft', 'slideRight', 'slideUp', 'zoomIn'];
+export const OVERLAP_TRANSITIONS: readonly ['dissolve', 'push'];
 export const FADE_MIN_MS: number;
 export const FADE_MAX_MS: number;
 export const SLIDE_FONTS: string[];
@@ -18,11 +19,16 @@ export interface ProjectorSettings {
   idleMedia: string | null;
   startupScreen: 'welcome' | 'black' | 'last';
   transitionsOn: boolean;
-  transitionStyle: 'fade' | 'slideLeft' | 'slideRight' | 'slideUp' | 'zoomIn';
+  transitionStyle: 'fade' | 'dissolve' | 'push' | 'slideLeft' | 'slideRight' | 'slideUp' | 'zoomIn';
   fadeMs: number;
   slideFont: string | null;
   defaultIntroSlideMode: 'title' | 'black';
   slideFontScale: number;
+  backgroundEverywhere: boolean;
+  advancedOutput: boolean;
+  textColor: string | null;
+  textShadow: number;
+  textOutline: number;
 }
 
 export const PROJECTOR_SETTINGS_DEFAULTS: ProjectorSettings;

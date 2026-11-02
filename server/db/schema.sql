@@ -40,6 +40,9 @@ CREATE TABLE songs (
   church_id     UUID NOT NULL REFERENCES churches(id) ON DELETE CASCADE,
   title         TEXT NOT NULL CHECK (char_length(title) BETWEEN 1 AND 200),
   category      TEXT NOT NULL DEFAULT '' CHECK (char_length(category) <= 40),
+  -- Where the song is used. A database created before scopes needs: ALTER TABLE songs ADD COLUMN scope TEXT NOT NULL DEFAULT 'GENERAL'
+  --   CHECK (scope IN ('GENERAL', 'MASS', 'PRAISE_AND_WORSHIP'));  (run it before the server that reads it is deployed)
+  scope         TEXT NOT NULL DEFAULT 'GENERAL' CHECK (scope IN ('GENERAL', 'MASS', 'PRAISE_AND_WORSHIP')),
   language      TEXT NOT NULL CHECK (language IN ('English', 'Tagalog', 'Cebuano')),
   musical_key   TEXT NOT NULL DEFAULT '' CHECK (char_length(musical_key) <= 10),
   removed_at    TIMESTAMPTZ,

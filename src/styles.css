@@ -565,6 +565,31 @@
   from { opacity: 0; transform: translateY(8%); }
   to { opacity: 1; transform: none; }
 }
+@keyframes apcc-enter-push {
+  from { transform: translateX(100%); }
+  to { transform: none; }
+}
+/* The slide that leaves during a dissolve or a push. */
+@keyframes apcc-exit-fade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes apcc-exit-push {
+  from { transform: none; }
+  to { transform: translateX(-100%); }
+}
+/*
+ * Advanced output: one shadow, outline and (when chosen) colour for every line of slide text on the projector, over each slide's own look.
+ * The values are custom properties the projector view sets from the output settings.
+ */
+.apcc-advanced-text * {
+  text-shadow: var(--apcc-text-shadow) !important;
+  -webkit-text-stroke: var(--apcc-text-stroke);
+  paint-order: stroke fill;
+}
+.apcc-advanced-text.apcc-text-color * {
+  color: var(--apcc-text-color) !important;
+}
 @keyframes apcc-enter-zoom {
   from { opacity: 0; transform: scale(0.9); }
   to { opacity: 1; transform: none; }
@@ -582,4 +607,12 @@
   .live-breathe {
     animation: none;
   }
+}
+
+/* Operator-only controls drawn on a mirror (the "text cut off" badge) keep their own look under Advanced mode's text styling. */
+.apcc-advanced-text [data-operator-only],
+.apcc-advanced-text [data-operator-only] * {
+  text-shadow: none !important;
+  -webkit-text-stroke: 0 transparent;
+  color: #1c1917 !important;
 }

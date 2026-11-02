@@ -8,7 +8,7 @@ import { useUi } from '../state/ui';
 import { LineupRail } from './LineupRail';
 import { Library } from './Library';
 import { SegmentEditor } from './SegmentEditor';
-import { createSession, deleteSession, errorText, flushSave, openSession, updateSession, usePw } from './store';
+import { createSession, deleteSession, errorText, flushSave, openSession, setPwState, updateSession, usePw } from './store';
 import { usePwT } from './strings';
 
 const INPUT = 'h-10 rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent/40';
@@ -109,8 +109,15 @@ export function PlanView() {
           <select
             value={session.id}
             onChange={async (e) => {
-              await flushSave();
-              await openSession(Number(e.target.value));
+              // Read the pick before the first await: React restores a controlled select to the open session as soon as the handler yields.
+              const id = Number(e.target.value);
+              if (id === session.id) return;
+              try {
+                await flushSave();
+                await openSession(id);
+              } catch (err) {
+                setPwState({ error: errorText(err) });
+              }
             }}
             className={`${INPUT} min-w-60 text-fg normal-case`}
           >

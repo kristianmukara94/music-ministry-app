@@ -1,0 +1,211 @@
+/*
+ * The TV page's own styles, in plain CSS. A Smart TV's browser is often several years old, and the app's main stylesheet needs a recent one
+ * (cascade layers, container-query units, color-mix), so the TV page does not use it. Everything here works in an old Chromium:
+ * no layers, no container units, no aspect-ratio, no min() or gap, and no four-sided top/right/bottom/left (the build folds that into the newer
+ * inset shorthand, which an old TV does not know). The screen is black from the first paint, so a TV that cannot run the
+ * page still shows black, never white.
+ */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+}
+
+body {
+  color: #fff;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* The whole screen. The cursor is hidden: the TV is not clicked, apart from the remote's OK key. */
+.tv-stage {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  outline: none;
+  cursor: none;
+}
+
+/* A 16:9 frame as wide as the screen allows: the full width, or the width that makes it as tall as the screen. */
+.tv-frame-wrap {
+  position: relative;
+  flex: none;
+  width: 100vw;
+  max-width: 177.7778vh;
+}
+.tv-frame-wrap:before {
+  content: '';
+  display: block;
+  padding-top: 56.25%;
+}
+
+.tv-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: #fff;
+}
+
+.tv-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+.tv-cover {
+  object-fit: cover;
+  object-position: center;
+}
+.tv-contain {
+  object-fit: contain;
+  object-position: center;
+}
+.tv-picture {
+  background: #000;
+  object-fit: contain;
+}
+.tv-shade {
+  background: #000;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* The words of a slide, centred in the frame. Sizes are set from the frame's width in the page. */
+.tv-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6%;
+  text-align: center;
+}
+.tv-title {
+  position: absolute;
+  top: 7%;
+  left: 6%;
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #d6a94f;
+}
+.tv-lines {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: pre-line;
+}
+.tv-lines p {
+  margin: 0;
+}
+.tv-failed {
+  position: absolute;
+  bottom: 7%;
+  left: 6%;
+  margin: 0;
+  color: #f5c96b;
+}
+.tv-status {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a8a29e;
+}
+
+/* The hint to go full screen, and the note shown when the laptop cannot be reached. */
+.tv-hint {
+  position: fixed;
+  top: 3vh;
+  right: 3vw;
+  padding: 0.5em 1em;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fcd34d;
+  font-size: 1.8vh;
+  pointer-events: none;
+}
+.tv-offline {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 0.5em 1em;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fcd34d;
+  font-size: 2vh;
+  text-align: center;
+}
+
+/* The PIN screen. */
+.tv-pin {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  color: #fff;
+}
+.tv-pin form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 2.4vh;
+}
+.tv-pin form > * {
+  margin-top: 2.5vh;
+}
+.tv-pin form > *:first-child {
+  margin-top: 0;
+}
+.tv-pin input {
+  box-sizing: border-box;
+  width: 20vw;
+  padding: 0.5em 1em;
+  border: 1px solid #57534e;
+  background: #1c1917;
+  color: #fff;
+  font-family: 'Courier New', monospace;
+  font-size: 4vh;
+  text-align: center;
+}
+.tv-pin button {
+  padding: 0.5em 1.5em;
+  border: 0;
+  background: #f59e0b;
+  color: #0c0a09;
+  font-size: inherit;
+  font-weight: 700;
+}
+.tv-pin p {
+  margin: 2.5vh 0 0;
+  color: #fcd34d;
+}

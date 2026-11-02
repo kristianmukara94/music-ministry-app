@@ -1,10 +1,10 @@
 import type { CSSProperties } from 'react';
 import { TEXT_FONTS } from '../../shared/text-style.js';
-import { bulletMark, parseSlideContent, type WhiteboardDesign, type WhiteboardVerse } from '../../shared/whiteboard.js';
+import { bulletMark, parseSlideContent, type WhiteboardDesign, type WhiteboardTextBox, type WhiteboardVerse } from '../../shared/whiteboard.js';
 import { dotPatternStyle, gradientFrameStyle } from './templates/scriptureTemplate';
 
 /** A size in pixels on the 1920 slide, as a share of the slide's own width. The slide sets `container-type`. */
-const cq = (px: number) => `${px / 19.2}cqw`;
+export const cq =(px: number) => `${px / 19.2}cqw`;
 
 const PATTERN: Record<'none' | 'grid' | 'gradient', string | undefined> = {
   none: undefined,
@@ -42,13 +42,55 @@ function VerseBlock({ verse, design, family }: { verse: WhiteboardVerse; design:
   );
 }
 
+/** How a text box's words sit in it from top to bottom. */
+const VALIGN: Record<WhiteboardTextBox['valign'], CSSProperties['justifyContent']> = { top: 'flex-start', middle: 'center', bottom: 'flex-end' };
+
+/** The look of a text box's words. Shared with the editor, so text typed in place looks as it will on the slide. */
+export function textBoxStyle(box: WhiteboardTextBox): CSSProperties {
+  return {
+    color: box.color,
+    fontFamily: `'${box.font}', 'Segoe UI', Arial, sans-serif`,
+    fontSize: cq(box.size),
+    fontWeight: box.bold ? 700 : 400,
+    fontStyle: box.italic ? 'italic' : 'normal',
+    textDecoration: box.underline ? 'underline' : 'none',
+    textAlign: box.align,
+    lineHeight: 1.2,
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'break-word',
+  };
+}
+
+/** Where a text box sits on the slide, as percentages, turned as it is turned. */
+export function textBoxFrame(box: WhiteboardTextBox): CSSProperties {
+  return {
+    position: 'absolute',
+    left: `${box.x}%`,
+    top: `${box.y}%`,
+    width: `${box.w}%`,
+    height: `${box.h}%`,
+    transform: box.rot ? `rotate(${box.rot}deg)` : undefined,
+  };
+}
+
+/** One text box: its words in their place, over everything else on the slide. */
+function TextBoxView({ box }: { box: WhiteboardTextBox }) {
+  return (
+    <div className="pointer-events-none flex flex-col" style={{ ...textBoxFrame(box), justifyContent: VALIGN[box.valign] }}>
+      <div style={textBoxStyle(box)}>{box.text}</div>
+    </div>
+  );
+}
+
 /**
  * One slide, drawn from its design. The same component draws the library thumbnails, the editor preview and the
  * projector, so a slide looks the same wherever it appears. Every size is a share of the slide's width.
+ * `hiddenBox` leaves one text box out, for the editor to draw while its words are typed in place.
  */
-export function SlideCanvas({ slide, className = '' }: {
+export function SlideCanvas({ slide, className = '', hiddenBox = null }: {
   slide: { title: string; content: string; design: WhiteboardDesign };
   className?: string;
+  hiddenBox?: number | null;
 }) {
   const d = slide.design;
   const items = parseSlideContent(slide.content);
@@ -70,6 +112,17 @@ export function SlideCanvas({ slide, className = '' }: {
       className={`relative flex flex-col overflow-hidden ${className}`}
       style={{ containerType: 'inline-size', backgroundColor: d.bgColor, color: d.textColor, ...backgroundFor(d.pattern) }}
     >
+      {/* The background picture sits under the pattern and the text. A dim layer keeps the text readable over a bright picture. */}
+      {d.bgImage && (
+        <>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0"
+            style={{ backgroundImage: `url('${d.bgImage}')`, backgroundSize: d.bgFit === 'stretch' ? '100% 100%' : d.bgFit, backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}
+          />
+          {d.bgDim > 0 && <div aria-hidden className="pointer-events-none absolute inset-0" style={{ backgroundColor: `rgba(0, 0, 0, ${d.bgDim / 100})` }} />}
+        </>
+      )}
       {d.border &&
         (d.borderStyle === 'gradient' ? (
           // The gradient frame: its inner box is clear, so only the ring shows the gradient.
@@ -86,6 +139,7 @@ export function SlideCanvas({ slide, className = '' }: {
       <div className="relative flex min-h-0 flex-1 flex-col justify-start" style={{ padding: '7%' }}>
         {d.titleVisible && slide.title && (
           <div
+            data-part="title"
             className="leading-[1.1]"
             style={{
               fontFamily: family,
@@ -109,7 +163,7 @@ export function SlideCanvas({ slide, className = '' }: {
         )}
 
         {items.length > 0 && (
-          <ul className="flex flex-col" style={{ listStyle: 'none', margin: 0, padding: 0, gap: cq(d.fontSize * 0.35) }}>
+          <ul data-part="content" className="flex flex-col" style={{ listStyle: 'none', margin: 0, padding: 0, gap: cq(d.fontSize * 0.35) }}>
             {items.map((item, i) => {
               const mark = item.bullet ? bulletMark(d.bulletStyle, i) : '';
               return (
@@ -142,6 +196,8 @@ export function SlideCanvas({ slide, className = '' }: {
           ))}
         </div>
       )}
+
+      {d.boxes.map((box, i) => (i === hiddenBox ? null : <TextBoxView key={i} box={box} />))}
     </div>
   );
 }

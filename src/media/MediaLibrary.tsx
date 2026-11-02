@@ -1,4 +1,5 @@
 import { useEffect, useState, type DragEvent, type MouseEvent } from 'react';
+import { BackgroundEverywhereToggle } from '../operator/BackgroundEverywhereToggle';
 import { Film, Image as ImageIcon, MoreHorizontal, Music, Play, Trash2, Upload, X } from 'lucide-react';
 import type { MediaFrame } from '../../shared/live.js';
 import { bridge } from '../live/bridge';
@@ -261,6 +262,7 @@ export function MediaLibrary() {
         </div>
 
         <div className="flex flex-col gap-3">
+          <BackgroundEverywhereToggle />
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="min-w-44 rounded-[10px] border border-line bg-panel px-4 py-3">
               <div className={LABEL}>{t('stagedBackground')}</div>

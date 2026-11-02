@@ -50,7 +50,7 @@ test('every text surface takes the scale: the projector, the praise and worship 
 
   const tv = read('src/tv/LargeScreen.tsx');
   assert.match(tv, /const scale = frame\.fontScale \?\? 1;/);
-  assert.match(tv, /scaledSize\('5cqw', scale\)/);
+  assert.match(tv, /fontSize: sized\(5\)/, 'the TV sizes its text from the frame width, times the scale');
 
   assert.match(read('src/praise-worship/CurrentNextPreview.tsx'), /slideScale=\{slideScale\}/, 'the thumbnails follow the size');
 });

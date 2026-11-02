@@ -18,7 +18,7 @@ import { MEDIA_DRAG } from '../media/types';
 import { addToQueue } from '../planner/plan-api';
 import { MassPlanner } from '../planner/MassPlanner';
 import { PraiseWorship } from '../praise-worship/PraiseWorship';
-import { GoLiveHub } from '../golive/GoLiveHub';
+import { GoLiveConsole } from '../golive/GoLiveConsole';
 import { Settings } from '../settings/Settings';
 import { EulaGate } from '../components/EulaModal';
 import { bridge } from '../live/bridge';
@@ -31,6 +31,7 @@ import { watchRemoteSteps, watchSlideScale } from '../praise-worship/live';
 import { stepLive } from '../praise-worship/live';
 import { CommandPalette } from './CommandPalette';
 import { ProjectorPrompt } from './ProjectorPrompt';
+import { SplitStanzaDialog } from '../praise-worship/SplitStanzaDialog';
 import { Dashboard } from './Dashboard';
 import { PreviewPanel } from './PreviewPanel';
 import { NAV, Sidebar } from './Sidebar';
@@ -284,7 +285,7 @@ export function OperatorApp() {
           {view === 'media' && <MediaLibrary />}
           {view === 'planner' && <MassPlanner />}
           {view === 'praiseWorship' && <PraiseWorship />}
-          {view === 'goLive' && <GoLiveHub />}
+          {view === 'goLive' && <GoLiveConsole />}
           {view === 'settings' && <Settings />}
           {view === 'notes' && <NotesPrayersView />}
           {view === 'whiteboard' && <WhiteboardDeck />}
@@ -298,6 +299,7 @@ export function OperatorApp() {
       {previewOpen && <PreviewPanel />}
       <CommandPalette />
       <ProjectorPrompt />
+      <SplitStanzaDialog />
       {/* Above everything else. Shown until the operator accepts the license, then it renders nothing. */}
       <EulaGate />
     </div>

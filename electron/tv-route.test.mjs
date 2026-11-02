@@ -112,3 +112,31 @@ test('the library address is built from the id alone', () => {
   assert.match(resolver, /`\$\{base\}\/api\/remote\/media\/\$\{mediaId\}`/);
   assert.doesNotMatch(resolver, /src|path|file/i, 'no path is taken');
 });
+
+test('the TV page is built to run on an old Smart TV browser: plain CSS, no inline style, nothing from the app stylesheet', () => {
+  // The rules only: the comments explain what is avoided, so they name it.
+  const css = fs.readFileSync(path.join(ROOT, 'src', 'tv', 'tv.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  // None of what a TV browser from a few years ago cannot read, which would leave the page unstyled.
+  for (const modern of [/@layer\b/, /@container\b/, /@property\b/, /\bcq[wh]\b/, /aspect-ratio/, /color-mix\(/, /oklch\(/, /\bmin\(/, /\bmax\(/, /\bclamp\(/, /\bgap:/, /\binset:/, /:is\(/, /:where\(/]) {
+    assert.doesNotMatch(css, modern, `tv.css does not use ${modern}`);
+  }
+  assert.match(css, /html,\s*body,\s*#root\s*\{[^}]*background:\s*#000/, 'the screen is black from the first paint');
+  assert.match(fs.readFileSync(path.join(ROOT, 'src', 'tv', 'tv-main.tsx'), 'utf8'), /import '\.\/tv\.css';/);
+  for (const file of ['tv-main.tsx', 'TvView.tsx', 'LargeScreen.tsx']) {
+    const source = fs.readFileSync(path.join(ROOT, 'src', 'tv', file), 'utf8');
+    assert.doesNotMatch(source, /styles\.css/, `${file} does not use the app's stylesheet`);
+    assert.doesNotMatch(source, /\bcq[wh]\b|aspect-video|\[container-type/, `${file} uses no container units or newer utilities`);
+  }
+  // The page's security policy refuses a style written into the page, so a black body there would leave a white screen.
+  const html = fs.readFileSync(path.join(ROOT, 'tv.html'), 'utf8');
+  assert.doesNotMatch(html, /\sstyle\s*=/, 'tv.html has no inline style');
+  assert.match(fs.readFileSync(path.join(ROOT, 'electron', 'remote-view-server.js'), 'utf8'), /style-src 'self'[;"]/, 'the policy that makes inline styles unusable is still in force');
+});
+
+test('no TV style sets all four sides of a box, which the build would fold into the newer inset shorthand', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'src', 'tv', 'tv.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const rule of css.split('}')) {
+    const sides = ['top', 'right', 'bottom', 'left'].filter((side) => new RegExp(`(^|[;{\s])${side}:`).test(rule));
+    assert.notEqual(sides.length, 4, `one rule sets all four sides: ${rule.trim().slice(0, 60)}`);
+  }
+});

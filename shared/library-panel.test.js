@@ -7,7 +7,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), 'utf8');
-const library = read('src/praise-worship/Library.tsx');
+// The panel is the Library, its result list and the result card.
+const library = ['Library', 'LibrarySearchContainer', 'SongSearchResultCard'].map((n) => read(`src/praise-worship/${n}.tsx`)).join('\n');
 const i18n = read('shared/pw-i18n.js');
 
 test('no preview box, caption, or projector button is left in the Library', () => {

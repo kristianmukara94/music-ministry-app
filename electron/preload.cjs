@@ -36,10 +36,13 @@ contextBridge.exposeInMainWorld('apcc', {
     listHymns: (filter) => ipcRenderer.invoke('lyrics:listHymns', filter),
     getHymn: (id) => ipcRenderer.invoke('lyrics:getHymn', id),
     createHymn: (input) => ipcRenderer.invoke('lyrics:createHymn', input),
+    /** Saves several songs; one result per song, in order. */
+    createHymns: (inputs) => ipcRenderer.invoke('lyrics:createHymns', inputs),
     deleteHymn: (id) => ipcRenderer.invoke('lyrics:deleteHymn', id),
     listDeletedHymns: () => ipcRenderer.invoke('lyrics:listDeletedHymns'),
     undoDeleteHymn: (id) => ipcRenderer.invoke('lyrics:undoDeleteHymn', id),
     editHymn: (id, input) => ipcRenderer.invoke('lyrics:editHymn', id, input),
+    splitStanza: (id, index, parts) => ipcRenderer.invoke('lyrics:splitStanza', id, index, parts),
     listSetlists: () => ipcRenderer.invoke('lyrics:listSetlists'),
     createSetlist: (input) => ipcRenderer.invoke('lyrics:createSetlist', input),
     deleteSetlist: (id) => ipcRenderer.invoke('lyrics:deleteSetlist', id),
@@ -47,6 +50,10 @@ contextBridge.exposeInMainWorld('apcc', {
     saveSetlist: (id, hymnIds) => ipcRenderer.invoke('lyrics:saveSetlist', id, hymnIds),
     setStyle: (id, style) => ipcRenderer.invoke('lyrics:setStyle', id, style),
     importFile: () => ipcRenderer.invoke('lyrics:importFile'),
+    /** Opens the file picker for a Word or text file of many songs. Resolves to its path, or null. */
+    pickBatchFile: () => ipcRenderer.invoke('lyrics:pickBatchFile'),
+    /** Reads a Word or text file of many songs, as lines. */
+    readBatchFile: (filePath) => ipcRenderer.invoke('lyrics:readBatchFile', filePath),
     listSongCategories: () => ipcRenderer.invoke('lyrics:listSongCategories'),
     createSongCategory: (input) => ipcRenderer.invoke('lyrics:createSongCategory', input),
     renameSongCategory: (id, input) => ipcRenderer.invoke('lyrics:renameSongCategory', id, input),
@@ -117,6 +124,11 @@ contextBridge.exposeInMainWorld('apcc', {
     identify: () => ipcRenderer.invoke('display:identify'),
   },
 
+  quickLive: {
+    projectorOpen: () => ipcRenderer.invoke('check-projector-window'),
+    logSpontaneous: (input) => ipcRenderer.invoke('log-spontaneous-song', input),
+  },
+
   projector: {
     save: (patch) => ipcRenderer.invoke('projector:save', patch),
   },
@@ -159,9 +171,42 @@ contextBridge.exposeInMainWorld('apcc', {
   whiteboard: {
     list: () => ipcRenderer.invoke('whiteboard:list'),
     save: (input) => ipcRenderer.invoke('whiteboard:save', input),
+    get: (id) => ipcRenderer.invoke('whiteboard:get', id),
+    /** Changes a PowerPoint slide into an editable slide, in place, with the text and design given. */
+    makeEditable: (id, input) => ipcRenderer.invoke('whiteboard:makeEditable', id, input),
+    /** Turns an edited PowerPoint slide back into its picture. */
+    restorePicture: (id) => ipcRenderer.invoke('whiteboard:restorePicture', id),
+    /** The PowerPoint file a slide came from, and its number there, or null. */
+    pptxSource: (id) => ipcRenderer.invoke('whiteboard:pptxSource', id),
+    /** Asks for that file and takes its slides apart, so their words become text boxes. Null if cancelled. */
+    layersFromFile: (id) => ipcRenderer.invoke('whiteboard:layersFromFile', id),
+    /** Opens the slide in its own editor window. Resolves true once a window is open or already was. */
+    openEditor: (id) => ipcRenderer.invoke('whiteboard:openEditor', id),
+    /** Called after any window changes a Whiteboard slide or folder. Returns the function that stops listening. */
+    onChanged: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on('whiteboard:changed', handler);
+      return () => ipcRenderer.removeListener('whiteboard:changed', handler);
+    },
+    /** The editor window is being closed: write any change still waiting, then call `editorFlushed`. */
+    onEditorFlush: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on('editor:flush', handler);
+      return () => ipcRenderer.removeListener('editor:flush', handler);
+    },
+    editorFlushed: () => ipcRenderer.send('editor:flushed'),
+    /** Closes this editor window, after any change still waiting is saved. */
+    closeEditor: () => ipcRenderer.send('editor:close'),
     remove: (id) => ipcRenderer.invoke('whiteboard:delete', id),
+    removeMany: (ids) => ipcRenderer.invoke('whiteboard:deleteMany', ids),
+    rename: (id, title) => ipcRenderer.invoke('whiteboard:rename', id, title),
     reorder: (ids) => ipcRenderer.invoke('whiteboard:reorder', ids),
-    importPowerPoint: () => ipcRenderer.invoke('whiteboard:importPowerPoint'),
+    folders: () => ipcRenderer.invoke('whiteboard:folders'),
+    createFolder: (name) => ipcRenderer.invoke('whiteboard:createFolder', name),
+    renameFolder: (id, name) => ipcRenderer.invoke('whiteboard:renameFolder', id, name),
+    deleteFolder: (id) => ipcRenderer.invoke('whiteboard:deleteFolder', id),
+    move: (ids, folderId) => ipcRenderer.invoke('whiteboard:move', ids, folderId),
+    importPowerPoint: (folderId) => ipcRenderer.invoke('whiteboard:importPowerPoint', folderId),
   },
 
   media: {

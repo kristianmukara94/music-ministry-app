@@ -1,100 +1,17 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { Check, CheckCircle2, Grid3x3, History, House, Monitor, MonitorUp, Moon, Power, PowerOff, RotateCcw, type LucideIcon } from 'lucide-react';
-import { FADE_MAX_MS, FADE_MIN_MS, PROJECTOR_SETTINGS_DEFAULTS as DEFAULTS, SLIDE_FONTS, type ProjectorSettings as Settings } from '../../shared/projector-settings.js';
-import { TEXT_FONT_GROUPS, TEXT_FONTS, slideFontCss } from '../../shared/text-style.js';
+import { useEffect, useState } from 'react';
+import { Check, CheckCircle2, Grid3x3, History, House, Monitor, MonitorUp, Moon, Power, PowerOff } from 'lucide-react';
+import { PROJECTOR_SETTINGS_DEFAULTS as DEFAULTS, type ProjectorSettings as Settings } from '../../shared/projector-settings.js';
 import { dispatch, useLive } from '../live/store';
 import { bridge, type DisplayInfo } from '../live/bridge';
 import type { MediaAsset } from '../media/types';
+import { CARD, CardHeader, FOCUS, GoldSwitch, HEADING, Row, SUB, Segmented } from './settingsControls';
+import { OutputSettingsPanel } from './OutputSettingsPanel';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-const FOCUS = 'focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none';
-const CARD = 'flex flex-col gap-4 rounded-xl border border-line bg-panel-2/60 p-5 shadow-lg';
-const HEADING = 'text-[11px] font-semibold tracking-wider text-fg/70 uppercase';
-const SUB = 'text-xs text-fg/60';
 /** The app's primary gold button. */
 const PRIMARY = `flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold tracking-wider whitespace-nowrap text-on-accent uppercase shadow-md shadow-black/40 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none ${FOCUS}`;
 const SECONDARY = `flex items-center gap-2 rounded-lg border border-fg/20 bg-panel-2 px-3 py-2 text-xs font-bold tracking-wider whitespace-nowrap text-fg/90 uppercase transition-colors hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`;
-const RESET = `flex shrink-0 items-center gap-1.5 rounded text-[11px] font-bold tracking-wider whitespace-nowrap text-fg/60 uppercase transition-colors hover:text-accent disabled:cursor-default disabled:opacity-40 disabled:hover:text-fg/60 ${FOCUS}`;
-
-/** A segmented control: one of the options is lit gold. */
-function Segmented<T extends string>({ label, value, options, onChange, disabled = false }: {
-  label: string;
-  value: T;
-  options: { id: T; text: string; icon?: LucideIcon }[];
-  onChange: (id: T) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div role="radiogroup" aria-label={label} aria-disabled={disabled} className={`flex flex-wrap gap-1 rounded-lg border border-line bg-panel p-1 ${disabled ? 'opacity-40' : ''}`}>
-      {options.map((o) => {
-        const Icon = o.icon;
-        return (
-          <button
-            key={o.id}
-            type="button"
-            role="radio"
-            aria-checked={value === o.id}
-            disabled={disabled}
-            onClick={() => onChange(o.id)}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-bold tracking-wider whitespace-nowrap uppercase transition-colors disabled:cursor-not-allowed ${FOCUS} ${
-              value === o.id ? 'border border-accent/40 bg-accent/20 text-accent' : 'border border-transparent text-fg/60 hover:text-fg/90'
-            }`}
-          >
-            {Icon && <Icon size={13} aria-hidden />}
-            {o.text}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/** A switch lit gold when on. */
-function GoldSwitch({ label, on, onChange }: { label: string; on: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className={`flex items-center gap-2 rounded-full ${FOCUS}`}>
-      <span className={`relative h-5 w-9 rounded-full border transition ${on ? 'border-accent bg-accent' : 'border-fg/20 bg-panel-2'}`}>
-        <span className={`absolute top-0.5 size-3.5 rounded-full transition-all ${on ? 'left-[18px] bg-panel' : 'left-0.5 bg-fg/50'}`} aria-hidden />
-      </span>
-      <span className="w-6 text-[11px] font-bold tracking-wider text-fg/70 uppercase">{on ? 'On' : 'Off'}</span>
-    </button>
-  );
-}
-
-/**
- * One labelled row inside a card: the name and its explanation, and the control. `stacked` puts a wide control (a
- * segmented choice) on its own line under the text, so it never squeezes the explanation into a narrow column.
- */
-function Row({ title, detail, children, stacked = false }: { title: string; detail: string; children: ReactNode; stacked?: boolean }) {
-  return (
-    <div className={`border-t border-line pt-4 ${stacked ? 'flex flex-col gap-3' : 'flex flex-wrap items-start justify-between gap-3'}`}>
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold text-fg">{title}</div>
-        <div className={SUB}>{detail}</div>
-      </div>
-      <div className={stacked ? '' : 'shrink-0'}>{children}</div>
-    </div>
-  );
-}
-
-/** A section heading with its explanation, and an optional "Reset to defaults" that is off while the section already matches them. */
-function CardHeader({ id, title, detail, onReset, resetDisabled }: { id: string; title: string; detail?: string; onReset?: () => void; resetDisabled?: boolean }) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <h2 id={id} className={HEADING}>{title}</h2>
-        {detail && <p className={SUB}>{detail}</p>}
-      </div>
-      {onReset && (
-        <button type="button" onClick={onReset} disabled={resetDisabled} className={RESET}>
-          <RotateCcw size={12} aria-hidden /> Reset to defaults
-        </button>
-      )}
-    </div>
-  );
-}
-
 /**
  * A picture of the output on the chosen display: the screen, and the content inside it. "Aspect fit" leaves bars where
  * the content's shape differs from the screen's, "Fill" stretches it to the edges, so the choice can be seen before it is made.
@@ -130,7 +47,6 @@ export function ProjectorSettingsPanel() {
   const [media, setMedia] = useState<MediaAsset[]>([]);
   // The display picked in the cards but not yet applied. Applying saves it as the projector's display.
   const [pending, setPending] = useState<number | null>(settings.displayId);
-  const [fadeDraft, setFadeDraft] = useState(settings.fadeMs);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -150,8 +66,6 @@ export function ProjectorSettingsPanel() {
 
   // A display saved from somewhere else shows in the cards at once.
   useEffect(() => setPending(settings.displayId), [settings.displayId]);
-  // The slider follows the saved duration when it changes from somewhere else.
-  useEffect(() => setFadeDraft(settings.fadeMs), [settings.fadeMs]);
   // A confirmation is read once, then it gets out of the way.
   useEffect(() => {
     if (!notice) return;
@@ -403,64 +317,6 @@ export function ProjectorSettingsPanel() {
           </Row>
         </section>
 
-        {/* Transitions: how projected content changes. */}
-        <section className={CARD} aria-labelledby="transitions-heading">
-          <CardHeader
-            id="transitions-heading"
-            title="Transitions"
-            detail="Control how projected content changes between slides and passages."
-            onReset={() => resetTo('transitionsOn', 'transitionStyle', 'fadeMs')}
-            resetDisabled={isDefault('transitionsOn', 'transitionStyle', 'fadeMs')}
-          />
-          <Row title="Use transitions" detail="Animate changes on the preview and projector when supported.">
-            <GoldSwitch label="Use transitions" on={settings.transitionsOn} onChange={(transitionsOn) => void save({ transitionsOn })} />
-          </Row>
-          <Row title="Transition style" detail={settings.transitionsOn ? 'How new content arrives.' : 'Turn transitions on to choose a style.'} stacked>
-            <Segmented
-              label="Transition style"
-              value={settings.transitionStyle}
-              disabled={!settings.transitionsOn}
-              options={[
-                { id: 'fade', text: 'Fade' },
-                { id: 'slideLeft', text: 'Slide left' },
-                { id: 'slideRight', text: 'Slide right' },
-                { id: 'slideUp', text: 'Slide up' },
-                { id: 'zoomIn', text: 'Zoom in' },
-              ]}
-              onChange={(transitionStyle) => void save({ transitionStyle })}
-            />
-          </Row>
-          <div className={`flex flex-col gap-2 border-t border-line pt-4 ${settings.transitionsOn ? '' : 'opacity-40'}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold text-fg">Transition duration</div>
-                <div className={SUB}>Shorter feels snappier, longer feels smoother.</div>
-              </div>
-              <span className="rounded-full border border-accent/30 bg-panel px-2.5 py-1 font-mono text-xs font-semibold text-accent tabular-nums">
-                {fadeDraft}ms
-              </span>
-            </div>
-            <input
-              type="range"
-              min={FADE_MIN_MS}
-              max={FADE_MAX_MS}
-              step={50}
-              value={fadeDraft}
-              disabled={!settings.transitionsOn}
-              aria-label="Transition duration in milliseconds"
-              onChange={(e) => setFadeDraft(Number(e.target.value))}
-              onPointerUp={() => void save({ fadeMs: fadeDraft })}
-              onKeyUp={() => void save({ fadeMs: fadeDraft })}
-              onBlur={() => fadeDraft !== settings.fadeMs && void save({ fadeMs: fadeDraft })}
-              className={`h-1.5 w-full cursor-pointer accent-accent disabled:cursor-not-allowed ${FOCUS}`}
-            />
-            <div className="flex justify-between font-mono text-[10px] text-fg/50" aria-hidden>
-              <span>{FADE_MIN_MS}ms</span>
-              <span>{FADE_MAX_MS}ms</span>
-            </div>
-          </div>
-        </section>
-
         {/* Intro slide: the first slide of a Praise & Worship item, as its title card or a solid black screen. */}
         <section className={CARD} aria-labelledby="intro-heading">
           <CardHeader id="intro-heading" title="Intro slide" onReset={() => resetTo('defaultIntroSlideMode')} resetDisabled={isDefault('defaultIntroSlideMode')} />
@@ -481,35 +337,8 @@ export function ProjectorSettingsPanel() {
           </Row>
         </section>
 
-        {/* Slide font: the face for slide text on the projector and the TV. */}
-        <section className={`${CARD} lg:col-span-2`} aria-labelledby="font-heading">
-          <CardHeader id="font-heading" title="Slide font" onReset={() => resetTo('slideFont')} resetDisabled={isDefault('slideFont')} />
-          <Row
-            title="Font for slide text"
-            detail="Applies to lyrics, readings, prayers and announcements on the projector and the TV. Keep the current look leaves each slide's own font."
-          >
-            <select
-              aria-label="Slide font"
-              value={settings.slideFont ?? ''}
-              onChange={(e) => void save({ slideFont: e.target.value || null })}
-              className={`h-10 rounded-lg border border-fg/20 bg-panel px-3 text-sm text-fg outline-none focus:border-accent ${FOCUS}`}
-            >
-              <option value="">Keep the current look</option>
-              {TEXT_FONT_GROUPS.map((group) => (
-                <optgroup key={group.label} label={group.label}>
-                  {group.keys.filter((key) => SLIDE_FONTS.includes(key)).map((key) => (
-                    <option key={key} value={key}>
-                      {TEXT_FONTS[key].label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </Row>
-          <p aria-label="Font preview" className="rounded-lg border border-line bg-panel px-4 py-3 text-2xl text-fg" style={{ fontFamily: slideFontCss(settings.slideFont) }}>
-            Lord, have mercy on us
-          </p>
-        </section>
+        {/* Transitions, the background on every slide, the slide text and Advanced mode. */}
+        <OutputSettingsPanel settings={settings} save={save} isDefault={isDefault} resetTo={resetTo} />
 
         {/* Idle screen and calibration. */}
         <section className={`${CARD} lg:col-span-2`} aria-labelledby="idle-heading">

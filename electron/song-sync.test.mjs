@@ -45,10 +45,15 @@ function fakeTimers() {
 
 const offlineError = () => Object.assign(new Error('Cannot reach the cloud. Check the internet connection and try again.'), { offline: true });
 
-test('the list holds only the fields the server takes: id, title, category, language and key', () => {
-  const { songs, skipped } = buildSongList([row({ lyrics: LYRIC_WORDS, composer: 'A Composer', style: 'Slow', media_path: 'x.mp4' })]);
+test('a song with no readable scope is sent as General', () => {
+  const { songs } = buildSongList([row(), row({ uuid: 'b', primary_category: 'CHOIR' }), row({ uuid: 'c', primary_category: 'PRAISE_AND_WORSHIP' })]);
+  assert.deepEqual(songs.map((x) => x.scope), ['GENERAL', 'GENERAL', 'PRAISE_AND_WORSHIP']);
+});
+
+test('the list holds only the fields the server takes: id, title, category, scope, language and key', () => {
+  const { songs, skipped } = buildSongList([row({ primary_category: 'MASS', lyrics: LYRIC_WORDS, composer: 'A Composer', style: 'Slow', media_path: 'x.mp4' })]);
   assert.equal(skipped, 0);
-  assert.deepEqual(songs, [{ id: '6f1c2b3a-0000-4000-8000-000000000001', title: 'Praise to the Lord', category: 'Entrance Procession', language: 'English', key: 'D' }]);
+  assert.deepEqual(songs, [{ id: '6f1c2b3a-0000-4000-8000-000000000001', title: 'Praise to the Lord', category: 'Entrance Procession', scope: 'MASS', language: 'English', key: 'D' }]);
   assert.equal(JSON.stringify(songs).includes(LYRIC_WORDS), false, 'lyrics are never sent');
 });
 
@@ -64,7 +69,7 @@ test('a song with an unknown language or no title is left out and counted, not s
 });
 
 test('the song query reads only the columns it may send, and never the lyrics table', () => {
-  assert.match(SONG_ROWS_SQL, /SELECT uuid, title, song_category, language, musical_key/);
+  assert.match(SONG_ROWS_SQL, /SELECT uuid, title, song_category, primary_category, language, musical_key/);
   assert.equal(/hymn_stanzas|lyrics_text|composer|style/.test(SONG_ROWS_SQL), false);
 });
 

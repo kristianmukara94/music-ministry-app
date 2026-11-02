@@ -7,6 +7,22 @@ export const PATTERNS = ['none', 'grid', 'gradient', 'dots'];
 export const ALIGNMENTS = ['left', 'center', 'right', 'justify'];
 /** The font families the slide builder offers. Each id is a family in shared/text-style.js. */
 export const WHITEBOARD_FONTS = ['roboto', 'serif', 'mono', 'playfair', 'sans'];
+/** How a background picture fills the slide: cropped to cover it, shown whole, or stretched to the slide's edges (as a PowerPoint slide's own background is). */
+export const BG_FITS = ['cover', 'contain', 'stretch'];
+/**
+ * A background picture is one of the app's own: a Media Library picture, the picture of a PowerPoint slide, or the background of a PowerPoint
+ * slide with its words taken out (`wb/<file>`). Never an outside address.
+ */
+export const BG_IMAGE_PATTERN = /^apcc-media:\/\/(?:(?:media|slide)\/\d{1,12}|wb\/[0-9a-f-]{36}\.jpg)$/;
+/** The most text boxes one slide can hold. */
+export const MAX_TEXT_BOXES = 40;
+export const TEXT_BOX_TEXT_MAX = 2000;
+/** A text box's font size, in pixels on the 1920-wide slide. */
+export const TEXT_BOX_SIZE_MIN = 8;
+export const TEXT_BOX_SIZE_MAX = 300;
+export const TEXT_BOX_VALIGNS = ['top', 'middle', 'bottom'];
+/** A font name a text box may use. Letters, digits, spaces, dots and dashes only, so it is always safe inside CSS. */
+export const TEXT_BOX_FONT_PATTERN = /^[A-Za-z0-9 .-]{1,60}$/;
 export const MAX_VERSES = 6;
 /** How a verse sits on the slide: a block at the top or bottom, centred, or filling the slide. */
 export const VERSE_POSITIONS = ['bottom', 'top', 'center', 'full'];
@@ -36,7 +52,29 @@ export const SLIDE_DESIGN_DEFAULTS = {
   borderStyle: 'solid',
   borderColor: '#F59E0B',
   borderWidth: 2,
+  bgImage: null,
+  bgFit: 'cover',
+  bgDim: 35,
   verses: [],
+  boxes: [],
+};
+
+/** A new text box: across the middle of the slide, white, centred. */
+export const TEXT_BOX_DEFAULTS = {
+  text: 'New text',
+  x: 15,
+  y: 40,
+  w: 70,
+  h: 20,
+  size: 72,
+  font: 'Segoe UI',
+  color: '#FFFFFF',
+  bold: false,
+  italic: false,
+  underline: false,
+  align: 'center',
+  valign: 'middle',
+  rot: 0,
 };
 
 /** One-click looks. Each lists only what it changes. */
@@ -84,6 +122,38 @@ function sanitizeVerse(v) {
   };
 }
 
+const clampNum = (value, min, max, fallback) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(Math.min(max, Math.max(min, n)) * 100) / 100 : fallback;
+};
+
+/**
+ * Keeps one text box to known keys with valid values. Its place and size are percentages of the slide, so it sits in the same spot at any
+ * size; its font size is in pixels on the 1920-wide slide. A box always keeps a little of itself on the slide, so it can be found again.
+ */
+export function sanitizeTextBox(raw) {
+  const p = raw && typeof raw === 'object' ? raw : {};
+  const d = TEXT_BOX_DEFAULTS;
+  const w = clampNum(p.w, 1, 100, d.w);
+  const h = clampNum(p.h, 1, 100, d.h);
+  return {
+    text: text(p.text, TEXT_BOX_TEXT_MAX),
+    x: clampNum(p.x, 1 - w, 99, d.x),
+    y: clampNum(p.y, 1 - h, 99, d.y),
+    w,
+    h,
+    size: clampNum(p.size, TEXT_BOX_SIZE_MIN, TEXT_BOX_SIZE_MAX, d.size),
+    font: typeof p.font === 'string' && TEXT_BOX_FONT_PATTERN.test(p.font) ? p.font : d.font,
+    color: hexOr(p.color, d.color),
+    bold: bool(p.bold, d.bold),
+    italic: bool(p.italic, d.italic),
+    underline: bool(p.underline, d.underline),
+    align: pick(p.align, ALIGNMENTS, d.align),
+    valign: pick(p.valign, TEXT_BOX_VALIGNS, d.valign),
+    rot: clampNum(p.rot, -360, 360, 0),
+  };
+}
+
 /** Keeps a design to known keys with valid values. */
 export function sanitizeSlideDesign(raw) {
   const p = raw && typeof raw === 'object' ? raw : {};
@@ -113,7 +183,11 @@ export function sanitizeSlideDesign(raw) {
     borderStyle: pick(p.borderStyle, BORDER_STYLES, d.borderStyle),
     borderColor: hexOr(p.borderColor, d.borderColor),
     borderWidth: clampInt(p.borderWidth, 1, 10, d.borderWidth),
+    bgImage: typeof p.bgImage === 'string' && BG_IMAGE_PATTERN.test(p.bgImage) ? p.bgImage : null,
+    bgFit: pick(p.bgFit, BG_FITS, d.bgFit),
+    bgDim: clampInt(p.bgDim, 0, 85, d.bgDim),
     verses,
+    boxes: Array.isArray(p.boxes) ? p.boxes.slice(0, MAX_TEXT_BOXES).map(sanitizeTextBox) : [],
   };
 }
 

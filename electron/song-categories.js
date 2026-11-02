@@ -4,6 +4,7 @@
 // text column, checked here in the app against this list, never by the database. Renaming a category updates the hymns
 // that use it. Deleting one leaves those hymns with their text.
 import { SONG_CATEGORY_NAMES } from '../shared/mass-flow.js';
+import { THEME_NAMES } from '../shared/song-taxonomy.js';
 
 export const SONG_CATEGORY_MAX = 40;
 
@@ -24,6 +25,25 @@ const seed = SONG_CATEGORY_NAMES.map(
 ).join('\n');
 
 export const SONG_CATEGORY_MIGRATIONS = [ADD_COLUMN, CREATE_LIST + seed];
+
+const sql = (text) => text.replace(/'/g, "''");
+
+/**
+ * Gives every song a primary scope (General, Mass or Praise & Worship) and adds the themes (Joyful Song, Marian Song …) to the category list.
+ * A song already filed under a Mass part, or with a Mass slot as its category, is Mass; every other song is General, which shows under every
+ * scope, so nothing disappears from a library until the operator sorts it. A theme the operator already has is not added twice.
+ * Appended to the end of the migration list only.
+ */
+export const SONG_SCOPE_MIGRATIONS = [
+  `ALTER TABLE hymns ADD COLUMN primary_category TEXT NOT NULL DEFAULT 'GENERAL' CHECK (primary_category IN ('GENERAL', 'MASS', 'PRAISE_AND_WORSHIP'));
+   UPDATE hymns SET primary_category = 'MASS'
+     WHERE category <> 'General' OR song_category COLLATE NOCASE IN (${SONG_CATEGORY_NAMES.map((n) => `'${sql(n)}'`).join(', ')});
+   ${THEME_NAMES.map(
+     (name) => `INSERT INTO song_categories (name, position)
+       SELECT '${sql(name)}', (SELECT COALESCE(MAX(position), 0) + 1 FROM song_categories)
+       WHERE NOT EXISTS (SELECT 1 FROM song_categories WHERE name = '${sql(name)}' COLLATE NOCASE);`,
+   ).join(' ')}`,
+];
 
 /** A category name, trimmed and checked for length. Throws a readable message when it is not usable. */
 export function checkedSongCategoryName(raw) {

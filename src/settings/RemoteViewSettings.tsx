@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import qrcode from 'qrcode-generator';
 import { Copy, KeyRound, Smartphone, Tv, WifiOff } from 'lucide-react';
-import { bridge, type RemoteActivity, type RemoteRole, type RemoteRoleStatus, type RemoteViewPatch, type RemoteViewStatus } from '../live/bridge';
-import { formatDayAndClock } from '../state/region';
-import { useRegion } from '../state/useRegion';
+import { bridge, type RemoteRole, type RemoteRoleStatus, type RemoteViewPatch, type RemoteViewStatus } from '../live/bridge';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -219,22 +217,9 @@ function ViewerCard({ role, status, busy, onSave }: ViewerProps) {
   );
 }
 
-/** One control action from a phone, with the device and the time. A refused action says why. */
-function ActivityRow({ entry }: { entry: RemoteActivity }) {
-  const region = useRegion();
-  return (
-    <li className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line py-2 text-sm last:border-b-0">
-      <span className="font-semibold">{entry.action}</span>
-      <span className="text-xs text-muted">{entry.device}</span>
-      <span className="font-mono text-xs text-muted">{formatDayAndClock(new Date(entry.at), region, { seconds: true })}</span>
-      {!entry.ok && <span className="w-full text-xs text-danger">Not done: {entry.error}</span>}
-    </li>
-  );
-}
-
 /**
  * Remote view: two phone viewers on the local WiFi. Primary controls the slide from a phone, Secondary only watches. Each
- * has its own port, switch and PIN. The status is read every 2 seconds, so the device counts and the activity list stay current.
+ * has its own port, switch and PIN. The status is read every 2 seconds, so the device counts stay current.
  */
 export function RemoteViewSettings() {
   const [status, setStatus] = useState<RemoteViewStatus | null>(null);
@@ -297,18 +282,6 @@ export function RemoteViewSettings() {
 
       <ViewerCard role="primary" status={status.primary} busy={busy} onSave={(patch, done) => save({ role: 'primary', ...patch }, done)} />
       <ViewerCard role="secondary" status={status.secondary} busy={busy} onSave={(patch, done) => save({ role: 'secondary', ...patch }, done)} />
-
-      <Card title="Control activity">
-        {status.activity.length === 0 ? (
-          <p className="text-sm text-muted">No changes from phones yet. Next and previous slide, and jumps, are listed here with the device and time.</p>
-        ) : (
-          <ul className="flex flex-col">
-            {status.activity.map((entry, i) => (
-              <ActivityRow key={`${entry.at}-${i}`} entry={entry} />
-            ))}
-          </ul>
-        )}
-      </Card>
 
       <Card title="Who can see it">
         <ul className="flex list-disc flex-col gap-2 pl-5 text-sm text-muted">

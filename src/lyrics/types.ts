@@ -1,4 +1,7 @@
+import type { SourceLine } from '../../shared/song-batch.js';
 import type { TextStyle } from '../../shared/text-style';
+import type { PrimaryCategory } from '../../shared/song-taxonomy.js';
+export type { PrimaryCategory };
 export type HymnCategory = 'Entrance' | 'Offertory' | 'Communion' | 'Recessional' | 'General';
 export type HymnLanguage = 'EN' | 'TL' | 'CEB';
 
@@ -17,6 +20,8 @@ export interface HymnSummary {
   musicalKey: string;
   /** The song category for the Mass, from the operator's list. Empty when none is set. */
   songCategory: string;
+  /** Where the song is used: General (everywhere), Mass, or Praise & Worship. */
+  primaryCategory: PrimaryCategory;
   category: HymnCategory;
   language: HymnLanguage;
   stanzaCount: number;
@@ -38,6 +43,7 @@ export interface Hymn {
   musicalKey: string;
   /** The song category for the Mass, from the operator's list. Empty when none is set. */
   songCategory: string;
+  primaryCategory: PrimaryCategory;
   /** How the song is set on the projector. Null keeps the default look. */
   style: TextStyle | null;
   stanzas: Stanza[];
@@ -46,6 +52,8 @@ export interface Hymn {
 }
 
 export interface HymnFilter {
+  /** Only songs for this scope and the General ones. General, or nothing, shows every song. */
+  primaryCategory?: PrimaryCategory;
   /** Only songs in this song category (as the list spells it). */
   songCategory?: string;
   search?: string;
@@ -56,11 +64,14 @@ export interface HymnFilter {
 export interface NewHymn {
   title: string;
   composer: string;
-  category: HymnCategory;
+  /** The Mass slot the Praise & Worship lineup matches. Left out, it follows the scope and song category. */
+  category?: HymnCategory;
   language: HymnLanguage;
   musicalKey: string;
   /** Must be on the song category list, or empty. */
   songCategory?: string;
+  /** Left out, the song is saved as General. */
+  primaryCategory?: PrimaryCategory;
   raw: string;
 }
 
@@ -82,6 +93,16 @@ export interface SetlistEntry {
 }
 
 /** A lyrics file read in the main process. Nothing is saved until the operator saves the hymn. */
+/** A file of many songs, read as lines for the batch import. */
+export interface BatchFile {
+  fileName: string;
+  size: number;
+  lines: SourceLine[];
+}
+
+/** One song's result from a batch save. */
+export type BatchSaveResult = { id: number; title: string; error?: undefined } | { error: string; id?: undefined; title?: undefined };
+
 export interface LyricsImport {
   fileName: string;
   title: string;
@@ -101,8 +122,15 @@ export interface LyricsApi {
   listHymns(filter: HymnFilter): Promise<HymnSummary[]>;
   getHymn(id: number): Promise<Hymn | null>;
   createHymn(input: NewHymn): Promise<{ id: number; warnings: string[] }>;
+  /** Saves several songs, each on its own: one result per song, in order, with its new id or the reason it was not saved. */
+  createHymns(inputs: NewHymn[]): Promise<BatchSaveResult[]>;
   /** Updates the details and replaces the stanzas with a fresh parse of `input.raw`. */
   editHymn(id: number, input: NewHymn): Promise<{ id: number; warnings: string[] }>;
+  /**
+   * Splits stanza `index` into two that follow each other under its label. The first keeps the stanza's id; saved lineups that sing the song in
+   * their own order get the second straight after it.
+   */
+  splitStanza(id: number, index: number, parts: [string, string]): Promise<{ id: number; warnings: string[]; firstId: number | null; secondId: number | null; lineupsChanged: number }>;
   deleteHymn(id: number): Promise<boolean>;
   /** Hymns deleted in the last 30 days, newest first. */
   listDeletedHymns(): Promise<DeletedHymn[]>;
@@ -118,6 +146,10 @@ export interface LyricsApi {
   setStyle(id: number, style: TextStyle | null): Promise<TextStyle | null>;
   /** Opens the file dialog in the main process and reads the chosen file. Null when the operator cancels. */
   importFile(): Promise<LyricsImport | null>;
+  /** Opens the file picker for a Word or text file of many songs. Resolves to the file's path, or null when the operator cancels. */
+  pickBatchFile(): Promise<string | null>;
+  /** Reads a Word or text file of many songs, as lines. Refuses a file of the wrong type, too large, empty or damaged, with the reason. */
+  readBatchFile(filePath: string): Promise<BatchFile>;
   /** The song categories, in the order the operator set. */
   listSongCategories(): Promise<SongCategory[]>;
   /** Adds a category. Names are 1 to 40 characters and must not repeat (letter case does not count). */

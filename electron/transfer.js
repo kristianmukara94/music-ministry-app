@@ -5,6 +5,7 @@
 // sets on every change (triggers, below). Import matches records by UUID first. Songs also match by title and language,
 // so the same song is not added twice under two IDs; that match is remembered in transfer_song_aliases.
 import crypto from 'node:crypto';
+import { isPrimaryCategory, scopeForLegacy } from '../shared/song-taxonomy.js';
 
 export const TRANSFER_FORMAT = 'apccmma-library';
 export const TRANSFER_FORMAT_VERSION = 1;
@@ -176,7 +177,7 @@ function stanzaIdsOf(db, hymnId) {
 export function collectLibrary(db, options, { laptop, exportedAt = new Date().toISOString() } = {}) {
   const hymns = db
     .prepare(
-      `SELECT id, uuid, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory,
+      `SELECT id, uuid, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory, primary_category AS primaryCategory,
               updated_at AS updatedAt FROM hymns WHERE deleted_at IS NULL ORDER BY id`,
     )
     .all();
@@ -206,6 +207,7 @@ export function collectLibrary(db, options, { laptop, exportedAt = new Date().to
         language: h.language,
         musicalKey: h.musicalKey,
         songCategory: h.songCategory,
+        scope: h.primaryCategory,
         updatedAt: h.updatedAt,
         tags: tagRows.filter((t) => t.hymnId === h.id).map((t) => t.segmentKey).sort(),
       };
@@ -396,13 +398,19 @@ function writeSongDetails(db, hymnId, record) {
   }
 }
 
+/**
+ * The scope of a song in a file. A file from this version of the app names it. A file made before scopes did not, so it is read the way the
+ * library was when scopes began: Mass when the song has a Mass slot or a Mass part as its category, else General.
+ */
+const scopeOfRecord = (record) => (isPrimaryCategory(record.scope) ? record.scope : scopeForLegacy(record.category, record.songCategory));
+
 function insertSong(db, record) {
   const info = db
     .prepare(
-      `INSERT INTO hymns (title, composer, category, language, musical_key, song_category, uuid, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO hymns (title, composer, category, language, musical_key, song_category, primary_category, uuid, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(record.title, record.composer ?? '', record.category, record.language, record.musicalKey ?? '', record.songCategory ?? '', record.id, record.updatedAt);
+    .run(record.title, record.composer ?? '', record.category, record.language, record.musicalKey ?? '', record.songCategory ?? '', scopeOfRecord(record), record.id, record.updatedAt);
   const id = Number(info.lastInsertRowid);
   writeSongDetails(db, id, record);
   return id;
@@ -410,8 +418,8 @@ function insertSong(db, record) {
 
 function overwriteSong(db, hymnId, record) {
   db.prepare(
-    `UPDATE hymns SET title = ?, composer = ?, category = ?, language = ?, musical_key = ?, song_category = ?, updated_at = ? WHERE id = ?`,
-  ).run(record.title, record.composer ?? '', record.category, record.language, record.musicalKey ?? '', record.songCategory ?? '', record.updatedAt, hymnId);
+    `UPDATE hymns SET title = ?, composer = ?, category = ?, language = ?, musical_key = ?, song_category = ?, primary_category = ?, updated_at = ? WHERE id = ?`,
+  ).run(record.title, record.composer ?? '', record.category, record.language, record.musicalKey ?? '', record.songCategory ?? '', scopeOfRecord(record), record.updatedAt, hymnId);
   writeSongDetails(db, hymnId, record);
 }
 

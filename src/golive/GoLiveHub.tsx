@@ -75,10 +75,10 @@ function StatusRow({ label, tone, value }: { label: string; tone: Tone; value: R
 }
 
 /**
- * The Go Live hub: one screen for the saved Mass plans and Praise & Worship sessions of a date. Opening and going live
+ * The Go Live console's Prepare tab: the saved Mass plans and Praise & Worship sessions of a date. Opening and going live
  * go through the modules that already own them.
  */
-export function GoLiveHub() {
+export function GoLivePrepare() {
   const t = useGoLiveT();
   const lang = useUi((s) => s.lang);
   const region = useRegion();
@@ -142,7 +142,7 @@ export function GoLiveHub() {
         : { tone: 'idle', value: t('statusNotLoaded') };
 
   return (
-    <div className="flex flex-col gap-5 p-5 pb-8">
+    <div className="flex flex-col gap-5">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold tracking-wider text-accent uppercase">{t('eyebrow')}</p>
