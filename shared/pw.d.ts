@@ -7,7 +7,12 @@ export const MAX_CHAIN: number;
 export const MAX_SEGMENTS: number;
 
 /** An item chained after a card's first item. `minutes` is its share of the card's runtime. */
-export type PwChainItem = { kind: 'prayer'; noteId: number; minutes: number } | { kind: 'lectionary'; readingType: string; minutes: number };
+export type PwChainItem =
+  | { kind: 'prayer'; noteId: number; minutes: number }
+  | { kind: 'lectionary'; readingType: string; minutes: number }
+  /** A PowerPoint deck from the Whiteboard: its pictures' Announcements slide ids, in order. */
+  | { kind: 'pictures'; slideIds: number[]; minutes: number };
+export const MAX_PICTURES: number;
 
 /**
  * A card's content. Its first item is the kind: a song card has none, a prayer card has a note (or none yet), a title card is the title
@@ -116,13 +121,15 @@ export interface PwResolved {
   prayer?: PwResolvedPrayer | null;
   reading?: { citation: string; rawText: string } | null;
   /** One entry per chained item, in the same order as the card's chain. */
-  more?: { prayer?: PwResolvedPrayer | null; reading?: { citation: string; rawText: string } | null }[];
+  more?: { prayer?: PwResolvedPrayer | null; reading?: { citation: string; rawText: string } | null; pictures?: { title: string; src: string }[] }[];
 }
 
 export type PwSlide =
   | { kind: 'title'; label: string; subtitle: string }
   | { kind: 'lyrics'; label: string; chip: string; text: string; hymnId: number; hymnTitle: string; sectionId: string; position?: number; stanzaCount?: number; part?: number; parts?: number; fontPx?: number; top?: number; centred?: boolean; align?: 'left' | 'center' | 'right' }
-  | { kind: 'prayer'; label: string; text: string; placeholder?: boolean; fontPx?: number; notice?: 'stale' | 'too-long'; part?: number; parts?: number; top?: number; centred?: boolean; align?: 'left' | 'center' | 'right' };
+  | { kind: 'prayer'; label: string; text: string; placeholder?: boolean; fontPx?: number; notice?: 'stale' | 'too-long'; part?: number; parts?: number; top?: number; centred?: boolean; align?: 'left' | 'center' | 'right' }
+  /** A PowerPoint slide from the Whiteboard, shown as its picture. */
+  | { kind: 'picture'; label: string; src: string };
 
 export interface PwPosition {
   segment: number;

@@ -1,6 +1,5 @@
 import { bridge } from '../live/bridge';
 import { dispatch } from '../live/store';
-import { addToQueue } from '../planner/plan-api';
 import type { Frame } from '../../shared/live.js';
 import type { WhiteboardFolder, WhiteboardSlide } from './types';
 
@@ -25,12 +24,6 @@ export function frameForWhiteboardSlide(slide: WhiteboardSlide, all: WhiteboardS
 export function projectWhiteboardSlide(slide: WhiteboardSlide, all: WhiteboardSlide[]) {
   dispatch({ type: 'projector/stage', frame: frameForWhiteboardSlide(slide, all) });
   dispatch({ type: 'projector/take' });
-}
-
-/** Adds a PowerPoint slide to the Mass Queue, in the Word block, the same as the Whiteboard's own button. */
-export async function addWhiteboardPictureToQueue(slide: WhiteboardSlide): Promise<void> {
-  if (slide.slideId == null) return;
-  await addToQueue([{ block: 'word', module: 'announcements', sourceId: String(slide.slideId), label: slide.title }]);
 }
 
 /** Lists the Whiteboard's folders, in order, with how many slides each holds. */

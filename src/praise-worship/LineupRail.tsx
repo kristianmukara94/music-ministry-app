@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, BookOpen, Cross, FileText, GripVertical, Music, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, BookOpen, Cross, FileText, GripVertical, Music, Pencil, Plus, Presentation, Trash2, X } from 'lucide-react';
 import {
   chainOf,
   groupMinutes,
@@ -196,6 +196,7 @@ export function LineupRail() {
   const selected = usePw((s) => s.selected);
   const hymns = usePw((s) => s.hymns);
   const prayers = usePw((s) => s.prayers);
+  const pictures = usePw((s) => s.pictures);
   const [drag, setDrag] = useState<{ from: number; group: string; slot: number } | null>(null);
   const [announce, setAnnounce] = useState('');
   const [refused, setRefused] = useState<string | null>(null);
@@ -306,7 +307,11 @@ export function LineupRail() {
     if (name && name !== segment.name) updateSegment(index, { name });
   };
 
-  const chainItemLabel = (item: PwChainItem) => (item.kind === 'prayer' ? names.prayer(item.noteId) ?? '…' : item.readingType);
+  const chainItemLabel = (item: PwChainItem) => {
+    if (item.kind === 'prayer') return names.prayer(item.noteId) ?? '…';
+    if (item.kind === 'pictures') return t('chainPictures', { title: pictures[item.slideIds[0]]?.title ?? 'PowerPoint', n: item.slideIds.length });
+    return item.readingType;
+  };
 
   let index = -1;
   return (
@@ -370,7 +375,7 @@ export function LineupRail() {
                   ...chain.map((item, n) => ({
                     key: `${item.kind}-${n}`,
                     group: 'chain' as const,
-                    icon: item.kind === 'prayer' ? <FileText size={14} aria-hidden /> : <BookOpen size={14} aria-hidden />,
+                    icon: item.kind === 'prayer' ? <FileText size={14} aria-hidden /> : item.kind === 'pictures' ? <Presentation size={14} aria-hidden /> : <BookOpen size={14} aria-hidden />,
                     label: chainItemLabel(item),
                     minutes: item.minutes,
                   })),

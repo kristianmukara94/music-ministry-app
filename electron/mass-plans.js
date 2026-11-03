@@ -3,6 +3,7 @@ import { parseSourceId } from '../shared/bible-ref.js';
 import { GOSPEL_ACCLAMATION } from './lectionary.js';
 import { recordTombstone } from './plan-sync-schema.js';
 import { isSlotId } from '../shared/mass-slots.js';
+import { announcementSource } from '../shared/flow-insert.js';
 
 export const PLAN_BLOCKS = ['introductory', 'word', 'eucharist', 'communion', 'concluding'];
 export const PLAN_MODULES = ['lyrics', 'lectionary', 'announcements', 'media', 'mass_order', 'bible', 'custom', 'notes'];
@@ -203,7 +204,10 @@ export function createMassPlanService(db) {
   /** Whether a plan item's source still exists. Mass Order parts are built in, so they always do. */
   const sourceExists = (module, sourceId) => {
     if (module === 'lyrics') return Boolean(q.liveHymn.get(Number(sourceId)));
-    if (module === 'announcements') return Boolean(q.slide.get(Number(sourceId)));
+    if (module === 'announcements') {
+      const source = announcementSource(sourceId);
+      return Boolean(source && q.slide.get(source.slideId));
+    }
     if (module === 'media') return Boolean(q.media.get(Number(sourceId)));
     if (module === 'lectionary') {
       const [date, readingType] = String(sourceId).split('|');

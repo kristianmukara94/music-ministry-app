@@ -116,7 +116,8 @@ export function presentFrame(frame, welcome) {
       };
     case 'pw': {
       const slide = frame.slide;
-      const lines = slide.kind === 'title' ? [slide.label, slide.subtitle] : linesOf(slide.text);
+      // A PowerPoint slide has no words to send: the phone shows its name.
+      const lines = slide.kind === 'title' ? [slide.label, slide.subtitle] : slide.kind === 'picture' ? [slide.label] : linesOf(slide.text);
       return { title: frame.segmentName, position: counted(frame.index + 1, frame.total), lines: linesOf(lines.join('\n')) };
     }
     case 'image':

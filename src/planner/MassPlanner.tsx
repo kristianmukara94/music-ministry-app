@@ -12,6 +12,7 @@ import { HolyMassOrderEditor } from '../liturgy/HolyMassOrderEditor';
 import { useMassOrderTexts } from '../liturgy/massOrderStore';
 import { isCustomId, isCustomized, withPartNames } from '../../shared/mass-order-text.js';
 import { sundayCycle } from '../liturgy/lectionary';
+import { deckRow, decksOf } from '../../shared/flow-insert.js';
 import { formatRuns, formatSourceId, parsePassageInput, stripHits } from '../../shared/bible-ref.js';
 import type { Translation } from '../bible/types';
 import type { SongCategory } from '../lyrics/types';
@@ -140,14 +141,28 @@ export async function loadLibrary(
     }
     case 'announcements': {
       const slides = await bridge.announcements.slides(null);
-      return slides
-        .filter((s) => match(s.name))
-        .map((s): LibraryItem => ({
-          module: 'announcements',
-          sourceId: String(s.id),
-          label: s.name,
-          sub: t(s.slideType === 'text' ? 'sub_text_slide' : 'sub_image_slide'),
-        }));
+      const folders = await bridge.whiteboard.folders().catch(() => []);
+      const folderName = (id: number | null) => folders.find((f) => f.id === id)?.name ?? null;
+      // A folder of several slides (an imported PowerPoint) is one row that plays the whole deck, not one row per slide.
+      const sizes = new Map<number, number>();
+      for (const s of slides) sizes.set(s.folderId, (sizes.get(s.folderId) ?? 0) + 1);
+      const seen = new Set<number>();
+      const out: LibraryItem[] = [];
+      for (const s of slides) {
+        const size = sizes.get(s.folderId) ?? 1;
+        if (size <= 1 || s.slideType === 'text') {
+          if (match(s.name)) {
+            out.push({ module: 'announcements', sourceId: String(s.id), label: s.name, sub: t(s.slideType === 'text' ? 'sub_text_slide' : 'sub_image_slide') });
+          }
+          continue;
+        }
+        if (seen.has(s.folderId)) continue;
+        seen.add(s.folderId);
+        const [deck] = decksOf(slides.filter((x) => x.folderId === s.folderId).map((x) => ({ slideId: x.id, folderId: x.folderId, title: x.name })), folderName);
+        const row = deckRow(deck);
+        if (match(row.label)) out.push({ ...row, sub: t('sub_image_slide') });
+      }
+      return out;
     }
     case 'media': {
       const assets = await bridge.media.list();

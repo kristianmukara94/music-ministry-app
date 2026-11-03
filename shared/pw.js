@@ -196,12 +196,22 @@ export function primaryOf(segment) {
   return null;
 }
 
-/** Whether a chained item fits this card: prayers chain into prayer cards, readings into scripture cards. Song cards never chain. */
+/** The most pictures one chained PowerPoint deck holds. */
+export const MAX_PICTURES = 200;
+
+/** Whether a chained item fits this card. Any card chains prayers, readings and PowerPoint decks (`pictures`, from the Whiteboard). */
 export function chainAccepts(segment, item) {
-  return Boolean(segment.content) && (item.kind === 'prayer' || item.kind === 'lectionary');
+  if (!segment.content) return false;
+  if (item.kind === 'pictures') return Array.isArray(item.slideIds) && item.slideIds.length > 0 && item.slideIds.length <= MAX_PICTURES;
+  return item.kind === 'prayer' || item.kind === 'lectionary';
 }
 
-const sameItem = (a, b) => a.kind === b.kind && (a.kind === 'prayer' ? a.noteId === b.noteId : a.readingType === b.readingType);
+function sameItem(a, b) {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === 'prayer') return a.noteId === b.noteId;
+  if (a.kind === 'pictures') return a.slideIds.join(',') === b.slideIds.join(',');
+  return a.readingType === b.readingType;
+}
 
 /** Whether the card already holds `item`, as its first item or in its chain. */
 export function holdsItem(segment, item) {
@@ -326,7 +336,8 @@ export {
  * The slides a segment shows, in order. `resolved` carries the content already loaded from the libraries:
  * `{ hymns: Hymn[], prayer: { title, body } | null, reading: { citation, rawText } | null }`.
  *
- * Slide kinds: `title` (segment title slide), `lyrics` (one song section), `prayer` (one page of prayer or reading).
+ * Slide kinds: `title` (segment title slide), `lyrics` (one song section), `prayer` (one page of prayer or reading), `picture` (one
+ * PowerPoint slide from the Whiteboard).
  * A segment always has at least one slide, so the projector never goes blank mid-lineup.
  */
 export function slidesFor(segment, resolved = {}, options = {}) {
@@ -420,12 +431,16 @@ function readingSlides(segment, reading, titleFirst) {
 
 /**
  * The slides of the items chained after a card's first item, in order. `resolved.more` lines up with the chain: each entry carries the
- * prayer or reading that item points at. A chained prayer gets its own title slide, so the operator sees each one start.
+ * prayer or reading that item points at, or a deck's pictures. A chained prayer gets its own title slide, so the operator sees each one
+ * start. A deck plays its pictures as they are, with no title slide: the PowerPoint has its own. Pictures that are gone are skipped.
  */
 function chainSlides(segment, resolved, scale) {
   const title = { kind: 'title', label: segment.name, subtitle: '' };
   return chainOf(segment).flatMap((item, i) => {
     const entry = resolved.more?.[i] ?? {};
+    if (item.kind === 'pictures') {
+      return (entry.pictures ?? []).filter((p) => p?.src).map((p) => ({ kind: 'picture', label: p.title || segment.name, src: p.src }));
+    }
     if (item.kind === 'prayer') {
       const titleSlide = segment.cues.titleFirst ? { ...title, subtitle: entry.prayer?.title ?? '' } : null;
       return prayerSlides(segment, entry.prayer ?? null, scale, titleSlide);

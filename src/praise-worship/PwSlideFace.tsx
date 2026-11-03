@@ -62,6 +62,15 @@ export function PwSlideFace({
   // The slide canvas clips everything: no text or child can draw outside the 16:9 frame.
   const rootClass = background?.media ? 'absolute inset-0 overflow-hidden text-fg' : 'absolute inset-0 overflow-hidden bg-canvas text-fg';
 
+  if (slide.kind === 'picture') {
+    // A PowerPoint slide is its own design: drawn whole on black, with no background, caption or count over it.
+    return (
+      <div data-theme="default" className="absolute inset-0 overflow-hidden bg-black">
+        <img src={slide.src} alt={slide.label} draggable={false} className="absolute inset-0 size-full object-contain" />
+      </div>
+    );
+  }
+
   if (slide.kind === 'title') {
     const Icon = TYPE_ICON[type];
     // Proportional across the whole 70%-150% range: no ceiling, so every A-/A+ step changes the title. Long titles (more than 25 characters,

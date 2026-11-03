@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { Check, Type, Copy, FileUp, FolderInput, Folder, Inbox, Layers, ListPlus, Monitor, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
-import { addToQueue } from '../planner/plan-api';
+import { deckSlice, decksOf, type PictureDeck } from '../../shared/flow-insert.js';
 import { templateStart } from './templates';
+import { TargetSlotSelectorModal } from './TargetSlotSelectorModal';
 import { bridge } from '../live/bridge';
 import { useLive } from '../live/store';
 import { SlideCanvas } from './SlideCanvas';
@@ -127,6 +128,8 @@ export function WhiteboardDeck() {
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [renameError, setRenameError] = useState<string | null>(null);
+  // The PowerPoint decks waiting for a place in a service flow, while the place picker is open.
+  const [targetDecks, setTargetDecks] = useState<PictureDeck[] | null>(null);
   const live = useLive((s) => s.state.projector.live);
 
   // A confirmation fades after a few seconds, so it never lingers over later work.
@@ -161,34 +164,26 @@ export function WhiteboardDeck() {
   const openFolder = typeof view === 'number' ? folders.find((f) => f.id === view) : undefined;
   const destination = openFolder?.name ?? 'Unfiled';
   const folderName = (id: number | null) => (id == null ? 'Unfiled' : (folders.find((f) => f.id === id)?.name ?? 'a folder'));
+  /** A deck's name: its folder's, or none for Unfiled (the deck then takes its default name). */
+  const folderTitle = (id: number | null) => (id == null ? null : (folders.find((f) => f.id === id)?.name ?? null));
   const viewTitle = view === 'all' ? 'All slides' : view === 'unfiled' ? 'Unfiled' : (openFolder?.name ?? '');
 
   /** Puts one slide on the screen, as a full slide, straight away. */
   const project = (slide: WhiteboardSlide) => projectWhiteboardSlide(slide, slides);
 
-  /** Adds a PowerPoint slide to the Service Queue, which is what Go Live plays. The queue's plan is the one that receives it. */
-  const addToGoLive = async (slide: WhiteboardSlide) => {
+  /** Opens the place picker for a PowerPoint slide's deck from that slide to the end: one row that starts on it and steps on through the rest. */
+  const addToGoLive = (slide: WhiteboardSlide) => {
     if (slide.slideId == null) return;
     setError(null);
-    try {
-      await addToQueue([{ block: 'word', module: 'announcements', sourceId: String(slide.slideId), label: slide.title }]);
-      setNotice(`"${slide.title}" added to Go Live.`);
-    } catch (err) {
-      setError(errorText(err));
-    }
+    setTargetDecks([deckSlice({ slideId: slide.slideId, folderId: slide.folderId, title: slide.title }, slides, folderTitle)]);
   };
 
-  /** Adds every PowerPoint slide shown to Go Live, in the order they appear. */
-  const addAllToGoLive = async () => {
-    const pictures = visible.filter((s) => s.slideId != null);
-    if (pictures.length === 0) return;
+  /** Opens the place picker for every PowerPoint slide shown: one deck per folder, in the order they appear. */
+  const addAllToGoLive = () => {
+    const decks = decksOf(visible, folderTitle);
+    if (decks.length === 0) return;
     setError(null);
-    try {
-      await addToQueue(pictures.map((s) => ({ block: 'word' as const, module: 'announcements' as const, sourceId: String(s.slideId), label: s.title })));
-      setNotice(`Added ${plural(pictures.length, 'slide', 'slides')} to Go Live.`);
-    } catch (err) {
-      setError(errorText(err));
-    }
+    setTargetDecks(decks);
   };
 
   const openNew = () => setEditor({ key: Date.now(), mode: 'create', initial: blank() });
@@ -411,7 +406,7 @@ export function WhiteboardDeck() {
             <FileUp size={14} aria-hidden /> {importButtonText}
           </button>
           {hasPictures && (
-            <button type="button" onClick={() => void addAllToGoLive()} className={HEADER_BTN} title="Adds the PowerPoint slides shown to the Holy Mass Queue">
+            <button type="button" onClick={addAllToGoLive} className={HEADER_BTN} title="Puts the PowerPoint slides shown into a Holy Mass slot or a Praise &amp; Worship card">
               <ListPlus size={14} aria-hidden /> Add PowerPoint to Go Live
             </button>
           )}
@@ -645,7 +640,7 @@ export function WhiteboardDeck() {
                     <div className="absolute top-2 right-2 flex gap-1 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
                       {[
                         { label: 'Project', icon: Monitor, run: () => project(slide), hover: 'hover:text-accent', show: true },
-                        { label: 'Add to Go Live', icon: ListPlus, run: () => void addToGoLive(slide), hover: 'hover:text-accent', show: slide.slideId != null },
+                        { label: 'Add to Go Live', icon: ListPlus, run: () => addToGoLive(slide), hover: 'hover:text-accent', show: slide.slideId != null },
                         { label: 'Move to folder', icon: FolderInput, run: () => setMoveFor((cur) => (cur === slide.id ? null : slide.id)), hover: 'hover:text-accent', show: folders.length > 0 },
                         // A PowerPoint slide is a picture, so there is no text or design to edit or copy.
                         { label: 'Rename', icon: Type, run: () => startRename(slide), hover: 'hover:text-accent', show: true },
@@ -727,6 +722,16 @@ export function WhiteboardDeck() {
         />
       )}
       {templatesOpen && <TemplateModal onPick={pickTemplate} onClose={() => setTemplatesOpen(false)} />}
+      {targetDecks && (
+        <TargetSlotSelectorModal
+          decks={targetDecks}
+          onClose={() => setTargetDecks(null)}
+          onDone={(message) => {
+            setTargetDecks(null);
+            setNotice(message);
+          }}
+        />
+      )}
     </div>
   );
 }

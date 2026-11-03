@@ -37,6 +37,7 @@ export function queueFromPlanItems(items) {
     block: it.block,
     module: it.module,
     sourceId: it.sourceId,
+    slot: it.slot ?? null,
     stale: Boolean(it.stale),
   }));
 }

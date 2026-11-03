@@ -1,10 +1,13 @@
-import { useState } from 'react';
-import { AlertTriangle, Check, ClipboardList, Music, Play } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, Check, ClipboardList, Music, Play, Plus, RotateCcw, X } from 'lucide-react';
 import { dispatch, useLive } from '../live/store';
 import { BackgroundPanel } from '../operator/BackgroundPanel';
 import { FramePreview, ProjectorView } from '../output/ProjectorView';
 import { LowerThirdStage } from '../output/LowerThirdView';
 import { lyricBottomOf } from '../../shared/lyric-area.js';
+import { deckThumb, massLineup } from '../../shared/flow-insert.js';
+import { slotById } from '../../shared/mass-slots.js';
+import { removeFromFlow, resetMassOrder } from '../planner/plan-api';
 import { SecondaryControls } from '../praise-worship/SecondaryControls';
 import { SlideTypography } from '../praise-worship/SlideTypography';
 import { usePwT } from '../praise-worship/strings';
@@ -15,6 +18,7 @@ import { setUi } from '../state/ui';
 import type { QueueItem } from '../../shared/live.js';
 import { frameAt, goLiveMassAt, goWithin, playMassAt, queueOnAir, stepMass, stepsOf, useHymnOf } from './massLive';
 import { useGoLiveT } from './strings';
+import { InFlowSlidePickerModal } from './InFlowSlidePickerModal';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -46,59 +50,166 @@ const MODULE_TAG: Record<QueueItem['module'], string> = {
   custom: 'Note',
 };
 
-/** The Mass's order of service: the queue, grouped by its liturgical block, with what is done, what is on, and what is missing. */
-function MassLineup({ items, cursor, onPick, busy }: { items: QueueItem[]; cursor: number; onPick: (i: number) => void; busy: boolean }) {
+/**
+ * The Mass's order of service: the queue, grouped by its liturgical block, with what is done, what is on, and what is missing. Every one of the
+ * 17 Holy Mass slots is shown, an empty one in its place, so slides put in never hide the order of Mass. Each row has a ✕ (on hover or
+ * keyboard focus) that takes it out: a slot's item leaves the slot empty, any other row is gone.
+ */
+function MassLineup({
+  items,
+  cursor,
+  onPick,
+  onRemove,
+  onAdd,
+  onReset,
+  busy,
+}: {
+  items: QueueItem[];
+  cursor: number;
+  onPick: (i: number) => void;
+  onRemove: (i: number) => void;
+  onAdd: () => void;
+  onReset: () => void;
+  busy: boolean;
+}) {
   const t = useGoLiveT();
   const tPlan = usePlannerT();
-  const blockTitle = (block: QueueItem['block']) => {
+  const blockTitle = (block: string) => {
     const def = BLOCKS.find((b) => b.id === block);
     return def ? tPlan(def.titleKey as Parameters<typeof tPlan>[0]) : '';
   };
   const done = Math.max(0, cursor);
   let lastBlock: string | null = null;
+  const sectionHeader = (block: string) => {
+    const header = block !== lastBlock ? blockTitle(block) : null;
+    lastBlock = block;
+    return header && <span className="mt-2 mb-1 px-1 text-[10px] font-bold tracking-wider text-fg/50 uppercase first:mt-0">{header}</span>;
+  };
   return (
     <section aria-labelledby="mass-lineup" className={`${CARD} flex min-w-0 flex-col p-4`}>
       <div className="mb-3 flex items-baseline justify-between px-1">
         <h2 id="mass-lineup" className="text-lg font-bold tracking-tight">{t('massOrder')}</h2>
         <span className="font-mono text-xs text-muted">{t('massDoneOf', { done, total: items.length })}</span>
       </div>
+      <div className="mb-3 flex gap-2">
+        <button
+          type="button"
+          onClick={onAdd}
+          disabled={busy}
+          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-dashed border-accent/50 px-3 text-xs font-bold tracking-wide text-accent uppercase transition hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Plus size={13} aria-hidden /> {t('inflowOpen')}
+        </button>
+        <button
+          type="button"
+          onClick={onReset}
+          disabled={busy}
+          title={t('massConfirmReset')}
+          className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-fg/20 px-3 text-xs font-bold tracking-wide text-fg/70 uppercase transition hover:border-danger/60 hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <RotateCcw size={13} aria-hidden /> {t('massResetOrder')}
+        </button>
+      </div>
       <ol className="flex flex-col gap-1">
-        {items.map((item, i) => {
-          const header = item.block !== lastBlock ? blockTitle(item.block) : null;
-          lastBlock = item.block;
+        {massLineup(items).map((entry) => {
+          if ('slot' in entry) {
+            const { slot } = entry;
+            return (
+              <li key={`slot-${slot.id}`} className="flex flex-col">
+                {sectionHeader(slot.block)}
+                <div className="flex min-h-12 w-full items-center gap-3 rounded-lg border border-dashed border-fg/15 px-3 py-2 text-left opacity-60">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-full border border-dashed border-fg/25 font-mono text-[11px] text-muted">{slot.number}</span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-[15px] leading-tight text-fg/70">{slot.name}</span>
+                    <span className="text-[10px] font-semibold tracking-wider text-fg/45 uppercase">{t('massEmptySlot')}</span>
+                  </span>
+                </div>
+              </li>
+            );
+          }
+          const i = entry.index;
+          const item = items[i];
+          const header = sectionHeader(item.block);
+          const slot = slotById(item.slot);
           const isDone = i < cursor;
           const current = i === cursor;
           return (
             <li key={`${item.module}-${item.sourceId}-${i}`} className="flex flex-col">
-              {header && <span className="mt-2 mb-1 px-1 text-[10px] font-bold tracking-wider text-fg/50 uppercase first:mt-0">{header}</span>}
-              <button
-                type="button"
-                onClick={() => onPick(i)}
-                disabled={busy || item.stale}
-                aria-current={current ? 'step' : undefined}
-                title={item.stale ? t('massMissingHint') : undefined}
-                className={`flex min-h-12 w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition disabled:cursor-not-allowed ${
-                  current ? 'border-accent bg-gradient-to-r from-accent/20 to-accent/5' : 'border-transparent hover:bg-fg/[0.06]'
-                } ${item.stale ? 'opacity-50' : ''}`}
-              >
-                <span
-                  className={`grid size-8 shrink-0 place-items-center rounded-full font-mono text-xs ${
-                    isDone ? 'bg-ok text-canvas' : current ? 'bg-accent text-on-accent' : 'bg-panel-2 text-muted'
-                  }`}
+              {header}
+              <div className="group relative">
+                <button
+                  type="button"
+                  onClick={() => onPick(i)}
+                  disabled={busy || item.stale}
+                  aria-current={current ? 'step' : undefined}
+                  title={item.stale ? t('massMissingHint') : undefined}
+                  className={`flex min-h-12 w-full items-center gap-3 rounded-lg border py-2 pr-9 pl-3 text-left transition disabled:cursor-not-allowed ${
+                    current ? 'border-accent bg-gradient-to-r from-accent/20 to-accent/5' : 'border-transparent hover:bg-fg/[0.06]'
+                  } ${item.stale ? 'opacity-50' : ''}`}
                 >
-                  {isDone ? <Check size={14} aria-hidden /> : pad2(i + 1)}
-                </span>
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className={`truncate text-[15px] leading-tight ${isDone ? 'text-muted' : 'font-semibold'} ${item.stale ? 'line-through' : ''}`}>{item.label}</span>
-                  <span className="text-[10px] font-semibold tracking-wider text-fg/45 uppercase">{MODULE_TAG[item.module]}</span>
-                </span>
-                {item.stale && <span className="shrink-0 text-[10px] font-extrabold tracking-wide text-danger uppercase">{t('massMissing')}</span>}
-              </button>
+                  <span
+                    className={`grid size-8 shrink-0 place-items-center rounded-full font-mono text-xs ${
+                      isDone ? 'bg-ok text-canvas' : current ? 'bg-accent text-on-accent' : 'bg-panel-2 text-muted'
+                    }`}
+                  >
+                    {isDone ? <Check size={14} aria-hidden /> : pad2(i + 1)}
+                  </span>
+                  {deckThumb(item) && (
+                    <img src={deckThumb(item)!} alt="" loading="lazy" className="h-8 w-14 shrink-0 rounded border border-line object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                  )}
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className={`truncate text-[15px] leading-tight ${isDone ? 'text-muted' : 'font-semibold'} ${item.stale ? 'line-through' : ''}`}>{item.label}</span>
+                    <span className="truncate text-[10px] font-semibold tracking-wider text-fg/45 uppercase">
+                      {slot ? `${slot.number}. ${slot.name} · ` : ''}
+                      {MODULE_TAG[item.module]}
+                    </span>
+                  </span>
+                  {item.stale && <span className="shrink-0 text-[10px] font-extrabold tracking-wide text-danger uppercase">{t('massMissing')}</span>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRemove(i)}
+                  disabled={busy}
+                  aria-label={t(slot ? 'massRemoveSlot' : 'massRemove', { item: item.label })}
+                  title={t(slot ? 'massRemoveSlot' : 'massRemove', { item: item.label })}
+                  className="absolute top-1/2 right-1.5 grid size-7 -translate-y-1/2 place-items-center rounded-md text-fg/50 opacity-0 transition group-hover:opacity-100 hover:bg-danger/15 hover:text-danger focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-danger/60 focus-visible:outline-none disabled:hidden"
+                >
+                  <X size={14} aria-hidden />
+                </button>
+              </div>
             </li>
           );
         })}
       </ol>
     </section>
+  );
+}
+
+/** Asks before Reset order takes the added slide rows out. Escape or a click outside cancels; Cancel has the focus, so Enter cannot reset by slip. */
+function ConfirmResetModal({ onConfirm, onClose }: { onConfirm: () => void; onClose: () => void }) {
+  const t = useGoLiveT();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div role="alertdialog" aria-modal="true" aria-labelledby="reset-title" aria-describedby="reset-body" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-md flex-col gap-4 rounded-xl border border-fg/20 bg-panel p-6 shadow-2xl">
+        <h2 id="reset-title" className="flex items-center gap-2 text-lg font-bold">
+          <RotateCcw size={18} className="text-danger" aria-hidden /> {t('massResetOrder')}
+        </h2>
+        <p id="reset-body" className="text-sm text-fg/80">{t('massConfirmReset')}</p>
+        <div className="flex justify-end gap-2">
+          <button type="button" autoFocus className={BTN} onClick={onClose}>
+            {t('cancel')}
+          </button>
+          <button type="button" className={`${BTN} !border-danger/60 !bg-danger/15 !text-danger hover:!bg-danger/25`} onClick={onConfirm}>
+            {t('massResetOrder')}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -115,6 +226,18 @@ export function MassLiveView({ planName }: { planName: string | null }) {
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  // The Add slides picker, while it is open.
+  const [adding, setAdding] = useState(false);
+  // The Reset order confirmation, while it is open.
+  const [confirmingReset, setConfirmingReset] = useState(false);
+
+  // A confirmation fades on its own, so it never sits over later work.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   const queue = live.queue;
   const cursor = live.queueCursor;
@@ -135,7 +258,32 @@ export function MassLiveView({ planName }: { planName: string | null }) {
     }
   };
 
-  if (queue.length === 0) {
+  /** Puts the loaded plan back to its Holy Mass order, once the operator has confirmed it in the dialog. */
+  const resetOrder = () => {
+    setConfirmingReset(false);
+    void run(async () => {
+      const removed = await resetMassOrder();
+      setNotice(removed > 0 ? t('massResetDone', { n: removed }) : t('massResetNone'));
+    });
+  };
+
+  /**
+   * Takes a row out of the Mass (the lineup's ✕). A row on screen is only taken out once the operator confirms, since the next item then goes
+   * on screen in its place; any other row goes straight away, with a notice saying what went.
+   */
+  const removeRow = (i: number) => {
+    const row = queue[i];
+    if (!row) return;
+    if (i === cursor && onAir && !window.confirm(t('massConfirmRemoveLive', { item: row.label }))) return;
+    void run(async () => {
+      const removed = await removeFromFlow(i);
+      const slot = slotById(removed.slot);
+      setNotice(slot ? t('massSlotCleared', { item: removed.label, slot: `${slot.number}. ${slot.name}` }) : t('massRemoved', { item: removed.label }));
+    });
+  };
+
+  // A loaded plan with nothing in it still shows its 17 slots, so slides can be added to them here.
+  if (queue.length === 0 && live.queuePlanId == null) {
     return (
       <div className={`${CARD} flex flex-col items-start gap-4 p-6`}>
         <ClipboardList size={28} className="text-accent" aria-hidden />
@@ -214,9 +362,27 @@ export function MassLiveView({ planName }: { planName: string | null }) {
           {error}
         </p>
       )}
+      {notice && (
+        <p role="status" className="rounded-lg border border-ok/40 bg-ok/10 px-4 py-2 text-sm text-ok">
+          {notice}
+        </p>
+      )}
+      {adding && (
+        <InFlowSlidePickerModal
+          queue={queue}
+          cursor={cursor}
+          t={t}
+          onClose={() => setAdding(false)}
+          onDone={(message) => {
+            setAdding(false);
+            setNotice(message);
+          }}
+        />
+      )}
+      {confirmingReset && <ConfirmResetModal onConfirm={resetOrder} onClose={() => setConfirmingReset(false)} />}
 
       <div className="grid grid-cols-1 items-start gap-5 @4xl/pw:grid-cols-[minmax(240px,300px)_minmax(0,1fr)] @6xl/pw:grid-cols-[minmax(240px,300px)_minmax(0,1fr)_minmax(260px,320px)]">
-        <MassLineup items={queue} cursor={cursor} busy={busy} onPick={(i) => void run(() => playMassAt(i))} />
+        <MassLineup items={queue} cursor={cursor} busy={busy} onPick={(i) => void run(() => playMassAt(i))} onRemove={removeRow} onAdd={() => setAdding(true)} onReset={() => setConfirmingReset(true)} />
 
         <section aria-labelledby="mass-live-title" className={`${CARD} flex min-w-0 flex-col gap-4 p-5`}>
           {item ? (
@@ -257,6 +423,11 @@ export function MassLiveView({ planName }: { planName: string | null }) {
                   <figcaption className={EYEBROW}>{t('massCurrent')}</figcaption>
                   <div className={STAGE}>
                     <FramePreview frame={frame} />
+                    {steps && (
+                      <span className="absolute top-2 right-2 rounded-full bg-black/75 px-2.5 py-0.5 font-mono text-[11px] font-bold tracking-wider text-white uppercase shadow">
+                        {t('massSlidePill', { n: steps.index + 1, total: steps.count })}
+                      </span>
+                    )}
                   </div>
                 </figure>
                 <figure className="flex min-w-0 flex-col gap-1.5">

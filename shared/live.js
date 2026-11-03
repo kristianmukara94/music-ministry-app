@@ -351,9 +351,12 @@ function reduce(s, a) {
 
     // Loading a different plan resets the position to before the first item. Re-sending the same plan
     // (after the planner saves it) keeps the position, so an edit does not lose the place in the service.
+    // A change that moves rows around the one on air (a deck put in ahead of it) sends `cursor`, the row's new position, so the queue and its
+    // CURRENT row change together and the projector's slide never looks like another row's. Without it, the same plan keeps its position.
     case 'queue/set': {
       const samePlan = a.planId != null && a.planId === s.queuePlanId;
-      return { ...s, queue: a.items, queuePlanId: a.planId ?? null, queueCursor: samePlan ? s.queueCursor : -1 };
+      const given = samePlan && Number.isInteger(a.cursor) && a.cursor >= -1 && a.cursor < a.items.length ? a.cursor : null;
+      return { ...s, queue: a.items, queuePlanId: a.planId ?? null, queueCursor: given ?? (samePlan ? s.queueCursor : -1) };
     }
 
     // The item the operator last opened from the queue. Persisted, so a restart resumes here.

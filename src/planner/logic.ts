@@ -44,7 +44,11 @@ export function blockRows(items: PlanItem[], block: LiturgicalBlock): PlanItem[]
   return items.filter((it) => it.block === block);
 }
 
-/** Converts a plan into Service Queue entries. Ids are positional, so repeated items stay distinct. */
+/**
+ * Converts a plan into Service Queue entries, one per plan row and in the same order, so a queue position is a plan position (the planner and
+ * the in-flow inserts rely on that). Ids are positional, so repeated items stay distinct. Each entry keeps the Holy Mass slot it fills, so Go
+ * Live can show all 17 slots around the rows, empty ones too (see massLineup in shared/flow-insert.js): slides put in never hide the order.
+ */
 export function queueFromPlan(items: PlanItem[]) {
   return items.map((it, i) => ({
     id: `${i}:${it.module}:${it.sourceId}`,
@@ -52,6 +56,7 @@ export function queueFromPlan(items: PlanItem[]) {
     block: it.block,
     module: it.module,
     sourceId: it.sourceId,
+    slot: it.slot ?? null,
     stale: it.stale ?? false,
     deleted: it.deleted ?? false,
   }));

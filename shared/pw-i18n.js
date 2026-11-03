@@ -235,6 +235,7 @@ const STRINGS = {
     chainFull: 'A card can chain at most {n} items.',
     chainRefused: 'That item does not fit this card.',
     itemsCount: '{n} items',
+    chainPictures: '{title} · {n} slides',
   },
   tl: {
     eyebrow_plan: 'Praise & Worship · Planner ng lineup',
@@ -468,6 +469,7 @@ const STRINGS = {
     chainFull: 'Pinakamarami ang {n} item sa isang card.',
     chainRefused: 'Hindi akma ang item na ito sa card na ito.',
     itemsCount: '{n} na item',
+    chainPictures: '{title} · {n} na slide',
   },
 };
 
@@ -478,6 +480,7 @@ const STRINGS = {
 STRINGS.ceb = {
   // New in this release. Drafted without a native-speaker check; review before go-live.
   songDeleted: 'Gipapasa-a kini nga kanta. Ibalik kini sa Song Lyrics.',
+  chainPictures: '{title} · {n} ka slide',
 };
 
 /** Looks up `key` in `lang`, falling back to English, and fills {placeholders}. */

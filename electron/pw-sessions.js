@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { DEFAULT_CUES, DEFAULT_TEMPLATE, MAX_CHAIN, MAX_SONGS, PW_TYPES, segmentFromTemplate } from '../shared/pw.js';
+import { DEFAULT_CUES, DEFAULT_TEMPLATE, MAX_CHAIN, MAX_PICTURES, MAX_SONGS, PW_TYPES, segmentFromTemplate } from '../shared/pw.js';
 import { recordTombstone } from './plan-sync-schema.js';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -107,7 +107,12 @@ function cleanChain(input) {
       return { kind: 'prayer', noteId, minutes };
     }
     if (item?.kind === 'lectionary') return { kind: 'lectionary', readingType: cleanText(item.readingType, 40, 'Reading'), minutes };
-    throw new Error('A card can only chain prayers and readings.');
+    if (item?.kind === 'pictures') {
+      const ids = Array.isArray(item.slideIds) ? item.slideIds.map(Number) : [];
+      if (ids.length === 0 || ids.length > MAX_PICTURES || !ids.every(Number.isInteger)) throw new Error(`A PowerPoint deck holds 1 to ${MAX_PICTURES} slides.`);
+      return { kind: 'pictures', slideIds: ids, minutes };
+    }
+    throw new Error('A card can only chain prayers, readings and PowerPoint slides.');
   });
 }
 
@@ -238,7 +243,10 @@ export function createPwService(db) {
     return Boolean(row) && row.display !== 'operator';
   };
 
-  /** Whether every item a card chains still exists. Readings are not in the database, so only prayers can be missing. */
+  /**
+   * Whether every item a card chains still exists. Readings are not in the database, so only prayers can be missing. A PowerPoint deck's
+   * pictures that were deleted are skipped when its slides are drawn, so the deck itself never goes missing.
+   */
   const chainExists = (more) => (more ?? []).every((item) => item.kind !== 'prayer' || noteProjectable(item.noteId));
 
   /** Whether everything a segment points at still exists. */

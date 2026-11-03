@@ -157,6 +157,8 @@ export interface QueueItem {
   block: 'introductory' | 'word' | 'eucharist' | 'communion' | 'concluding';
   module: 'lyrics' | 'lectionary' | 'announcements' | 'media' | 'mass_order' | 'bible' | 'custom' | 'notes';
   sourceId: string;
+  /** The Holy Mass slot (see shared/mass-slots.js) the row fills, or none for an additional item. */
+  slot?: string | null;
   /** The source was deleted after the plan was saved. Shown flagged; cannot be opened. */
   stale?: boolean;
 }
@@ -261,7 +263,8 @@ export type LiveAction =
   | { type: 'lowerStyle/set'; value: Partial<LowerThirdStyle> }
   | { type: 'lowerThird/pause'; paused?: boolean }
   | { type: 'stop' }
-  | { type: 'queue/set'; items: QueueItem[]; planId?: number | null }
+  /** `cursor`: the on-air row's position after the change, for the same plan. Absent keeps the position as it was. */
+  | { type: 'queue/set'; items: QueueItem[]; planId?: number | null; cursor?: number }
   | { type: 'queue/cursor'; index: number }
   | { type: 'pw/load'; sessionId: number }
   | { type: 'pw/cursor'; segmentKey: string; slide: number; now: number }

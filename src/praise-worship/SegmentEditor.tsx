@@ -221,6 +221,7 @@ export function SegmentEditor() {
   const hymns = usePw((s) => s.hymns);
   const prayers = usePw((s) => s.prayers);
   const day = usePw((s) => s.day);
+  const pictures = usePw((s) => s.pictures);
   const replacing = usePw((s) => s.replacing);
   const [previewing, setPreviewing] = useState(false);
   const livePw = useLive((s) => s.state.pw);
@@ -231,7 +232,7 @@ export function SegmentEditor() {
   const i = selected;
   const status = segmentStatus(segment);
   const group = session.groups.find((g) => g.key === segment.group);
-  const slides = slidesFor(segment, resolvedFor(segment, { hymns, prayers, day }));
+  const slides = slidesFor(segment, resolvedFor(segment, { hymns, prayers, day, pictures }));
   // While "Show all verses" is off, a song lists its live slide and the next one, or the first before any slide is live.
   const liveAt = livePw?.onAir && livePw.sessionId === session.id ? livePosition(session.segments, livePw) : null;
   const liveSlide = liveAt && liveAt.segment === selected ? liveAt.slide : -1;

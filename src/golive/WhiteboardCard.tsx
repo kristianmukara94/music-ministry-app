@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, FileUp, Folder, Inbox, Layers, ListPlus, Monitor, Pencil, Plus } from 'lucide-react';
-import { addToQueue } from '../planner/plan-api';
+import { deckSlice, decksOf, type PictureDeck } from '../../shared/flow-insert.js';
 import { bridge } from '../live/bridge';
 import { useLive } from '../live/store';
 import { setUi } from '../state/ui';
 import { SlideCanvas } from '../whiteboard/SlideCanvas';
 import { onWhiteboardChanged } from '../whiteboard/changes';
 import { errorText } from '../whiteboard/errors';
-import { addWhiteboardPictureToQueue, listWhiteboardFolders, listWhiteboardSlides, projectWhiteboardSlide } from '../whiteboard/projectSlide';
+import { listWhiteboardFolders, listWhiteboardSlides, projectWhiteboardSlide } from '../whiteboard/projectSlide';
 import type { WhiteboardFolder, WhiteboardSlide } from '../whiteboard/types';
+import { TargetSlotSelectorModal } from '../whiteboard/TargetSlotSelectorModal';
 import { LiveSlideEditor } from './LiveSlideEditor';
 import type { GoLiveT } from './strings';
 
@@ -37,7 +38,8 @@ export function WhiteboardCard({ t }: { t: GoLiveT }) {
   const [collapsed, setCollapsed] = useState<Set<number | typeof UNFILED>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
+  // The PowerPoint decks waiting for a place in a service flow, while the place picker is open.
+  const [targetDecks, setTargetDecks] = useState<PictureDeck[] | null>(null);
   // The slide open in the side editor, if any.
   const [editingId, setEditingId] = useState<number | null>(null);
   const liveFrame = useLive((s) => s.state.projector.live);
@@ -85,33 +87,21 @@ export function WhiteboardCard({ t }: { t: GoLiveT }) {
     setNotice(t('whiteboardShowing', { title: slide.title || '—' }));
   };
 
-  const queue = async (slide: WhiteboardSlide) => {
-    setBusyKey(`s${slide.id}`);
+  const folderTitle = (id: number | null) => (id == null ? null : (folders.find((f) => f.id === id)?.name ?? null));
+
+  /** Opens the place picker for a PowerPoint slide's deck from that slide to the end: one row that starts on it and steps on through the rest. */
+  const queue = (slide: WhiteboardSlide) => {
+    if (slide.slideId == null) return;
     setError(null);
-    try {
-      await addWhiteboardPictureToQueue(slide);
-      setNotice(t('whiteboardQueued', { title: slide.title || '—' }));
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setBusyKey(null);
-    }
+    setTargetDecks([deckSlice({ slideId: slide.slideId, folderId: slide.folderId, title: slide.title }, all, folderTitle)]);
   };
 
-  /** Adds every PowerPoint slide of a group to the Mass Queue, in folder order. */
-  const queueGroup = async (key: string, name: string, group: WhiteboardSlide[]) => {
-    const pictures = group.filter((s) => s.slideId != null);
-    if (pictures.length === 0) return;
-    setBusyKey(key);
+  /** Opens the place picker for a group's PowerPoint slides, in folder order. */
+  const queueGroup = (group: WhiteboardSlide[]) => {
+    const decks = decksOf(group, folderTitle);
+    if (decks.length === 0) return;
     setError(null);
-    try {
-      await addToQueue(pictures.map((s) => ({ block: 'word' as const, module: 'announcements' as const, sourceId: String(s.slideId), label: s.title })));
-      setNotice(t('whiteboardQueuedMany', { n: pictures.length, folder: name }));
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setBusyKey(null);
-    }
+    setTargetDecks(decks);
   };
 
   /** Opens the slide in its own editor window. Where windows cannot be opened (a browser), the editor docks to the side instead. */
@@ -177,7 +167,7 @@ export function WhiteboardCard({ t }: { t: GoLiveT }) {
               <Pencil size={13} aria-hidden /> {t('whiteboardEdit')}
             </button>
             {slide.slideId != null && (
-              <button type="button" className={BTN} disabled={busyKey === `s${slide.id}`} onClick={() => void queue(slide)} aria-label={`${t('whiteboardQueue')} ${slide.title}`}>
+              <button type="button" className={BTN} onClick={() => queue(slide)} aria-label={`${t('whiteboardQueue')} ${slide.title}`}>
                 <ListPlus size={13} aria-hidden /> {t('whiteboardQueue')}
               </button>
             )}
@@ -210,7 +200,7 @@ export function WhiteboardCard({ t }: { t: GoLiveT }) {
             <span className="rounded-full border border-fg/15 bg-panel-2 px-2 py-0.5 font-mono text-xs text-fg/70 tabular-nums">{group.length}</span>
           </button>
           {pictures > 0 && (
-            <button type="button" className={BTN} disabled={busyKey === `g${key}`} onClick={() => void queueGroup(`g${key}`, name, group)}>
+            <button type="button" className={BTN} onClick={() => queueGroup(group)}>
               <ListPlus size={13} aria-hidden /> {t('whiteboardQueueFolder')}
             </button>
           )}
@@ -312,7 +302,7 @@ export function WhiteboardCard({ t }: { t: GoLiveT }) {
           {shownFolder && (
             <div className="flex justify-end">
               {inFolder(filter).some((s) => s.slideId != null) && (
-                <button type="button" className={BTN} disabled={busyKey === `g${filter}`} onClick={() => void queueGroup(`g${filter}`, shownFolder.name, inFolder(filter))}>
+                <button type="button" className={BTN} onClick={() => queueGroup(inFolder(filter))}>
                   <ListPlus size={13} aria-hidden /> {t('whiteboardQueueFolder')}
                 </button>
               )}
@@ -324,6 +314,16 @@ export function WhiteboardCard({ t }: { t: GoLiveT }) {
 
       {/* The side editor for the slide whose Edit button is pressed. Keyed by slide, so each slide starts from its own saved state. */}
       {editingSlide && <LiveSlideEditor key={editingSlide.id} slide={editingSlide} layout="panel" onClose={() => setEditingId(null)} t={t} />}
+      {targetDecks && (
+        <TargetSlotSelectorModal
+          decks={targetDecks}
+          onClose={() => setTargetDecks(null)}
+          onDone={(message) => {
+            setTargetDecks(null);
+            setNotice(message);
+          }}
+        />
+      )}
     </section>
   );
 }

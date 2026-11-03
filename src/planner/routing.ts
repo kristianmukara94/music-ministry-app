@@ -7,11 +7,13 @@ import { massPartFrame } from '../liturgy/massOrder';
 import { pagesOf } from '../announcements/paginate';
 import { loadPassage, scriptureSlides } from '../bible/projection';
 import { parseSourceId } from '../../shared/bible-ref.js';
+import { announcementSource } from '../../shared/flow-insert.js';
 import { bibleT } from '../../shared/bible-i18n.js';
 import { setUi, useUi } from '../state/ui';
 import { stagePrayer, takePrayer } from '../notes/present';
 import { stanzaFrame } from '../lyrics/frames';
 import { announcementFrame } from '../announcements/frames';
+import { frameForWhiteboardSlide } from '../whiteboard/projectSlide';
 
 /** How a queue item is played. `inPlace` shows songs, announcements and media where the operator is (the Go Live console), without switching panels. */
 export interface PlayOptions {
@@ -27,12 +29,28 @@ async function stageSong(sourceId: string): Promise<boolean> {
   return true;
 }
 
-/** Stages an Announcements slide, with the pictures of its folder around it. Resolves false when the slide is gone. */
+/**
+ * Stages an Announcements slide, with the pictures of its folder around it. Resolves false when the slide is gone. A PowerPoint slide from the
+ * Whiteboard steps through its Whiteboard folder (its deck), not through every PowerPoint picture, which all share one Announcements folder.
+ * A deck slice's row (see deckSlice) steps from its slide to the end of the deck, and an older single slide's row shows its picture alone.
+ */
 async function stageAnnouncement(sourceId: string): Promise<boolean> {
-  const list = await bridge.announcements.slides(null);
-  const slide = list.find((s) => s.id === Number(sourceId));
+  const source = announcementSource(sourceId);
+  if (!source) return false;
+  const [list, board] = await Promise.all([bridge.announcements.slides(null), bridge.whiteboard.list().catch(() => [])]);
+  const slide = list.find((s) => s.id === source.slideId);
   if (!slide) return false;
-  dispatch({ type: 'projector/stage', frame: announcementFrame(slide, list.filter((s) => s.folderId === slide.folderId)) });
+  const picture = board.find((w) => w.slideId === slide.id && w.image);
+  /** The slides around `first` that the row plays: all of its deck, the deck from `first` on, or `first` alone. */
+  const around = <T extends { folderId: number | null }>(first: T, deck: T[]) => {
+    if (source.alone) return [first];
+    const same = deck.filter((s) => s.folderId === first.folderId);
+    return source.from ? same.slice(Math.max(0, same.indexOf(first))) : same;
+  };
+  const frame = picture
+    ? frameForWhiteboardSlide(picture, around(picture, board.filter((w) => w.image)))
+    : announcementFrame(slide, around(slide, list));
+  dispatch({ type: 'projector/stage', frame });
   return true;
 }
 
@@ -62,7 +80,7 @@ export async function openQueueItem(item: QueueItem, index: number, opts: PlayOp
     case 'announcements':
       if (opts.inPlace) return stageAnnouncement(item.sourceId);
       // The deck switches to the slide's folder and stages it.
-      setUi({ view: 'announcements', pendingFocus: { kind: 'slide', id: Number(item.sourceId) } });
+      setUi({ view: 'announcements', pendingFocus: { kind: 'slide', id: announcementSource(item.sourceId)?.slideId ?? NaN } });
       return false;
 
     case 'media':

@@ -1,6 +1,20 @@
 import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
+import {
+  flowRowsOf,
+  followCursor,
+  insertIntoMassFlow,
+  massOrderReset,
+  newFlowRows,
+  removeFromMassFlow,
+  replaceSlotInMassFlow,
+  type FlowRow,
+  type MassFlowTarget,
+  type PictureDeck,
+} from '../../shared/flow-insert.js';
+import { queueOnAir, whenLive } from '../golive/massLive';
 import { queueFromPlan } from './logic';
+import { playQueueAt } from './routing';
 import type { PlanItem } from './types';
 
 const api = bridge.plans;
@@ -25,18 +39,29 @@ export async function appendToPlan(planId: number, added: PlanItem[]): Promise<v
 }
 
 /**
+ * Sends a plan's rows to the Service Queue. When it is the plan already loaded, CURRENT follows the row it was on, wherever that row now
+ * sits, so a row added or removed ahead of it (an append the database files into an earlier block) never moves the queue off the slide on air.
+ */
+function setQueue(planId: number, items: PlanItem[]): void {
+  const { queue, queuePlanId, queueCursor } = useLive.getState().state;
+  const next = queueFromPlan(items);
+  if (queuePlanId === planId && queueCursor >= 0) dispatch({ type: 'queue/set', items: next, planId, cursor: followCursor(queue, next, queueCursor) });
+  else dispatch({ type: 'queue/set', items: next, planId });
+}
+
+/**
  * Re-sends the Service Queue when the plan loaded there has changed, so the drawer never shows an old order.
  * Plans that are not loaded are left alone.
  */
 export function syncQueueIfLoaded(planId: number, items: PlanItem[]): void {
   if (useLive.getState().state.queuePlanId !== planId) return;
-  dispatch({ type: 'queue/set', items: queueFromPlan(items), planId });
+  setQueue(planId, items);
 }
 
 /** Loads a plan into the Service Queue, the same way the Mass Planner does. */
 export async function loadPlanToQueue(planId: number): Promise<void> {
   const plan = await api.get(planId);
-  dispatch({ type: 'queue/set', items: queueFromPlan(plan.items), planId });
+  setQueue(planId, plan.items);
 }
 
 /**
@@ -44,12 +69,154 @@ export async function loadPlanToQueue(planId: number): Promise<void> {
  * plan for today is created and loaded. Returns the plan that received the items.
  */
 export async function addToQueue(added: PlanItem[]): Promise<number> {
-  let planId = useLive.getState().state.queuePlanId;
-  if (planId == null) {
-    const created = await api.create({ name: QUICK_PLAN_NAME, liturgicalDate: isoToday() });
-    planId = created.id;
-  }
+  const planId = await queuePlanOrQuick();
   await appendToPlan(planId, added);
   await loadPlanToQueue(planId);
   return planId;
+}
+
+/** The plan loaded in the Service Queue, or a new "Quick passages" plan for today when none is. */
+async function queuePlanOrQuick(): Promise<number> {
+  const planId = useLive.getState().state.queuePlanId;
+  if (planId != null) return planId;
+  return (await api.create({ name: QUICK_PLAN_NAME, liturgicalDate: isoToday() })).id;
+}
+
+// Inserts run one after another, so a second one (a double click, a repeated request) reads the plan the first one saved and finds its rows.
+let inserting: Promise<unknown> = Promise.resolve();
+
+/**
+ * Puts a PowerPoint deck or text slides into the Holy Mass flow loaded in the Service Queue: into a slot (1 to 17), or straight after the row
+ * on air. A deck always goes in as one row that steps through its slides, never a row per slide, and a deck or slide already in the Mass is
+ * not put in again. With no plan loaded, a "Quick passages" plan is made and loaded. The change is made without touching the projector: what
+ * is on air stays on air, and CURRENT moves with its row when the new rows go in ahead of it, in the same queue change (see
+ * shared/flow-insert.js). Every slot and row already in the plan stays.
+ * Resolves to the plan that received the rows, how many went in, and how many were left out as already there.
+ */
+export function insertDeckIntoFlow(payload: (PictureDeck | FlowRow)[], target: MassFlowTarget): Promise<{ planId: number; added: number; skipped: number }> {
+  const run = inserting.then(() => insertNow(flowRowsOf(payload), target));
+  inserting = run.catch(() => undefined);
+  return run;
+}
+
+async function insertNow(wanted: FlowRow[], target: MassFlowTarget): Promise<{ planId: number; added: number; skipped: number }> {
+  const planId = await queuePlanOrQuick();
+  const plan = await api.get(planId);
+  const { rows, duplicates } = newFlowRows(plan.items, wanted);
+  if (duplicates.length > 0) console.warn('Left out of the Holy Mass, already in it:', duplicates.map((d) => d.label));
+  if (rows.length === 0) {
+    const what = wanted.length === 1 ? `"${wanted[0].label}" is` : 'These slides are';
+    throw new Error(`${what} already in the Holy Mass. Nothing was added.`);
+  }
+  const live = useLive.getState().state;
+  const loaded = live.queuePlanId === planId;
+  // The cursor counts rows of the queue, which is the plan as the database returns it. A queue out of step with the plan (an edit not yet
+  // sent back) is followed onto the plan first, so the position that moves is the right one.
+  const cursor = loaded ? followCursor(live.queue, queueFromPlan(plan.items), live.queueCursor) : -1;
+  const placed = insertIntoMassFlow(plan.items, rows, target, cursor);
+  if (!placed) throw new Error('That place is not in the plan any more. Choose another.');
+  await api.save(planId, placed.items as PlanItem[]);
+  const saved = (await api.get(planId)).items;
+  const next = queueFromPlan(saved);
+  if (loaded && placed.cursor >= 0) dispatch({ type: 'queue/set', items: next, planId, cursor: placed.cursor });
+  else dispatch({ type: 'queue/set', items: next, planId });
+  return { planId, added: rows.length, skipped: duplicates.length };
+}
+
+/**
+ * Replace on a Holy Mass slot: the deck (or text slides) takes the place of the song, text or deck that fills `slot` in the plan loaded in
+ * the Service Queue, as one row tied to the slot, and the old item is taken out (see replaceSlotInMassFlow). An empty slot is simply filled.
+ * The rows put in after the slot stay. A deck already elsewhere in the Mass is not put in again. When the item replaced was on air, the new
+ * one goes on air in its place, from its first slide, so the projector never keeps showing a row that is gone.
+ * Resolves to the plan, how many rows went in, how many were left out as already there, and the label of the item replaced (null for none).
+ */
+export function replaceSlotInFlow(payload: (PictureDeck | FlowRow)[], slot: string): Promise<{ planId: number; added: number; skipped: number; replaced: string | null }> {
+  const run = inserting.then(() => replaceNow(flowRowsOf(payload), slot));
+  inserting = run.catch(() => undefined);
+  return run;
+}
+
+async function replaceNow(wanted: FlowRow[], slot: string): Promise<{ planId: number; added: number; skipped: number; replaced: string | null }> {
+  const planId = await queuePlanOrQuick();
+  const plan = await api.get(planId);
+  const old = plan.items.find((it) => it.slot === slot);
+  // The item being replaced does not count as a copy: replacing a slot with what already fills it changes nothing.
+  const { rows, duplicates } = newFlowRows(
+    plan.items.filter((it) => it !== old),
+    wanted,
+  );
+  if (rows.length === 0) {
+    const what = wanted.length === 1 ? `"${wanted[0].label}" is` : 'These slides are';
+    throw new Error(`${what} already in the Holy Mass. Nothing was replaced.`);
+  }
+  const live = useLive.getState().state;
+  const loaded = live.queuePlanId === planId;
+  const cursor = loaded ? followCursor(live.queue, queueFromPlan(plan.items), live.queueCursor) : -1;
+  const placed = replaceSlotInMassFlow(plan.items, rows, slot, cursor);
+  if (!placed) throw new Error('That slot is not in the plan any more. Choose another.');
+  const wasOnAir = loaded && placed.replacedCurrent && queueOnAir(live);
+  await api.save(planId, placed.items as PlanItem[]);
+  const next = queueFromPlan((await api.get(planId)).items);
+  if (loaded && placed.cursor >= 0) dispatch({ type: 'queue/set', items: next, planId, cursor: placed.cursor });
+  else dispatch({ type: 'queue/set', items: next, planId });
+  if (wasOnAir) await playWhenQueued(next, placed.cursor);
+  return { planId, added: rows.length, skipped: duplicates.length, replaced: placed.replaced?.label ?? null };
+}
+
+/**
+ * Remove (✕) on a row of the Go Live lineup: takes the queue row at `index` out of the plan loaded in the Service Queue. A row that filled a
+ * Holy Mass slot leaves the slot empty, shown again as an empty slot; any other row is gone. The queue and CURRENT change together, in one
+ * queue change, so CURRENT never points past the end or at another row. When the row taken out was on air, the nearest row that can play
+ * goes on air in its place (the one that came next, or the one before at the end of the Mass); with none left, the projector is cleared.
+ * Resolves to the item taken out.
+ */
+export function removeFromFlow(index: number): Promise<PlanItem> {
+  const run = inserting.then(() => removeNow(index));
+  inserting = run.catch(() => undefined);
+  return run;
+}
+
+async function removeNow(index: number): Promise<PlanItem> {
+  const live = useLive.getState().state;
+  const planId = live.queuePlanId;
+  if (planId == null) throw new Error('No Holy Mass plan is loaded in the queue.');
+  const plan = await api.get(planId);
+  // The row is found by what it plays, so a queue out of step with the plan takes out the row the operator clicked.
+  const saved = queueFromPlan(plan.items);
+  const at = followCursor(live.queue, saved, index);
+  const cursor = followCursor(live.queue, saved, live.queueCursor);
+  const out = at >= 0 ? removeFromMassFlow(plan.items, at, cursor) : null;
+  if (!out) throw new Error('That row is not in the plan any more.');
+  const wasOnAir = out.removedCurrent && queueOnAir(live);
+  await api.save(planId, out.items);
+  const next = queueFromPlan((await api.get(planId)).items);
+  dispatch({ type: 'queue/set', items: next, planId, cursor: Math.min(out.cursor, next.length - 1) });
+  if (wasOnAir) {
+    if (out.cursor >= 0) await playWhenQueued(next, out.cursor);
+    else dispatch({ type: 'projector/clear' });
+  }
+  return out.removed;
+}
+
+/** Plays queue row `index` once the main process has taken the queue change `next`, so the row played is the new one, not the old. */
+async function playWhenQueued(next: ReturnType<typeof queueFromPlan>, index: number): Promise<void> {
+  const want = next[index]?.id;
+  if (!want) return;
+  if (await whenLive((s) => s.queue.length === next.length && s.queue[index]?.id === want)) await playQueueAt(index, { inPlace: true });
+}
+
+/**
+ * Puts the plan loaded in the Service Queue back to its Holy Mass order, for a plan that was filled with slide rows by mistake: the 17 slots
+ * and what fills them stay, as do the readings, passages and notes; the slides and PowerPoints put in around the slots go (see massOrderReset).
+ * The queue is reloaded from the saved plan. The projector is not touched, and CURRENT stays on its row when that row is kept.
+ * Resolves to how many rows were taken out.
+ */
+export async function resetMassOrder(): Promise<number> {
+  const planId = useLive.getState().state.queuePlanId;
+  if (planId == null) throw new Error('No Holy Mass plan is loaded in the queue.');
+  const plan = await api.get(planId);
+  const { items, removed } = massOrderReset(plan.items);
+  if (removed > 0) await api.save(planId, items);
+  setQueue(planId, (await api.get(planId)).items);
+  return removed;
 }

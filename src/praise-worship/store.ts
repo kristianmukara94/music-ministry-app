@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { hymnAfterChange, withHymn } from '../../shared/hymn-cache.js';
 import { persist } from 'zustand/middleware';
-import { addLineupCard, chainOf, groupOrdered, newLineupCard, removeLineupCard, type PwHymnTag, type PwResolved, type PwSegment, type PwType } from '../../shared/pw.js';
+import { addLineupCard, chainAssignment, chainOf, groupOrdered, newLineupCard, removeLineupCard, type PwHymnTag, type PwResolved, type PwSegment, type PwType } from '../../shared/pw.js';
 import type { LibraryDragBatch } from '../../shared/pw-attach.js';
 import { arrangementWithSplit } from '../../shared/pw-hot-edit.js';
 import { bridge } from '../live/bridge';
@@ -31,6 +31,8 @@ interface PwState {
   prayers: Note[];
   /** The Lectionary for the session date, for the Gospel Acclamation. */
   day: LectionaryDay | null;
+  /** The Whiteboard's PowerPoint pictures, by their Announcements slide id, for the decks a card chains. */
+  pictures: Record<number, { title: string; src: string }>;
   saveState: 'idle' | 'saving' | 'saved' | 'error';
   error: string | null;
   /** Set by Replace: the next Add from the library replaces this song instead of adding one. */
@@ -56,6 +58,7 @@ export const usePw = create<PwState>()(
       hymns: {},
       prayers: [],
       day: null,
+      pictures: {},
       saveState: 'idle',
       error: null,
       replacing: null,
@@ -109,6 +112,19 @@ async function loadDay(date: string) {
 export async function refreshLibraries() {
   const [notes, tags] = await Promise.all([bridge.notes.list(), api.listTags()]);
   setPw({ prayers: notes.filter((n) => n.display !== 'operator'), tags });
+  await refreshPictures();
+}
+
+/** The Whiteboard's PowerPoint pictures, read again after a change there, so a chained deck shows its slides as they are now. */
+export async function refreshPictures() {
+  try {
+    const slides = await bridge.whiteboard.list();
+    const pictures: PwState['pictures'] = {};
+    for (const s of slides) if (s.slideId != null && s.image) pictures[s.slideId] = { title: s.title, src: s.image };
+    setPw({ pictures });
+  } catch {
+    // Kept as they were. A deck whose pictures are not loaded shows nothing until the next read.
+  }
 }
 
 function showSession(session: PwSession) {
@@ -256,12 +272,43 @@ export function updateSession(patch: { name?: string; liturgicalDate?: string })
   if (patch.liturgicalDate) void loadDay(patch.liturgicalDate);
 }
 
+/**
+ * Chains PowerPoint decks (each its pictures' slide ids, in order) after the last item of a card in a Praise & Worship session. The open
+ * session changes through the planner, so its editor and the live lineup follow; any other session is saved straight away. A deck already
+ * on the card, or one past the card's limit, is left out. Nothing before the new slides moves, so a slide on air stays where it is.
+ * Resolves to how many decks were added.
+ */
+export async function chainPicturesInto(sessionId: number, segmentKey: string, decks: number[][]): Promise<number> {
+  const open = usePw.getState().session?.id === sessionId;
+  const session = open ? usePw.getState().session! : await api.getSession(sessionId);
+  const index = session.segments.findIndex((s) => s.key === segmentKey);
+  if (index < 0) throw new Error('That card is not in the session any more. Choose another.');
+  let segment = session.segments[index];
+  let added = 0;
+  for (const slideIds of decks) {
+    const patch = chainAssignment(segment, { kind: 'pictures', slideIds, minutes: 0 });
+    if (!patch) continue;
+    segment = { ...segment, ...patch };
+    added += 1;
+  }
+  if (added === 0) return 0;
+  const segments = session.segments.map((s, i) => (i === index ? segment : s));
+  await refreshPictures();
+  if (open) {
+    commitSegments(segments);
+    await flushSave();
+  } else {
+    await api.saveSession(sessionId, { name: session.name, liturgicalDate: session.liturgicalDate, segments });
+  }
+  return added;
+}
+
 export async function setTag(hymnId: number, segmentKey: string, on: boolean) {
   setPw({ tags: await api.setTag(hymnId, segmentKey, on) });
 }
 
 /** What a segment's slides are built from, out of the loaded libraries. */
-export function resolvedFor(segment: PwSegment, state: Pick<PwState, 'hymns' | 'prayers' | 'day'>): PwResolved {
+export function resolvedFor(segment: PwSegment, state: Pick<PwState, 'hymns' | 'prayers' | 'day'> & Partial<Pick<PwState, 'pictures'>>): PwResolved {
   const c = segment.content;
   // Every card resolves its songs, whatever its first item is.
   const hymns = c.hymnIds
@@ -269,7 +316,11 @@ export function resolvedFor(segment: PwSegment, state: Pick<PwState, 'hymns' | '
     .filter((h): h is Hymn => Boolean(h))
     .map((h) => ({ id: h.id, title: h.title, category: h.category, stanzas: h.stanzas, style: h.style ?? null }));
   // The chained items resolve in the same order as the chain, so each entry lines up with its item.
-  const more = chainOf(segment).map((item) => (item.kind === 'prayer' ? { prayer: prayerFor(item.noteId, state) } : { reading: readingFor(item.readingType, state) }));
+  const more = chainOf(segment).map((item) => {
+    if (item.kind === 'prayer') return { prayer: prayerFor(item.noteId, state) };
+    if (item.kind === 'pictures') return { pictures: item.slideIds.flatMap((id) => (state.pictures?.[id] ? [state.pictures[id]] : [])) };
+    return { reading: readingFor(item.readingType, state) };
+  });
   if (c.kind === 'prayer') return { hymns, prayer: c.noteId != null ? prayerFor(c.noteId, state) : null, more };
   if (c.kind === 'lectionary') return { hymns, reading: readingFor(c.readingType, state), more };
   return { hymns, more };

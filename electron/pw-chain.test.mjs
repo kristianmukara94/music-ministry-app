@@ -17,7 +17,7 @@ const { LECTIONARY_MIGRATIONS } = await import('./lectionary.js');
 const { MEDIA_MIGRATIONS } = await import('./media.js');
 const { BIBLE_MIGRATIONS } = await import('./bible-seed.js');
 const { PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, createNotesService } = await import('./notes.js');
-const { MAX_CHAIN, MAX_SONGS } = await import('../shared/pw.js');
+const { MAX_CHAIN, MAX_PICTURES, MAX_SONGS } = await import('../shared/pw.js');
 const { createLyricsService } = await import('./lyrics.js');
 const { createSongCategoryService } = await import('./song-categories.js');
 
@@ -125,11 +125,40 @@ test('a card chains a reading after a prayer, refuses an unknown item kind, and 
   segments[i] = { ...segments[i], content: { kind: 'prayer', noteId: prayers[0], more: [{ kind: 'lectionary', readingType: 'Gospel Acclamation', minutes: 0 }] } };
   pw.saveSession(session.id, { segments });
   segments[i] = { ...segments[i], content: { kind: 'prayer', noteId: prayers[0], more: [{ kind: 'song', hymnId: 1, minutes: 0 }] } };
-  assert.throws(() => pw.saveSession(session.id, { segments }), /prayers and readings/);
+  assert.throws(() => pw.saveSession(session.id, { segments }), /can only chain prayers, readings and PowerPoint slides/);
 
   const many = Array.from({ length: MAX_CHAIN + 1 }, () => ({ kind: 'prayer', noteId: prayers[1], minutes: 0 }));
   segments[i] = { ...segments[i], content: { kind: 'prayer', noteId: prayers[0], more: many } };
   assert.throws(() => pw.saveSession(session.id, { segments }), /at most/);
+});
+
+test('a PowerPoint deck chains after what a card holds, and saves and reloads with its slides in order', () => {
+  const { pw, session, prayers } = setup();
+  const segments = toSave(session.segments);
+  const i = segments.findIndex((s) => s.key === 'prayer_authority');
+  const more = [
+    { kind: 'lectionary', readingType: 'Gospel Acclamation', minutes: 1 },
+    { kind: 'pictures', slideIds: [12, 10, 11], minutes: 3 },
+  ];
+  segments[i] = { ...segments[i], content: { kind: 'prayer', noteId: prayers[0], more } };
+  pw.saveSession(session.id, { segments });
+  const reloaded = bySlot(pw.getSession(session.id).segments, 'prayer_authority');
+  assert.deepEqual(reloaded.content.more, more);
+  assert.equal(reloaded.stale, false);
+});
+
+test('a PowerPoint deck with no slides, too many slides, or ids that are not numbers is refused', () => {
+  const { pw, session, prayers } = setup();
+  const segments = toSave(session.segments);
+  const i = segments.findIndex((s) => s.key === 'prayer_authority');
+  const save = (slideIds) => {
+    segments[i] = { ...segments[i], content: { kind: 'prayer', noteId: prayers[0], more: [{ kind: 'pictures', slideIds, minutes: 0 }] } };
+    pw.saveSession(session.id, { segments });
+  };
+  assert.throws(() => save([]), /PowerPoint deck holds 1 to/);
+  assert.throws(() => save(Array.from({ length: MAX_PICTURES + 1 }, (_, n) => n + 1)), /PowerPoint deck holds 1 to/);
+  assert.throws(() => save(['a']), /PowerPoint deck holds 1 to/);
+  assert.throws(() => save('12'), /PowerPoint deck holds 1 to/);
 });
 
 const hymn = (title) => ({ title, composer: '', category: 'General', songCategory: 'General', language: 'EN', musicalKey: 'G', raw: `${title}, first line` });
