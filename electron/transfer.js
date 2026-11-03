@@ -1,4 +1,4 @@
-// Export and import of the library: plans, setlists, Praise & Worship sessions and songs, in one .apccmma file.
+// Export and import of the library: plans, setlists, Praise & Worship sessions, songs and the parish's Holy Mass Order words, in one .apccmma file.
 // Pure of Electron: the database handle and the laptop name are passed in, so the tests run under plain Node.
 //
 // Every record has a UUID that is set once and never changed (the `uuid` column), and an `updated_at` that the database
@@ -6,11 +6,13 @@
 // so the same song is not added twice under two IDs; that match is remembered in transfer_song_aliases.
 import crypto from 'node:crypto';
 import { isPrimaryCategory, scopeForLegacy } from '../shared/song-taxonomy.js';
+import { MASS_ORDER_ID, MASS_ORDER_LANGS, MAX_MASS_ORDER_ID, checkMassOrderText, cleanTitle, isCustomId } from '../shared/mass-order-text.js';
+import { MASS_PARTS } from '../shared/mass-parts.js';
 
 export const TRANSFER_FORMAT = 'apccmma-library';
 export const TRANSFER_FORMAT_VERSION = 1;
 export const TRANSFER_EXTENSION = '.apccmma';
-export const TRANSFER_TYPES = ['songs', 'setlists', 'plans', 'praiseWorship'];
+export const TRANSFER_TYPES = ['songs', 'setlists', 'plans', 'praiseWorship', 'massOrder'];
 
 const sha256 = (text) => crypto.createHash('sha256').update(text, 'utf8').digest('hex');
 
@@ -164,6 +166,32 @@ function readSessions(db) {
     }));
 }
 
+/**
+ * The parish's Holy Mass Order words and titles, one record per part: a built-in part the parish changed (`kyrie`) or a parish item
+ * (`mass_order_custom_<uuid>`). `texts` holds each language the parish saved, { text, title }, either null when the standard one is kept.
+ * `only`, when given, limits the records to those ids.
+ */
+function readMassOrder(db, only = null) {
+  const rows = db.prepare('SELECT part_id AS partId, lang, text, custom_title AS title, updated_at AS updatedAt FROM mass_order_texts ORDER BY part_id, lang').all();
+  const items = db.prepare('SELECT id, created_at AS createdAt FROM mass_order_custom_items ORDER BY created_at, rowid').all();
+  const made = new Map(items.map((i) => [i.id, i.createdAt]));
+  const ids = [...items.map((i) => i.id), ...[...new Set(rows.map((r) => r.partId))].filter((id) => !isCustomId(id))];
+  return ids
+    .filter((id) => !only || only.has(id))
+    .map((id) => {
+      const own = rows.filter((r) => r.partId === id);
+      const texts = {};
+      for (const r of own) texts[r.lang] = { text: r.text ?? null, title: r.title ?? null };
+      const stamps = own.map((r) => r.updatedAt).filter(Boolean).sort();
+      return { id, custom: isCustomId(id), createdAt: made.get(id) ?? null, updatedAt: stamps.at(-1) ?? made.get(id) ?? null, texts };
+    })
+    .filter((record) => Object.keys(record.texts).length > 0);
+}
+
+/** A Holy Mass Order record's words and titles as one string, so two laptops' versions compare by what they say, not when they were saved. */
+const massOrderContent = (texts) =>
+  JSON.stringify(MASS_ORDER_LANGS.map((l) => [l, texts?.[l]?.text ?? null, texts?.[l]?.title ?? null]));
+
 /** The stanza ids of a song in the order it is sung and shown. Import and export use the same order, so an index means the same stanza. */
 function stanzaIdsOf(db, hymnId) {
   return db.prepare('SELECT id FROM hymn_stanzas WHERE hymn_id = ? ORDER BY display_order, id').all(hymnId).map((r) => r.id);
@@ -185,6 +213,9 @@ export function collectLibrary(db, options, { laptop, exportedAt = new Date().to
   const setlists = options.setlists ? readSetlists(db) : [];
   const plans = options.plans ? readPlans(db) : [];
   const sessions = options.praiseWorship ? readSessions(db) : [];
+  // The parish's Holy Mass Order words when asked for; a parish item a chosen plan uses always comes with it, as its songs do.
+  const usedItems = new Set(plans.flatMap((p) => p.items.filter((i) => i.sourceModule === 'mass_order' && isCustomId(i.sourceId)).map((i) => i.sourceId)));
+  const massOrder = options.massOrder ? readMassOrder(db) : usedItems.size > 0 ? readMassOrder(db, usedItems) : [];
 
   const needed = new Set(options.songs ? hymns.map((h) => h.id) : []);
   for (const s of setlists) s.hymnIds.forEach((id) => needed.add(id));
@@ -272,11 +303,12 @@ export function collectLibrary(db, options, { laptop, exportedAt = new Date().to
     exportedAt,
     laptop: laptop ?? '',
     includesLyrics: Boolean(options.lyrics),
-    counts: { songs: songs.length, setlists: setlistsOut.length, plans: plansOut.length, praiseWorship: sessionsOut.length },
+    counts: { songs: songs.length, setlists: setlistsOut.length, plans: plansOut.length, praiseWorship: sessionsOut.length, massOrder: massOrder.length },
     songs,
     setlists: setlistsOut,
     plans: plansOut,
     praiseWorship: sessionsOut,
+    massOrder,
   };
   return data;
 }
@@ -339,10 +371,72 @@ export function planImport(db, data) {
     setlists: matchRecords('setlists', data.setlists),
     plans: matchRecords('mass_plans', data.plans),
     praiseWorship: matchRecords('pw_sessions', data.praiseWorship),
+    massOrder: planMassOrder(db, data.massOrder),
   };
 }
 
-const NAMES = { songs: (r) => r.title, setlists: (r) => r.name, plans: (r) => r.name, praiseWorship: (r) => r.name };
+/**
+ * A Holy Mass Order record from a file, checked as the editor checks words and titles. Throws with the reason, so a damaged file is refused
+ * before anything is written. A parish item must have a title and words in at least one language.
+ */
+function cleanMassOrderRecord(record) {
+  const id = String(record?.id ?? '');
+  if (!MASS_ORDER_ID.test(id) || id.length > MAX_MASS_ORDER_ID) throw new Error('A Holy Mass Order entry in the file has an id this app does not know.');
+  const texts = {};
+  for (const [lang, entry] of Object.entries(record.texts ?? {})) {
+    if (!MASS_ORDER_LANGS.includes(lang)) throw new Error('A Holy Mass Order entry in the file is in a language this app does not keep.');
+    let text = null;
+    if (entry?.text != null && String(entry.text).trim()) {
+      const checked = checkMassOrderText(entry.text);
+      if (!checked.ok) throw new Error(`A Holy Mass Order entry in the file cannot be used: ${checked.error}`);
+      text = String(entry.text).replace(/\r\n?/g, '\n').trim();
+    }
+    const title = cleanTitle(entry?.title);
+    if (text !== null || title !== null) texts[lang] = { text, title };
+  }
+  const custom = isCustomId(id);
+  if (custom && (!Object.values(texts).some((e) => e.title) || !Object.values(texts).some((e) => e.text))) {
+    throw new Error('A parish Holy Mass Order item in the file has no title or no words.');
+  }
+  if (Object.keys(texts).length === 0) throw new Error('A Holy Mass Order entry in the file is empty.');
+  return { id, custom, createdAt: typeof record.createdAt === 'string' ? record.createdAt : null, updatedAt: record.updatedAt ?? null, texts };
+}
+
+/**
+ * Sorts the file's Holy Mass Order records like the others. Matched by id: a built-in part by its key (`kyrie`), a parish item by its
+ * UUID id, so the same item made on one laptop is the same item on every laptop it is shared with. SAME when the words and titles are the
+ * same; NEW when this laptop has nothing for that part (a built-in part still showing the standard text counts as nothing, so nothing is
+ * lost by adding the parish's words); otherwise CHANGED, and the operator chooses.
+ */
+function planMassOrder(db, list) {
+  if (!Array.isArray(list) || list.length === 0) return [];
+  const records = list.map(cleanMassOrderRecord);
+  const local = new Map(readMassOrder(db).map((r) => [r.id, r]));
+  return records.map((record) => {
+    const here = local.get(record.id);
+    if (!here) return { record, status: 'new', localId: null };
+    const status = massOrderContent(here.texts) === massOrderContent(record.texts) ? 'same' : 'changed';
+    return { record, status, localId: record.id, localUpdatedAt: here.updatedAt };
+  });
+}
+
+/** A Holy Mass Order record's name for the preview: its English title, any title, or the built-in part's name. */
+function massOrderName(record) {
+  const titles = MASS_ORDER_LANGS.map((l) => record.texts?.[l]?.title).filter(Boolean);
+  return titles[0] ?? MASS_PARTS[record.id] ?? record.id;
+}
+
+/** Writes one Holy Mass Order record: its words and titles replace this laptop's for that part, and a parish item is listed. */
+function writeMassOrder(db, record) {
+  if (record.custom) {
+    db.prepare('INSERT OR IGNORE INTO mass_order_custom_items (id, created_at) VALUES (?, COALESCE(?, datetime(\'now\')))').run(record.id, record.createdAt);
+  }
+  db.prepare('DELETE FROM mass_order_texts WHERE part_id = ?').run(record.id);
+  const insert = db.prepare('INSERT INTO mass_order_texts (part_id, lang, text, custom_title) VALUES (?, ?, ?, ?)');
+  for (const [lang, { text, title }] of Object.entries(record.texts)) insert.run(record.id, lang, text, title);
+}
+
+const NAMES = { songs: (r) => r.title, setlists: (r) => r.name, plans: (r) => r.name, praiseWorship: (r) => r.name, massOrder: massOrderName };
 
 /** The preview the operator sees before anything is written. */
 export function previewImport(db, data) {
@@ -485,8 +579,8 @@ function writeSegments(db, sessionId, segments, songIdMap, stanzaIdsFor) {
  * Any failure rolls back everything. `choices` maps `type:uuid` to 'keep' or 'use'.
  */
 export function applyImport(db, data, choices = {}) {
-  const added = { songs: 0, setlists: 0, plans: 0, praiseWorship: 0 };
-  const skipped = { songs: 0, setlists: 0, plans: 0, praiseWorship: 0 };
+  const added = { songs: 0, setlists: 0, plans: 0, praiseWorship: 0, massOrder: 0 };
+  const skipped = { songs: 0, setlists: 0, plans: 0, praiseWorship: 0, massOrder: 0 };
   const changed = { kept: 0, used: 0 };
   const decide = (type, uuid) => {
     const choice = choices[`${type}:${uuid}`] ?? 'keep';
@@ -586,6 +680,22 @@ export function applyImport(db, data, choices = {}) {
       }
     }
 
+    // The parish's Holy Mass Order words. Plans that use a parish item find it by the same id.
+    for (const entry of plan.massOrder) {
+      const r = entry.record;
+      if (entry.status === 'same') {
+        skipped.massOrder += 1;
+      } else if (entry.status === 'new') {
+        writeMassOrder(db, r);
+        added.massOrder += 1;
+      } else if (decide('massOrder', r.id) === 'use') {
+        writeMassOrder(db, r);
+        changed.used += 1;
+      } else {
+        changed.kept += 1;
+      }
+    }
+
     db.exec(`DELETE FROM ${IMPORT_GUARD};`);
     db.exec('COMMIT');
   } catch (err) {
@@ -605,8 +715,9 @@ export function checkExportOptions(input) {
     praiseWorship: input?.praiseWorship === true,
     songs: input?.songs === true,
     lyrics: input?.lyrics === true,
+    massOrder: input?.massOrder === true,
   };
-  if (!options.plans && !options.setlists && !options.praiseWorship && !options.songs) {
+  if (!options.plans && !options.setlists && !options.praiseWorship && !options.songs && !options.massOrder) {
     throw new Error('Choose at least one thing to export.');
   }
   return options;

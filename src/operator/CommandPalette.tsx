@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CornerDownLeft, Search } from 'lucide-react';
 import { useT } from '../i18n/strings';
-import { MASS_ORDER, massPartName } from '../liturgy/massOrder';
+import { allMassParts, massPartName } from '../liturgy/massOrder';
 import { setUi, useUi } from '../state/ui';
 import { dispatch } from '../live/store';
 import { projectMassPart } from './actions';
@@ -22,7 +22,7 @@ export function CommandPalette() {
 
   const commands = useMemo<Command[]>(() => [
     ...NAV.map((n) => ({ id: `nav-${n.key}`, group: t('palette.go'), label: t(n.label), run: () => setUi({ view: n.key }) })),
-    ...MASS_ORDER.map((p) => ({ id: `mass-${p.id}`, group: t('palette.project'), label: massPartName(p, lang), run: () => projectMassPart(p.id) })),
+    ...allMassParts().map((p) => ({ id: `mass-${p.id}`, group: t('palette.project'), label: massPartName(p, lang), run: () => projectMassPart(p.id) })),
     {
       id: 'l3-parish', group: t('palette.project'), label: `${t('top.lowerThird')} · Assumption Parish Church`,
       run: () => dispatch({ type: 'lowerThird/show', value: { line1: 'Assumption Parish Church', line2: 'Charismatic Music Ministry' } }),

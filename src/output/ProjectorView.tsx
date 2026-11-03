@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { Frame, MediaFrame, SlideLine } from '../../shared/live.js';
 import { presentedFrame } from '../../shared/live.js';
 import { OnAirLook, useOutput } from './outputState';
@@ -24,6 +24,7 @@ import { textAreaShare } from '../../shared/text-area.js';
 import { welcomeBackground } from '../../shared/welcome-settings.js';
 import { SlideBackgroundLayer } from './BackgroundMedia';
 import { useTextAutoFit } from './useTextAutoFit';
+import { useProjectorTextAutoFit } from './useProjectorTextAutoFit';
 import { lineCountOf, lineHeightFor } from '../../shared/text-fit.js';
 
 /** The slide font the operator chose, as CSS. Undefined keeps each slide's own face. */
@@ -67,16 +68,18 @@ const BACKING = 'pointer-events-none absolute -top-[3cqh] -bottom-[3cqh] -left-[
  * Projected text, one paragraph per line. The sizes here are the ones the paginator
  * measures against (see paginate.ts). Empty lines keep their height.
  */
-function TextLines({ lines, serif = false, style = null }: { lines: string[]; serif?: boolean; style?: TextStyle | null }) {
+function TextLines({ lines, serif = false, style = null, safe = false }: { lines: string[]; serif?: boolean; style?: TextStyle | null; safe?: boolean }) {
   const slideFont = useSlideFont();
   const slideScale = useSlideScale();
   // A chosen style replaces the default size, face, colour and alignment. Without one, the default classes apply.
   const sizes = customSizes(style);
   const chars = charsPerLine(0.86, sizes ? sizes.body : 4.1 * 19.2);
-  return (
+  const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'clamp(28px,4.1cqw,88px)', slideScale);
+  const body = (textRef?: RefObject<HTMLDivElement>) => (
     <div className="relative shrink-0">
       <div aria-hidden className={BACKING} />
       <div
+        ref={textRef}
         className={`relative flex max-w-[86cqw] flex-col gap-[2.2cqh] leading-[1.22] text-white ${
           sizes ? '' : 'text-center text-[clamp(28px,4.1cqw,88px)]'
         } ${serif ? 'font-serif font-semibold' : 'font-medium'}`}
@@ -84,7 +87,7 @@ function TextLines({ lines, serif = false, style = null }: { lines: string[]; se
           textAlign: style?.textAlign ?? undefined,
           color: style?.textColor,
           fontFamily: fontCss(style) ?? slideFont,
-          fontSize: scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'clamp(28px,4.1cqw,88px)', slideScale),
+          fontSize: naturalSize,
         }}
       >
         {lines.map((line, i) => (
@@ -95,6 +98,7 @@ function TextLines({ lines, serif = false, style = null }: { lines: string[]; se
       </div>
     </div>
   );
+  return safe ? <SafeFit naturalSize={naturalSize} deps={[lines.join('\n'), style, slideFont]} render={body} /> : body();
 }
 
 /**
@@ -137,17 +141,19 @@ function HeadedText({ headline, body, style = null }: { headline: string; body: 
  * Reading lines. A chosen style sets the face, size, alignment and the colour of the text. Responses and citations keep
  * their own colours. With no style, the default classes apply.
  */
-function Slide({ lines, style = null }: { lines: SlideLine[]; style?: TextStyle | null }) {
+function Slide({ lines, style = null, safe = false }: { lines: SlideLine[]; style?: TextStyle | null; safe?: boolean }) {
   const slideFont = useSlideFont();
   const slideScale = useSlideScale();
   const sizes = customSizes(style);
   const chars = charsPerLine(0.86, sizes ? sizes.body : 4.1 * 19.2);
-  return (
+  const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'clamp(28px,4.1cqw,88px)', slideScale);
+  const body = (textRef?: RefObject<HTMLDivElement>) => (
     <div className="relative shrink-0">
       <div aria-hidden className={BACKING} />
       <div
+        ref={textRef}
         className={`relative flex max-w-[86cqw] flex-col gap-[2.2cqh] leading-[1.22] ${sizes ? '' : 'text-center text-[clamp(28px,4.1cqw,88px)]'}`}
-        style={{ textAlign: style?.textAlign ?? 'center', fontFamily: fontCss(style) ?? slideFont, fontSize: scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'clamp(28px,4.1cqw,88px)', slideScale) }}
+        style={{ textAlign: style?.textAlign ?? 'center', fontFamily: fontCss(style) ?? slideFont, fontSize: naturalSize }}
       >
         {lines.map((line, i) => {
           const color = line.role === 'response' || line.role === 'cite' ? undefined : style?.textColor;
@@ -160,6 +166,42 @@ function Slide({ lines, style = null }: { lines: SlideLine[]; style?: TextStyle 
         })}
       </div>
     </div>
+  );
+  return safe ? <SafeFit naturalSize={naturalSize} deps={[JSON.stringify(lines), style, slideFont]} render={body} /> : body();
+}
+
+/**
+ * The safe box a Holy Mass Order or text slide is drawn in: the whole slide less a margin at the top (clear of the title and slot name), at the
+ * bottom (clear of the page count and the operator's badges) and at the sides. It fills its parent, so a lower third on air, which raises the
+ * parent's bottom, shrinks it too. The text inside steps down in size until it fits (see useProjectorTextAutoFit).
+ */
+function SafeFit({ naturalSize, deps, render }: { naturalSize: string; deps: unknown[]; render: (textRef: RefObject<HTMLDivElement>) => ReactNode }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLDivElement>(null);
+  const { overflow } = useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps });
+  // True on the congregation's projector, false on the operator's mirror and previews. The warning is for the operator only.
+  const audience = useContext(OnAirLook);
+  return (
+    <div ref={boxRef} data-safe-fit className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden px-[6cqw] pt-[9cqh] pb-[9cqh]">
+      {render(textRef)}
+      {!audience && overflow && <TextFitBadge />}
+    </div>
+  );
+}
+
+/** The operator's warning on a slide whose text is still too long at the smallest size: its last lines are cut off. Never on the projector. */
+function TextFitBadge() {
+  const lang = useUi((s) => s.lang);
+  return (
+    <span
+      data-operator-only
+      role="status"
+      title="This slide is too long even at the smallest size. Shorten its words, or put a blank line in the Holy Mass Order editor to start a new slide."
+      className="absolute right-[1.5cqw] bottom-[1.5cqh] z-20 inline-flex items-center gap-[0.5cqw] rounded-full border border-amber-300/70 bg-amber-500/90 px-[1.1cqw] py-[0.5cqh] text-[max(10px,1.05cqw)] font-bold text-stone-950 shadow-lg"
+    >
+      <span aria-hidden>⚠</span>
+      {pwT(lang, 'textCutOff')}
+    </span>
   );
 }
 
@@ -277,7 +319,10 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
             // A chosen background colour fills the slide when there is no background image.
             frame.style?.bgColor && <div className="absolute inset-0" style={{ backgroundColor: frame.style.bgColor }} />
           )}
-          {/* A prayer's page (a Notes & Prayers slide) starts at its top, the same rule as the lineup: a shared top, or centred when short. Other text is centred on the frame. */}
+          {/* A prayer's page (a Notes & Prayers slide) starts at its top, the same rule as the lineup: a shared top, or centred when short. Plain text is fitted in the safe box. */}
+          {!frame.key?.startsWith('prayer:') && !frame.headline ? (
+            <TextLines safe lines={frame.text.split('\n')} style={frame.style} />
+          ) : (
           <div
             className={frame.key?.startsWith('prayer:') ? 'absolute inset-x-0 flex flex-col items-center' : 'relative flex items-center justify-center'}
             style={frame.key?.startsWith('prayer:') ? { top: `${(frame.top ?? textAreaShare().top) * 100}%` } : undefined}
@@ -288,6 +333,7 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
               <TextLines lines={frame.text.split('\n')} style={frame.style} />
             )}
           </div>
+          )}
           {/* A prayer split into slides shows its place, as the psalm pages do. */}
           {frame.page && frame.page.total > 1 && (
             <div className="absolute right-[4cqw] bottom-[3cqh] font-mono text-[1cqw] text-white/40">
@@ -351,8 +397,8 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
       return (
         <>
           {frame.style?.bgColor && <div className="absolute inset-0" style={{ backgroundColor: frame.style.bgColor }} />}
-          <div className="absolute top-[4cqh] left-[4cqw] text-[1.2cqw] font-bold tracking-[0.2em] text-white/50 uppercase">{frame.title}</div>
-          <Slide lines={lines} style={frame.style} />
+          <div className="absolute top-[4cqh] right-[12cqw] left-[4cqw] truncate text-[1.2cqw] font-bold tracking-[0.2em] text-white/50 uppercase">{frame.labels?.[frame.index] ?? frame.title}</div>
+          <Slide safe lines={lines} style={frame.style} />
           {frame.slides.length > 1 && (
             <div className="absolute right-[4cqw] bottom-[4cqh] font-mono text-[1cqw] text-white/40">
               {frame.index + 1} / {frame.slides.length}

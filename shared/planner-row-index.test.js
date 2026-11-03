@@ -36,7 +36,8 @@ test('every position in the shown list is the same position in the saved list', 
 
 test('the planner looks a row up in the list the rows came from', () => {
   assert.doesNotMatch(planner, /items\.indexOf\(row\)/, 'no lookup of a shown row in the saved list');
-  assert.match(planner, /const shown = overlayLyricsItems\(items, hymnNow\);/, 'the overlaid list is made once');
+  // Song titles, then Holy Mass Order titles (withPartNames maps row for row, so positions match the saved list).
+  assert.match(planner, /const shown = named\(overlayLyricsItems\(items, hymnNow\)\);/, 'the overlaid list is made once');
   assert.match(planner, /items=\{shown\}/, 'the Holy Mass plan draws its rows from it');
   assert.match(planner, /const index = shown\.indexOf\(row\);/, 'and an additional item\'s position is looked up in it');
   assert.match(planner, /blockRows\(shown, blockId\)/);

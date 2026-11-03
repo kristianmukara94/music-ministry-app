@@ -14,6 +14,7 @@ import { DB_FILTERS, backupFileName, exportBackup, importBackup } from './databa
 import { databaseCounts } from './db-check.js';
 import { purgeDeletedHymns, setupLyrics } from './lyrics.js';
 import { setupSpontaneousLog } from './spontaneous-log.js';
+import { announceMassOrderChange, setupMassOrderTexts } from './mass-order.js';
 import { registerLyricsImport } from './lyrics-import.js';
 import { setupNotes } from './notes.js';
 import { setupWhiteboard } from './whiteboard.js';
@@ -733,7 +734,10 @@ ipcMain.handle('library:import', (_event, choices) => {
   if (!pendingLibraryImport) throw new Error('Choose a file to import first.');
   const data = pendingLibraryImport;
   pendingLibraryImport = null;
-  return applyImport(announcements.db, data, choices ?? {});
+  const summary = applyImport(announcements.db, data, choices ?? {});
+  // Holy Mass Order words may have come in: every window reloads them, so the planner and Go Live use them at once.
+  announceMassOrderChange();
+  return summary;
 });
 
 ipcMain.handle('library:cancel', () => {
@@ -1052,6 +1056,8 @@ app.whenReady().then(() => {
   seedRosary(announcements.db);
   setupRosary(announcements.db);
   setupNotes(announcements.db);
+  // The parish's own words for the Holy Mass Order parts.
+  setupMassOrderTexts(announcements.db);
   // The projector is open when its window exists, whatever its title. Quick Live asks this before it shows a song.
   setupSpontaneousLog(announcements.db, { isProjectorOpen: () => Boolean(windows.projector && !windows.projector.isDestroyed()) });
   setupWhiteboard(announcements.db, announcements.service, { onChanged: announceWhiteboardChange, convertPdf: announcements.convertPdf });

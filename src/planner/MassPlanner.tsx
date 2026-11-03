@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, ListMusic, Play, Plus, Search, Send, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, ListMusic, Pencil, Play, Plus, Search, Send, Trash2 } from 'lucide-react';
 import { clearSlot, moveToSlot, placeInSlot, additionalIn, MASS_SLOTS } from '../../shared/mass-slots.js';
 import { SHOW_STAGED_UI, activeRowIndex, canStageRow, songRowActions, textRowActions } from '../../shared/stage-plan-row.js';
 import { bridge } from '../live/bridge';
@@ -7,7 +7,10 @@ import { dispatch, useLive } from '../live/store';
 import { setUi, useUi } from '../state/ui';
 import { formatIsoDay } from '../state/region';
 import { useRegion } from '../state/useRegion';
-import { MASS_ORDER, massPartName } from '../liturgy/massOrder';
+import { MASS_ORDER, allMassParts, findMassPart, massPartName } from '../liturgy/massOrder';
+import { HolyMassOrderEditor } from '../liturgy/HolyMassOrderEditor';
+import { useMassOrderTexts } from '../liturgy/massOrderStore';
+import { isCustomId, isCustomized, withPartNames } from '../../shared/mass-order-text.js';
 import { sundayCycle } from '../liturgy/lectionary';
 import { formatRuns, formatSourceId, parsePassageInput, stripHits } from '../../shared/bible-ref.js';
 import type { Translation } from '../bible/types';
@@ -158,12 +161,15 @@ export async function loadLibrary(
         }));
     }
     case 'mass_order':
-      return MASS_ORDER.filter((p) => match(massPartName(p, 'en'))).map((p): LibraryItem => ({
-        module: 'mass_order',
-        sourceId: p.id,
-        label: massPartName(p, lang),
-        sub: t('sub_mass_order'),
-      }));
+      // The built-in parts, then the parish's own items, each under its title now (in English and in the language shown, for the search).
+      return allMassParts()
+        .filter((p) => match(`${massPartName(p, 'en')} ${massPartName(p, lang)}`))
+        .map((p): LibraryItem => ({
+          module: 'mass_order',
+          sourceId: p.id,
+          label: massPartName(p, lang),
+          sub: t(p.custom ? 'moParishItem' : 'sub_mass_order'),
+        }));
     // Notes are typed into the panel, not picked from a library.
     case 'custom':
       return [];
@@ -205,6 +211,15 @@ export function MassPlanner() {
   const [songCategories, setSongCategories] = useState<SongCategory[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // The Holy Mass Order part whose words are being edited (`id: null` is a new parish item), and the parish's own words (so the library marks edited parts).
+  const [editingPart, setEditingPart] = useState<{ id: string | null } | null>(null);
+  const massOrderTexts = useMassOrderTexts((s) => s.overrides);
+  const massOrderRevision = useMassOrderTexts((s) => s.revision);
+  /** Plan rows with each Holy Mass Order part under its title now; a deleted parish item is marked missing. */
+  const named = (list: PlanItem[]) => withPartNames(list, (id) => {
+    const part = findMassPart(id);
+    return part ? massPartName(part, lang) : null;
+  });
   const dragRef = useRef<DragSource | null>(null);
   const fail = (err: unknown) => setError(errorText(err));
 
@@ -242,7 +257,7 @@ export function MassPlanner() {
       loadLibrary(tab, query, readingDate, lang, t, bibleTranslation, songFilter || undefined).then(setLibrary).catch(fail);
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [tab, query, readingDate, lang, bibleTranslation, songFilter, lyricsRevision]);
+  }, [tab, query, readingDate, lang, bibleTranslation, songFilter, lyricsRevision, massOrderRevision]);
 
   useEffect(() => bridge.lyrics.onChanged(() => setLyricsRevision((n) => n + 1)), []);
 
@@ -390,7 +405,7 @@ export function MassPlanner() {
   /** Stages one row in its module, loading the plan into the queue first so the cursor matches the row. */
   const stageRow = async (index: number) => {
     if (planId == null || index < 0 || index >= items.length) return;
-    const queue = queueFromPlan(items);
+    const queue = queueFromPlan(named(items));
     // Same plan: the reducer keeps the cursor. A different plan in the queue is replaced by this one.
     dispatch({ type: 'queue/set', items: queue, planId });
     setError(null);
@@ -420,7 +435,7 @@ export function MassPlanner() {
 
   /** Loads the plan into the Service Queue and records which plan is active, so a restart can restore it. */
   const loadToQueue = () => {
-    dispatch({ type: 'queue/set', items: queueFromPlan(items), planId });
+    dispatch({ type: 'queue/set', items: queueFromPlan(named(items)), planId });
     setUi({ queueOpen: true });
     setNotice(t('loadedNotice', { n: items.length }));
   };
@@ -587,7 +602,7 @@ export function MassPlanner() {
 
   // What the plan shows: the saved items with each song's current title and status laid over them. It has one entry for every saved item,
   // in the same order, so a position in this list is a position in `items`.
-  const shown = overlayLyricsItems(items, hymnNow);
+  const shown = named(overlayLyricsItems(items, hymnNow));
   // The row loaded into the Stage / Preview by its ▷ button: the queue's CURRENT row, when the queue holds this plan.
   const activeIndex = useLive((s) => activeRowIndex(s.state, planId));
 
@@ -711,6 +726,17 @@ export function MassPlanner() {
               </select>
             </label>
           )}
+          {tab === 'mass_order' && (
+            <div className="border-b border-line p-2">
+              <button
+                type="button"
+                onClick={() => setEditingPart({ id: null })}
+                className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-accent/50 text-xs font-bold tracking-wide text-accent uppercase transition hover:bg-accent/10"
+              >
+                <Plus size={14} aria-hidden /> {t('moNew')}
+              </button>
+            </div>
+          )}
           {tab !== 'custom' && <ul className="min-h-0 flex-1 overflow-y-auto p-2">
             {library.length === 0 && <li className="p-4 text-sm text-fg/60">{t('nothingHere')}</li>}
             {library.map((item) => (
@@ -730,8 +756,26 @@ export function MassPlanner() {
                 <span className={`${TAG} ${toneOf(item.module)}`}>{t(MODULE_KEY[item.module])}</span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-fg">{item.label}</div>
-                  <div className="truncate text-[11px] text-fg/60">{item.sub}</div>
+                  <div className="truncate text-[11px] text-fg/60">
+                    {item.sub}
+                    {item.module === 'mass_order' && !isCustomId(item.sourceId) && isCustomized(item.sourceId, lang, massOrderTexts) && <span className="ml-1.5 rounded bg-accent/15 px-1 text-[10px] font-semibold text-accent">{t('moCustomized')}</span>}
+                  </div>
                 </div>
+                {item.module === 'mass_order' && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      // Editing never adds the part to the plan.
+                      e.stopPropagation();
+                      setEditingPart({ id: item.sourceId });
+                    }}
+                    aria-label={t('moEdit', { part: item.label })}
+                    title={t('moEdit', { part: item.label })}
+                    className="grid size-7 shrink-0 place-items-center rounded-md border border-fg/15 text-fg/60 opacity-60 transition hover:border-accent hover:text-accent group-hover:opacity-100 focus-visible:opacity-100"
+                  >
+                    <Pencil size={13} aria-hidden />
+                  </button>
+                )}
                 <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-md border border-fg/15 text-fg/60 opacity-60 transition group-hover:border-accent group-hover:text-accent group-hover:opacity-100">
                   <Plus size={14} />
                 </span>
@@ -796,6 +840,7 @@ export function MassPlanner() {
             <p className="px-1 text-xs text-fg/60">{t('planLine', { name: currentPlan.name, cycle, n: items.length })}</p>
           )}
 
+          {editingPart && <HolyMassOrderEditor key={editingPart.id ?? 'new'} partId={editingPart.id} lang={lang} t={t} onClose={() => setEditingPart(null)} onNotice={setNotice} />}
           {creating && <NewPlanForm t={t} initialDate={upcomingSunday()} onCreate={createPlan} />}
 
           {planId == null ? (

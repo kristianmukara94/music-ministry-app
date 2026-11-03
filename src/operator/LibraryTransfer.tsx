@@ -10,16 +10,18 @@ const TYPE_LABEL: Record<LibraryType, string> = {
   setlists: 'Setlists',
   plans: 'Plans',
   praiseWorship: 'Praise & Worship sessions',
+  massOrder: 'Holy Mass Order texts',
 };
-const TYPES: LibraryType[] = ['plans', 'setlists', 'praiseWorship', 'songs'];
+const TYPES: LibraryType[] = ['plans', 'setlists', 'praiseWorship', 'songs', 'massOrder'];
 
 type ExportKey = Exclude<keyof LibraryExportOptions, 'lyrics'>;
-const EXPORT_KEYS: ExportKey[] = ['plans', 'setlists', 'praiseWorship', 'songs'];
+const EXPORT_KEYS: ExportKey[] = ['plans', 'setlists', 'praiseWorship', 'songs', 'massOrder'];
 const EXPORT_LABEL: Record<ExportKey, string> = {
   plans: 'Plans',
   setlists: 'Setlists',
   praiseWorship: 'Praise & Worship sessions',
   songs: 'Song library (titles, categories, languages, keys)',
+  massOrder: 'Holy Mass Order (edited words and titles in English, Tagalog and Cebuano, and parish items)',
 };
 
 const BUTTON = 'flex h-10 items-center rounded-md border border-fg/30 px-4 text-xs font-bold uppercase text-fg hover:bg-fg/10 disabled:opacity-40';
@@ -36,11 +38,11 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 /** Export: the chosen parts of the library into one .apccmma file. Lyrics are a separate box, off by default. */
 function ExportSection() {
-  const [options, setOptions] = useState<LibraryExportOptions>({ plans: true, setlists: true, praiseWorship: true, songs: true, lyrics: false });
+  const [options, setOptions] = useState<LibraryExportOptions>({ plans: true, setlists: true, praiseWorship: true, songs: true, lyrics: false, massOrder: true });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const anyChosen = options.plans || options.setlists || options.praiseWorship || options.songs;
+  const anyChosen = options.plans || options.setlists || options.praiseWorship || options.songs || options.massOrder;
 
   const save = async () => {
     setBusy(true);
@@ -50,7 +52,7 @@ function ExportSection() {
       const saved = await api.export(options);
       if (saved) {
         const c = saved.counts;
-        setMessage(`Saved to ${saved.path}: ${c.songs} songs, ${c.setlists} setlists, ${c.plans} plans, ${c.praiseWorship} sessions.`);
+        setMessage(`Saved to ${saved.path}: ${c.songs} songs, ${c.setlists} setlists, ${c.plans} plans, ${c.praiseWorship} sessions, ${c.massOrder ?? 0} Holy Mass Order texts.`);
       }
     } catch (err) {
       setError(errorText(err));
@@ -251,7 +253,7 @@ export function LibraryTransferDialog({ onClose }: { onClose: () => void }) {
             Close
           </button>
         </div>
-        <p className="text-xs text-fg/60">Plans, setlists, Praise &amp; Worship sessions and songs move between laptops in one .apccmma file.</p>
+        <p className="text-xs text-fg/60">Plans, setlists, Praise &amp; Worship sessions, songs and the parish&apos;s Holy Mass Order texts move between laptops in one .apccmma file.</p>
         <ExportSection />
         <ImportSection />
       </div>

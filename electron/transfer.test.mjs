@@ -154,7 +154,7 @@ test('a file round-trips, and any changed byte is refused with a checksum error'
   assert.equal(data.formatVersion, 1);
   assert.equal(data.laptop, 'PC1');
   assert.equal(data.exportedAt, '2026-10-27T05:52:00.000Z');
-  assert.deepEqual(data.counts, { songs: 2, setlists: 1, plans: 1, praiseWorship: 1 });
+  assert.deepEqual(data.counts, { songs: 2, setlists: 1, plans: 1, praiseWorship: 1, massOrder: 0 });
 
   assert.throws(() => decodeTransfer(text.replace('Amazing Grace', 'Amazing Grac3')), /checksum does not match/);
   assert.throws(() => decodeTransfer(text.replace('"PC1"', '"PC2"')), /checksum does not match/);
@@ -174,7 +174,7 @@ test('a file of another format version is refused', () => {
 
 test('the export options must choose something, and the default file name is dated', () => {
   assert.throws(() => checkExportOptions({ lyrics: true }), /at least one/);
-  assert.deepEqual(checkExportOptions({ songs: true }), { plans: false, setlists: false, praiseWorship: false, songs: true, lyrics: false });
+  assert.deepEqual(checkExportOptions({ songs: true }), { plans: false, setlists: false, praiseWorship: false, songs: true, lyrics: false, massOrder: false });
   assert.equal(defaultExportName(new Date(2026, 9, 27, 13, 52)), 'APCCMMA-export-2026-10-27-1352.apccmma');
 });
 
@@ -211,8 +211,8 @@ test('a file imports into an empty library: everything is new, and the links bet
   const preview = previewImport(target, data);
   assert.deepEqual(preview.totals, { new: 5, same: 0, changed: 0 });
   assert.deepEqual(applyImport(target, data), {
-    added: { songs: 2, setlists: 1, plans: 1, praiseWorship: 1 },
-    skipped: { songs: 0, setlists: 0, plans: 0, praiseWorship: 0 },
+    added: { songs: 2, setlists: 1, plans: 1, praiseWorship: 1, massOrder: 0 },
+    skipped: { songs: 0, setlists: 0, plans: 0, praiseWorship: 0, massOrder: 0 },
     changed: { kept: 0, used: 0 },
   });
 
@@ -238,8 +238,8 @@ test('importing the same file again adds nothing, and everything is skipped', ()
 
   assert.deepEqual(previewImport(target, data).totals, { new: 0, same: 5, changed: 0 });
   assert.deepEqual(applyImport(target, data), {
-    added: { songs: 0, setlists: 0, plans: 0, praiseWorship: 0 },
-    skipped: { songs: 2, setlists: 1, plans: 1, praiseWorship: 1 },
+    added: { songs: 0, setlists: 0, plans: 0, praiseWorship: 0, massOrder: 0 },
+    skipped: { songs: 2, setlists: 1, plans: 1, praiseWorship: 1, massOrder: 0 },
     changed: { kept: 0, used: 0 },
   });
   const after = ['hymns', 'hymn_stanzas', 'setlists', 'setlist_items', 'mass_plans', 'mass_plan_items', 'pw_sessions', 'pw_segments'].map((t) => count(target, t));
@@ -307,4 +307,147 @@ test('nothing is deleted on import, even when the file leaves a record out', () 
   target.prepare("INSERT INTO hymns (title, composer, category, language) VALUES ('Only Here', '', 'General', 'EN')").run();
   applyImport(target, decodeTransfer(exportFrom(makeDb())));
   assert.equal(count(target, 'hymns'), 3);
+});
+
+// ---- The parish's Holy Mass Order words, titles and items --------------------------------------------------------
+
+const { MASS_ORDER_CUSTOM_MIGRATIONS, MASS_ORDER_TEXT_MIGRATIONS, createMassOrderTexts } = await import('./mass-order.js');
+const SYNOD = 'mass_order_custom_5b7f0f3c-2a6e-4d1b-9a77-0c4c1b2f9e10';
+
+/** A library with the Holy Mass Order tables. */
+function makeMassOrderDb() {
+  const db = makeDb();
+  for (const sql of [...MASS_ORDER_TEXT_MIGRATIONS, ...MASS_ORDER_CUSTOM_MIGRATIONS]) db.exec(sql);
+  return db;
+}
+const massOrderOf = (db) => createMassOrderTexts(db).list();
+const textsOf = (db) => massOrderOf(db).texts.map(({ partId, lang, text, title }) => [partId, lang, text, title]);
+
+/** The parish's own words: a renamed Kyrie with Cebuano words, a Tagalog Gloria, and a parish item. */
+function seedMassOrder(db) {
+  const texts = createMassOrderTexts(db, { newId: () => SYNOD });
+  texts.saveAll('kyrie', { en: { text: null, title: 'Kyrie Eleison' }, ceb: { text: 'P: Ginoo, kaloy-i kami.\nGinoo, kaloy-i kami.', title: null } });
+  texts.saveAll('gloria', { tl: { text: 'Papuri sa Diyos sa kaitaasan.', title: 'Papuri' } });
+  texts.create({ en: { text: 'P: Let us pray for the synod.\nAmen.', title: 'Diocesan Synod Prayer' }, ceb: { text: null, title: 'Pag-ampo alang sa Sinodo' } });
+  return texts;
+}
+
+test('the export carries every edited title and text, in all three languages, and every parish item', () => {
+  const db = makeMassOrderDb();
+  seedMassOrder(db);
+  const data = decodeTransfer(exportFrom(db, { massOrder: true }));
+  assert.equal(data.counts.massOrder, 3);
+  const byId = Object.fromEntries(data.massOrder.map((r) => [r.id, r]));
+  assert.deepEqual(byId.kyrie.texts, { en: { text: null, title: 'Kyrie Eleison' }, ceb: { text: 'P: Ginoo, kaloy-i kami.\nGinoo, kaloy-i kami.', title: null } });
+  assert.equal(byId.kyrie.custom, false);
+  assert.deepEqual(byId.gloria.texts, { tl: { text: 'Papuri sa Diyos sa kaitaasan.', title: 'Papuri' } });
+  assert.equal(byId[SYNOD].custom, true);
+  assert.ok(byId[SYNOD].createdAt, 'a parish item keeps when it was made, so it lists in the same order elsewhere');
+  assert.equal(byId[SYNOD].texts.ceb.title, 'Pag-ampo alang sa Sinodo');
+  // Not asked for: none.
+  assert.equal(decodeTransfer(exportFrom(db, { songs: true })).massOrder.length, 0);
+  assert.equal(checkExportOptions({ massOrder: true }).massOrder, true, 'the Holy Mass Order alone is a valid export');
+});
+
+test('a plan that uses a parish item takes the item with it, even when the Holy Mass Order is not chosen', () => {
+  const db = makeMassOrderDb();
+  seed(db);
+  seedMassOrder(db);
+  const plan = db.prepare('SELECT id FROM mass_plans').get().id;
+  db.prepare("INSERT INTO mass_plan_items (plan_id, liturgical_block, source_module, source_id, label, display_order) VALUES (?, 'communion', 'mass_order', ?, 'Diocesan Synod Prayer', 3)").run(plan, SYNOD);
+  const data = decodeTransfer(exportFrom(db, { plans: true }));
+  assert.deepEqual(data.massOrder.map((r) => r.id), [SYNOD], 'only the item the plan uses, not the other edits');
+  const target = makeMassOrderDb();
+  applyImport(target, data);
+  assert.equal(target.prepare('SELECT source_id AS s FROM mass_plan_items WHERE source_module = ?').get('mass_order').s, SYNOD);
+  assert.deepEqual(massOrderOf(target).custom.map((c) => c.id), [SYNOD], 'so the plan finds its item on the other laptop');
+});
+
+test('an import into a laptop without the parish words adds them all, and restores them exactly', () => {
+  const source = makeMassOrderDb();
+  seedMassOrder(source);
+  const target = makeMassOrderDb();
+  const data = decodeTransfer(exportFrom(source, { massOrder: true }));
+  assert.deepEqual(previewImport(target, data).counts.massOrder, { new: 3, same: 0, changed: 0 });
+  assert.equal(applyImport(target, data).added.massOrder, 3);
+  assert.deepEqual(textsOf(target), textsOf(source));
+  assert.deepEqual(massOrderOf(target).custom.map((c) => c.id), [SYNOD]);
+  // The same file again: everything is already here.
+  const again = applyImport(target, data);
+  assert.deepEqual([again.added.massOrder, again.skipped.massOrder], [0, 3]);
+});
+
+test("a part both laptops changed differently is the operator's choice, keeping this laptop's words by default; nothing is deleted", () => {
+  const source = makeMassOrderDb();
+  seedMassOrder(source);
+  const data = decodeTransfer(exportFrom(source, { massOrder: true }));
+  const prepare = () => {
+    const db = makeMassOrderDb();
+    const here = createMassOrderTexts(db);
+    here.saveAll('kyrie', { en: { text: null, title: 'Lord, Have Mercy (Parish)' } });
+    here.saveAll('sanctus', { ceb: { text: 'Santos, santos, santos.', title: null } });
+    return db;
+  };
+
+  const target = prepare();
+  const preview = previewImport(target, data);
+  assert.deepEqual(preview.counts.massOrder, { new: 2, same: 0, changed: 1 });
+  const [kyrie] = preview.changed;
+  assert.equal(kyrie.key, 'massOrder:kyrie');
+  assert.equal(kyrie.type, 'massOrder');
+  assert.equal(kyrie.name, 'Kyrie Eleison', 'the preview names the part by its title');
+
+  // Default: keep this laptop's Kyrie.
+  const kept = prepare();
+  applyImport(kept, data);
+  assert.equal(massOrderOf(kept).texts.find((r) => r.partId === 'kyrie' && r.lang === 'en').title, 'Lord, Have Mercy (Parish)');
+
+  // Use the imported one: it replaces this laptop's Kyrie in every language.
+  const summary = applyImport(target, data, { 'massOrder:kyrie': 'use' });
+  assert.deepEqual(summary.changed, { kept: 0, used: 1 });
+  assert.deepEqual(textsOf(target).filter((r) => r[0] === 'kyrie'), [
+    ['kyrie', 'ceb', 'P: Ginoo, kaloy-i kami.\nGinoo, kaloy-i kami.', null],
+    ['kyrie', 'en', null, 'Kyrie Eleison'],
+  ]);
+  // The Sanctus was not in the file: it stays.
+  assert.equal(massOrderOf(target).texts.find((r) => r.partId === 'sanctus').text, 'Santos, santos, santos.');
+});
+
+test('a parish item shared between laptops stays one item: matched by its id, never added twice', () => {
+  const a = makeMassOrderDb();
+  seedMassOrder(a);
+  const b = makeMassOrderDb();
+  applyImport(b, decodeTransfer(exportFrom(a, { massOrder: true })));
+  // Laptop B adds a Tagalog title to the item and sends it back.
+  createMassOrderTexts(b).saveAll(SYNOD, { tl: { text: null, title: 'Panalangin para sa Sinodo' } });
+  const back = decodeTransfer(exportFrom(b, { massOrder: true }));
+  assert.deepEqual(previewImport(a, back).counts.massOrder, { new: 0, same: 2, changed: 1 });
+  applyImport(a, back, { [`massOrder:${SYNOD}`]: 'use' });
+  assert.deepEqual(massOrderOf(a).custom.map((c) => c.id), [SYNOD], 'still one item');
+  assert.equal(massOrderOf(a).texts.find((r) => r.partId === SYNOD && r.lang === 'tl').title, 'Panalangin para sa Sinodo');
+});
+
+test('a damaged Holy Mass Order entry refuses the whole file before anything is written', () => {
+  const source = makeMassOrderDb();
+  seed(source);
+  seedMassOrder(source);
+  const good = decodeTransfer(exportFrom(source, { massOrder: true, songs: true }));
+  const target = makeMassOrderDb();
+  const bad = (record) => ({ ...good, massOrder: [...good.massOrder, record] });
+  assert.throws(() => previewImport(target, bad({ id: '../etc', texts: { en: { text: 'x', title: 'x' } } })), /id this app does not know/);
+  assert.throws(() => previewImport(target, bad({ id: 'gloria', texts: { fr: { text: 'x', title: null } } })), /language this app does not keep/);
+  assert.throws(() => previewImport(target, bad({ id: 'mass_order_custom_0000', custom: true, texts: { en: { text: 'Words only', title: null } } })), /no title or no words/);
+  assert.throws(() => applyImport(target, bad({ id: 'credo', texts: { en: { text: 'x'.repeat(20001), title: null } } })), /nothing was changed/);
+  assert.deepEqual(massOrderOf(target), { texts: [], custom: [] });
+  assert.equal(count(target, 'hymns'), 0, 'not even the songs before it');
+});
+
+test('a file from before the Holy Mass Order was shared still imports, with nothing to add for it', () => {
+  const source = makeDb();
+  seed(source);
+  const data = decodeTransfer(exportFrom(source));
+  delete data.massOrder;
+  const target = makeMassOrderDb();
+  assert.deepEqual(previewImport(target, data).counts.massOrder, { new: 0, same: 0, changed: 0 });
+  assert.equal(applyImport(target, data).added.massOrder, 0);
 });

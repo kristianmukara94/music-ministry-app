@@ -123,6 +123,23 @@ contextBridge.exposeInMainWorld('apcc', {
     save: (input) => ipcRenderer.invoke('notes:save', input),
     remove: (id) => ipcRenderer.invoke('notes:delete', id),
   },
+  /** The parish's own words for the Holy Mass Order parts. A part with none shows the standard Missal text. */
+  massOrder: {
+    list: () => ipcRenderer.invoke('massOrder:list'),
+    /** Saves words and titles for the languages given: { en?, tl?, ceb? }, each { text, title }, null keeping the standard one. */
+    saveAll: (partId, entries) => ipcRenderer.invoke('massOrder:saveAll', partId, entries),
+    /** Makes a parish item (Act of Spiritual Communion…). Resolves to its id. */
+    create: (entries) => ipcRenderer.invoke('massOrder:create', entries),
+    reset: (partId, lang) => ipcRenderer.invoke('massOrder:reset', partId, lang),
+    /** Deletes a parish item. */
+    remove: (partId) => ipcRenderer.invoke('massOrder:delete', partId),
+    /** Called after any window changes the words. Returns the function that stops listening. */
+    onChanged: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on('massOrder:changed', handler);
+      return () => ipcRenderer.removeListener('massOrder:changed', handler);
+    },
+  },
   displays: {
     list: () => ipcRenderer.invoke('display:list'),
     identify: () => ipcRenderer.invoke('display:identify'),

@@ -23,6 +23,7 @@ import { SONG_CATEGORY_MIGRATIONS, SONG_SCOPE_MIGRATIONS } from './song-categori
 import { TRANSFER_MIGRATIONS } from './transfer.js';
 import { PLAN_SYNC_MIGRATIONS } from './plan-sync-schema.js';
 import { SPONTANEOUS_LOG_MIGRATIONS } from './spontaneous-log.js';
+import { MASS_ORDER_CUSTOM_MIGRATIONS, MASS_ORDER_TEXT_MIGRATIONS } from './mass-order.js';
 import { MEDIA_SCHEME, installMediaProtocol, registerMediaRoute } from './protocol.js';
 import { assetRootFor, migrateAbsolutePaths, relPath, resolveAsset, setActiveAssetRoot } from './assets.js';
 
@@ -137,6 +138,8 @@ const ALL_MIGRATIONS = [
   ...SPONTANEOUS_LOG_MIGRATIONS,
   ...SONG_SCOPE_MIGRATIONS,
   ...MASS_SLOT_MIGRATIONS,
+  ...MASS_ORDER_TEXT_MIGRATIONS,
+  ...MASS_ORDER_CUSTOM_MIGRATIONS,
 ];
 
 const SLIDE_SELECT = `

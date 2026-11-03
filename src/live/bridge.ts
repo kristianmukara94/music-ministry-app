@@ -14,6 +14,7 @@ import type { LectionaryApi } from '../lectionary/types';
 import type { MediaApi, ThumbnailJob } from '../media/types';
 import type { PlansApi } from '../planner/types';
 import type { NotesApi } from '../notes/types';
+import type { MassOrderEntry, MassOrderLang } from '../../shared/mass-order-text';
 import type { PwApi } from '../praise-worship/types';
 import type { ProjectorSettings } from '../../shared/projector-settings';
 import type { WelcomeSettings } from '../../shared/welcome-settings';
@@ -54,6 +55,16 @@ export interface DisplaysApi {
 }
 
 /** Quick Live: a song shown straight from search. */
+/** The parish's own words for the Holy Mass Order parts, as the main process keeps them (see electron/mass-order.js). */
+export interface MassOrderApi {
+  list(): Promise<{ texts: { partId: string; lang: string; text: string | null; title: string | null; updatedAt: string }[]; custom: { id: string; createdAt: string }[] }>;
+  saveAll(partId: string, entries: Partial<Record<MassOrderLang, MassOrderEntry>>): Promise<boolean>;
+  create(entries: Partial<Record<MassOrderLang, MassOrderEntry>>): Promise<string>;
+  reset(partId: string, lang: MassOrderLang): Promise<boolean>;
+  remove(partId: string): Promise<boolean>;
+  onChanged(callback: () => void): () => void;
+}
+
 export interface QuickLiveApi {
   /** True when the projector window exists. */
   projectorOpen(): Promise<boolean>;
@@ -142,6 +153,7 @@ interface ElectronApi {
   plans: PlansApi;
   pw: PwApi;
   notes: NotesApi;
+  massOrder: MassOrderApi;
   displays: DisplaysApi;
   projector: ProjectorApi;
   quickLive: QuickLiveApi;
@@ -287,6 +299,16 @@ const offlineNotes: NotesApi = {
   remove: async () => offlineError(),
 };
 
+// No database in the browser preview: the standard Missal text is shown, and edits cannot be kept.
+const offlineMassOrder: MassOrderApi = {
+  list: async () => ({ texts: [], custom: [] }),
+  saveAll: async () => offlineError(),
+  create: async () => offlineError(),
+  reset: async () => offlineError(),
+  remove: async () => offlineError(),
+  onChanged: () => () => {},
+};
+
 const offlineQuickLive: QuickLiveApi = {
   projectorOpen: async () => false,
   logSpontaneous: async () => offlineError(),
@@ -330,7 +352,7 @@ const offlineLowerThird: LowerThirdApi = {
 
 const offlineRole: RemoteRoleStatus = { enabled: false, port: 0, pinSet: false, running: false, url: null, devices: 0, error: 'Open the desktop app to share the live view.' };
 /** Library export and import: the library lives in the desktop app's database, so the browser preview has none. */
-export type LibraryType = 'songs' | 'setlists' | 'plans' | 'praiseWorship';
+export type LibraryType = 'songs' | 'setlists' | 'plans' | 'praiseWorship' | 'massOrder';
 
 /** A backup is saved with a dialog, and a restore asks for a file with a dialog. A restore restarts the app. */
 export interface DatabaseBackupResult {
@@ -352,6 +374,8 @@ export interface LibraryExportOptions {
   praiseWorship: boolean;
   songs: boolean;
   lyrics: boolean;
+  /** The parish's Holy Mass Order words and titles, and its own items. */
+  massOrder: boolean;
 }
 
 export interface LibraryCounts {
@@ -626,6 +650,7 @@ function createBrowserBridge(): LiveBridge {
     plans: offlinePlans,
     pw: offlinePw,
     notes: offlineNotes,
+    massOrder: offlineMassOrder,
     displays: offlineDisplays,
     projector: offlineProjector,
     quickLive: offlineQuickLive,

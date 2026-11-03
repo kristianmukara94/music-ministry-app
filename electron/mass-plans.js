@@ -11,7 +11,8 @@ const MAX_NAME = 120;
 const MAX_LABEL = 200;
 const MAX_CUSTOM = 300;
 const MAX_ITEMS = 300;
-const MASS_PART = /^[a-z][a-z-]*$/;
+// A built-in part (kyrie, agnus-dei) or a parish item (mass_order_custom_<uuid>, see electron/mass-order.js).
+const MASS_PART = /^[a-z][a-z0-9_-]{0,63}$/;
 
 /**
  * A Mass plan: an ordered list of items in fixed liturgical blocks. `source_id` is

@@ -1,21 +1,28 @@
 import type { Frame, Lang, SlideLine } from '../../shared/live.js';
+import { CEB_STANDARD, customParts, effectiveSlides, effectiveTitle, massOrderLang, textToSlides, type MassOrderPart } from '../../shared/mass-order-text.js';
+import { splitDeck } from '../../shared/projector-autofit.js';
+import { useMassOrderTexts } from './massOrderStore';
 
 /**
  * Ordinary of the Mass, pre-split into projector-sized slides.
  * EN follows the 2011 Roman Missal translation; TL follows common usage in
  * "Ang Pagdiriwang ng Banal na Misa". Proofread both against the parish's
- * CBCP-approved missal before go-live. CEB falls back to TL until texts are supplied.
+ * CBCP-approved missal before go-live. CEB comes from shared/mass-order-text.js (CEB_STANDARD), to be proofread the same way.
  */
 export interface MassPart {
   id: string;
-  name: Record<'en' | 'tl', string>;
-  slides: Record<'en' | 'tl', SlideLine[][]>;
+  name: Record<'en' | 'tl' | 'ceb', string>;
+  slides: Record<'en' | 'tl' | 'ceb', SlideLine[][]>;
+  custom?: false;
 }
+
+/** A part as written below: English and Tagalog. Cebuano is added from CEB_STANDARD. */
+type BasePart = { id: string; name: Record<'en' | 'tl', string>; slides: Record<'en' | 'tl', SlideLine[][]> };
 
 const P = (text: string): SlideLine => ({ role: 'priest', text });
 const A = (text: string): SlideLine => ({ role: 'all', text });
 
-export const MASS_ORDER: MassPart[] = [
+const BASE: BasePart[] = [
   {
     id: 'kyrie',
     name: { en: 'Kyrie (Lord, Have Mercy)', tl: 'Panginoon, Kaawaan Mo Kami' },
@@ -109,15 +116,53 @@ export const MASS_ORDER: MassPart[] = [
   },
 ];
 
-const massLang = (lang: Lang): 'en' | 'tl' => (lang === 'en' ? 'en' : 'tl');
+/** The built-in parts, each in English, Tagalog and Cebuano. */
+export const MASS_ORDER: MassPart[] = BASE.map((part) => {
+  const ceb = CEB_STANDARD[part.id];
+  return {
+    ...part,
+    name: { ...part.name, ceb: ceb?.name ?? part.name.tl },
+    slides: { ...part.slides, ceb: ceb ? textToSlides(ceb.text) : part.slides.tl },
+  };
+});
 
-export function massPartName(part: MassPart, lang: Lang) {
-  return part.name[massLang(lang)];
+/** Every part the planner can list and stage: the built-in ones, then the parish's own items in the order they were made. */
+export function allMassParts(): MassOrderPart[] {
+  return [...MASS_ORDER, ...customParts(useMassOrderTexts.getState().custom)];
 }
 
+/** A part by id, built-in or the parish's own. Undefined when there is none (a parish item that was deleted). */
+export function findMassPart(id: string): MassOrderPart | undefined {
+  return allMassParts().find((p) => p.id === id);
+}
+
+/** A part's title in a language: the parish's title when it set one, otherwise the standard name. */
+export function massPartName(part: MassOrderPart, lang: Lang) {
+  return effectiveTitle(part, lang, useMassOrderTexts.getState().overrides);
+}
+
+/** The standard name of a part, as the app ships it: what Reset to Standard Missal Text goes back to. Empty for a parish item. */
+export function standardName(part: MassOrderPart, lang: Lang): string {
+  return part.name[massOrderLang(lang)] ?? '';
+}
+
+/** The standard slides of a part, as the app ships them. Empty for a parish item. */
+export function standardSlides(part: MassOrderPart, lang: Lang): SlideLine[][] {
+  return part.slides[massOrderLang(lang)] ?? [];
+}
+
+/**
+ * A part as a projector deck, with its title: the parish's own words and title when it has saved some (see massOrderStore), otherwise the
+ * standard text. A slide too long to read on the projector is cut into parts, each labelled with its place: "Sanctus (1/2)". Built when the
+ * part is staged, so an edit is used by every slide staged after it. Null for a part that does not exist (a deleted parish item) or has no words.
+ */
 export function massPartFrame(id: string, lang: Lang): Frame | null {
-  const part = MASS_ORDER.find((p) => p.id === id);
+  const part = findMassPart(id);
   if (!part) return null;
-  const l = massLang(lang);
-  return { kind: 'deck', title: part.name[l], slides: part.slides[l], index: 0 };
+  const { overrides } = useMassOrderTexts.getState();
+  const title = effectiveTitle(part, lang, overrides);
+  const words = effectiveSlides(part, lang, overrides);
+  if (words.length === 0) return null;
+  const { slides, labels } = splitDeck(title, words);
+  return labels ? { kind: 'deck', title, slides, index: 0, labels } : { kind: 'deck', title, slides, index: 0 };
 }
