@@ -280,9 +280,9 @@ const POWERPOINT_EXE = [
  * time to register, and the export is tried once more. A PowerPoint started for the retry is closed afterwards. Any other
  * error is raised at once.
  */
-export async function renderWithPowerPoint(source, outDir, timeoutMs = 300_000) {
+export async function renderWithPowerPoint(source, outDir, timeoutMs = 300_000, onSlide = null) {
   try {
-    return await exportWithPowerPoint(source, outDir, timeoutMs);
+    return await exportWithPowerPoint(source, outDir, timeoutMs, onSlide);
   } catch (err) {
     if (!RETRYABLE_COM.test(err.message)) throw err;
     console.warn('[pptx] PowerPoint did not start for automation. Starting it and trying once more.');
@@ -290,25 +290,49 @@ export async function renderWithPowerPoint(source, outDir, timeoutMs = 300_000) 
     const started = exe ? spawn(exe, ['/automation'], { windowsHide: true, stdio: 'ignore' }) : null;
     try {
       await new Promise((resolve) => setTimeout(resolve, 10_000));
-      return await exportWithPowerPoint(source, outDir, timeoutMs);
+      return await exportWithPowerPoint(source, outDir, timeoutMs, onSlide);
     } finally {
       if (started && !started.killed) started.kill();
     }
   }
 }
 
-async function exportWithPowerPoint(source, outDir, timeoutMs) {
+/** How many slide_N.jpg files PowerPoint has written to `outDir` so far, counting up from 1 and stopping at the first gap. */
+function exportedSoFar(outDir) {
+  let n = 0;
+  while (fs.existsSync(path.join(outDir, `slide_${n + 1}.jpg`))) n++;
+  return n;
+}
+
+// PowerPoint writes one file per slide while the script runs, so watching the folder shows how far it has got. `onSlide(done)` hears each new count.
+const EXPORT_POLL_MS = 300;
+
+async function exportWithPowerPoint(source, outDir, timeoutMs, onSlide = null) {
   const encoded = Buffer.from(POWERPOINT_EXPORT, 'utf16le').toString('base64');
   const env = { ...process.env, APCCMMA_PPT_SOURCE: source, APCCMMA_PPT_OUT: outDir };
-  const stdout = await new Promise((resolve, reject) => {
-    const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded];
-    execFile('powershell.exe', args, { env, timeout: timeoutMs, windowsHide: true }, (err, out, stderr) => {
-      if (err) return reject(new Error(String(stderr || err.message).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)));
-      resolve(String(out));
+  let seen = 0;
+  const poll = onSlide
+    ? setInterval(() => {
+        // The file being written now may be half done, so the newest one is not counted until the next one starts.
+        const n = Math.max(0, exportedSoFar(outDir) - 1);
+        if (n > seen) onSlide((seen = n));
+      }, EXPORT_POLL_MS)
+    : null;
+  let stdout;
+  try {
+    stdout = await new Promise((resolve, reject) => {
+      const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded];
+      execFile('powershell.exe', args, { env, timeout: timeoutMs, windowsHide: true }, (err, out, stderr) => {
+        if (err) return reject(new Error(String(stderr || err.message).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)));
+        resolve(String(out));
+      });
     });
-  });
+  } finally {
+    if (poll) clearInterval(poll);
+  }
   const count = Number(stdout.match(/(\d+)\s*$/)?.[1]);
   if (!count) throw new Error('PowerPoint did not report a slide count.');
+  if (onSlide && count > seen) onSlide(count);
   const files = Array.from({ length: count }, (_, i) => path.join(outDir, `slide_${i + 1}.jpg`));
   return Promise.all(files.map((file) => fs.promises.readFile(file)));
 }

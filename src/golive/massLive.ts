@@ -5,7 +5,7 @@ import { stanzaFrame } from '../lyrics/frames';
 import type { Hymn } from '../lyrics/types';
 import { playQueueAt, stepQueue } from '../planner/routing';
 import { sectionChip } from '../../shared/pw.js';
-import type { Frame, LiveState } from '../../shared/live.js';
+import type { Frame, LiveState, LowerThird } from '../../shared/live.js';
 
 // The Mass console plays queue items where the operator is: a song, an announcement or a picture never switches panels.
 const IN_PLACE = { inPlace: true } as const;
@@ -130,6 +130,18 @@ export function whenLive(ready: (state: LiveState) => boolean, ms = 4000): Promi
       resolve(false);
     }, ms);
   });
+}
+
+/** The lower third band for the Holy Mass: its tag and the plan's name. */
+export const holyMassBand = (planName: string | null | undefined): LowerThird => ({ template: 'segment', tag: 'Holy Mass', line1: planName?.trim() || 'Holy Mass' });
+
+/**
+ * Go Live for the Holy Mass: plays the item, and once the queue is on the projector turns the lower third on with the plan's name. If the
+ * operator declined to turn the projector on, nothing is on air and the lower third is left alone.
+ */
+export async function goLiveMassAt(index: number, planName: string | null | undefined): Promise<void> {
+  await playQueueAt(index, IN_PLACE);
+  if (await whenLive((s) => queueOnAir(s))) dispatch({ type: 'lowerThird/on', value: holyMassBand(planName) });
 }
 
 /** Plays a queue item from its first slide, where the operator is. Asks to turn the projector on first when it is off. */

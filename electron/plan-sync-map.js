@@ -11,6 +11,7 @@
 // every save.
 import crypto from 'node:crypto';
 import { MASS_PARTS, PART_STEP } from '../shared/mass-parts.js';
+import { slotNumberOf } from '../shared/mass-slots.js';
 
 export const MASS_BLOCKS = ['introductory', 'word', 'eucharist', 'communion', 'concluding'];
 export const READING_TYPES = ['First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel'];
@@ -44,7 +45,16 @@ const byOrder = (a, b) => a.order - b.order;
 const entry = (key, row, item = null) => ({ key, synced: item !== null, item, row });
 
 /**
- * The Mass plan's items in display order. `rows` are { block, module, sourceId, label, order }.
+ * The Holy Mass slot an item fills, as the website knows it: its number, 1 to 17. An item that fills no slot has none, and the field is left
+ * out, so a plan from before slots sends exactly what it always did. The key never includes it, so filling a slot never changes an item's key.
+ */
+const withSlot = (item, row) => {
+  const slot = slotNumberOf(row.slot);
+  return slot === null ? item : { ...item, slot };
+};
+
+/**
+ * The Mass plan's items in display order. `rows` are { block, module, sourceId, label, order, slot }.
  * `hymnUuidOf(sourceId)` returns the hymn's uuid, or null if it has none (such a song is kept on the laptop).
  */
 export function massEntries(rows, hymnUuidOf) {
@@ -56,19 +66,19 @@ export function massEntries(rows, hymnUuidOf) {
     const derived = itemKey([row.module, row.sourceId, row.block, seen]);
     if (row.module === 'lyrics') {
       const uuid = hymnUuidOf(row.sourceId);
-      return entry(derived, row, uuid ? { kind: 'song', group: row.block, songId: uuid } : null);
+      return entry(derived, row, uuid ? withSlot({ kind: 'song', group: row.block, songId: uuid }, row) : null);
     }
     if (row.module === 'lectionary') {
       // The label is the reading's name. Anything else could carry text, so the plan is refused rather than sent.
       if (!READING_TYPES.includes(row.label)) throw new MapRefused('A reading in this plan is not a reading name. Nothing was sent.');
-      return entry(derived, row, { kind: 'reading', group: row.block, text: row.label });
+      return entry(derived, row, withSlot({ kind: 'reading', group: row.block, text: row.label }, row));
     }
     if (row.module === 'mass_order') {
-      if (row.label.length > MAX_TEXT) throw new MapRefused('A Mass part name in this plan is too long. Nothing was sent.');
-      return entry(PART_STEP[row.sourceId] ?? derived, row, { kind: 'rite', group: row.block, text: row.label });
+      if (row.label.length > MAX_TEXT) throw new MapRefused('A Holy Mass part name in this plan is too long. Nothing was sent.');
+      return entry(PART_STEP[row.sourceId] ?? derived, row, withSlot({ kind: 'rite', group: row.block, text: row.label }, row));
     }
     if (row.module === 'custom' && row.sourceId.startsWith(WEB_NOTE_PREFIX)) {
-      return entry(row.sourceId.slice(WEB_NOTE_PREFIX.length), row, { kind: 'rite', group: row.block, note: row.label.slice(0, MAX_NOTE) });
+      return entry(row.sourceId.slice(WEB_NOTE_PREFIX.length), row, withSlot({ kind: 'rite', group: row.block, note: row.label.slice(0, MAX_NOTE) }, row));
     }
     return entry(derived, row, null);
   });

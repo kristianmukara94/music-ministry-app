@@ -247,6 +247,8 @@ export type LiveAction =
   | { type: 'lowerThird/show'; value: LowerThird }
   | { type: 'lowerThird/clear' }
   | { type: 'lowerThird/toggle' }
+  /** Go Live: shows `value` (or the staged one) on the lower third and sets the operator's choice to On. */
+  | { type: 'lowerThird/on'; value?: LowerThird }
   | { type: 'lowerThird/stage'; value: LowerThird }
   | { type: 'settings/projector'; value: Partial<ProjectorSettings> }
   | { type: 'settings/welcome'; value: Partial<WelcomeSettings> }

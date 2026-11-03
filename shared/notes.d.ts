@@ -2,6 +2,7 @@ import type { TextStyle } from './text-style';
 import type { PrayerSplit } from './prayer-screen';
 
 export const NOTE_DISPLAYS: readonly ['operator', 'full', 'lower'];
+export function noteCategoryLabel(category: string): string;
 export const NOTE_CATEGORIES: readonly string[];
 export const MAX_NOTE_TITLE: number;
 export const MAX_NOTE_BODY: number;

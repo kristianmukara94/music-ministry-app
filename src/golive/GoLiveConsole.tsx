@@ -13,7 +13,7 @@ import { setUi, useUi } from '../state/ui';
 import { useRegion } from '../state/useRegion';
 import { GoLivePrepare } from './GoLiveHub';
 import { MassLiveView } from './MassLiveView';
-import { playMassAt, whenLive } from './massLive';
+import { goLiveMassAt, whenLive } from './massLive';
 import { onAirLabel, projectorState } from './onAir';
 import { useGoLiveT } from './strings';
 import { WhiteboardCard } from './WhiteboardCard';
@@ -154,7 +154,7 @@ export function GoLiveConsole() {
       }
       const now = useLive.getState().state;
       const resume = now.queueCursor >= 0 && !now.queue[now.queueCursor]?.stale ? now.queueCursor : now.queue.findIndex((q) => !q.stale);
-      if (resume >= 0) await playMassAt(resume);
+      if (resume >= 0) await goLiveMassAt(resume, massPlan.name);
     });
 
   const projector = projectorState(live);

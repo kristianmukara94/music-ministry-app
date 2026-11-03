@@ -51,6 +51,8 @@ interface UiState {
   queueOpen: boolean;
   /** The floating live preview is on screen. Toggled by the Preview button in the top bar. */
   previewOpen: boolean;
+  /** A row was just staged from the planner: the operator's preview shows the staged frame until something else goes live. */
+  stagePeek: boolean;
   capturingHotkey: boolean;
   /** The keyboard shortcuts. One per action, each with the key combo that runs it. */
   shortcuts: Shortcut[];
@@ -111,6 +113,7 @@ export const useUi = create<UiState>()(
       paletteOpen: false,
       queueOpen: false,
       previewOpen: false,
+      stagePeek: false,
       capturingHotkey: false,
       shortcuts: DEFAULT_SHORTCUTS,
       launchpad: [],

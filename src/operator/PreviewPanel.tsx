@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { Eye, Lock, Minus, Unlock, X } from 'lucide-react';
 import { useLive } from '../live/store';
-import { setUi } from '../state/ui';
+import { setUi, useUi } from '../state/ui';
 import { ProjectorView } from '../output/ProjectorView';
+import { frameKey, previewBadge } from '../../shared/stage-plan-row.js';
 
 const ICON = 'grid size-7 place-items-center rounded-lg p-1 text-fg/60 transition hover:bg-fg/10 hover:text-fg';
 
@@ -141,6 +142,16 @@ function Grip({ corner, onDown, onMove, onUp }: {
 export function PreviewPanel() {
   const projectorOn = useLive((s) => s.state.outputs.projector);
   const paused = useLive((s) => s.state.projector.paused);
+  // The live frame's content, as text: the state arrives as new objects on every update, so only a real change of picture may end a staged peek.
+  const liveKey = useLive((s) => frameKey(s.state.projector.live));
+  const stagePeek = useUi((s) => s.stagePeek);
+  const badge = previewBadge({ projectorOn, paused, stagePeek });
+  // A row staged from the planner shows here until something else goes live, so it never lingers as a stale preview.
+  const firstKey = useRef(liveKey);
+  useEffect(() => {
+    if (liveKey !== firstKey.current) setUi({ stagePeek: false });
+    firstKey.current = liveKey;
+  }, [liveKey]);
   // The lock pins the header open. It does not freeze the picture, which keeps following the output.
   const [headerPinned, setHeaderPinned] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -231,6 +242,11 @@ export function PreviewPanel() {
             <span className="text-[11px] text-fg/60">Live preview</span>
           </div>
           {/* While the projector is paused, the audience keeps the frame on air. Edits show here only, until the projector resumes. */}
+          {stagePeek && !paused && (
+            <span role="status" className="shrink-0 rounded-md border border-info/50 bg-info/15 px-2 py-1 text-[10px] font-extrabold tracking-wider text-info uppercase">
+              Staged · not live
+            </span>
+          )}
           {paused && (
             <span role="status" className="shrink-0 rounded-md border border-accent bg-accent/15 px-2 py-1 text-[10px] font-extrabold tracking-wider text-accent uppercase">
               Projector paused · editing staged
@@ -242,20 +258,20 @@ export function PreviewPanel() {
           {/* The status: a breathing gold badge while the output is live, a steady one while it is paused, a muted one while it is off. */}
           <span
             className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${
-              projectorOn && !paused
+              badge.id === 'live'
                 ? 'live-breathe border-accent/50 bg-accent/20 text-accent shadow-lg shadow-black/50'
-                : projectorOn
-                  ? 'border-info/50 bg-info/15 text-info'
-                  : 'border-line bg-panel-2/80 text-fg/50'
+                : badge.id === 'off'
+                  ? 'border-line bg-panel-2/80 text-fg/50'
+                  : 'border-info/50 bg-info/15 text-info'
             }`}
           >
-            {projectorOn && !paused && (
+            {badge.id === 'live' && (
               <span className="relative mr-1.5 inline-flex size-2 items-center justify-center" aria-hidden>
                 <span className="absolute size-2 animate-ping rounded-full bg-accent" />
                 <span className="relative size-2 rounded-full bg-accent" />
               </span>
             )}
-            {projectorOn ? (paused ? 'Projector paused' : 'LIVE') : 'OFF'}
+            {badge.label}
           </span>
 
           <button

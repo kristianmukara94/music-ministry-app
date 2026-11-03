@@ -204,7 +204,7 @@ function QueueDrawer() {
         <div className="flex min-h-0 flex-1 flex-col bg-panel">
           <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-3">
             <div className="flex items-center gap-2.5">
-              <h2 className="text-base font-bold tracking-tight text-fg">Mass Queue</h2>
+              <h2 className="text-base font-bold tracking-tight text-fg">Holy Mass Queue</h2>
               <span className="rounded-full bg-accent/20 px-2 py-0.5 font-mono text-xs font-bold text-accent tabular-nums">{queue.length}</span>
             </div>
             <button

@@ -13,7 +13,7 @@ import { PGlite } from '@electric-sql/pglite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
 const { HYMN_DELETE_MIGRATIONS, LYRICS_MIGRATIONS } = await import('./lyrics.js');
-const { MASS_PLAN_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_NOTES_MIGRATIONS } = await import('./mass-plans.js');
+const { MASS_PLAN_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_NOTES_MIGRATIONS } = await import('./mass-plans.js');
 const { PW_MIGRATIONS } = await import('./pw-sessions.js');
 const { TRANSFER_MIGRATIONS } = await import('./transfer.js');
 const { PLAN_SYNC_MIGRATIONS } = await import('./plan-sync-schema.js');
@@ -97,7 +97,7 @@ function laptopDb() {
     }
   };
   for (const sqlText of [...LYRICS_MIGRATIONS, ...HYMN_DELETE_MIGRATIONS, ...MASS_PLAN_MIGRATIONS, ...PLAN_BIBLE_MIGRATIONS, ...PLAN_CUSTOM_MIGRATIONS, ...PLAN_NOTES_MIGRATIONS,
-    ...PW_MIGRATIONS, ...PLAN_COMMUNION_MIGRATIONS, ...TRANSFER_MIGRATIONS, ...PLAN_SYNC_MIGRATIONS]) {
+    ...PW_MIGRATIONS, ...PLAN_COMMUNION_MIGRATIONS, ...MASS_SLOT_MIGRATIONS, ...TRANSFER_MIGRATIONS, ...PLAN_SYNC_MIGRATIONS]) {
     db.exec(sqlText);
   }
   return db;
@@ -605,4 +605,80 @@ test('no request body carries a note: a laptop note never leaves, and a web note
     assert.equal(body.includes('Laptop-only note'), false, 'the laptop note is not in any body');
   }
   assert.equal((await serverRow(uuid)).body.items[0].note, 'Web note', 'the web note is still on the server');
+});
+
+// ---- Holy Mass slots ----
+
+/** A laptop Mass plan whose items fill Holy Mass slots: `items` are { block, module, sourceId, label, slot }. */
+function localSlottedPlan(db, { name, items, at = T1 }) {
+  const id = Number(db.prepare('INSERT INTO mass_plans (name, liturgical_date) VALUES (?, ?)').run(name, '2026-11-08').lastInsertRowid);
+  items.forEach((it, i) => db.prepare('INSERT INTO mass_plan_items (plan_id, liturgical_block, source_module, source_id, label, display_order, slot) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(id, it.block, it.module, it.sourceId, it.label, i + 1, it.slot ?? null));
+  db.prepare('UPDATE mass_plans SET updated_at = ? WHERE id = ?').run(at, id);
+  return db.prepare('SELECT uuid FROM mass_plans WHERE id = ?').get(id).uuid;
+}
+
+const slotsOf = (db, uuid) => db.prepare(`SELECT i.label, i.slot FROM mass_plan_items i JOIN mass_plans p ON p.id = i.plan_id WHERE p.uuid = ? ORDER BY i.display_order`).all(uuid).map((r) => [r.label, r.slot]);
+
+async function slottedPlanOnTheWeb() {
+  await seedServerSong(HYMN_A, 'Praise to the Lord');
+  const l = laptop();
+  const hymnId = Number(seedHymn(l.db, HYMN_A, 'Praise to the Lord').lastInsertRowid);
+  const uuid = localSlottedPlan(l.db, {
+    name: 'Sunday Solemn',
+    items: [
+      { block: 'introductory', module: 'lyrics', sourceId: String(hymnId), label: 'Praise to the Lord', slot: 'entrance' },
+      { block: 'introductory', module: 'mass_order', sourceId: 'kyrie', label: 'Kyrie', slot: 'kyrie' },
+      { block: 'word', module: 'lectionary', sourceId: '2026-11-08|Gospel', label: 'Gospel' },
+    ],
+  });
+  await l.engine.runOnce();
+  return { l, uuid };
+}
+
+test('a laptop plan goes to the website with each item\'s Holy Mass slot as its number, and an item with no slot has none', async () => {
+  const { uuid } = await slottedPlanOnTheWeb();
+  const items = (await serverRow(uuid)).body.items;
+  assert.deepEqual(items.map((i) => [i.kind, i.slot ?? null]), [['song', 1], ['rite', 3], ['reading', null]]);
+});
+
+test('a second laptop pulling the plan gets the same slots, so no item lands among the additional ones', async () => {
+  const { uuid } = await slottedPlanOnTheWeb();
+  const other = laptop();
+  seedHymn(other.db, HYMN_A, 'Praise to the Lord');
+  await other.engine.runOnce();
+  // A pulled Mass part is named as the laptop names it; the slots are what matter here.
+  assert.deepEqual(slotsOf(other.db, uuid).map(([, slot]) => slot), ['entrance', 'kyrie', null]);
+});
+
+test('a web edit pulled back keeps every slot', async () => {
+  const { l, uuid } = await slottedPlanOnTheWeb();
+  serverNow = new Date(T2);
+  await serverEdit(laptopToken, uuid, { name: 'Sunday Solemn, edited on the web' });
+  serverNow = new Date(T3);
+  await l.engine.runOnce();
+  assert.equal(localMass(l.db, uuid).name, 'Sunday Solemn, edited on the web');
+  assert.deepEqual(slotsOf(l.db, uuid), [['Praise to the Lord', 'entrance'], ['Kyrie', 'kyrie'], ['Gospel', null]]);
+});
+
+test('an item the website sends back without its slot keeps the slot the laptop had', async () => {
+  const { l, uuid } = await slottedPlanOnTheWeb();
+  const row = await serverRow(uuid);
+  serverNow = new Date(T2);
+  // As the website's editor sends a step it rebuilt, or as a website from before slots stores it: no slot field.
+  await serverEdit(laptopToken, uuid, { name: 'No slots on the web', items: row.body.items.map(({ slot, ...item }) => item) });
+  serverNow = new Date(T3);
+  await l.engine.runOnce();
+  assert.deepEqual(slotsOf(l.db, uuid), [['Praise to the Lord', 'entrance'], ['Kyrie', 'kyrie'], ['Gospel', null]]);
+});
+
+test('the website refuses a slot that is not 1 to 17, or two items in one slot', async () => {
+  const created = await serverCreate(laptopToken);
+  const row = await serverRow(created.id);
+  const push = (items) => api().pushPlans({ httpMethod: 'POST', headers: { authorization: `Bearer ${laptopToken}` }, body: JSON.stringify({ plans: [{ id: created.id, name: row.name, date: '2026-11-01', kind: 'mass', items, baseUpdatedAt: new Date(row.updated_at).toISOString() }] }) });
+  const resultOf = async (items) => JSON.parse((await push(items)).body).results?.[0] ?? JSON.parse((await push(items)).body);
+  const bad = await resultOf([readingItem('a', 1, 'Gospel'), { ...readingItem('b', 2, 'First Reading'), slot: 18 }]);
+  assert.match(JSON.stringify(bad), /slot must be a number from 1 to 17/);
+  const twice = await resultOf([{ ...readingItem('a', 1, 'Gospel'), slot: 4 }, { ...readingItem('b', 2, 'First Reading'), slot: 4 }]);
+  assert.match(JSON.stringify(twice), /same Holy Mass slot/);
 });

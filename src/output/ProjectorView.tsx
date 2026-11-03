@@ -5,6 +5,7 @@ import { OnAirLook, useOutput } from './outputState';
 import { dispatch } from '../live/store';
 import { pwT } from '../../shared/pw-i18n.js';
 import { useUi } from '../state/ui';
+import { mirrorSource } from '../../shared/stage-plan-row.js';
 import { translate } from '../i18n/strings';
 import { LOGO_SRC } from '../brand/logo';
 import { getSlideImageUrl, onSlideImageError } from './slideImage';
@@ -651,7 +652,9 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
   // itself keeps the frame it was showing until it resumes.
   // The intro slide shows as its title card or as black, by the operator's choice on the Live panel.
   const introSlideMode = useOutput((s) => s.introSlideMode);
-  const picture = presentedFrame(mirror && projector.paused ? projector.staged : projector.live, introSlideMode);
+  // The same goes for a row the operator has just staged from the planner: the mirror shows it until something else goes live.
+  const stagePeek = useUi((s) => s.stagePeek);
+  const picture = presentedFrame(mirrorSource(projector, { mirror, peek: stagePeek }), introSlideMode);
   const overlap = (OVERLAP_TRANSITIONS as readonly string[]).includes(settings.transitionStyle);
   const { frame, fading, serial, leaving } = useFadedFrame(picture, transitionMs, overlap);
   const textLook = advancedTextLook(settings);

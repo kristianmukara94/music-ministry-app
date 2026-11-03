@@ -16,8 +16,8 @@ export const LANGUAGE_CODE = { English: 'EN', Tagalog: 'TL', Cebuano: 'CEB' };
  * Readings hold a reference only, never the text.
  */
 export const MASS_PLAN = {
-  eyebrow: 'MASS PLAN · SUNDAY 1 NOVEMBER 2026 · SOLEMNITY',
-  title: 'All Saints, Sunday Mass',
+  eyebrow: 'HOLY MASS PLAN · SUNDAY 1 NOVEMBER 2026 · SOLEMNITY',
+  title: 'All Saints, Sunday Holy Mass',
   status: 'Saved · laptop pulls it on next sync',
   firstSelected: 10,
   sections: [
@@ -25,8 +25,8 @@ export const MASS_PLAN = {
       [1, 'Entrance Procession', 'song', 'Entrance Procession', 'Praise to the Lord, the Almighty', 'list', false, ''],
       [2, 'Greeting', 'rite'],
       [3, 'Penitential Act', 'rite'],
-      [4, 'Kyrie', 'song', 'Kyrie', 'Lord, have mercy (Mass setting)', 'text', false, ''],
-      [5, 'Gloria', 'song', 'Gloria', 'Gloria (Mass setting)', 'list', false, 'When prescribed'],
+      [4, 'Kyrie', 'song', 'Kyrie', 'Lord, have mercy (Holy Mass setting)', 'text', false, ''],
+      [5, 'Gloria', 'song', 'Gloria', 'Gloria (Holy Mass setting)', 'list', false, 'When prescribed'],
       [6, 'Collect / Opening Prayer', 'rite'],
     ] },
     { title: 'II · LITURGY OF THE WORD', rows: [
@@ -43,15 +43,15 @@ export const MASS_PLAN = {
       [15, 'Preparation of the Gifts / Offertory', 'song', 'Preparation of the Gifts', '', '', false, ''],
       [16, 'Prayer over the Offerings', 'rite'],
       [17, 'Preface', 'rite'],
-      [18, 'Holy, Holy, Holy (Sanctus)', 'song', 'Holy, Holy, Holy', 'Holy, Holy, Holy (Mass setting)', 'list', false, ''],
+      [18, 'Holy, Holy, Holy (Sanctus)', 'song', 'Holy, Holy, Holy', 'Holy, Holy, Holy (Holy Mass setting)', 'list', false, ''],
       [19, 'Eucharistic Prayer', 'rite'],
-      [20, 'Memorial Acclamation', 'song', 'Memorial Acclamation', 'Christ has died (Mass setting)', 'list', false, ''],
+      [20, 'Memorial Acclamation', 'song', 'Memorial Acclamation', 'Christ has died (Holy Mass setting)', 'list', false, ''],
       [21, 'Great Amen', 'song', 'Great Amen', '', '', false, ''],
     ] },
-    { title: 'IV · COMMUNION RITE', rows: [
+    { title: 'IV · COMMUNION', rows: [
       [22, 'Our Father', 'song', 'Our Father', '', '', true, 'If sung'],
       [23, 'Sign of Peace', 'rite'],
-      [24, 'Lamb of God (Agnus Dei)', 'song', 'Lamb of God', 'Lamb of God (Mass setting)', 'list', false, ''],
+      [24, 'Lamb of God (Agnus Dei)', 'song', 'Lamb of God', 'Lamb of God (Holy Mass setting)', 'list', false, ''],
       [25, 'Communion Procession', 'song', 'Communion Procession', 'I am the Bread of Life', 'list', false, ''],
       [26, 'Thanksgiving / Meditation', 'song', 'Thanksgiving', '', '', true, 'Optional'],
       [27, 'Prayer after Communion', 'rite'],

@@ -125,7 +125,7 @@ const MYSTERIES = [
   { type: 'luminous', decade: 2, title: 'The Wedding Feast at Cana', ref: 'John 2:1-12', meditation: 'At Mary’s request Jesus performs his first sign. Ask for the grace to do whatever he tells us.' },
   { type: 'luminous', decade: 3, title: 'The Proclamation of the Kingdom', ref: 'Mark 1:14-15', meditation: 'Jesus calls all to repentance and belief in the Gospel. Ask for the grace of conversion.' },
   { type: 'luminous', decade: 4, title: 'The Transfiguration', ref: 'Matthew 17:1-8', meditation: 'Jesus is transfigured before Peter, James and John. Ask for the grace of a desire for holiness.' },
-  { type: 'luminous', decade: 5, title: 'The Institution of the Eucharist', ref: 'Luke 22:14-20', meditation: 'Jesus gives himself to us in the Eucharist. Ask for a deeper love for the Mass.' },
+  { type: 'luminous', decade: 5, title: 'The Institution of the Eucharist', ref: 'Luke 22:14-20', meditation: 'Jesus gives himself to us in the Eucharist. Ask for a deeper love for the Holy Mass.' },
 ];
 
 /**

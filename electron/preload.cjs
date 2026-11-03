@@ -98,6 +98,10 @@ contextBridge.exposeInMainWorld('apcc', {
     deletePlan: (id) => ipcRenderer.invoke('plans:delete', id),
     get: (id) => ipcRenderer.invoke('plans:get', id),
     save: (id, items) => ipcRenderer.invoke('plans:save', id, items),
+    listTemplates: () => ipcRenderer.invoke('plans:listTemplates'),
+    getTemplate: (id) => ipcRenderer.invoke('plans:getTemplate', id),
+    saveTemplate: (input) => ipcRenderer.invoke('plans:saveTemplate', input),
+    deleteTemplate: (id) => ipcRenderer.invoke('plans:deleteTemplate', id),
   },
 
   pw: {
@@ -207,6 +211,12 @@ contextBridge.exposeInMainWorld('apcc', {
     deleteFolder: (id) => ipcRenderer.invoke('whiteboard:deleteFolder', id),
     move: (ids, folderId) => ipcRenderer.invoke('whiteboard:move', ids, folderId),
     importPowerPoint: (folderId) => ipcRenderer.invoke('whiteboard:importPowerPoint', folderId),
+    /** Called as a PowerPoint import goes on, with { currentSlide, totalSlides, percentage, statusText, ... }. Returns the function that stops listening. */
+    onImportProgress: (callback) => {
+      const handler = (_event, progress) => callback(progress);
+      ipcRenderer.on('powerpoint:import-progress', handler);
+      return () => ipcRenderer.removeListener('powerpoint:import-progress', handler);
+    },
   },
 
   media: {

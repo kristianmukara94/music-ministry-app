@@ -16,7 +16,7 @@ export const PRIMARY_CATEGORIES = ['GENERAL', 'MASS', 'PRAISE_AND_WORSHIP'];
 export const DEFAULT_PRIMARY = 'GENERAL';
 
 /** The scopes' names in English. The pages use the translated ones (lyrics-i18n); the main process and the tests use these. */
-export const PRIMARY_LABELS_EN = { GENERAL: 'General', MASS: 'Mass', PRAISE_AND_WORSHIP: 'Praise & Worship' };
+export const PRIMARY_LABELS_EN = { GENERAL: 'General', MASS: 'Holy Mass', PRAISE_AND_WORSHIP: 'Praise & Worship' };
 
 /** The themes that ship with the app, with the scopes each is suggested for. */
 export const THEME_CATEGORIES = [

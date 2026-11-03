@@ -37,7 +37,7 @@ const STRINGS = {
     songCategory: 'Song category',
     songCategoryPick: 'Choose a category…',
     songCategoryNeeded: 'Choose a song category to import.',
-    category: 'Mass part',
+    category: 'Holy Mass part',
     language: 'Language',
     selectAll: 'Select all',
     selectedCount: '{selected} of {total} selected',

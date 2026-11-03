@@ -128,7 +128,7 @@ export function LowerThirdCard({ value, style }: { value: LowerThird; style: Low
     <div className="flex min-w-0 flex-col" style={{ gap: cq(style.fontSize * 0.2) }}>
       {template === 'intention' && (
         <div className="font-bold tracking-[0.25em] uppercase opacity-70" style={{ fontSize: cq(style.fontSize * 0.45), color: style.textColor }}>
-          Mass intention
+          Holy Mass intention
         </div>
       )}
       <div style={main}>{value.line1}</div>

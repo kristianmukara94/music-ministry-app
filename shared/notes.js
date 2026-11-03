@@ -19,6 +19,12 @@ export const NOTE_CATEGORIES = [
   'Choir / Booth Prompt',
 ];
 
+/** What each category is called on screen, where that differs from the stored name. The stored name never changes, so saved notes keep working. */
+const CATEGORY_LABELS = { 'Mass Intention': 'Holy Mass Intention' };
+
+/** The name to show for a note category. */
+export const noteCategoryLabel = (category) => CATEGORY_LABELS[category] ?? category;
+
 export const MAX_NOTE_TITLE = 200;
 export const MAX_NOTE_BODY = 4000;
 

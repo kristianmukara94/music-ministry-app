@@ -13,7 +13,7 @@ import { HYMN_DELETE_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } fr
 import { LECTIONARY_ACCLAMATION_MIGRATIONS, LECTIONARY_MIGRATIONS, LECTIONARY_STYLE_MIGRATIONS } from './lectionary.js';
 import { MEDIA_AUDIO_MIGRATIONS, MEDIA_MIGRATIONS } from './media.js';
 import { WHITEBOARD_FOLDER_MIGRATIONS, WHITEBOARD_MIGRATIONS, WHITEBOARD_POWERPOINT_MIGRATIONS, WHITEBOARD_RESTORE_MIGRATIONS, WHITEBOARD_LAYER_MIGRATIONS } from './whiteboard.js';
-import { MASS_PLAN_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_NOTES_MIGRATIONS } from './mass-plans.js';
+import { MASS_PLAN_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_NOTES_MIGRATIONS } from './mass-plans.js';
 import { PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, setupNotes } from './notes.js';
 import { ROSARY_LITANY_MIGRATIONS } from './rosary.js';
 import { BIBLE_MIGRATIONS } from './bible-seed.js';
@@ -136,6 +136,7 @@ const ALL_MIGRATIONS = [
   ...WHITEBOARD_LAYER_MIGRATIONS,
   ...SPONTANEOUS_LOG_MIGRATIONS,
   ...SONG_SCOPE_MIGRATIONS,
+  ...MASS_SLOT_MIGRATIONS,
 ];
 
 const SLIDE_SELECT = `
@@ -326,7 +327,7 @@ export function createAnnouncementService(db, root, deps) {
    * keeps its slide's speaker notes. Windows uses PowerPoint itself, and LibreOffice is the fallback. If neither renders
    * the deck, the import fails with the reason, rather than making plain-text cards.
    */
-  async function pptxImageRows(folderId, source) {
+  async function pptxImageRows(folderId, source, report = () => {}) {
     const name = path.basename(source);
     // A legacy .ppt file is a binary format with no XML, so its speaker notes cannot be read and are left empty.
     // For .pptx, hidden slides are not rendered, so the notes are matched to the visible slides only.
@@ -335,7 +336,10 @@ export function createAnnouncementService(db, root, deps) {
       : null;
     const workDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'apccmma-pptx-'));
     try {
-      const images = await renderSlideImages(source, workDir);
+      // A .pptx is counted before it is drawn, so the bar knows how many slides to expect. A legacy .ppt is counted once it has been drawn.
+      report('rendering', 0, slides?.length ?? 0, slides?.length ?? 0);
+      const images = await renderSlideImages(source, workDir, (done) => report('rendering', done, slides?.length ?? 0));
+      report('rendering', images.length, images.length, images.length);
       if (slides && images.length !== slides.length) {
         throw new Error(`${name} has ${slides.length} slides, but ${images.length} were rendered.`);
       }
@@ -346,6 +350,7 @@ export function createAnnouncementService(db, root, deps) {
           const dest = newDeckAsset(folderId, '.jpg');
           await fs.promises.writeFile(dest.abs, images[i]);
           rows.push({ rel: dest.rel, name: `${base} - Slide ${i + 1}`, notes: slides?.[i]?.notes ?? null, source: name });
+          report('saving', i + 1, images.length);
         }
       } catch (err) {
         removeIfUnreferenced(rows.map((r) => r.rel));
@@ -358,11 +363,11 @@ export function createAnnouncementService(db, root, deps) {
   }
 
   /** One JPEG per slide, from the first renderer that works: PowerPoint on Windows, then LibreOffice. */
-  async function renderSlideImages(source, workDir) {
+  async function renderSlideImages(source, workDir, onSlide = null) {
     const name = path.basename(source);
     if (process.platform === 'win32') {
       try {
-        return await renderWithPowerPoint(source, workDir);
+        return await renderWithPowerPoint(source, workDir, undefined, onSlide);
       } catch (err) {
         console.warn(`[pptx] PowerPoint could not render ${name}: ${err.message}`);
       }
@@ -388,7 +393,7 @@ export function createAnnouncementService(db, root, deps) {
    * replaced: its old slides are removed after the new ones are saved, so a failed re-import keeps the old slides.
    * PowerPoint files only ever become image slides. They are never converted into text.
    */
-  async function importFiles(folderId, sources) {
+  async function importFiles(folderId, sources, report = () => {}) {
     const failed = [];
     const copied = [];
     const replaced = [];
@@ -421,7 +426,7 @@ export function createAnnouncementService(db, root, deps) {
           copied.push(...rows);
           replaced.push(...earlier);
         } else if (ext === '.pptx' || ext === '.ppt') {
-          copied.push(...(await pptxImageRows(folderId, source)));
+          copied.push(...(await pptxImageRows(folderId, source, report)));
           replaced.push(...earlier);
         } else if (DOCUMENT_EXTENSIONS.includes(ext)) {
           texts += await textDocument(folderId, source);
@@ -496,10 +501,10 @@ export function createAnnouncementService(db, root, deps) {
     },
 
     /** Imports files dropped onto a deck. Same rules as the picker. */
-    importPaths(folderId, sources) {
+    importPaths(folderId, sources, report) {
       requireFolder(folderId);
       if (!Array.isArray(sources) || sources.some((s) => typeof s !== 'string')) throw new Error('No files were dropped.');
-      return importFiles(folderId, sources);
+      return importFiles(folderId, sources, typeof report === 'function' ? report : undefined);
     },
 
     /** Opens the file picker for a background, copies it into the announcements folder, and returns its file name. */

@@ -1,4 +1,7 @@
 import type { WhiteboardDesign, WhiteboardTextBox } from '../../shared/whiteboard';
+import type { ImportProgress } from '../../shared/import-progress';
+
+export type { ImportProgress } from '../../shared/import-progress';
 
 export type { WhiteboardDesign, WhiteboardTextBox, WhiteboardVerse } from '../../shared/whiteboard';
 
@@ -82,4 +85,6 @@ export interface WhiteboardApi {
   move(ids: number[], folderId: number | null): Promise<number>;
   /** Opens the file picker and imports the chosen PowerPoint files into the folder. Resolves to the number of slides added, or null if cancelled. */
   importPowerPoint(folderId?: number | null): Promise<number | null>;
+  /** Hears how far a PowerPoint import has got, as it goes on. Returns the function that stops listening. */
+  onImportProgress(callback: (progress: ImportProgress) => void): () => void;
 }

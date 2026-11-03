@@ -13,7 +13,7 @@ import { BLOCKS } from '../planner/types';
 import { useT } from '../i18n/strings';
 import { setUi } from '../state/ui';
 import type { QueueItem } from '../../shared/live.js';
-import { frameAt, goWithin, playMassAt, queueOnAir, stepMass, stepsOf, useHymnOf } from './massLive';
+import { frameAt, goLiveMassAt, goWithin, playMassAt, queueOnAir, stepMass, stepsOf, useHymnOf } from './massLive';
 import { useGoLiveT } from './strings';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -42,7 +42,7 @@ const MODULE_TAG: Record<QueueItem['module'], string> = {
   lectionary: 'Reading',
   announcements: 'Announcement',
   media: 'Media',
-  mass_order: 'Mass',
+  mass_order: 'Holy Mass',
   custom: 'Note',
 };
 
@@ -242,7 +242,7 @@ export function MassLiveView({ planName }: { planName: string | null }) {
               <h2 id="mass-live-title" className="text-2xl leading-tight font-bold tracking-tight">{t('massReadyTitle', { name: planName ?? '' })}</h2>
               <p className="text-sm text-muted">{t('massReadyHint')}</p>
               {firstPlayable >= 0 && (
-                <button type="button" className={BTN_GO} disabled={busy} onClick={() => void run(() => playMassAt(firstPlayable))}>
+                <button type="button" className={BTN_GO} disabled={busy} onClick={() => void run(() => goLiveMassAt(firstPlayable, planName))}>
                   <Play size={16} aria-hidden fill="currentColor" /> {t('massStart', { name: queue[firstPlayable].label })}
                 </button>
               )}

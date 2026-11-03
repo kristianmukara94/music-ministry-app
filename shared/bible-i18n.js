@@ -37,7 +37,7 @@ const STRINGS = {
     previewHeading: 'Preview',
     blockLabel: 'Block',
     planLabel: 'Plan',
-    noPlanYet: 'No plan yet. Create one in the Mass Planner.',
+    noPlanYet: 'No plan yet. Create one in the Holy Mass Planner.',
     queueNote: 'Adds to the plan loaded in the Service Queue, or to a new "Quick passages" plan for today.',
     addedToQueue: 'Added {n} to the Service Queue.',
     addedToPlan: 'Added to {name}.',

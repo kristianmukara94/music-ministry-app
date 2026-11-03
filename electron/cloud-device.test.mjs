@@ -594,6 +594,30 @@ test('a server from before scopes refuses the field, and the list is sent again 
   assert.equal('scope' in last.songs[0], false);
 });
 
+test('a website from before Holy Mass slots refuses a plan with slots, and the plan is sent again without them', async () => {
+  const sent = [];
+  const refuseSlots = (opts) => {
+    const body = JSON.parse(opts.body);
+    const items = body.plans ? body.plans[0].items : body.items;
+    sent.push(items);
+    return items.some((i) => 'slot' in i) ? respond(400, { error: 'An item in the plan has a field the planner does not accept. Nothing was saved.' }) : null;
+  };
+  const { device } = await linkedLaptop({
+    'plan-create': (opts) => refuseSlots(opts) ?? respond(201, { plan: { updatedAt: '2026-11-03T00:00:00.000Z' } }),
+    'plan-sync-push': (opts) => refuseSlots(opts) ?? respond(200, { results: [{ status: 'accepted', updatedAt: '2026-11-03T00:00:01.000Z' }] }),
+  });
+  const plan = { id: '6f1c2b3a-0000-4000-8000-0000000000aa', name: 'Sunday', date: '2026-11-08', kind: 'mass', items: [{ key: 'a', order: 1, kind: 'rite', group: 'introductory', text: 'Kyrie', slot: 3 }] };
+  assert.deepEqual(await device.createPlan(plan), { status: 'created', updatedAt: '2026-11-03T00:00:00.000Z' });
+  assert.equal(sent.length, 2, 'one try with the slot, one without');
+  assert.equal('slot' in sent[1][0], false);
+  sent.length = 0;
+  assert.equal((await device.pushPlan({ ...plan, baseUpdatedAt: '2026-11-03T00:00:00.000Z' })).status, 'accepted');
+  assert.equal(sent.length, 2);
+  // Any other refusal is reported as it was, with no second send.
+  const { device: strict } = await linkedLaptop({ 'plan-create': () => respond(400, { error: 'A plan name must be 1 to 120 characters. Nothing was saved.' }) });
+  assert.equal((await strict.createPlan(plan)).status, 'error');
+});
+
 test('an unreachable cloud is marked offline, and the message names no network detail', async () => {
   const file = memoryFile();
   const storage = realisticStorage();

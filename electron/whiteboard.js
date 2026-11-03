@@ -8,6 +8,7 @@ import { cleanSlide, sanitizeSlideDesign, sanitizeTextBox, MAX_TEXT_BOXES, SLIDE
 import { MEDIA_SCHEME, registerMediaRoute } from './protocol.js';
 import { readPptxSlides } from './documents.js';
 import { renderLayers } from './pptx-render.js';
+import { createImportReporter, sendToWindow } from './powerpoint-importer.js';
 
 /** The Announcements folder that holds the pictures of imported PowerPoint slides. */
 export const POWERPOINT_FOLDER = 'Whiteboard PowerPoint';
@@ -156,7 +157,7 @@ const isDuplicate = (err) => /UNIQUE constraint/i.test(String(err?.message ?? ''
 
 /** Whiteboard data access. Pure: takes a database handle, so the rules can be tested without Electron. */
 export function createWhiteboardService(db, deps = {}) {
-  const { showOpenDialog, importDeck, readTexts, readLayers, saveLayerImage, removeLayerImage } = deps;
+  const { showOpenDialog, importDeck, readTexts, readLayers, saveLayerImage, removeLayerImage, emitProgress = () => {} } = deps;
   const list = db.prepare(`${SELECT} ORDER BY w.position, w.id`);
   const get = db.prepare(`${SELECT} AND w.id = ?`);
   const nextPosition = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM whiteboard_slides');
@@ -360,9 +361,10 @@ export function createWhiteboardService(db, deps = {}) {
      * speaker notes all come through. Hidden slides are skipped. The slides go into `folderId` (Unfiled when null). Importing the
      * same file again replaces its earlier slides.
      */
-    async importFile(file, folderId = null) {
+    async importFile(file, folderId = null, report = () => {}) {
       const target = folderIdOf(folderId);
-      const pictures = await importDeck(file);
+      report('reading');
+      const pictures = await importDeck(file, report);
       // The text of each visible slide is kept with its picture: the picture cannot be edited, but its words can be searched and, in an
       // editable copy, changed. It is used only when it lines up one for one with the pictures made.
       let texts = [];
@@ -374,7 +376,8 @@ export function createWhiteboardService(db, deps = {}) {
       if (texts.length !== pictures.length) texts = [];
       // Each slide is also taken apart, so its words, their places and its background can be edited one by one. A deck that cannot be
       // taken apart still imports: its slides can then be edited with their picture as the background.
-      const layers = await this.readLayersFor(file, pictures.length);
+      const layers = await this.readLayersFor(file, pictures.length, report);
+      report('finishing', 0, 1);
       try {
         db.transaction(() => {
           pictures.forEach((picture, i) =>
@@ -385,6 +388,7 @@ export function createWhiteboardService(db, deps = {}) {
         dropUnusedLayerFiles(layers.map((l) => JSON.parse(l).background));
         throw err;
       }
+      report('finishing', 1, 1);
       return pictures.length;
     },
 
@@ -392,10 +396,12 @@ export function createWhiteboardService(db, deps = {}) {
      * Each slide of the deck taken apart, as the JSON stored with it, one per picture. Empty when it cannot be done for this file, or the
      * slides do not line up one for one with the pictures made.
      */
-    async readLayersFor(file, count) {
+    async readLayersFor(file, count, report = () => {}) {
       if (!readLayers || !saveLayerImage) return [];
       let parts;
       try {
+        // One hidden window draws every slide in one go, so this step has no per-slide count.
+        report('layers');
         parts = await readLayers(file);
       } catch (err) {
         console.warn(`[whiteboard] The slides of ${path.basename(file)} could not be taken apart for editing: ${err.message}`);
@@ -407,6 +413,7 @@ export function createWhiteboardService(db, deps = {}) {
         for (const part of parts) {
           const boxes = (Array.isArray(part.boxes) ? part.boxes : []).slice(0, MAX_TEXT_BOXES).map(sanitizeTextBox);
           saved.push(JSON.stringify({ background: await saveLayerImage(part.background), boxes }));
+          report('layerImages', saved.length, parts.length);
         }
       } catch (err) {
         dropUnusedLayerFiles(saved.map((l) => JSON.parse(l).background));
@@ -475,7 +482,11 @@ export function createWhiteboardService(db, deps = {}) {
       const picked = await showOpenDialog(win, { title: 'Import PowerPoint', properties: ['openFile', 'multiSelections'], filters: [{ name: 'PowerPoint', extensions: ['pptx', 'ppt'] }] });
       if (picked.canceled) return null;
       let total = 0;
-      for (const file of picked.filePaths) total += await this.importFile(file, folderId);
+      const files = picked.filePaths;
+      for (let i = 0; i < files.length; i++) {
+        const report = createImportReporter({ emit: (p) => emitProgress(win, p), fileName: path.basename(files[i]), fileIndex: i, fileCount: files.length });
+        total += await this.importFile(files[i], folderId, report);
+      }
       return total;
     },
   };
@@ -485,11 +496,11 @@ export function createWhiteboardService(db, deps = {}) {
  * Imports a PowerPoint through Announcements into its own folder and returns the new picture slides, in slide order. A file
  * imported before has its old slides replaced there, and the Whiteboard leaves out the cards that pointed at them.
  */
-async function importDeckAsPictures(announcements, file) {
+async function importDeckAsPictures(announcements, file, report) {
   const existing = announcements.listFolders().folders.find((f) => f.name.toLowerCase() === POWERPOINT_FOLDER.toLowerCase());
   const folder = existing ?? announcements.createFolder(POWERPOINT_FOLDER);
   const before = new Set(announcements.listSlides(folder.id).map((s) => s.id));
-  const { failed } = await announcements.importPaths(folder.id, [file]);
+  const { failed } = await announcements.importPaths(folder.id, [file], report);
   if (failed.length > 0) throw new Error(failed[0].reason);
   return announcements.listSlides(folder.id).filter((s) => s.slideType === 'image' && !before.has(s.id));
 }
@@ -499,7 +510,8 @@ export function setupWhiteboard(db, announcements, { onChanged = () => {}, conve
   const layerFile = (name) => (LAYER_FILE.test(name) ? resolveAsset(getAssetRoot(), relPath(LAYER_FOLDER, name)) : null);
   const service = createWhiteboardService(db, {
     showOpenDialog: (win, options) => (win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options)),
-    importDeck: (file) => importDeckAsPictures(announcements, file),
+    importDeck: (file, report) => importDeckAsPictures(announcements, file, report),
+    emitProgress: (win, payload) => sendToWindow(win)(payload),
     readTexts: async (file) => (await readPptxSlides(file)).filter((slide) => !slide.hidden),
     readLayers: convertPdf
       ? async (file) => {

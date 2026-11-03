@@ -7,7 +7,7 @@ import { LowerThirdStage } from '../output/LowerThirdView';
 /** The three layouts. Field labels say what each line is for, so the operator knows what to type. */
 const TEMPLATES: { id: LowerThirdTemplate; label: string; line1Label: string; line2Label: string | null }[] = [
   { id: 'nameplate', label: 'Nameplate', line1Label: 'Name', line2Label: 'Role or ministry' },
-  { id: 'intention', label: 'Mass intention', line1Label: 'Intention', line2Label: 'Requested by' },
+  { id: 'intention', label: 'Holy Mass intention', line1Label: 'Intention', line2Label: 'Requested by' },
   { id: 'response', label: 'Response', line1Label: 'Response, e.g. R: And with your spirit', line2Label: null },
 ];
 
@@ -71,7 +71,7 @@ export function LowerThirdDeck() {
         <span className="min-w-0 flex-1">
           <span className="block text-[11px] font-semibold tracking-wider text-fg/60 uppercase">Lower third</span>
           <span className="block truncate text-sm font-bold text-fg">
-            {live ? `Showing: ${live.line1}` : 'Show a name, a Mass intention or a response on the screen'}
+            {live ? `Showing: ${live.line1}` : 'Show a name, a Holy Mass intention or a response on the screen'}
           </span>
         </span>
         {live && (

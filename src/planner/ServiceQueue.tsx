@@ -16,7 +16,7 @@ const MODULE_BADGE: Record<QueueItem['module'], { label: string; tone: string }>
   lectionary: { label: 'LECTIONARY', tone: 'border-danger/40 bg-danger/15 text-danger' },
   announcements: { label: 'ANNOUNCEMENT', tone: 'border-warn/40 bg-warn/15 text-warn' },
   media: { label: 'MEDIA', tone: 'border-ok/40 bg-ok/15 text-ok' },
-  mass_order: { label: 'MASS', tone: 'border-fg/30 bg-fg/10 text-fg/80' },
+  mass_order: { label: 'HOLY MASS', tone: 'border-fg/30 bg-fg/10 text-fg/80' },
   custom: { label: 'NOTE', tone: 'border-fg/25 bg-fg/[0.08] text-fg/80' },
 };
 

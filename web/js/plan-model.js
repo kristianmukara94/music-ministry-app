@@ -2,6 +2,8 @@
 // their structure come from the template. What is chosen, typed, timed and noted comes only from the saved plan on the server.
 // The template's sample values are never used as data.
 
+import { LEGACY_STEP_SLOT, MASS_SECTIONS, MASS_SLOTS, slotOfNumber } from './mass-slots.js';
+
 export const MIN_MINUTES = 1;
 export const MAX_MINUTES = 60;
 export const VIEW_ONLY = 'View only. Ask a planner to make changes.';
@@ -26,6 +28,41 @@ export function massSteps(template) {
     })),
   );
 }
+
+/**
+ * The rows the Holy Mass editor shows, in sections: for each of the five sections, its numbered slots (1 to 17) first, then the other steps
+ * of the website's earlier editor that fill no slot (Greeting, Gloria, the readings, the Homily …), still there to fill.
+ *
+ * A row is { id, n, slot, name, kind, category, group, optional, hint, legacyKey }. `id` names the row in the editor's state: "s7" for a
+ * slot, the step number for another step. `n` is the number shown. `legacyKey` is the key the earlier editor gave the step that stands for
+ * the slot, so a plan saved by it is read into the slot. `kind` is 'song', 'reading', 'rite', or 'slot-text' for a spoken slot, whose
+ * words are typed.
+ */
+export function massSections(template) {
+  const steps = massSteps(template);
+  const slotByStep = new Map(steps.map((step) => [String(step.n), LEGACY_STEP_SLOT[step.n] ?? null]));
+  return MASS_SECTIONS.map((section) => {
+    const slots = MASS_SLOTS.filter((slot) => slot.group === section.group).map((slot) => ({
+      id: `s${slot.number}`,
+      n: slot.number,
+      slot: slot.number,
+      name: slot.name,
+      kind: slot.kind === 'song' ? 'song' : 'slot-text',
+      category: slot.category ?? '',
+      group: slot.group,
+      optional: false,
+      hint: '',
+      legacyKey: Object.entries(LEGACY_STEP_SLOT).find(([, number]) => number === slot.number)?.[0] ?? null,
+    }));
+    const others = steps
+      .filter((step) => step.group === section.group && !slotByStep.get(String(step.n)))
+      .map((step) => ({ ...step, id: String(step.n), slot: null, legacyKey: null }));
+    return { ...section, rows: [...slots, ...others] };
+  });
+}
+
+/** Every row of the editor, in order. */
+export const massRows = (template) => massSections(template).flatMap((section) => section.rows);
 
 /** The Praise & Worship segments from the template: id, name, kind, default minutes and hint. */
 export function praiseSegments(template) {
@@ -84,45 +121,62 @@ export function songOptions(songs, { category = '', allSongs = false, query = ''
   );
 }
 
+const idOf = (row) => row.id ?? String(row.n);
+
 /**
- * Turns a saved Mass plan's items into the editor's state: the song or text for each step, the notes, and any items the editor
- * does not show (for example, items the laptop added). Nothing here comes from the template's sample values.
+ * Turns a saved Holy Mass plan's items into the editor's state: the song or text for each row, the notes, and any items the editor does not
+ * show (for example, items the laptop added that fill no row). `rows` are the editor's rows (massRows), or the template's steps.
+ *
+ * An item fills the slot its `slot` number names, which is how an item made on the laptop or saved by this editor finds its place. An item from
+ * the website's earlier editor has no slot, only the step's key, and fills the slot that step stands for. A row holds one item; a second claim
+ * on it is left among the items the editor does not show. `meta` keeps each filled row's key and kind, so saving sends them back as they were.
  */
-export function massFromItems(items, steps) {
-  const known = new Set(steps.map((s) => String(s.n)));
+export function massFromItems(items, rows) {
   const segments = {};
   const notes = {};
+  const meta = {};
   const extra = [];
+  const rowOf = (item) =>
+    (Number.isInteger(item.slot) ? rows.find((r) => r.slot === item.slot) : undefined) ??
+    rows.find((r) => (r.legacyKey ?? (r.slot ? null : String(r.n))) === item.key);
   for (const item of items) {
-    if (!known.has(item.key)) {
+    const row = rowOf(item);
+    if (!row || meta[idOf(row)]) {
       extra.push(item);
       continue;
     }
+    const id = idOf(row);
     const seg = {};
     if (item.songId) seg.songId = item.songId;
     if (item.text) seg.text = item.text;
-    if (Object.keys(seg).length) segments[item.key] = seg;
-    if (item.note) notes[item.key] = item.note;
+    if (Object.keys(seg).length) segments[id] = seg;
+    if (item.note) notes[id] = item.note;
+    meta[id] = { key: item.key, kind: item.kind, ...(Number.isInteger(item.slot) ? { slot: item.slot } : {}) };
   }
-  return { segments, notes, extra };
+  return { segments, notes, extra, meta };
 }
 
 /**
- * The items the server takes, for a Mass plan: one per step that has a choice or a note, in step order, then the items the editor
- * does not show. The order is then renumbered from 1, so the two never clash.
+ * The items the server takes, for a Holy Mass plan: one per row that has a choice or a note, in the editor's order, then the items the editor
+ * does not show. A slot's item carries its number (1 to 17), so it keeps its place on the laptop and on every other pull. An item keeps the key
+ * and kind it was read with; a new one gets "s7" for slot 7, or the step number for another step. The order is then renumbered from 1.
  */
-export function massToItems({ segments, notes, extra }, steps) {
+export function massToItems({ segments, notes, extra, meta = {} }, rows) {
   const items = [];
-  for (const step of steps) {
-    const key = String(step.n);
-    const seg = segments[key] ?? {};
-    const note = (notes[key] ?? '').trim();
+  for (const row of rows) {
+    const id = idOf(row);
+    const seg = segments[id] ?? {};
+    const note = (notes[id] ?? '').trim();
     if (!seg.songId && !seg.text && !note) continue;
-    const kind = step.kind === 'reading' ? 'reading' : step.kind === 'rite' ? 'rite' : 'song';
-    const item = { key, group: step.group, order: 0, kind };
+    const was = meta[id] ?? {};
+    const kind = was.kind ?? (row.kind === 'reading' ? 'reading' : row.kind === 'rite' || row.kind === 'slot-text' ? 'rite' : 'song');
+    const item = { key: was.key ?? (row.slot ? `s${row.slot}` : String(row.n)), group: row.group, order: 0, kind };
     if (seg.songId) item.songId = seg.songId;
     if (seg.text) item.text = seg.text;
     if (note) item.note = note;
+    // A slot row names its own slot. An item that reached another row by its key keeps the slot it came with.
+    const slot = row.slot ?? was.slot;
+    if (slot) item.slot = slot;
     items.push(item);
   }
   return withOrders([...items, ...extra]);
@@ -241,7 +295,7 @@ export function editorControls({ plan, canEdit, saving }) {
 export const canCreatePlans = (role) => role === 'planner' || role === 'admin';
 
 /**
- * Checks the New plan form before anything is sent: a name of 1 to 120 characters, a real date, and Mass or Praise & Worship. Returns
+ * Checks the New plan form before anything is sent: a name of 1 to 120 characters, a real date, and Holy Mass or Praise & Worship. Returns
  * the plain message for the first problem, or null.
  */
 export function checkNewPlan({ name, date, kind } = {}) {
@@ -250,6 +304,6 @@ export function checkNewPlan({ name, date, kind } = {}) {
   if (trimmed.length > 120) return 'A plan name can be up to 120 characters.';
   const day = String(date ?? '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00Z`))) return 'Choose a date for the plan.';
-  if (kind !== 'mass' && kind !== 'pw') return 'Choose Mass or Praise & Worship.';
+  if (kind !== 'mass' && kind !== 'pw') return 'Choose Holy Mass or Praise & Worship.';
   return null;
 }

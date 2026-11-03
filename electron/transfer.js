@@ -131,7 +131,7 @@ function readPlans(db) {
   const items = db
     .prepare(
       `SELECT plan_id AS planId, liturgical_block AS liturgicalBlock, source_module AS sourceModule, source_id AS sourceId,
-              label, display_order AS displayOrder FROM mass_plan_items ORDER BY plan_id, display_order`,
+              label, display_order AS displayOrder, slot FROM mass_plan_items ORDER BY plan_id, display_order`,
     )
     .all();
   return db
@@ -437,11 +437,12 @@ function writeSetlistItems(db, setlistId, songUuids, songIdMap) {
 
 function writePlanItems(db, planId, items, songIdMap) {
   const insert = db.prepare(
-    'INSERT INTO mass_plan_items (plan_id, liturgical_block, source_module, source_id, label, display_order) VALUES (?, ?, ?, ?, ?, ?)',
+    'INSERT INTO mass_plan_items (plan_id, liturgical_block, source_module, source_id, label, display_order, slot) VALUES (?, ?, ?, ?, ?, ?, ?)',
   );
   for (const item of items) {
     const sourceId = item.sourceModule === 'lyrics' ? String(localSong(songIdMap, item.sourceId, 'A plan')) : String(item.sourceId);
-    insert.run(planId, item.liturgicalBlock, item.sourceModule, sourceId, item.label, item.displayOrder);
+    // A file from before slots has none, and its items are additional items.
+    insert.run(planId, item.liturgicalBlock, item.sourceModule, sourceId, item.label, item.displayOrder, typeof item.slot === 'string' ? item.slot : null);
   }
 }
 

@@ -12,6 +12,22 @@ export interface PlanItem {
   stale?: boolean;
   /** A song or hymn that was deleted but can still be undone. It is also stale while it is deleted. */
   deleted?: boolean;
+  /** The Holy Mass slot this item fills (see shared/mass-slots.js), or none for an additional item. */
+  slot?: string | null;
+}
+
+/** A plan saved to load into another: its name and how many items it holds. */
+export interface PlanTemplateSummary {
+  id: number;
+  name: string;
+  count: number;
+}
+
+export interface PlanTemplate {
+  id: number;
+  name: string;
+  /** `stale` marks an item whose source was deleted since the template was saved. */
+  items: PlanItem[];
 }
 
 export interface PlanSummary {
@@ -42,6 +58,11 @@ export interface PlansApi {
   deletePlan(id: number): Promise<boolean>;
   get(id: number): Promise<PlanDetail>;
   save(id: number, items: PlanItem[]): Promise<number>;
+  listTemplates(): Promise<PlanTemplateSummary[]>;
+  getTemplate(id: number): Promise<PlanTemplate>;
+  /** Saves items as a template under a name. A name already used is refused. */
+  saveTemplate(input: { name: string; items: PlanItem[] }): Promise<PlanTemplateSummary>;
+  deleteTemplate(id: number): Promise<boolean>;
 }
 
 /** The fixed liturgical blocks, in Mass order. Labels are looked up in planner-i18n.js. */

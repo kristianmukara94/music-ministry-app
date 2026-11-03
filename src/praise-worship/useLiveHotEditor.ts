@@ -3,6 +3,7 @@ import { bridge } from '../live/bridge';
 import type { Hymn, Stanza } from '../lyrics/types';
 import { splitAtMidpoint } from '../../shared/pw-hot-edit.js';
 import { applySplitToSession } from './store';
+import { HOLY_MASS_LOCKED, useHolyMassOnAir } from './holyMass';
 
 /** The section labels a stanza added on the fly can take. Each is one the lyrics parser reads back as a section header. */
 export const ADD_LABELS = ['Verse', 'Chorus', 'Bridge', 'Outro'] as const;
@@ -47,11 +48,17 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
   const [adding, setAdding] = useState<HotAdd | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The Holy Mass is on air: no edit, add or split is made, whatever asks for one. Praise & Worship and Quick Live are not affected.
+  const locked = useHolyMassOnAir();
 
   /** Saves a new list of stanzas. Resolves to the saved song, or null when it was refused (the reason is in `error`). */
   const saveStanzas = useCallback(
     async (stanzas: Pick<Stanza, 'stanzaType' | 'lyricsText'>[]): Promise<Hymn | null> => {
       if (!hymn) return null;
+      if (locked) {
+        setError(HOLY_MASS_LOCKED);
+        return null;
+      }
       setBusy(true);
       setError(null);
       try {
@@ -76,7 +83,7 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
         setBusy(false);
       }
     },
-    [hymn, onSaved],
+    [hymn, onSaved, locked],
   );
 
   /** A stanza's new words, checked: not empty, and with no line that would start a section of its own. */
@@ -87,7 +94,7 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
   };
 
   const startEdit = (index: number) => {
-    if (!hymn?.stanzas[index]) return;
+    if (locked || !hymn?.stanzas[index]) return;
     setAdding(null);
     setError(null);
     setEditing({ index, text: hymn.stanzas[index].lyricsText });
@@ -117,6 +124,10 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
    */
   const commitSplit = async (index: number): Promise<boolean> => {
     if (!hymn?.stanzas[index]) return false;
+    if (locked) {
+      setError(HOLY_MASS_LOCKED);
+      return false;
+    }
     const words = editing?.index === index ? editing.text : hymn.stanzas[index].lyricsText;
     const parts = splitAtMidpoint(words);
     if (!parts) {
@@ -141,6 +152,7 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
   };
 
   const startAdd = () => {
+    if (locked) return;
     setEditing(null);
     setError(null);
     setAdding({ label: 'Verse', text: '' });
@@ -173,6 +185,8 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
   };
 
   return {
+    /** True while the Holy Mass is on air: editing and adding are closed, and the controls are not shown. */
+    locked,
     editing,
     adding,
     busy,

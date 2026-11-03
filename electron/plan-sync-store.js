@@ -8,6 +8,7 @@
 // A plan is held only when a server item has a value the laptop cannot map at all (today: a reading whose name it does not know, or
 // a song the laptop does not have). A held plan is not sent, because a send would drop the item. Every held item is counted.
 import { DEFAULT_TEMPLATE } from '../shared/pw.js';
+import { slotIdOfNumber } from '../shared/mass-slots.js';
 import { MASS_PARTS, MASS_STEP_PARTS } from '../shared/mass-parts.js';
 import {
   massEntries, massBody, mergeEntries, praiseBody, praiseEntries, PRAISE_READING_TYPES, READING_TYPES, WEB_NOTE_PREFIX,
@@ -81,7 +82,7 @@ export function createPlanSyncStore(db) {
   const hymnByUuid = (uuid) => one('SELECT id, title FROM hymns WHERE uuid = ?', uuid) ?? null;
 
   const massRows = (planId) =>
-    all(`SELECT liturgical_block AS block, source_module AS module, source_id AS sourceId, label, display_order AS "order"
+    all(`SELECT liturgical_block AS block, source_module AS module, source_id AS sourceId, label, display_order AS "order", slot
          FROM mass_plan_items WHERE plan_id = ? ORDER BY display_order`, planId);
 
   const segmentRows = (sessionId) =>
@@ -180,17 +181,25 @@ export function createPlanSyncStore(db) {
     }
     const localEntries = massEntries(massRows(id), hymnUuidOf);
     const byKey = new Map(localEntries.map((e) => [e.key, e]));
+    // The slot an item fills comes from the website when it names one, and otherwise stays as the laptop had it: the website's own editor
+    // rebuilds the steps it shows without a slot, and a server from before slots sends none at all.
     const resolve = (item) => {
       const kept = byKey.get(item.key);
-      if (kept && sameMassRow(kept.row, item, sp.date, hymnByUuid)) return kept.row;
-      return massRowFrom(item, sp.date, hymnByUuid);
+      const row = kept && sameMassRow(kept.row, item, sp.date, hymnByUuid) ? kept.row : massRowFrom(item, sp.date, hymnByUuid);
+      if (!row) return null;
+      const slot = slotIdOfNumber(item.slot) ?? kept?.row.slot ?? null;
+      return { ...row, slot };
     };
     const { entries, unresolved } = mergeEntries(localEntries, sp.items, resolve);
     run('DELETE FROM mass_plan_items WHERE plan_id = ?', id);
+    // A slot holds one item. Should two arrive for one slot (two laptops filling it), the first keeps it and the other is an additional item.
+    const taken = new Set();
     entries.forEach((e, i) => {
+      const slot = e.row.slot && !taken.has(e.row.slot) ? e.row.slot : null;
+      if (slot) taken.add(slot);
       run(
-        'INSERT INTO mass_plan_items (plan_id, liturgical_block, source_module, source_id, label, display_order) VALUES (?, ?, ?, ?, ?, ?)',
-        id, e.row.block, e.row.module, e.row.sourceId, e.row.label, i + 1,
+        'INSERT INTO mass_plan_items (plan_id, liturgical_block, source_module, source_id, label, display_order, slot) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        id, e.row.block, e.row.module, e.row.sourceId, e.row.label, i + 1, slot,
       );
     });
     run('UPDATE mass_plans SET server_updated_at = ?, synced_updated_at = ? WHERE id = ?', sp.updatedAt, sp.updatedAt, id);

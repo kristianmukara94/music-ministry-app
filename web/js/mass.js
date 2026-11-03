@@ -1,7 +1,9 @@
-// Mass plan editor: the 31 steps of the Mass, and the drawer that fills the selected step. The steps come from the template. What
+// Holy Mass plan editor: the 17 numbered slots of the Holy Mass in five collapsible sections, then the other steps of each section, and the
+// drawer that fills the selected row. The structure comes from the template and mass-slots.js. What
 // is chosen, typed and noted comes from the saved plan on the server, and Save sends the whole plan in one request. A song step
 // takes a song from the church's list or a typed note; a reading takes a reference; a rite takes an optional note for the operator.
 import { LANGUAGE_CODE, MASS_PLAN } from './sample-data.js';
+import { SLOT_COUNT } from './mass-slots.js';
 import { esc, mountSidebar } from './shell.js';
 import { guard } from './auth.js';
 import { getPlan, listSongs, savePlan } from './plan-api.js';
@@ -9,7 +11,7 @@ import {
   NO_SONGS,
   VIEW_ONLY,
   dateLabel,
-  massSteps,
+  massSections,
   massFromItems,
   massToItems,
   savePayload,
@@ -24,23 +26,45 @@ import {
 mountSidebar();
 
 const planId = new URLSearchParams(location.search).get('id');
-const STEPS = massSteps(MASS_PLAN);
-const TOTAL = STEPS.length;
+const SECTIONS = massSections(MASS_PLAN);
+const ROWS = SECTIONS.flatMap((section) => section.rows);
+const OTHER = ROWS.filter((r) => !r.slot).length;
+const FIRST_ROW = 's1';
+
+// The sections the planner has closed, kept in this browser between visits. A blocked store just starts with every section open.
+const COLLAPSED_KEY = 'apcc.web.holyMassCollapsed';
+function readCollapsed() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((g) => SECTIONS.some((section) => section.group === g)) : [];
+  } catch {
+    return [];
+  }
+}
+function writeCollapsed(groups) {
+  try {
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify(groups));
+  } catch {
+    // Not kept.
+  }
+}
 
 let plan = null;
 let canEdit = false;
 let songs = [];
+let collapsed = readCollapsed();
 let state = fresh(null);
 
 function fresh(saved) {
   return {
-    sel: MASS_PLAN.firstSelected,
+    sel: FIRST_ROW,
     mode: 'list',
     allSongs: false,
     query: '',
     segments: saved?.segments ?? {},
     notes: saved?.notes ?? {},
     extra: saved?.extra ?? [],
+    meta: saved?.meta ?? {},
     dirty: false,
     noteSaved: false,
     saving: false,
@@ -48,10 +72,10 @@ function fresh(saved) {
   };
 }
 
-/** A step with what is chosen for it in the saved plan. Nothing comes from the template's sample values. */
-function stepOf(n) {
-  const base = STEPS.find((s) => s.n === n);
-  const seg = state.segments[n] ?? {};
+/** A row with what is chosen for it in the saved plan. Nothing comes from the template's sample values. */
+function stepOf(id) {
+  const base = ROWS.find((r) => r.id === id);
+  const seg = state.segments[id] ?? {};
   return {
     ...base,
     value: seg.songId ? titleOf(songs, seg.songId) : (seg.text ?? ''),
@@ -60,7 +84,7 @@ function stepOf(n) {
 }
 
 const subOf = (r) => {
-  const kind = r.kind === 'song' ? 'Song · ' + r.category : r.kind === 'reading' ? 'Reading' : 'Rite';
+  const kind = r.kind === 'song' ? 'Song · ' + r.category : r.kind === 'reading' ? 'Reading' : r.kind === 'slot-text' ? 'Text' : 'Rite';
   return r.hint ? kind + ' · ' + r.hint : kind;
 };
 
@@ -71,16 +95,17 @@ const TAB_OFF = 'flex:1;height:40px;border-radius:10px;border:1px solid #3a1523;
 const DISABLED = canEditAttr => (canEditAttr ? '' : 'disabled');
 
 function renderHeader() {
-  const steps = STEPS.map((s) => stepOf(s.n));
+  const steps = ROWS.map((r) => stepOf(r.id));
   const songSteps = steps.filter((s) => s.kind === 'song');
   const readings = steps.filter((s) => s.kind === 'reading');
-  document.getElementById('eyebrow').textContent = plan ? `MASS PLAN · ${dateLabel(plan.date)}` : 'MASS PLAN';
+  document.getElementById('eyebrow').textContent = plan ? `HOLY MASS PLAN · ${dateLabel(plan.date)}` : 'HOLY MASS PLAN';
   document.getElementById('title').textContent = plan ? plan.name : 'No plan open';
-  document.title = `${plan ? plan.name : 'Mass plan'} · APCCMMA Web Planner`;
+  document.title = `${plan ? plan.name : 'Holy Mass plan'} · APCCMMA Web Planner`;
   document.getElementById('status').textContent = plan ? statusText({ dirty: state.dirty, error: state.error }) : state.error || 'Not loaded';
   document.getElementById('songs-label').textContent = `${songSteps.filter((s) => s.value).length} of ${songSteps.length} chosen`;
   document.getElementById('readings-label').textContent = `${readings.filter((s) => s.value).length} of ${readings.length} entered`;
-  document.getElementById('steps-label').textContent = `${TOTAL} steps`;
+  const slotsFilled = steps.filter((r) => r.slot && (r.value || state.notes[r.id])).length;
+  document.getElementById('steps-label').textContent = `${slotsFilled} of ${SLOT_COUNT} slots · ${OTHER} other steps`;
   const save = saveButton(state.saving);
   const saveEl = document.getElementById('save');
   saveEl.disabled = !plan || !canEdit || save.disabled;
@@ -91,31 +116,31 @@ function renderHeader() {
   note.hidden = !plan || canEdit;
 }
 
-function renderSteps() {
-  document.getElementById('steps').innerHTML = MASS_PLAN.sections.map((section) => {
-    const rows = section.rows.map(([n]) => {
-      const r = stepOf(n);
-      const selected = r.n === state.sel;
-      let chip = '';
-      if (r.kind !== 'rite') {
-        let label; let fg; let bg;
-        if (r.value) {
-          label = r.src === 'list' ? 'From list' : 'Typed note';
-          fg = r.src === 'list' ? '#8fd9ae' : '#ecc98a';
-          bg = r.src === 'list' ? '#12301f' : '#2a1b0c';
-        } else if (r.optional) {
-          label = 'Optional'; fg = '#dbb3bf'; bg = '#2a1019';
-        } else {
-          label = r.kind === 'song' ? 'Needs a song' : 'Needs a reading'; fg = '#f2bd6b'; bg = '#33240c';
-        }
-        chip = `<span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap;color:${fg};background:${bg}">${label}</span>`;
-      }
-      const filled = r.kind !== 'rite' && !!r.value;
-      const needs = r.kind !== 'rite' && !r.value && !r.optional;
-      const btnLabel = r.kind === 'rite' ? 'Add note' : r.value ? 'Change' : 'Choose';
-      return `
-              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:12px 18px;border-bottom:1px solid #2b1019;${selected ? 'background:#2a0c18;box-shadow:inset 0 0 0 1px #ecc98a' : 'background:transparent'}">
-                <span style="flex: none; width: 28px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #b48d99">${String(r.n).padStart(2, '0')}</span>
+/** One row: its number (a slot's number, 1 to 17, or a dot for another step), its name, what is chosen, and the button that opens the drawer. */
+function rowHtml(r) {
+  const selected = r.id === state.sel;
+  const isText = r.kind === 'slot-text';
+  let chip = '';
+  if (r.kind !== 'rite') {
+    let label; let fg; let bg;
+    if (r.value) {
+      label = r.src === 'list' ? 'From list' : 'Typed note';
+      fg = r.src === 'list' ? '#8fd9ae' : '#ecc98a';
+      bg = r.src === 'list' ? '#12301f' : '#2a1b0c';
+    } else if (r.optional) {
+      label = 'Optional'; fg = '#dbb3bf'; bg = '#2a1019';
+    } else {
+      label = r.kind === 'song' ? 'Needs a song' : isText ? 'Needs text' : 'Needs a reading'; fg = '#f2bd6b'; bg = '#33240c';
+    }
+    chip = `<span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap;color:${fg};background:${bg}">${label}</span>`;
+  }
+  const filled = r.kind !== 'rite' && !!r.value;
+  const needs = r.kind !== 'rite' && !r.value && !r.optional;
+  const btnLabel = r.kind === 'rite' ? 'Add note' : r.value ? 'Change' : isText ? 'Type text' : 'Choose';
+  const number = r.slot ? String(r.slot).padStart(2, '0') : '•';
+  return `
+              <div data-row="${esc(r.id)}" ${r.slot ? `data-slot="${r.slot}"` : ''} style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:12px 18px;border-bottom:1px solid #2b1019;${selected ? 'background:#2a0c18;box-shadow:inset 0 0 0 1px #ecc98a' : 'background:transparent'}">
+                <span style="flex: none; width: 28px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: ${r.slot ? '#ecc98a' : '#b48d99'}"><span class="sr-only">${r.slot ? 'Slot ' : 'Step '}</span>${number}</span>
                 <span style="flex: 1 1 190px; min-width: 0; display: flex; flex-direction: column; gap: 3px">
                   <span style="font-size: 15px; font-weight: 700">${esc(r.name)}</span>
                   <span style="font-size: 12px; color: #b48d99">${esc(subOf(r))}</span>
@@ -124,15 +149,35 @@ function renderSteps() {
                   <span style="font-size:14px;line-height:1.4;${filled ? 'color:#f7eef0;font-weight:600' : 'color:#b48d99'}">${r.kind === 'rite' ? '' : esc(r.value || 'Nothing chosen yet')}</span>
                 </span>
                 <span style="flex: 0 0 auto; display: inline-flex">${chip}</span>
-                <button type="button" data-pick="${r.n}" aria-pressed="${selected}" ${DISABLED(canEdit)} style="height:36px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;${needs ? BTN_PRIMARY : BTN_QUIET}">${btnLabel}</button>
+                <button type="button" data-pick="${esc(r.id)}" aria-pressed="${selected}" ${DISABLED(canEdit)} style="height:36px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;${needs ? BTN_PRIMARY : BTN_QUIET}">${btnLabel}</button>
               </div>`;
-    }).join('');
+}
+
+/** The five collapsible sections: each one's slots in number order, then its other steps. */
+function renderSteps() {
+  document.getElementById('steps').innerHTML = SECTIONS.map((section) => {
+    const open = !collapsed.includes(section.group);
+    const slotRows = section.rows.filter((r) => r.slot);
+    const otherRows = section.rows.filter((r) => !r.slot);
+    const filled = slotRows.filter((r) => stepOf(r.id).value || state.notes[r.id]).length;
+    const body = open
+      ? slotRows.map((r) => rowHtml(stepOf(r.id))).join('') +
+        (otherRows.length
+          ? `<div style="padding: 10px 18px 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; color: #b48d99; background: #170811">OTHER STEPS</div>` + otherRows.map((r) => rowHtml(stepOf(r.id))).join('')
+          : '')
+      : '';
     return `
-          <div style="border: 1px solid #3a1523; border-radius: 16px; background: #1b0a13; overflow: hidden">
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: #22101a; border-bottom: 1px solid #3a1523">
-              <h2 style="margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.12em; color: #ecc98a">${esc(section.title)}</h2>
-              <span style="font-size: 12px; color: #b48d99">${section.rows.length} steps</span>
-            </div>${rows}
+          <div data-section="${section.group}" style="border: 1px solid #3a1523; border-radius: 16px; background: #1b0a13; overflow: hidden">
+            <h2 style="margin: 0; background: #22101a; border-bottom: ${open ? '1px solid #3a1523' : '0'}">
+              <button type="button" data-toggle="${section.group}" aria-expanded="${open}" aria-controls="section-${section.group}" style="display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border: 0; background: transparent; cursor: pointer; text-align: left">
+                <span style="display: inline-flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 800; letter-spacing: 0.12em; color: #ecc98a">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform: rotate(${open ? 90 : 0}deg)"><path d="m9 6 6 6-6 6"/></svg>
+                  ${section.number} · ${esc(section.title.toUpperCase())}
+                </span>
+                <span style="font-size: 12px; font-weight: 600; color: #b48d99">${filled} of ${slotRows.length} slots${otherRows.length ? ' · ' + otherRows.length + ' other' : ''}</span>
+              </button>
+            </h2>
+            <div id="section-${section.group}" ${open ? '' : 'hidden'}>${body}</div>
           </div>`;
   }).join('');
 }
@@ -140,7 +185,7 @@ function renderSteps() {
 function songBody() {
   const list = state.mode === 'list';
   const tabs = `
-            <div role="tablist" aria-label="How to fill this step" style="display: flex; gap: 8px">
+            <div role="tablist" aria-label="How to fill this row" style="display: flex; gap: 8px">
               <button type="button" role="tab" data-mode="list" aria-selected="${list}" style="${list ? TAB_ON : TAB_OFF}">Song list</button>
               <button type="button" role="tab" data-mode="text" aria-selected="${!list}" style="${list ? TAB_OFF : TAB_ON}">Type text</button>
             </div>`;
@@ -191,13 +236,26 @@ function readingBody(cur) {
           </div>`;
 }
 
+/** A spoken slot (I Confess, Prayer of the Faithful …): its words are typed. */
+function slotTextBody(cur) {
+  return `
+          <div style="display: flex; flex-direction: column; gap: 14px">
+            <label style="display: flex; flex-direction: column; gap: 8px">
+              <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Words or a short note for this part</span>
+              <textarea id="typed-text" rows="4" placeholder="e.g. Lord, hear our prayer" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(cur.value)}</textarea>
+            </label>
+            <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #b48d99">Typed text is a note for the operator on the church laptop. It does not appear on the projector.</p>
+            <button type="button" data-action="use-text" ${DISABLED(canEdit)} style="height: 44px; border-radius: 10px; border: 0; background: #ecc98a; color: #1c070d; font-size: 14px; font-weight: 700; cursor: pointer">Use this text</button>
+          </div>`;
+}
+
 function riteBody(cur) {
   return `
           <div style="display: flex; flex-direction: column; gap: 14px">
-            <p style="margin: 0; font-size: 14px; line-height: 1.55; color: #dbb3bf">This part of the Mass needs no song or reading. You can leave a note for the operator.</p>
+            <p style="margin: 0; font-size: 14px; line-height: 1.55; color: #dbb3bf">This part of the Holy Mass needs no song or reading. You can leave a note for the operator.</p>
             <label style="display: flex; flex-direction: column; gap: 8px">
               <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Operator note (optional)</span>
-              <textarea id="rite-note" rows="4" placeholder="e.g. Incense at the Gospel" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(state.notes[cur.n] ?? '')}</textarea>
+              <textarea id="rite-note" rows="4" placeholder="e.g. Incense at the Gospel" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(state.notes[cur.id] ?? '')}</textarea>
             </label>
             <button type="button" data-action="save-note" ${DISABLED(canEdit)} style="height: 44px; border-radius: 10px; border: 1px solid #6e2a3e; background: #2a0c18; color: #f7eef0; font-size: 14px; font-weight: 600; cursor: pointer">${state.noteSaved ? 'Note saved' : 'Save note'}</button>
           </div>`;
@@ -206,14 +264,14 @@ function riteBody(cur) {
 function renderDrawer() {
   const drawer = document.getElementById('drawer');
   if (!plan) {
-    drawer.innerHTML = `<p style="margin: 0; font-size: 14px; line-height: 1.5; color: #dbb3bf">${esc(state.error || 'Open a plan from your plan list to see its steps.')}</p>`;
+    drawer.innerHTML = `<p style="margin: 0; font-size: 14px; line-height: 1.5; color: #dbb3bf">${esc(state.error || 'Open a plan from your plan list to see its slots and steps.')}</p>`;
     return;
   }
   const cur = stepOf(state.sel);
-  const body = cur.kind === 'song' ? songBody() : cur.kind === 'reading' ? readingBody(cur) : riteBody(cur);
+  const body = cur.kind === 'song' ? songBody() : cur.kind === 'reading' ? readingBody(cur) : cur.kind === 'slot-text' ? slotTextBody(cur) : riteBody(cur);
   drawer.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 6px">
-          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #b48d99">STEP ${cur.n} OF ${TOTAL}</span>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #b48d99">${cur.slot ? `SLOT ${cur.slot} OF ${SLOT_COUNT}` : 'OTHER STEP'}</span>
           <h2 style="margin: 0; font-size: 24px; font-weight: 800; line-height: 1.15">${esc(cur.name)}</h2>
           <span style="font-size: 13px; color: #dbb3bf">${esc(subOf(cur))}</span>
         </div>${body}`;
@@ -237,7 +295,7 @@ function renderOptions() {
     return;
   }
   box.innerHTML = shown.map((song) => {
-    const chosen = state.segments[cur.n]?.songId === song.id;
+    const chosen = state.segments[cur.id]?.songId === song.id;
     const key = song.key ? ` · Key ${esc(song.key)}` : '';
     return `
                     <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #2b1019; background: #150610">
@@ -272,7 +330,7 @@ async function load() {
     plan = saved.plan;
     canEdit = saved.canEdit;
     songs = songsForEditor(list.songs, saved.songs);
-    state = fresh(massFromItems(plan.items, STEPS));
+    state = fresh(massFromItems(plan.items, ROWS));
   } catch (err) {
     if (plan) state.error = err.message;
     else state = { ...fresh(null), error: err.message };
@@ -286,7 +344,7 @@ async function save() {
   state.error = '';
   renderHeader();
   try {
-    const response = await savePlan(savePayload(plan, massToItems(state, STEPS)));
+    const response = await savePlan(savePayload(plan, massToItems(state, ROWS)));
     plan.updatedAt = response.savedAt;
     state.dirty = false;
   } catch (err) {
@@ -301,13 +359,17 @@ document.querySelector('main').addEventListener('click', (event) => {
   const target = event.target.closest('button');
   if (!target || target.disabled) return;
   if (target.dataset.pick) {
-    state.sel = Number(target.dataset.pick);
+    state.sel = target.dataset.pick;
     state.query = '';
     state.noteSaved = false;
     renderSteps();
     renderDrawer();
     // On a phone the drawer sits below the steps, so bring it into view.
     if (window.matchMedia('(max-width: 820px)').matches) document.getElementById('drawer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else if (target.dataset.toggle) {
+    collapsed = collapsed.includes(target.dataset.toggle) ? collapsed.filter((g) => g !== target.dataset.toggle) : [...collapsed, target.dataset.toggle];
+    writeCollapsed(collapsed);
+    renderSteps();
   } else if (target.dataset.mode) {
     state.mode = target.dataset.mode;
     renderDrawer();

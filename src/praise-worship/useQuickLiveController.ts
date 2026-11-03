@@ -4,7 +4,8 @@ import { dispatch, useLive } from '../live/store';
 import { stanzaFrame } from '../lyrics/frames';
 import type { Hymn } from '../lyrics/types';
 import { livePosition } from '../../shared/pw.js';
-import { frameFor, liveDeck } from './live';
+import type { LowerThird } from '../../shared/live.js';
+import { frameFor, liveDeck, lowerThirdFor } from './live';
 import { usePw } from './store';
 import { isTextEntry } from './textEntry';
 
@@ -24,6 +25,11 @@ export interface OffPlanSong {
   hymnId: number;
   title: string;
   at: number;
+}
+
+/** The lower third for a song sent from search: its category as the tag, then its title and composer. */
+export function quickLiveBand(hymn: Pick<Hymn, 'title' | 'composer' | 'songCategory'>): LowerThird {
+  return { template: 'segment', tag: hymn.songCategory || 'Song', line1: hymn.title, ...(hymn.composer ? { line2: hymn.composer } : {}) };
 }
 
 /** The first stanza with words in it. A song whose first stanza is blank starts on the next one rather than on an empty screen. */
@@ -59,6 +65,8 @@ export function useQuickLiveController() {
   const cueRef = useRef<Hymn | null>(null);
   cueRef.current = cue;
   const cuePanelRef = useRef<HTMLElement | null>(null);
+  // The lower third this panel put up for its song, to take down or replace when Quick Live ends. Null when it did not.
+  const bandRef = useRef<LowerThird | null>(null);
 
   // The song on the projector now, when it came from a song's own lyrics.
   const liveHymnId = live.kind === 'lyrics' ? (live.song?.hymnId ?? null) : null;
@@ -117,6 +125,9 @@ export function useQuickLiveController() {
         }
         dispatch({ type: 'projector/show', frame, source: 'DIRECT_DECK' });
         setCue(hymn);
+        // Go Live turns the lower third on, naming the song, without the operator pressing the toggle.
+        bandRef.current = quickLiveBand(hymn);
+        dispatch({ type: 'lowerThird/on', value: bandRef.current });
         // The warnings are told in order of how much they matter: no window at all, then output off, then no second screen.
         if (windowOpen === false) say({ hymnId, kind: 'screen', text: 'The projector window is not open. Open it from the projector switch, then show the song again.' });
         else if (!projectorOn) say({ hymnId, kind: 'screen', text: 'The projector output is off. The song is ready and shows when it is switched on.' });
@@ -223,6 +234,16 @@ export function useQuickLiveController() {
   }, []);
 
   /**
+   * Whether the lower third on screen is the one Quick Live put up. 'on' means it is, and it is now no longer this panel's to manage; 'off'
+   * means the operator has taken it down or something else is on, which is left as it is.
+   */
+  const takeDownBand = (state: ReturnType<typeof useLive.getState>['state']): 'on' | 'off' => {
+    const mine = bandRef.current;
+    bandRef.current = null;
+    return mine && state.lowerThird.live && JSON.stringify(state.lowerThird.live) === JSON.stringify(mine) ? 'on' : 'off';
+  };
+
+  /**
    * Puts the lineup's slide that was on air back on the projector and on air in the lineup, as it was before the song from search.
    * 'none' means no lineup slide was parked (nothing to restore); 'missing' means it was, but the slide is gone.
    */
@@ -236,6 +257,11 @@ export function useQuickLiveController() {
     if (!at || !segment || !step) return 'missing';
     dispatch({ type: 'projector/show', frame: frameFor(segment, step), source: 'PW_SESSION' });
     dispatch({ type: 'pw/cursor', segmentKey: segment.key, slide: at.slide, now: Date.now() });
+    // The song's band on screen is replaced by the segment's own, so the lower third names what is on air.
+    if (takeDownBand(state) === 'on') {
+      const hymnId = step.kind === 'slide' && step.slide.kind === 'lyrics' ? step.slide.hymnId : null;
+      dispatch({ type: 'lowerThird/show', value: lowerThirdFor(session, segment, hymnId) });
+    }
     return { name: segment.name };
   }, []);
 
@@ -261,6 +287,8 @@ export function useQuickLiveController() {
     if (typeof result === 'object') tell(`Returned to Lineup: ${result.name}`);
     else {
       if (songUp) dispatch({ type: 'projector/clear' });
+      // With no lineup to go back to, the song's band goes with the song.
+      if (takeDownBand(state) === 'on') dispatch({ type: 'lowerThird/clear' });
       tell(result === 'missing' ? 'Quick Live ended. The lineup slide that was on air is not there any more.' : 'Quick Live ended. The screen is clear.');
     }
     setCue(null);

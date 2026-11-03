@@ -106,5 +106,5 @@ test('the toggle sits on the Live panel, and the Settings page has the default',
   assert.match(read('src/praise-worship/IntroSlideToggle.tsx'), /dispatch\(\{ type: 'introSlide\/set', value: id \}\)/);
   assert.match(read('src/praise-worship/LiveView.tsx'), /<IntroSlideToggle \/>/);
   assert.match(read('src/settings/ProjectorSettings.tsx'), /save\(\{ defaultIntroSlideMode \}\)/);
-  assert.match(read('src/output/ProjectorView.tsx'), /presentedFrame\(mirror && projector\.paused \? projector\.staged : projector\.live, introSlideMode\)/);
+  assert.match(read('src/output/ProjectorView.tsx'), /presentedFrame\(mirrorSource\(projector, \{ mirror, peek: stagePeek \}\), introSlideMode\)/);
 });

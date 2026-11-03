@@ -298,8 +298,21 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
     return { plans: res.body.plans ?? [], cursor: res.body.cursor ?? null, more: Boolean(res.body.more) };
   }
 
+  /**
+   * A website from before Holy Mass slots refuses a plan for the field it does not know. Such a refusal is answered by sending the plan again
+   * without its slots, so plans keep syncing until the website is updated; the slots stay on the laptop.
+   */
+  const OLD_SITE = /field the planner does not accept/i;
+  const hasSlots = (plan) => Array.isArray(plan?.items) && plan.items.some((item) => item && 'slot' in item);
+  const withoutSlots = (plan) => ({ ...plan, items: plan.items.map(({ slot: _slot, ...item }) => item) });
+  const retryWithoutSlots = async (send, plan) => {
+    const first = await send(plan);
+    return first.status === 'error' && hasSlots(plan) && OLD_SITE.test(first.message ?? '') ? send(withoutSlots(plan)) : first;
+  };
+
   /** Creates a plan the website does not have. A 409 means the id is already there, which the sync settles as a conflict. */
-  async function createPlan(plan) {
+  const createPlan = (plan) => retryWithoutSlots(createPlanOnce, plan);
+  async function createPlanOnce(plan) {
     const res = await planCall('plan-create', { method: 'POST', body: plan });
     if (res.status === 201) return { status: 'created', updatedAt: res.body.plan.updatedAt };
     if (res.status === 409) return { status: 'exists' };
@@ -307,7 +320,8 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
   }
 
   /** Sends one plan against its base version. Returns accepted, conflict (with the website's version) or error. */
-  async function pushPlan(plan) {
+  const pushPlan = (plan) => retryWithoutSlots(pushPlanOnce, plan);
+  async function pushPlanOnce(plan) {
     const res = await planCall('plan-sync-push', { method: 'POST', body: { plans: [plan] } });
     if (!res.ok) return { status: 'error', message: serverMessage(res) };
     const [result] = res.body.results ?? [];

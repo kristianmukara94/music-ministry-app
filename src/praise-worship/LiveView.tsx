@@ -15,6 +15,7 @@ import { IntroSlideToggle } from './IntroSlideToggle';
 import { SlideTypography } from './SlideTypography';
 import { SecondaryControls } from './SecondaryControls';
 import { LineupHotEdit } from './LineupHotEdit';
+import { useHolyMassOnAir } from './holyMass';
 import { ShowAllVerses } from '../components/ShowAllVerses';
 import { useUi } from '../state/ui';
 import { setPwState, usePw } from './store';
@@ -107,6 +108,7 @@ export function LiveView() {
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   // A slide whose stanza the operator double-clicked to edit, handed to the lineup editor.
   const [editRequest, setEditRequest] = useState<number | null>(null);
+  const holyMassOnAir = useHolyMassOnAir();
   const session = usePw((s) => s.session);
   // Subscribed so the deck is rebuilt when songs, prayers or the day's readings finish loading.
   const hymns = usePw((s) => s.hymns);
@@ -277,7 +279,7 @@ export function LiveView() {
                                 <button
                                   type="button"
                                   onClick={() => jumpTo(segmentIndex, i)}
-                                  onDoubleClick={() => setEditRequest(i)}
+                                  onDoubleClick={holyMassOnAir ? undefined : () => setEditRequest(i)}
                                   aria-current={here ? 'step' : undefined}
                                   aria-label={t('stepLabel', { label: chip.name, n: i + 1, total: steps.length })}
                                   className={`grid h-10 min-w-12 place-items-center rounded-full border px-3 font-mono text-sm font-bold transition ${

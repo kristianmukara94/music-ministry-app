@@ -18,7 +18,7 @@ export function sameContent(local, server) {
   const norm = (items) =>
     [...items]
       .sort((a, b) => a.order - b.order)
-      .map((i) => [i.key, i.group ?? '', i.order, i.kind, i.songId ?? null, i.text ?? null, i.minutes ?? null, i.note ?? null]);
+      .map((i) => [i.key, i.group ?? '', i.order, i.kind, i.songId ?? null, i.text ?? null, i.minutes ?? null, i.note ?? null, i.slot ?? null]);
   return local.name === server.name && local.date === server.date && JSON.stringify(norm(local.items)) === JSON.stringify(norm(server.items));
 }
 

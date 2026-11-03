@@ -31,8 +31,8 @@ test('a missing or impossible date is refused', () => {
   assert.equal(model.checkNewPlan({ name: 'Plan', date: '01/11/2026', kind: 'mass' }), 'Choose a date for the plan.');
 });
 
-test('a type other than Mass or Praise & Worship is refused', () => {
-  assert.equal(model.checkNewPlan({ name: 'Plan', date: '2026-11-01', kind: 'choir' }), 'Choose Mass or Praise & Worship.');
+test('a type other than Holy Mass or Praise & Worship is refused', () => {
+  assert.equal(model.checkNewPlan({ name: 'Plan', date: '2026-11-01', kind: 'choir' }), 'Choose Holy Mass or Praise & Worship.');
 });
 
 test('a created plan opens the editor for its type, with its id in the address', () => {

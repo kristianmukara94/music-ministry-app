@@ -1,34 +1,22 @@
-import type { PlannerKey } from '../../shared/planner-i18n.js';
-import { MASS_FLOW, stepSourceId } from '../../shared/mass-flow.js';
+import { BUILT_IN_TEMPLATES, placeInSlot, slotById } from '../../shared/mass-slots.js';
+import { MASS_ORDER, massPartName } from '../liturgy/massOrder';
 import type { PlanItem } from './types';
 
-export type Season = 'blank' | 'advent' | 'lent' | 'ordinary';
-
-export const SEASONS: Season[] = ['blank', 'advent', 'lent', 'ordinary'];
-
-/** The season's key in planner-i18n.js, used for the picker label. */
-export const SEASON_KEY: Record<Season, PlannerKey> = {
-  blank: 'season_blank',
-  advent: 'season_advent',
-  lent: 'season_lent',
-  ordinary: 'season_ordinary',
-};
+/** The orders a new plan can start from: the two templates that come with the app. */
+export type NewPlanTemplate = 'standard' | 'weekday';
+export const NEW_PLAN_TEMPLATES: NewPlanTemplate[] = ['standard', 'weekday'];
 
 /**
- * A new Mass plan starts with the 31 steps of the Ordinary, as placeholders. Each placeholder is filled in by the operator
- * (a hymn, a Bible passage, a Mass Order text, or typed text). Liturgical names stay in English in every language.
- * Blank plans start empty. Advent and Lent leave out the Gloria step and note that it is omitted.
+ * A built-in template as plan items: the slots it fills, each with the Mass Order text it names, labelled in the operator's language.
+ * Standard Sunday fills none, so a plan made from it is the 17 slots, empty, with nothing stored and no additional items.
  */
-export function seasonItems(season: Season, note: (key: PlannerKey) => string): PlanItem[] {
-  if (season === 'blank') return [];
-  const items: PlanItem[] = [];
-  const omitsGloria = season === 'advent' || season === 'lent';
-  if (omitsGloria) {
-    items.push({ block: 'introductory', module: 'custom', sourceId: note('seasonGloriaOmitted'), label: note('seasonGloriaOmitted') });
-  }
-  for (const step of MASS_FLOW) {
-    if (omitsGloria && step.id === 'gloria') continue;
-    items.push({ block: step.block, module: 'custom', sourceId: stepSourceId(step), label: step.name });
+export function builtInItems(id: string, lang: 'en' | 'tl' | 'ceb'): PlanItem[] {
+  const template = BUILT_IN_TEMPLATES.find((tpl) => tpl.id === id);
+  let items: PlanItem[] = [];
+  for (const fill of template?.fills ?? []) {
+    const part = MASS_ORDER.find((p) => p.id === fill.sourceId);
+    if (!part || !slotById(fill.slot)) continue;
+    items = placeInSlot(items, fill.slot, { module: 'mass_order', sourceId: part.id, label: massPartName(part, lang) });
   }
   return items;
 }

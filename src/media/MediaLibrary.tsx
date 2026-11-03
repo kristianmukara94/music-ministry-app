@@ -219,7 +219,7 @@ export function MediaLibrary() {
 
   const addToMassQueue = (m: MediaAsset) => {
     addToQueue([{ block: 'introductory', module: 'media', sourceId: String(m.id), label: m.filename }])
-      .then(() => setNotice(`"${m.filename}" added to the Mass Queue.`))
+      .then(() => setNotice(`"${m.filename}" added to the Holy Mass Queue.`))
       .catch((err) => setError(errorText(err)));
   };
 
@@ -463,7 +463,7 @@ function ContextMenu({ state, onClose, onStage, onQueue, onDefault, onRename, on
   const { asset: m } = state;
   const items: { label: string; disabled?: boolean; danger?: boolean; run: () => void }[] = [
     { label: 'Stage to Projector', disabled: m.mediaType === 'audio', run: () => onStage(m) },
-    { label: 'Add to Mass Queue', run: () => onQueue(m) },
+    { label: 'Add to Holy Mass Queue', run: () => onQueue(m) },
     { label: 'Set as Default Worship Background', disabled: m.mediaType !== 'image', run: () => onDefault(m) },
     { label: 'Rename', run: () => onRename(m) },
     { label: 'Reveal in File Explorer', run: () => onReveal(m) },

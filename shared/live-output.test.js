@@ -141,7 +141,7 @@ test('the cue panel edits and adds stanzas through the song, keeping its filing,
   assert.match(hot, /const at = after === null \? hymn\.stanzas\.length : Math\.min\(after \+ 1, hymn\.stanzas\.length\);/, 'a new stanza goes after the one on screen');
   assert.match(hot, /SECTION_LINE = \/\^\\s\*\\\[\[\^\\\]\]\+\\\]\\s\*\$\/m/, 'a bracket line cannot slip a new section into a stanza');
   const panel = read('src/praise-worship/QuickCuePanel.tsx');
-  assert.match(panel, /onDoubleClick=\{\(\) => hot\.startEdit\(i\)\}/);
+  assert.match(panel, /onDoubleClick=\{hot\.locked \? undefined : \(\) => hot\.startEdit\(i\)\}/);
   assert.match(panel, /useLiveHotEditor\(cue, quick\.adoptCue\)/);
   assert.match(panel, /if \(busyEditing \|\| document\.querySelector/, 'Shift + Escape waits while a stanza is being edited');
   // The song watch refreshes the live lyric frame after any edit of its song.

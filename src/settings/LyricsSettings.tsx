@@ -62,7 +62,7 @@ function LibraryOverview({ version }: { version: number }) {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <Stat label="Songs" value={stats.total} />
             <Stat label="Stanzas" value={stats.stanzas} />
-            <Stat label="Without a Mass category" value={stats.uncategorised} tone="warn" />
+            <Stat label="Without a Holy Mass category" value={stats.uncategorised} tone="warn" />
             <Stat label="Without a musical key" value={stats.noKey} />
           </div>
 
@@ -76,7 +76,7 @@ function LibraryOverview({ version }: { version: number }) {
               </ul>
             </div>
             <div className="flex flex-col gap-2">
-              <h3 className="text-sm font-semibold text-fg">By Mass category</h3>
+              <h3 className="text-sm font-semibold text-fg">By Holy Mass category</h3>
               <ul className="flex flex-col gap-1.5">
                 {stats.categories.map(([name, count]) => (
                   <Bar key={name} name={name} count={count} total={stats.total} />
@@ -90,7 +90,7 @@ function LibraryOverview({ version }: { version: number }) {
           {stats.uncategorised > 0 && (
             <p className="flex items-start gap-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-fg/80">
               <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" aria-hidden />
-              {stats.uncategorised} {stats.uncategorised === 1 ? 'song has' : 'songs have'} no Mass category. Open {stats.uncategorised === 1 ? 'it' : 'each'} in Song Lyrics and choose one, so it can be found when planning a Mass.
+              {stats.uncategorised} {stats.uncategorised === 1 ? 'song has' : 'songs have'} no Holy Mass category. Open {stats.uncategorised === 1 ? 'it' : 'each'} in Song Lyrics and choose one, so it can be found when planning a Holy Mass.
             </p>
           )}
         </>
@@ -245,15 +245,15 @@ export function LyricsSettings() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader eyebrow="Content" title="Song lyrics" description="Manage the song library, how lyrics look on the projector, and the categories used when planning a Mass." />
+      <PageHeader eyebrow="Content" title="Song lyrics" description="Manage the song library, how lyrics look on the projector, and the categories used when planning a Holy Mass." />
 
       <LibraryOverview version={version} />
       <SlideTextCard
         id="lyrics-text"
         sample={['Amazing grace, how sweet the sound', 'That saved a wretch like me']}
-        note="A song with its own font, set in the song editor, keeps that font. The Live panel has the same size buttons for use during Mass."
+        note="A song with its own font, set in the song editor, keeps that font. The Live panel has the same size buttons for use during Holy Mass."
       />
-      <Card id="lyrics-categories" title="Song categories for the Mass">
+      <Card id="lyrics-categories" title="Song categories for the Holy Mass">
         <SongCategoriesEditor onChanged={refresh} />
       </Card>
       <RecentlyDeletedCard version={version} onRestored={refresh} />

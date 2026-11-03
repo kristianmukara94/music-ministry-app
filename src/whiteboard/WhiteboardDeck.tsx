@@ -8,6 +8,8 @@ import { SlideCanvas } from './SlideCanvas';
 import { notifyWhiteboardChanged } from './changes';
 import { errorText } from './errors';
 import { FolderRail, type FolderView } from './FolderRail';
+import { ImportProgressBar } from './ImportProgressBar';
+import { usePowerPointImport } from './usePowerPointImport';
 import { projectWhiteboardSlide } from './projectSlide';
 import { SlideEditorModal } from './SlideEditorModal';
 import { TemplateModal, type TemplateId } from './TemplateModal';
@@ -112,7 +114,6 @@ export function WhiteboardDeck() {
   const [view, setView] = useState<FolderView>('all');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   // The editor's draft. `key` changes when a template replaces the draft, so the editor starts again from it.
   const [editor, setEditor] = useState<{ key: number; mode: 'create' | 'edit'; initial: WhiteboardSlideInput } | null>(null);
@@ -281,21 +282,24 @@ export function WhiteboardDeck() {
     }
   };
 
-  const importPowerPoint = async () => {
-    setBusy(true);
+  // The import reports as it goes, so the button can show a bar. A finished import shows a confirmation; a failed one leaves nothing half done and says what to try.
+  const powerPoint = usePowerPointImport({
+    folderId,
+    destination,
+    onDone: async (message) => {
+      setNotice(message);
+      await reload();
+    },
+    onFail: setError,
+  });
+  const busy = powerPoint.busy;
+  const importPowerPoint = () => {
     setError(null);
     setNotice(null);
-    try {
-      const added = await api.importPowerPoint(folderId);
-      if (added != null && added > 0) setNotice(`Added ${plural(added, 'slide', 'slides')} to "${destination}".`);
-      else if (added === 0) setNotice('That PowerPoint has no visible slides to import (hidden slides are skipped).');
-      await reload();
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setBusy(false);
-    }
+    void powerPoint.start();
   };
+  /** The button's label: "Import PowerPoint", or the running percentage while an import is under way. */
+  const importButtonText = busy ? `Importing… ${powerPoint.progress?.percentage ?? 0}%` : 'Import PowerPoint';
 
   /** Moves slides to a folder (or Unfiled), then reloads. Says what moved and where. */
   const moveTo = async (ids: number[], target: number | null) => {
@@ -404,10 +408,10 @@ export function WhiteboardDeck() {
             <Layers size={14} aria-hidden /> Templates
           </button>
           <button type="button" onClick={importPowerPoint} disabled={busy} className={HEADER_BTN} title={`Import into ${destination}`}>
-            <FileUp size={14} aria-hidden /> {busy ? 'Importing…' : 'Import PowerPoint'}
+            <FileUp size={14} aria-hidden /> {importButtonText}
           </button>
           {hasPictures && (
-            <button type="button" onClick={() => void addAllToGoLive()} className={HEADER_BTN} title="Adds the PowerPoint slides shown to the Mass Queue">
+            <button type="button" onClick={() => void addAllToGoLive()} className={HEADER_BTN} title="Adds the PowerPoint slides shown to the Holy Mass Queue">
               <ListPlus size={14} aria-hidden /> Add PowerPoint to Go Live
             </button>
           )}
@@ -417,6 +421,11 @@ export function WhiteboardDeck() {
         </div>
       </header>
 
+      {busy && (
+        <div className="border-b border-line bg-accent/10 px-6 py-3">
+          <ImportProgressBar progress={powerPoint.progress} />
+        </div>
+      )}
       {error && <div role="alert" className="border-b border-danger/40 bg-danger/10 px-6 py-2 text-sm whitespace-pre-line text-danger">{error}</div>}
       {notice && !error && (
         <div role="status" className="flex items-center justify-between gap-3 border-b border-line bg-accent/10 px-6 py-2 text-sm text-fg/90">
@@ -465,7 +474,7 @@ export function WhiteboardDeck() {
                   <Plus size={14} aria-hidden /> New slide
                 </button>
                 <button type="button" onClick={importPowerPoint} disabled={busy} className={HEADER_BTN}>
-                  <FileUp size={14} aria-hidden /> Import PowerPoint
+                  <FileUp size={14} aria-hidden /> {importButtonText}
                 </button>
               </div>
               <p className="mt-6 max-w-lg text-xs text-fg/50">
@@ -544,7 +553,7 @@ export function WhiteboardDeck() {
                   {view !== 'unfiled' && (
                     <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
                       <button type="button" onClick={importPowerPoint} disabled={busy} className={HEADER_PRIMARY}>
-                        <FileUp size={14} aria-hidden /> {busy ? 'Importing…' : 'Import PowerPoint'}
+                        <FileUp size={14} aria-hidden /> {importButtonText}
                       </button>
                       <button type="button" onClick={openNew} className={HEADER_BTN}>
                         <Plus size={14} aria-hidden /> New slide

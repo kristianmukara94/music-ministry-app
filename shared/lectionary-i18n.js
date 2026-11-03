@@ -4,7 +4,7 @@ export const LECT_LANGS = ['en', 'tl', 'ceb'];
 
 const STRINGS = {
   en: {
-    eyebrow: 'Daily Mass Readings',
+    eyebrow: 'Daily Holy Mass Readings',
     title: 'Lectionary',
     subtitle: "Paste the day's readings, then stage them for the projector. Long texts are split into slides.",
     dateHeading: 'Liturgical date',

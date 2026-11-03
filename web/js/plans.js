@@ -12,7 +12,7 @@ const state = { tab: 'all', query: '', plans: null, message: '', error: '' };
 
 const TABS = [
   { key: 'all', label: 'All' },
-  { key: 'mass', label: 'Mass' },
+  { key: 'mass', label: 'Holy Mass' },
   { key: 'pw', label: 'Praise &amp; Worship' },
 ];
 const TAB_ON = 'height:40px;padding:0 16px;border-radius:10px;border:1px solid #ecc98a;background:#2a0c18;color:#ecc98a;font-size:14px;font-weight:700;cursor:pointer';
@@ -53,7 +53,7 @@ function renderRows() {
               <span style="flex: none; width: 44px; height: 44px; border-radius: 12px; background: #2a0c18; border: 1px solid #55202f; display: grid; place-items: center; color: #ecc98a">${isPw ? ICON_PW : ICON_MASS}</span>
               <span style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
                 <span style="font-size: 16px; font-weight: 700">${esc(p.name)}</span>
-                <span style="font-size: 13px; color: #b48d99">${isPw ? 'Praise &amp; Worship' : 'Mass plan'} · Updated ${esc(updatedText(p.updated_at))}</span>
+                <span style="font-size: 13px; color: #b48d99">${isPw ? 'Praise &amp; Worship' : 'Holy Mass plan'} · Updated ${esc(updatedText(p.updated_at))}</span>
               </span>
             </span>
             <span style="flex: 0 0 240px; font-size: 14px; color: #dbb3bf">${esc(shortDate(p.liturgical_date))}</span>

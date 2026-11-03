@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, ListMusic, Play, Plus, Search, Send, Trash2 } from 'lucide-react';
+import { clearSlot, moveToSlot, placeInSlot, additionalIn, MASS_SLOTS } from '../../shared/mass-slots.js';
+import { SHOW_STAGED_UI, activeRowIndex, canStageRow, songRowActions, textRowActions } from '../../shared/stage-plan-row.js';
 import { bridge } from '../live/bridge';
-import { dispatch } from '../live/store';
+import { dispatch, useLive } from '../live/store';
 import { setUi, useUi } from '../state/ui';
 import { formatIsoDay } from '../state/region';
 import { useRegion } from '../state/useRegion';
@@ -14,8 +16,12 @@ import { GOSPEL_ACCLAMATION } from '../lectionary/types';
 import { blockRows, moveInto, queueFromPlan, type DragSource } from './logic';
 import { syncQueueIfLoaded } from './plan-api';
 import { openQueueItem } from './routing';
+import { HolyMassPlan } from './HolyMassPlanner';
+import { MassTemplates } from './MassTemplates';
+import type { PickedItem } from './MassItemSelect';
 import { usePlannerT, type PlannerT } from './strings';
-import { SEASONS, SEASON_KEY, seasonItems, type Season } from './templates';
+import { builtInItems, type NewPlanTemplate } from './templates';
+import { NewPlanForm } from './NewPlanForm';
 import { songCategoryOf, stepFor, type MassStep } from '../../shared/mass-flow.js';
 import { overlayLyricsItems } from '../../shared/hymn-cache.js';
 import { BLOCKS, type LibraryItem, type LiturgicalBlock, type PlanItem, type PlanSummary, type SourceModule } from './types';
@@ -33,8 +39,6 @@ const TABS: { id: SourceModule; key: string }[] = [
   { id: 'custom', key: 'tab_custom' },
 ];
 
-/** The label for a placeholder step's kind, shown in place of the module on its row. */
-const KIND_KEY: Record<MassStep['kind'], string> = { song: 'kindSong', reading: 'kindReading', note: 'kindNote' };
 
 const MODULE_KEY: Record<SourceModule, string> = {
   lyrics: 'module_lyrics',
@@ -188,9 +192,7 @@ export function MassPlanner() {
   // The current title and deleted state of each song in the plan, from the library.
   const [hymnNow, setHymnNow] = useState<Record<number, { title?: string; deleted: boolean }>>({});
   const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newDate, setNewDate] = useState(upcomingSunday);
-  const [season, setSeason] = useState<Season>('blank');
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [noteBlock, setNoteBlock] = useState<LiturgicalBlock>('introductory');
 
@@ -315,7 +317,40 @@ export function MassPlanner() {
       setError(t('createPlanFirst'));
       return;
     }
-    void persist(moveInto(items, source, block, slot));
+    // A row that fills a slot and is dropped among the additional items stops filling the slot, so the section's slot order holds.
+    const base = source.kind === 'plan' ? items.map((it, i) => (i === source.index ? { ...it, slot: null } : it)) : items;
+    void persist(moveInto(base, source, block, slot));
+  };
+
+  /** Puts an item in a Holy Mass slot, replacing what was there, and saves the plan through the same path as a drop. */
+  const fillSlot = (slotId: string, item: PickedItem) => {
+    if (planId == null) {
+      setError(t('createPlanFirst'));
+      return;
+    }
+    void persist(placeInSlot(items, slotId, item));
+  };
+
+  const emptySlot = (slotId: string) => void persist(clearSlot(items, slotId));
+
+  /** A library item or a plan row dropped on a slot fills it. A plan row leaves its own place, which becomes empty (or an empty slot). */
+  const dropOnSlot = (slotId: string) => {
+    const source = dragRef.current;
+    dragRef.current = null;
+    setDrop(null);
+    if (!source) return;
+    if (planId == null) {
+      setError(t('createPlanFirst'));
+      return;
+    }
+    void persist(source.kind === 'library' ? placeInSlot(items, slotId, source.item) : moveToSlot(items, source.index, slotId));
+  };
+
+  /** Loads a template's items into the plan, replacing its own. */
+  const applyTemplate = (next: PlanItem[], name: string, skipped: number) => {
+    if (planId == null) return;
+    setNotice(null);
+    void persist(next).then(() => setNotice(skipped > 0 ? t('templateLoadedSkipped', { name, n: next.length, skipped }) : t('templateLoaded', { name, n: next.length })));
   };
 
   const removeAt = (index: number) => {
@@ -326,8 +361,8 @@ export function MassPlanner() {
   /** Swaps a row with its neighbour in the same block. Other blocks never move, so Mass order holds. */
   const nudge = (index: number, delta: -1 | 1) => {
     if (index < 0 || index >= items.length) return;
-    const block = items[index].block;
-    const members = items.flatMap((it, i) => (it.block === block ? [i] : []));
+    // Slots keep their order, so only the additional items of a section move up and down.
+    const members = additionalIn(items, items[index].block);
     const to = members[members.indexOf(index) + delta];
     if (to === undefined) return;
     const next = [...items];
@@ -349,6 +384,9 @@ export function MassPlanner() {
     void persist(moveInto(items, { kind: 'library', item: { module: 'custom', sourceId: text, label: text } }, noteBlock, slot));
   };
 
+  /** After a row is staged: opens the floating preview panel, which shows the staged slide. No output is switched on, so no window opens. */
+  const showStaged = () => setUi(SHOW_STAGED_UI);
+
   /** Stages one row in its module, loading the plan into the queue first so the cursor matches the row. */
   const stageRow = async (index: number) => {
     if (planId == null || index < 0 || index >= items.length) return;
@@ -357,7 +395,24 @@ export function MassPlanner() {
     dispatch({ type: 'queue/set', items: queue, planId });
     setError(null);
     try {
-      if (queue[index]) await openQueueItem(queue[index], index);
+      const row = items[index];
+      // A plain-text response (I confess…, May the Lord accept…) has no module to open in, so it is staged as a text slide.
+      const textActions = textRowActions(row, index, MASS_SLOTS.find((s: { id: string }) => s.id === row.slot)?.name ?? row.label);
+      if (textActions) {
+        for (const action of textActions) dispatch(action);
+        showStaged();
+      } else if (!canStageRow(row)) {
+        // An operator note: it is never shown, so there is nothing to stage.
+      } else if (row.module === 'lyrics') {
+        // A song: its title and first stanza are read from the library and staged here, with the rest a click away. The planner is not left for the song deck.
+        const actions = songRowActions(row, index, await bridge.lyrics.getHymn(Number(row.sourceId)));
+        if (!actions) throw new Error(t('stale'));
+        for (const action of actions) dispatch(action);
+        showStaged();
+      } else if (queue[index]) {
+        // A reading, passage or Mass Order part is staged by its module (it answers true when it did), and the preview shows it as well.
+        if (await openQueueItem(queue[index], index, { inPlace: true })) showStaged();
+      }
     } catch (err) {
       fail(err);
     }
@@ -370,17 +425,19 @@ export function MassPlanner() {
     setNotice(t('loadedNotice', { n: items.length }));
   };
 
-  const createPlan = async (e: FormEvent) => {
-    e.preventDefault();
+  /** Makes a plan from the New plan form. Standard Sunday stores nothing (its 17 slots are empty); Weekday fills its slots. */
+  const createPlan = async ({ name, liturgicalDate, template }: { name: string; liturgicalDate: string; template: NewPlanTemplate }) => {
     setError(null);
     try {
-      const created = await api.create({ name: newName, liturgicalDate: newDate });
-      if (season !== 'blank') await api.save(created.id, seasonItems(season, t));
-      setNewName('');
+      const created = await api.create({ name, liturgicalDate });
+      const fills = builtInItems(template, lang);
+      if (fills.length > 0) await api.save(created.id, fills);
       setCreating(false);
       await reloadPlans(created.id);
+      return true;
     } catch (err) {
       fail(err);
+      return false;
     }
   };
 
@@ -394,9 +451,145 @@ export function MassPlanner() {
     }
   };
 
+  /**
+   * One additional item's row: an item that fills no slot (a note, an announcement, a plan from before slots, a placeholder step). `extra` is its
+   * place among the section's additional items; its place among all of the section's rows is what a drop and a move use.
+   */
+  const renderAdditional = (row: PlanItem, rows: PlanItem[], extra: number, blockId: LiturgicalBlock) => {
+    const index = shown.indexOf(row);
+    const slot = blockRows(shown, blockId).indexOf(row);
+    const marked = drop?.block === blockId && drop.slot === slot;
+    const step = row.module === 'custom' ? stepFor(row.sourceId) : null;
+    return (
+                        <Fragment key={`${index}:${row.module}:${row.sourceId}`}>
+                        <li
+                          draggable
+                          onDragStart={() => {
+                            dragRef.current = { kind: 'plan', index };
+                          }}
+                          onDragEnd={() => {
+                            dragRef.current = null;
+                            setDrop(null);
+                          }}
+                          onDragOver={(e) => {
+                            if (!dragRef.current) return;
+                            e.preventDefault();
+                            setDrop({ block: blockId, slot });
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            dropAt(blockId, slot);
+                          }}
+                          className={`group flex items-center gap-3 rounded-lg border-t-2 px-2 py-2 transition ${marked ? 'border-accent' : 'border-transparent'} ${
+                            row.stale ? 'bg-danger/5' : 'hover:bg-fg/[0.06]'
+                          }`}
+                        >
+                          {row.stale && <AlertTriangle size={15} className="shrink-0 text-danger" aria-label={t('stale')} />}
+                          <span className="w-5 shrink-0 text-center font-mono text-[11px] text-fg/40 tabular-nums">{extra + 1}</span>
+                          {/* A placeholder step says what it is in its own name, so it has no type tag. */}
+                          {!step && <span className={`${TAG} ${toneOf(row.module)}`}>{t(MODULE_KEY[row.module])}</span>}
+                          <span className="min-w-0 flex-1">
+                            <span className={`block truncate text-sm font-semibold ${row.stale ? 'text-fg/50 line-through' : 'text-fg'}`}>{row.label}</span>
+                            {row.stale && <span className="block text-[11px] text-danger">{row.deleted ? t('deletedHymnStatus') : t('stale')}</span>}
+                            {step && <span className="block text-[11px] text-fg/60">{t('pendingStep')}</span>}
+                          </span>
+                          {row.stale && (
+                            <span className="shrink-0 rounded bg-danger px-1.5 py-0.5 text-[10px] font-extrabold text-canvas uppercase">{t('staleBadge')}</span>
+                          )}
+                          {step && (
+                            <button type="button" onClick={() => chooseStep(index, step)} className="h-8 shrink-0 rounded-md border border-fg/15 px-3 text-[11px] font-bold uppercase hover:bg-fg/10">
+                              {t('choose')}
+                            </button>
+                          )}
+                          <div className="flex shrink-0 items-center opacity-50 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                            <button
+                              type="button"
+                              onClick={() => nudge(index, -1)}
+                              disabled={rows[0] === row}
+                              aria-label={t('moveUp')}
+                              title={t('moveUp')}
+                              className="grid size-7 place-items-center rounded text-muted hover:text-fg disabled:opacity-30"
+                            >
+                              <ArrowUp size={13} aria-hidden />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => nudge(index, 1)}
+                              disabled={rows[rows.length - 1] === row}
+                              aria-label={t('moveDown')}
+                              title={t('moveDown')}
+                              className="grid size-7 place-items-center rounded text-muted hover:text-fg disabled:opacity-30"
+                            >
+                              <ArrowDown size={13} aria-hidden />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void stageRow(index)}
+                              disabled={!canStageRow(row)}
+                              aria-label={t('stage')}
+                              aria-pressed={index === activeIndex}
+                              title={t('stage')}
+                              className={`grid size-7 place-items-center rounded hover:text-accent disabled:opacity-30 ${index === activeIndex ? 'bg-accent text-on-accent hover:text-on-accent' : 'text-muted'}`}
+                            >
+                              <Play size={13} aria-hidden />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeAt(index)}
+                              aria-label={t('removeItem', { label: row.label })}
+                              className="grid size-7 place-items-center rounded text-muted hover:text-danger"
+                            >
+                              <Trash2 size={13} aria-hidden />
+                            </button>
+                          </div>
+                        </li>
+                        {step && choosing === index && (
+                          <li className="flex flex-col gap-2 rounded-md border border-fg/15 bg-panel-2 p-3 pl-10">
+                            <p className="text-xs text-muted">{t(step.kind === 'reading' ? 'chooseReading' : 'chooseSong')}</p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <input
+                                value={typedText}
+                                onChange={(e) => setTypedText(e.target.value)}
+                                maxLength={300}
+                                placeholder={t('chooseText')}
+                                aria-label={t('chooseText')}
+                                className="h-9 min-w-0 flex-1 rounded-md border border-fg/15 bg-panel px-3 text-sm outline-none focus:border-accent"
+                              />
+                              <button
+                                type="button"
+                                disabled={!typedText.trim()}
+                                onClick={() => replaceAt(index, { block: row.block, module: 'custom', sourceId: typedText.trim(), label: typedText.trim() })}
+                                className="h-9 rounded-md border border-fg/15 px-3 text-xs font-bold uppercase hover:bg-fg/10 disabled:opacity-40"
+                              >
+                                {t('chooseTextAdd')}
+                              </button>
+                              {step.massOrderId && MASS_ORDER.some((p) => p.id === step.massOrderId) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const part = MASS_ORDER.find((p) => p.id === step.massOrderId);
+                                    if (part) replaceAt(index, { block: row.block, module: 'mass_order', sourceId: part.id, label: massPartName(part, lang) });
+                                  }}
+                                  className="h-9 rounded-md border border-fg/15 px-3 text-xs font-bold uppercase hover:bg-fg/10"
+                                >
+                                  {t('chooseMassOrder')}
+                                </button>
+                              )}
+                              <button type="button" onClick={() => { setChoosing(null); setTypedText(''); }} className="h-9 rounded-md px-3 text-xs font-bold uppercase text-muted hover:text-fg">
+                                {t('chooseCancel')}
+                              </button>
+                            </div>
+                          </li>
+                        )}
+                        </Fragment>
+    );
+  };
+
   // What the plan shows: the saved items with each song's current title and status laid over them. It has one entry for every saved item,
   // in the same order, so a position in this list is a position in `items`.
   const shown = overlayLyricsItems(items, hymnNow);
+  // The row loaded into the Stage / Preview by its ▷ button: the queue's CURRENT row, when the queue holds this plan.
+  const activeIndex = useLive((s) => activeRowIndex(s.state, planId));
 
   const currentPlan = plans.find((p) => p.id === planId) ?? null;
   const cycle = currentPlan ? sundayCycle(new Date(`${currentPlan.liturgicalDate}T12:00:00`)) : null;
@@ -569,6 +762,21 @@ export function MassPlanner() {
             <button type="button" onClick={() => setCreating((open) => !open)} className="h-10 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs font-semibold tracking-wide uppercase text-fg/85 transition hover:bg-fg/10 hover:text-fg">
               {creating ? t('cancel') : t('newPlan')}
             </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setTemplatesOpen((open) => !open)}
+                disabled={planId == null}
+                aria-expanded={templatesOpen}
+                aria-haspopup="dialog"
+                className="h-10 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs font-semibold tracking-wide uppercase text-fg/85 transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {t('templates')}
+              </button>
+              {templatesOpen && planId != null && (
+                <MassTemplates t={t} lang={lang} items={items} onApply={applyTemplate} onError={setError} onNotice={setNotice} onClose={() => setTemplatesOpen(false)} />
+              )}
+            </div>
             {planId != null && (
               <button type="button" onClick={deletePlan} aria-label={t('deletePlan')} title={t('deletePlan')} className="grid size-10 place-items-center rounded-md border border-fg/15 bg-panel-2 text-fg/60 transition hover:border-danger/60 hover:text-danger">
                 <Trash2 size={14} aria-hidden />
@@ -588,207 +796,26 @@ export function MassPlanner() {
             <p className="px-1 text-xs text-fg/60">{t('planLine', { name: currentPlan.name, cycle, n: items.length })}</p>
           )}
 
-          {creating && (
-            <form onSubmit={createPlan} className="flex flex-wrap gap-2 rounded-[10px] border border-line bg-panel p-3">
-              <input
-                required
-                maxLength={120}
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder={t('planNamePlaceholder')}
-                className="h-10 min-w-0 flex-1 rounded-md border border-fg/15 bg-panel-2 px-3 text-sm outline-none focus:border-accent"
-              />
-              <input
-                type="date"
-                required
-                aria-label={t('liturgicalDate')}
-                value={newDate}
-                onChange={(e) => setNewDate(e.target.value)}
-                className="h-10 rounded-md border border-fg/15 bg-panel-2 px-2 text-sm outline-none focus:border-accent"
-              />
-              <select
-                aria-label={t('seasonLabel')}
-                value={season}
-                onChange={(e) => setSeason(e.target.value as Season)}
-                className="h-10 rounded-md border border-fg/15 bg-panel-2 px-2 text-sm outline-none focus:border-accent"
-              >
-                {SEASONS.map((s) => (
-                  <option key={s} value={s}>{t(SEASON_KEY[s])}</option>
-                ))}
-              </select>
-              <button type="submit" disabled={!newName.trim()} className="h-10 rounded-md bg-accent px-4 text-xs font-extrabold uppercase text-on-accent disabled:opacity-40">
-                {t('create')}
-              </button>
-            </form>
-          )}
+          {creating && <NewPlanForm t={t} initialDate={upcomingSunday()} onCreate={createPlan} />}
 
           {planId == null ? (
             <p className="rounded-[10px] border-2 border-dashed border-fg/20 p-8 text-center text-sm text-fg/60">{t('createFirst')}</p>
           ) : (
-            BLOCKS.map((block) => {
-              const rows = blockRows(shown, block.id);
-              return (
-                <section key={block.id} aria-label={t(block.titleKey)} className="rounded-[10px] border border-line bg-panel p-4">
-                  <header className="mb-3 border-b border-line pb-2">
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-xl font-bold tracking-tight text-fg">{t(block.titleKey)}</h2>
-                      <span className="rounded-full bg-fg/10 px-2 py-px font-mono text-[11px] font-bold text-fg/70 tabular-nums">{rows.length}</span>
-                    </div>
-                    <p className="text-xs text-fg/60">{t(block.hintKey)}</p>
-                  </header>
-
-                  <ol className="flex flex-col">
-                    {rows.map((row, slot) => {
-                      const index = shown.indexOf(row);
-                      const marked = drop?.block === block.id && drop.slot === slot;
-                      const step = row.module === 'custom' ? stepFor(row.sourceId) : null;
-                      return (
-                        <Fragment key={`${index}:${row.module}:${row.sourceId}`}>
-                        <li
-                          draggable
-                          onDragStart={() => {
-                            dragRef.current = { kind: 'plan', index };
-                          }}
-                          onDragEnd={() => {
-                            dragRef.current = null;
-                            setDrop(null);
-                          }}
-                          onDragOver={(e) => {
-                            if (!dragRef.current) return;
-                            e.preventDefault();
-                            setDrop({ block: block.id, slot });
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            dropAt(block.id, slot);
-                          }}
-                          className={`group flex items-center gap-3 rounded-lg border-t-2 px-2 py-2 transition ${marked ? 'border-accent' : 'border-transparent'} ${
-                            row.stale ? 'bg-danger/5' : 'hover:bg-fg/[0.06]'
-                          }`}
-                        >
-                          {row.stale && <AlertTriangle size={15} className="shrink-0 text-danger" aria-label={t('stale')} />}
-                          <span className="w-5 shrink-0 text-center font-mono text-[11px] text-fg/40 tabular-nums">{slot + 1}</span>
-                          <span className={`${TAG} ${step ? toneOf('custom') : toneOf(row.module)}`}>{step ? t(KIND_KEY[step.kind]) : t(MODULE_KEY[row.module])}</span>
-                          <span className="min-w-0 flex-1">
-                            <span className={`block truncate text-sm font-semibold ${row.stale ? 'text-fg/50 line-through' : 'text-fg'}`}>{row.label}</span>
-                            {row.stale && <span className="block text-[11px] text-danger">{row.deleted ? t('deletedHymnStatus') : t('stale')}</span>}
-                            {step && <span className="block text-[11px] text-fg/60">{t('pendingStep')}</span>}
-                          </span>
-                          {row.stale && (
-                            <span className="shrink-0 rounded bg-danger px-1.5 py-0.5 text-[10px] font-extrabold text-canvas uppercase">{t('staleBadge')}</span>
-                          )}
-                          {step && (
-                            <button type="button" onClick={() => chooseStep(index, step)} className="h-8 shrink-0 rounded-md border border-fg/15 px-3 text-[11px] font-bold uppercase hover:bg-fg/10">
-                              {t('choose')}
-                            </button>
-                          )}
-                          <div className="flex shrink-0 items-center opacity-50 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-                            <button
-                              type="button"
-                              onClick={() => nudge(index, -1)}
-                              disabled={rows[0] === row}
-                              aria-label={t('moveUp')}
-                              title={t('moveUp')}
-                              className="grid size-7 place-items-center rounded text-muted hover:text-fg disabled:opacity-30"
-                            >
-                              <ArrowUp size={13} aria-hidden />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => nudge(index, 1)}
-                              disabled={rows[rows.length - 1] === row}
-                              aria-label={t('moveDown')}
-                              title={t('moveDown')}
-                              className="grid size-7 place-items-center rounded text-muted hover:text-fg disabled:opacity-30"
-                            >
-                              <ArrowDown size={13} aria-hidden />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void stageRow(index)}
-                              disabled={row.stale}
-                              aria-label={t('stage')}
-                              title={t('stage')}
-                              className="grid size-7 place-items-center rounded text-muted hover:text-accent disabled:opacity-30"
-                            >
-                              <Play size={13} aria-hidden />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeAt(index)}
-                              aria-label={t('removeItem', { label: row.label })}
-                              className="grid size-7 place-items-center rounded text-muted hover:text-danger"
-                            >
-                              <Trash2 size={13} aria-hidden />
-                            </button>
-                          </div>
-                        </li>
-                        {step && choosing === index && (
-                          <li className="flex flex-col gap-2 rounded-md border border-fg/15 bg-panel-2 p-3 pl-10">
-                            <p className="text-xs text-muted">{t(step.kind === 'reading' ? 'chooseReading' : 'chooseSong')}</p>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <input
-                                value={typedText}
-                                onChange={(e) => setTypedText(e.target.value)}
-                                maxLength={300}
-                                placeholder={t('chooseText')}
-                                aria-label={t('chooseText')}
-                                className="h-9 min-w-0 flex-1 rounded-md border border-fg/15 bg-panel px-3 text-sm outline-none focus:border-accent"
-                              />
-                              <button
-                                type="button"
-                                disabled={!typedText.trim()}
-                                onClick={() => replaceAt(index, { block: row.block, module: 'custom', sourceId: typedText.trim(), label: typedText.trim() })}
-                                className="h-9 rounded-md border border-fg/15 px-3 text-xs font-bold uppercase hover:bg-fg/10 disabled:opacity-40"
-                              >
-                                {t('chooseTextAdd')}
-                              </button>
-                              {step.massOrderId && MASS_ORDER.some((p) => p.id === step.massOrderId) && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const part = MASS_ORDER.find((p) => p.id === step.massOrderId);
-                                    if (part) replaceAt(index, { block: row.block, module: 'mass_order', sourceId: part.id, label: massPartName(part, lang) });
-                                  }}
-                                  className="h-9 rounded-md border border-fg/15 px-3 text-xs font-bold uppercase hover:bg-fg/10"
-                                >
-                                  {t('chooseMassOrder')}
-                                </button>
-                              )}
-                              <button type="button" onClick={() => { setChoosing(null); setTypedText(''); }} className="h-9 rounded-md px-3 text-xs font-bold uppercase text-muted hover:text-fg">
-                                {t('chooseCancel')}
-                              </button>
-                            </div>
-                          </li>
-                        )}
-                        </Fragment>
-                      );
-                    })}
-                  </ol>
-
-                  <div
-                    onDragOver={(e) => {
-                      if (!dragRef.current) return;
-                      e.preventDefault();
-                      setDrop({ block: block.id, slot: rows.length });
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      dropAt(block.id, rows.length);
-                    }}
-                    className={`mt-1 grid place-items-center rounded-md border border-dashed text-[11px] transition ${
-                      drop?.block === block.id && drop.slot === rows.length
-                        ? 'min-h-12 border-accent bg-accent/5 text-accent'
-                        : rows.length === 0
-                          ? 'min-h-16 border-fg/20 text-fg/60'
-                          : 'min-h-3 border-transparent text-transparent'
-                    }`}
-                  >
-                    {rows.length === 0 || (drop?.block === block.id && drop.slot === rows.length) ? (rows.length === 0 ? t('dropHere') : t('dropEnd')) : null}
-                  </div>
-                </section>
-              );
-            })
+            <HolyMassPlan
+              t={t}
+              lang={lang}
+              items={shown}
+              onFill={fillSlot}
+              onClear={emptySlot}
+              onDropOnSlot={dropOnSlot}
+              onDropInSection={dropAt}
+              onStage={(index) => void stageRow(index)}
+              activeIndex={activeIndex}
+              dragRef={dragRef}
+              drop={drop}
+              setDrop={setDrop}
+              renderAdditional={renderAdditional}
+            />
           )}
         </section>
       </div>

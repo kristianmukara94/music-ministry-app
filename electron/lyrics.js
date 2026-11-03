@@ -92,7 +92,7 @@ function checkedHymnInput(input) {
   const category = input.category == null || input.category === '' ? null : requireOneOf(input.category, CATEGORIES, 'Category');
   // A caller that sends no scope (an older form, a file import) saves a General song, which shows under every scope.
   const primaryCategory = input.primaryCategory == null || input.primaryCategory === '' ? DEFAULT_PRIMARY : input.primaryCategory;
-  if (!isPrimaryCategory(primaryCategory)) throw new Error('Primary category must be General, Mass or Praise & Worship.');
+  if (!isPrimaryCategory(primaryCategory)) throw new Error('Primary category must be General, Holy Mass or Praise & Worship.');
   const language = requireOneOf(input.language, LANGUAGES, 'Language');
   // The musical key, as written: C, Bb, F#m, and so on.
   const musicalKey = String(input.musicalKey ?? '').trim().slice(0, MAX_KEY);

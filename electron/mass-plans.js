@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { parseSourceId } from '../shared/bible-ref.js';
 import { GOSPEL_ACCLAMATION } from './lectionary.js';
 import { recordTombstone } from './plan-sync-schema.js';
+import { isSlotId } from '../shared/mass-slots.js';
 
 export const PLAN_BLOCKS = ['introductory', 'word', 'eucharist', 'communion', 'concluding'];
 export const PLAN_MODULES = ['lyrics', 'lectionary', 'announcements', 'media', 'mass_order', 'bible', 'custom', 'notes'];
@@ -132,6 +133,26 @@ export const PLAN_COMMUNION_MIGRATIONS = [
   `,
 ];
 
+/**
+ * The Holy Mass order of 17 slots (see shared/mass-slots.js). An item names the slot it fills in `slot`, or has none (an additional item, or an
+ * item from before slots). Templates are plans the operator saved to load into another: a name and the items, as JSON. Appended to the end of
+ * the migration list only.
+ */
+export const MASS_SLOT_MIGRATIONS = [
+  `ALTER TABLE mass_plan_items ADD COLUMN slot TEXT;`,
+  `
+  CREATE TABLE mass_plan_templates (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    items       TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
+];
+
+const MAX_TEMPLATE_NAME = 80;
+const MAX_TEMPLATES = 100;
+
 /** Plan data access. Pure: takes a database handle. */
 export function createMassPlanService(db) {
   const q = {
@@ -143,15 +164,21 @@ export function createMassPlanService(db) {
     deletePlan: db.prepare('DELETE FROM mass_plans WHERE id = ?'),
     planUuid: db.prepare('SELECT uuid FROM mass_plans WHERE id = ?'),
     items: db.prepare(`
-      SELECT liturgical_block AS block, source_module AS module, source_id AS sourceId, label
+      SELECT liturgical_block AS block, source_module AS module, source_id AS sourceId, label, slot
       FROM mass_plan_items WHERE plan_id = ?
       ORDER BY CASE liturgical_block
         WHEN 'introductory' THEN 0 WHEN 'word' THEN 1 WHEN 'eucharist' THEN 2 WHEN 'communion' THEN 3 ELSE 4 END,
         display_order`),
     clearItems: db.prepare('DELETE FROM mass_plan_items WHERE plan_id = ?'),
     insertItem: db.prepare(
-      'INSERT INTO mass_plan_items (plan_id, liturgical_block, source_module, source_id, label, display_order) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO mass_plan_items (plan_id, liturgical_block, source_module, source_id, label, display_order, slot) VALUES (?, ?, ?, ?, ?, ?, ?)',
     ),
+    templates: db.prepare('SELECT id, name, items FROM mass_plan_templates ORDER BY name COLLATE NOCASE'),
+    template: db.prepare('SELECT id, name, items FROM mass_plan_templates WHERE id = ?'),
+    templateByName: db.prepare('SELECT id FROM mass_plan_templates WHERE name = ? COLLATE NOCASE'),
+    templateCount: db.prepare('SELECT COUNT(*) AS n FROM mass_plan_templates'),
+    insertTemplate: db.prepare('INSERT INTO mass_plan_templates (name, items) VALUES (?, ?)'),
+    deleteTemplate: db.prepare('DELETE FROM mass_plan_templates WHERE id = ?'),
     // A live hymn is in the library. A deleted one is kept for undo, and the plan shows it as deleted rather than as present.
     liveHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NULL'),
     deletedHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NOT NULL'),
@@ -201,6 +228,40 @@ export function createMassPlanService(db) {
     }
   };
 
+  /**
+   * The items as rows, checked: a known block and source kind, a source id of a usable length, a label, and a slot that is one of the 17 (or
+   * none). A slot holds one item. `sources` is false for a template, which may name a song that is deleted later; a plan refuses a missing one.
+   */
+  const checkedItems = (list, { sources }) => {
+    if (list.length > MAX_ITEMS) throw new Error(`A plan can hold at most ${MAX_ITEMS} items.`);
+    const counts = Object.fromEntries(PLAN_BLOCKS.map((b) => [b, 0]));
+    const slots = new Set();
+    return list.map((item) => {
+      if (!PLAN_BLOCKS.includes(item.block)) throw new Error('Unknown liturgical block.');
+      if (!PLAN_MODULES.includes(item.module)) throw new Error('Unknown item source.');
+      const sourceId = String(item.sourceId ?? '').trim();
+      const maxLength = item.module === 'custom' ? MAX_CUSTOM : 120;
+      if (!sourceId || sourceId.length > maxLength) throw new Error('Item is missing its source.');
+      if (item.module === 'mass_order' && !MASS_PART.test(sourceId)) throw new Error('Unknown Holy Mass part.');
+      if (item.module === 'notes' && q.note.get(Number(sourceId))?.display === 'operator') {
+        throw new Error('Operator-only notes cannot go to the Service Queue.');
+      }
+      if (item.module === 'lectionary' && sourceId.split('|')[1] === GOSPEL_ACCLAMATION) {
+        throw new Error('The Gospel Acclamation is for Praise & Worship. It cannot be added to a Holy Mass plan.');
+      }
+      if (sources) requireSource(item.module, sourceId);
+      const slot = item.slot == null || item.slot === '' ? null : String(item.slot);
+      if (slot !== null) {
+        if (!isSlotId(slot)) throw new Error('Unknown Holy Mass slot.');
+        if (slots.has(slot)) throw new Error('Two items are in the same Holy Mass slot.');
+        slots.add(slot);
+      }
+      const label = String(item.label ?? '').trim().slice(0, MAX_LABEL) || sourceId;
+      counts[item.block] += 1;
+      return { block: item.block, module: item.module, sourceId, label, order: counts[item.block], slot };
+    });
+  };
+
   return {
     listPlans() {
       return q.plans.all();
@@ -240,34 +301,46 @@ export function createMassPlanService(db) {
     /** Replaces the plan's items. Each block's order is the order of the items sent for it. */
     savePlan(id, items) {
       requirePlan(id);
-      const list = Array.isArray(items) ? items : [];
-      if (list.length > MAX_ITEMS) throw new Error(`A plan can hold at most ${MAX_ITEMS} items.`);
-
-      const counts = Object.fromEntries(PLAN_BLOCKS.map((b) => [b, 0]));
-      const rows = list.map((item) => {
-        if (!PLAN_BLOCKS.includes(item.block)) throw new Error('Unknown liturgical block.');
-        if (!PLAN_MODULES.includes(item.module)) throw new Error('Unknown item source.');
-        const sourceId = String(item.sourceId ?? '').trim();
-        const maxLength = item.module === 'custom' ? MAX_CUSTOM : 120;
-        if (!sourceId || sourceId.length > maxLength) throw new Error('Item is missing its source.');
-        if (item.module === 'mass_order' && !MASS_PART.test(sourceId)) throw new Error('Unknown Mass part.');
-        if (item.module === 'notes' && q.note.get(Number(sourceId))?.display === 'operator') {
-          throw new Error('Operator-only notes cannot go to the Service Queue.');
-        }
-        if (item.module === 'lectionary' && sourceId.split('|')[1] === GOSPEL_ACCLAMATION) {
-          throw new Error('The Gospel Acclamation is for Praise & Worship. It cannot be added to a Mass plan.');
-        }
-        requireSource(item.module, sourceId);
-        const label = String(item.label ?? '').trim().slice(0, MAX_LABEL) || sourceId;
-        counts[item.block] += 1;
-        return { block: item.block, module: item.module, sourceId, label, order: counts[item.block] };
-      });
+      const rows = checkedItems(Array.isArray(items) ? items : [], { sources: true });
 
       db.transaction(() => {
         q.clearItems.run(id);
-        for (const r of rows) q.insertItem.run(id, r.block, r.module, r.sourceId, r.label, r.order);
+        for (const r of rows) q.insertItem.run(id, r.block, r.module, r.sourceId, r.label, r.order, r.slot);
       })();
       return rows.length;
+    },
+
+    /** The saved templates, by name, with how many items each has. */
+    listTemplates() {
+      return q.templates.all().map((t) => ({ id: t.id, name: t.name, count: JSON.parse(t.items).length }));
+    },
+
+    /**
+     * One template's items, ready to load into a plan. An item whose source was deleted since the template was saved is marked `stale`, so the
+     * planner can leave it out instead of the whole load being refused.
+     */
+    getTemplate(id) {
+      const row = q.template.get(id);
+      if (!row) throw new Error('That template no longer exists.');
+      const items = JSON.parse(row.items).map((item) => ({ ...item, stale: !sourceExists(item.module, item.sourceId) }));
+      return { id: row.id, name: row.name, items };
+    },
+
+    /** Saves the given items as a template. A name already used (letter case aside) is refused, so one template never hides another. */
+    saveTemplate(input = {}) {
+      const name = String(input.name ?? '').trim();
+      if (!name || name.length > MAX_TEMPLATE_NAME) throw new Error(`A template name must be 1 to ${MAX_TEMPLATE_NAME} characters.`);
+      if (q.templateByName.get(name)) throw new Error(`A template named "${name}" already exists.`);
+      if (q.templateCount.get().n >= MAX_TEMPLATES) throw new Error(`There can be at most ${MAX_TEMPLATES} templates.`);
+      const rows = checkedItems(Array.isArray(input.items) ? input.items : [], { sources: false });
+      if (rows.length === 0) throw new Error('A template needs at least one item.');
+      const stored = rows.map(({ block, module, sourceId, label, slot }) => ({ block, module, sourceId, label, slot }));
+      const { lastInsertRowid } = q.insertTemplate.run(name, JSON.stringify(stored));
+      return { id: Number(lastInsertRowid), name, count: stored.length };
+    },
+
+    deleteTemplate(id) {
+      return q.deleteTemplate.run(id).changes > 0;
     },
   };
 }
@@ -282,5 +355,9 @@ export function setupMassPlans(db) {
   handle('delete', (id) => service.deletePlan(Number(id)));
   handle('get', (id) => service.getPlan(Number(id)));
   handle('save', (id, items) => service.savePlan(Number(id), items));
+  handle('listTemplates', () => service.listTemplates());
+  handle('getTemplate', (id) => service.getTemplate(Number(id)));
+  handle('saveTemplate', (input) => service.saveTemplate(input));
+  handle('deleteTemplate', (id) => service.deleteTemplate(Number(id)));
   return service;
 }

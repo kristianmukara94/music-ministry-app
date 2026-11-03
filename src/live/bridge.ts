@@ -260,6 +260,10 @@ const offlinePlans: PlansApi = {
   deletePlan: async () => offlineError(),
   get: async () => offlineError(),
   save: async () => offlineError(),
+  listTemplates: async () => [],
+  getTemplate: async () => offlineError(),
+  saveTemplate: async () => offlineError(),
+  deleteTemplate: async () => offlineError(),
 };
 
 /** Browser preview has no database, so Praise & Worship lists nothing and cannot save. */
@@ -316,6 +320,7 @@ const offlineWhiteboard: WhiteboardApi = {
   deleteFolder: async () => offlineError(),
   move: async () => offlineError(),
   importPowerPoint: async () => offlineError(),
+  onImportProgress: () => () => {},
 };
 
 const offlineLowerThird: LowerThirdApi = {

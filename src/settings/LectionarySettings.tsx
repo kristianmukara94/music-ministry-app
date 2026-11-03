@@ -255,11 +255,11 @@ function BackupCard({ onRestored }: { onRestored: () => void }) {
 }
 
 const SLOT_GUIDE: [ReadingType, string][] = [
-  ['First Reading', 'Read at every Sunday and solemnity Mass, and on weekdays.'],
+  ['First Reading', 'Read at every Sunday and solemnity Holy Mass, and on weekdays.'],
   ['Responsorial Psalm', 'The response is pinned above the verses on every slide, so the congregation always sees it.'],
   ['Second Reading', 'Sundays and solemnities have one. It is optional on weekdays.'],
-  ['Gospel Acclamation', 'Entered for Praise & Worship. The Mass planner leaves it out of its library.'],
-  ['Gospel', 'Read at every Mass.'],
+  ['Gospel Acclamation', 'Entered for Praise & Worship. The Holy Mass planner leaves it out of its library.'],
+  ['Gospel', 'Read at every Holy Mass.'],
 ];
 
 /** How a reading becomes slides. Written from the editor, so what it says is what the Lectionary does. */
@@ -328,7 +328,7 @@ export function LectionarySettings() {
       <SlideTextCard
         id="lect-text"
         sample={['A reading from the Book of Isaiah', 'The word of the Lord.']}
-        note="A reading with its own font, set under Slide style in the Lectionary, keeps that font. The Live panel has the same size buttons for use during Mass."
+        note="A reading with its own font, set under Slide style in the Lectionary, keeps that font. The Live panel has the same size buttons for use during Holy Mass."
       />
       <BackupCard onRestored={refresh} />
       <HowItWorks />

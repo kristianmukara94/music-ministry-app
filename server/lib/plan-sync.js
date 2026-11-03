@@ -17,7 +17,9 @@ export const CREATE_LIMIT = { requests: 20, windowMs: 10 * 60 * 1000 };
 export const DELETE_LIMIT = { requests: 20, windowMs: 10 * 60 * 1000 };
 const KINDS = ['song', 'reading', 'rite'];
 const PLAN_KINDS = ['mass', 'pw'];
-const ITEM_FIELDS = ['key', 'group', 'order', 'kind', 'songId', 'text', 'minutes', 'note'];
+const ITEM_FIELDS = ['key', 'group', 'order', 'kind', 'songId', 'text', 'minutes', 'note', 'slot'];
+// The Holy Mass slot an item fills on the laptop, by number. The website keeps it as it is, so a plan edited here goes back with its slots.
+export const MASS_SLOT_COUNT = 17;
 // Field names that would carry lyrics, slides, media, Bible text or announcements. Refused by name, so nothing is silently dropped.
 const FORBIDDEN = /lyric|stanza|slide|media|bible|verse|announce|audio|video|image|file|hymn|scripture/i;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -77,6 +79,7 @@ export function checkItems(items, songIds) {
   if (items.length > MAX_ITEMS) throw refuse(`A plan can have up to ${MAX_ITEMS} items. Nothing was saved.`);
   const keys = new Set();
   const orders = new Set();
+  const slots = new Set();
   const out = [];
   for (const item of items) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw refuse('An item in the plan could not be read. Nothing was saved.');
@@ -111,6 +114,12 @@ export function checkItems(items, songIds) {
     if (item.minutes !== undefined) {
       if (!Number.isInteger(item.minutes) || item.minutes < 1 || item.minutes > 60) throw refuse('Each item needs between 1 and 60 minutes. Nothing was saved.');
       clean.minutes = item.minutes;
+    }
+    if (item.slot !== undefined && item.slot !== null) {
+      if (!Number.isInteger(item.slot) || item.slot < 1 || item.slot > MASS_SLOT_COUNT) throw refuse('A Holy Mass slot must be a number from 1 to 17. Nothing was saved.');
+      if (slots.has(item.slot)) throw refuse('Two items in the plan fill the same Holy Mass slot. Nothing was saved.');
+      slots.add(item.slot);
+      clean.slot = item.slot;
     }
     if (item.note !== undefined && item.note !== null && item.note !== '') {
       if (typeof item.note !== 'string' || item.note.length > 1000) throw refuse('A note can be up to 1000 characters. Nothing was saved.');

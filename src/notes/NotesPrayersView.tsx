@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState, type FormEvent } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, FileText, Lock, Pencil, Plus, Presentation, Search, Send, Trash2, X } from 'lucide-react';
-import { NOTE_CATEGORIES } from '../../shared/notes.js';
+import { NOTE_CATEGORIES, noteCategoryLabel } from '../../shared/notes.js';
 import { BACKGROUND_COLORS, sanitizeTextStyle, type TextStyle } from '../../shared/text-style.js';
 import { bridge } from '../live/bridge';
 import { ColorField, StyleToolbar } from '../announcements/StyleControls';
@@ -72,7 +72,7 @@ export function NotesPrayersView() {
   // Real-time filter: title, category and body, as the operator types.
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return notes.filter((n) => inTab(n, tab) && (!category || n.category === category) && (!q || `${n.title} ${n.category} ${n.body}`.toLowerCase().includes(q)));
+    return notes.filter((n) => inTab(n, tab) && (!category || n.category === category) && (!q || `${n.title} ${n.category} ${noteCategoryLabel(n.category)} ${n.body}`.toLowerCase().includes(q)));
   }, [notes, tab, query, category]);
 
   const current = visible.find((n) => n.id === selectedId) ?? visible[0] ?? null;
@@ -189,7 +189,7 @@ export function NotesPrayersView() {
         <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Filter by category" className="h-10 min-w-44 rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none focus:border-accent focus:ring-1 focus:ring-accent/40">
           <option value="">All categories</option>
           {NOTE_CATEGORIES.map((c) => (
-            <option key={c} value={c}>{c}</option>
+            <option key={c} value={c}>{noteCategoryLabel(c)}</option>
           ))}
         </select>
       </div>
@@ -236,7 +236,7 @@ export function NotesPrayersView() {
                       <span className="shrink-0 rounded-full border border-fg/20 bg-fg/[0.06] px-2 py-0.5 text-[10px] font-bold text-fg/60 uppercase">{DISPLAY_LABEL[n.display]}</span>
                     )}
                   </span>
-                  <span className="text-[11px] font-semibold tracking-wider text-fg/60 uppercase">{n.category}</span>
+                  <span className="text-[11px] font-semibold tracking-wider text-fg/60 uppercase">{noteCategoryLabel(n.category)}</span>
                   {n.body && <span className="line-clamp-2 text-xs text-fg/60">{n.body}</span>}
                 </button>
               </li>
@@ -254,7 +254,7 @@ export function NotesPrayersView() {
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-[10px] font-bold tracking-wider text-accent uppercase">{current.category}</span>
+                  <span className="rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-[10px] font-bold tracking-wider text-accent uppercase">{noteCategoryLabel(current.category)}</span>
                   {live && (
                     <span className="flex items-center gap-1.5 rounded-full border border-ok/60 bg-ok/15 px-2.5 py-0.5 text-[10px] font-extrabold tracking-wider text-ok uppercase">
                       <span className="size-1.5 animate-pulse rounded-full bg-ok" aria-hidden />
@@ -464,7 +464,7 @@ function NoteEditor({ note, tab, onSave, onCancel }: {
           Category
           <select value={category} onChange={(e) => setCategory(e.target.value)} className={`${FIELD} normal-case`}>
             {NOTE_CATEGORIES.map((c) => (
-              <option key={c} value={c}>{c}</option>
+              <option key={c} value={c}>{noteCategoryLabel(c)}</option>
             ))}
           </select>
         </label>
