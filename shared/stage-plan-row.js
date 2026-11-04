@@ -6,9 +6,23 @@
 //   - a 'custom' item with no slot: an operator note. It is never staged, because notes are never shown to the congregation.
 //   - anything else (a song, a Mass Order part, a reading, a Bible passage…): opened in the module that owns it, as before.
 
-/** The slide for a text response: titled with the slot's name, with the words as its body. */
+import { splitDeck } from './projector-autofit.js';
+
+/**
+ * The slide for a text response: titled with the slot's name, with the words as its body. Text that would not fit one screen, or that has
+ * paragraphs (a blank line between them), becomes a deck of slides instead, so it is never cut off and Jump to section steps through it.
+ */
 export function textResponseFrame(slotName, text) {
-  return { kind: 'text', title: slotName, text, bg: null };
+  const paragraphs = String(text)
+    .split(/\n\s*\n/)
+    .map((p) => p.split('\n').map((line) => line.trim()).filter(Boolean))
+    .filter((lines) => lines.length > 0);
+  const { slides, labels } = splitDeck(
+    slotName,
+    paragraphs.map((lines) => lines.map((line) => ({ role: 'plain', text: line }))),
+  );
+  if (slides.length <= 1) return { kind: 'text', title: slotName, text, bg: null };
+  return labels ? { kind: 'deck', title: slotName, slides, index: 0, labels } : { kind: 'deck', title: slotName, slides, index: 0 };
 }
 
 /**

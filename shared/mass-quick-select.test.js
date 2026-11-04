@@ -36,7 +36,7 @@ test('the songs on a card are the Holy Mass songs filed under that slot\'s own s
 
 test('the picker lists the same ready-made fills as the chips', () => {
   const pick = read('src/planner/MassItemSelect.tsx');
-  assert.match(pick, /for \(const choice of responseChoices\(slot, lang\)\)/);
+  assert.match(pick, /const own = responseChoices\(slot, lang\);\s+for \(const choice of own\)/);
   assert.match(pick, /songCategory: filter === 'slot' \? slot\.songCategory : undefined,/, 'and its songs are still filtered to the slot');
 });
 

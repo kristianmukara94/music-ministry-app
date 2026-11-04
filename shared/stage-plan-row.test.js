@@ -147,3 +147,20 @@ test('a state update that carries the same live picture does not look like a cha
   assert.notEqual(frameKey(live), frameKey({ ...live, text: 'Christ, have mercy.' }));
   assert.equal(frameKey(undefined), 'null');
 });
+
+test('a long text response becomes a deck of slides, so it is never cut off and its sections can be jumped to', () => {
+  const long = Array.from({ length: 30 }, (_, i) => `word${i} of the response`).join(' ');
+  const frame = textResponseFrame('I Confess', long);
+  assert.equal(frame.kind, 'deck');
+  assert.ok(frame.slides.length > 1);
+  assert.equal(frame.index, 0);
+  assert.equal(frame.labels[0], `I Confess (1/${frame.slides.length})`);
+  assert.equal(frame.slides.flat().map((l) => l.text).join(' '), long);
+});
+
+test('a text response with paragraphs is one slide per paragraph', () => {
+  const frame = textResponseFrame('Prayer of the Faithful', 'For the Church.\nLord, hear our prayer.\n\nFor the sick.\nLord, hear our prayer.');
+  assert.equal(frame.kind, 'deck');
+  assert.deepEqual(frame.slides.map((s) => s.map((l) => l.text)), [['For the Church.', 'Lord, hear our prayer.'], ['For the sick.', 'Lord, hear our prayer.']]);
+  assert.equal(frame.labels, undefined);
+});

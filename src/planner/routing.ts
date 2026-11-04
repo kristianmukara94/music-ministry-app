@@ -11,7 +11,7 @@ import { announcementSource } from '../../shared/flow-insert.js';
 import { bibleT } from '../../shared/bible-i18n.js';
 import { setUi, useUi } from '../state/ui';
 import { stagePrayer, takePrayer } from '../notes/present';
-import { songTitleFrame } from '../../shared/stage-plan-row.js';
+import { songTitleFrame, textRowActions } from '../../shared/stage-plan-row.js';
 import { slotById } from '../../shared/mass-slots.js';
 import { announcementFrame } from '../announcements/frames';
 import { frameForWhiteboardSlide } from '../whiteboard/projectSlide';
@@ -106,6 +106,15 @@ export async function openQueueItem(item: QueueItem, index: number, opts: PlayOp
       const frame = massPartFrame(item.sourceId, useUi.getState().lang);
       if (!frame) return false;
       dispatch({ type: 'projector/stage', frame });
+      return true;
+    }
+
+    case 'custom': {
+      // A typed response that fills a slot ("I confess to almighty God") is staged as its own slide, as the planner's ▷ does. A typed row
+      // with no slot is an operator note and is never shown.
+      const stage = textRowActions(item, index, slotById(item.slot)?.name ?? item.label)?.find((a) => a.type === 'projector/stage');
+      if (!stage) return false;
+      dispatch(stage);
       return true;
     }
 

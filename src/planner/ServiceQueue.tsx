@@ -6,6 +6,7 @@ import { useLive } from '../live/store';
 import { usePlannerT } from './strings';
 import { syncQueueIfLoaded } from './plan-api';
 import { BLOCKS } from './types';
+import { canStageRow } from '../../shared/stage-plan-row.js';
 import { playQueueAt, stepQueue } from './routing';
 
 /** The badge on each card: a short label and a colour, so the kind of item reads at a glance. */
@@ -20,10 +21,8 @@ const MODULE_BADGE: Record<QueueItem['module'], { label: string; tone: string }>
   custom: { label: 'NOTE', tone: 'border-fg/25 bg-fg/[0.08] text-fg/80' },
 };
 
-/** Notes are operator reminders: they have nothing to stage, so they can only be removed. */
-const CANNOT_STAGE = new Set<QueueItem['module']>(['custom']);
 /** Modules that can go live from the queue. Songs take their first stanza themselves; announcements and media open their own view. */
-const CAN_TAKE_LIVE = new Set<QueueItem['module']>(['bible', 'lectionary', 'mass_order', 'notes', 'lyrics']);
+const CAN_TAKE_LIVE = new Set<QueueItem['module']>(['bible', 'lectionary', 'mass_order', 'notes', 'lyrics', 'custom']);
 
 const NAV = 'flex h-9 flex-1 items-center justify-center gap-2 rounded-md border border-fg/20 bg-panel-2 px-3 text-sm font-semibold text-fg/90 transition hover:border-fg/40 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
 const ICON = 'grid size-8 shrink-0 place-items-center rounded-md border border-fg/20 bg-panel text-fg/80 transition hover:border-accent/60 hover:text-accent disabled:cursor-not-allowed disabled:opacity-30';
@@ -107,7 +106,8 @@ export function ServiceQueue({ items }: { items: QueueItem[] }) {
                   const index = items.indexOf(item);
                   const current = currentIndex !== null && index === currentIndex;
                   const badge = MODULE_BADGE[item.module];
-                  const stageable = !item.stale && !CANNOT_STAGE.has(item.module);
+                  // A typed row with no slot is an operator note: nothing to stage, so it can only be removed. One that fills a slot is a response slide.
+                  const stageable = canStageRow(item);
                   const takeable = stageable && CAN_TAKE_LIVE.has(item.module);
                   const live = onAir && current;
                   return (

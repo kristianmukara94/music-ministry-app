@@ -164,12 +164,35 @@ test('the planner shows the five sections as collapsible, with a numbered slot e
 test('the picker is a combobox filtered by the Holy Mass scope and the slot\'s song category', () => {
   const pick = read('src/planner/MassItemSelect.tsx');
   assert.match(pick, /role="combobox"/);
-  assert.match(pick, /primaryCategory: filter === 'all' \? 'GENERAL' : 'MASS',/);
+  assert.match(pick, /primaryCategory: PRIMARY\[filter\],/);
+  assert.match(
+    pick,
+    /const PRIMARY: Record<Filter, [^>]+> = \{ slot: 'MASS', mass: 'MASS', pw: 'PRAISE_AND_WORSHIP', all: 'GENERAL' \};/,
+    'the chips are This slot, Holy Mass songs, Praise & Worship and All songs',
+  );
   assert.match(pick, /songCategory: filter === 'slot' \? slot\.songCategory : undefined,/);
   assert.match(pick, /e\.key === 'ArrowDown'/);
   assert.match(pick, /e\.key === 'Enter'/);
-  assert.match(pick, /e\.key === 'Escape'/);
+  assert.match(pick, /e\.key [!=]== 'Escape'/);
   assert.match(pick, /document\.addEventListener\('mousedown', onDown\)/, 'a click outside closes it');
+});
+
+test('every slot\'s picker has the Songs, Prayer Notes & Passages and Create Custom Note tabs', () => {
+  const pick = read('src/planner/MassItemSelect.tsx');
+  assert.match(pick, /role="tablist"/);
+  for (const key of ['pickerTabSongs', 'pickerTabPrayers', 'pickerTabCustom']) assert.ok(pick.includes(`t('${key}')`), key);
+  // A slot opens on the tab that suits it, but any slot can switch to any tab.
+  assert.match(pick, /useState<Tab>\(slot\.kind === 'song' \? 'songs' : 'prayers'\)/);
+  // The prayers tab offers every Mass Order part and the prayers in Notes & Prayers, never an operator-only note.
+  assert.match(pick, /for \(const part of allMassParts\(\)\)/);
+  assert.match(pick, /rows\.filter\(\(n\) => n\.display !== 'operator'\)/);
+  // A custom note is a 'custom' row: its whole text is the source, within the database's 300 characters, named by its first line.
+  assert.match(pick, /const MAX_TEXT = 300;/);
+  assert.match(pick, /return \{ module: 'custom', sourceId: body, label:/);
+  assert.match(pick, /maxLength=\{MAX_TEXT\}/);
+  for (const key of ['pickerTabSongs', 'pickerTabPrayers', 'pickerTabCustom', 'pickerCustomAttach', 'pickerFilterPw']) {
+    assert.notEqual(plannerT('tl', key), key, `${key} has a Tagalog label`);
+  }
 });
 
 test('the labels exist in English and Tagalog, and the sections are named as the Holy Mass order names them', () => {
