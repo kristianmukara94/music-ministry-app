@@ -12,6 +12,7 @@ import {
   type MassFlowTarget,
   type PictureDeck,
 } from '../../shared/flow-insert.js';
+import { withDailyReadings, type DailyReadingsOutcome } from '../../shared/daily-readings.js';
 import { queueOnAir, whenLive } from '../golive/massLive';
 import { queueFromPlan } from './logic';
 import { playQueueAt } from './routing';
@@ -58,10 +59,36 @@ export function syncQueueIfLoaded(planId: number, items: PlanItem[]): void {
   setQueue(planId, items);
 }
 
-/** Loads a plan into the Service Queue, the same way the Mass Planner does. */
-export async function loadPlanToQueue(planId: number): Promise<void> {
+/**
+ * A plan's items with the day's Responsorial Psalm (slot 4) and Prayer of the Faithful (slot 6) from the Lectionary for `planDate`, the
+ * plan's liturgical date. Only slots with nothing usable in them are filled, unless `replace` (see withDailyReadings). Nothing is saved here.
+ */
+export async function autoPopulateDailyReadings(items: PlanItem[], planDate: string, opts: { replace?: boolean } = {}): Promise<DailyReadingsOutcome<PlanItem>> {
+  const day = await bridge.lectionary.getDay(planDate);
+  return withDailyReadings(items, planDate, day, opts);
+}
+
+/**
+ * Fills a plan's empty psalm and prayer slots from the Lectionary for its date, and saves it: done whenever a plan is opened in the planner
+ * or loaded for Go Live, so a plan made before the readings were pasted in picks them up. Resolves to the stored items and the slots filled.
+ * A plan that cannot be saved as it is (a song deleted since) is left as it is; the planner's Auto-fill button says why.
+ */
+export async function fillDailyReadings(planId: number): Promise<{ items: PlanItem[]; filled: string[] }> {
   const plan = await api.get(planId);
-  setQueue(planId, plan.items);
+  try {
+    const daily = await autoPopulateDailyReadings(plan.items, plan.liturgicalDate);
+    if (daily.filled.length === 0) return { items: plan.items, filled: [] };
+    await api.save(planId, daily.items);
+    return { items: (await api.get(planId)).items, filled: daily.filled };
+  } catch {
+    return { items: plan.items, filled: [] };
+  }
+}
+
+/** Loads a plan into the Service Queue, the same way the Mass Planner does, with the day's psalm and prayers in their empty slots. */
+export async function loadPlanToQueue(planId: number): Promise<void> {
+  const { items } = await fillDailyReadings(planId);
+  setQueue(planId, items);
 }
 
 /**

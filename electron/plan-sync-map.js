@@ -12,6 +12,7 @@
 import crypto from 'node:crypto';
 import { MASS_PARTS, PART_STEP } from '../shared/mass-parts.js';
 import { slotNumberOf } from '../shared/mass-slots.js';
+import { PRAYER_OF_THE_FAITHFUL } from '../shared/daily-readings.js';
 
 export const MASS_BLOCKS = ['introductory', 'word', 'eucharist', 'communion', 'concluding'];
 export const READING_TYPES = ['First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel'];
@@ -69,6 +70,8 @@ export function massEntries(rows, hymnUuidOf) {
       return entry(derived, row, uuid ? withSlot({ kind: 'song', group: row.block, songId: uuid }, row) : null);
     }
     if (row.module === 'lectionary') {
+      // The day's Prayer of the Faithful is the parish's own text for slot 6, which the website has no reading for: it stays on the laptop.
+      if (String(row.sourceId).split('|')[1] === PRAYER_OF_THE_FAITHFUL) return entry(derived, row, null);
       // The label is the reading's name. Anything else could carry text, so the plan is refused rather than sent.
       if (!READING_TYPES.includes(row.label)) throw new MapRefused('A reading in this plan is not a reading name. Nothing was sent.');
       return entry(derived, row, withSlot({ kind: 'reading', group: row.block, text: row.label }, row));

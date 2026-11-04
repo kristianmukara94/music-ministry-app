@@ -4,6 +4,8 @@ import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
 import { stanzaFrame } from '../lyrics/frames';
 import type { Hymn } from '../lyrics/types';
+import { slideFramesOf, takePrayer } from '../notes/present';
+import type { Note } from '../notes/types';
 import { openQueueItem, playQueueAt, stepQueue } from '../planner/routing';
 import { useUi } from '../state/ui';
 import { sectionChip } from '../../shared/pw.js';
@@ -28,8 +30,8 @@ export function massShowing(state: LiveState): boolean {
 }
 
 /**
- * The slides inside one item: a reading's pages, a psalm's verses, a deck of pictures, or a song's title card and stanzas. Null for a one-slide
- * item. `labels` are the Jump to section chips: a song's are T (its title card) and its sections (V1, C1, B); a deck's are its slide numbers.
+ * The slides inside one item: a reading's pages, a psalm's verses, a deck of pictures, a prayer's slides, or a song's title card and stanzas.
+ * Null for a one-slide item. `labels` are the Jump to section chips: a song's are T (its title card) and its sections (V1, C1, B); a deck's are its slide numbers.
  */
 export interface ItemSteps {
   index: number;
@@ -39,6 +41,12 @@ export interface ItemSteps {
 
 const numbered = (count: number) => Array.from({ length: count }, (_, i) => String(i + 1));
 
+/** The prayer (a Notes & Prayers note) a frame shows one slide of. Undefined for anything else. */
+export const prayerIdOf = (frame: Frame): number | undefined => {
+  const id = frame.kind === 'text' && frame.key?.startsWith('prayer:') ? Number(frame.key.slice('prayer:'.length)) : NaN;
+  return Number.isInteger(id) ? id : undefined;
+};
+
 /** The song a frame shows: a stanza of it, or its title card. Undefined for anything else. */
 export const songIdOf = (frame: Frame): number | undefined =>
   frame.kind === 'lyrics' ? frame.song?.hymnId : frame.kind === 'pw' ? frame.massSong?.hymnId : undefined;
@@ -47,6 +55,10 @@ export function stepsOf(frame: Frame, hymn: Hymn | null): ItemSteps | null {
   if (frame.kind === 'deck' && frame.slides.length > 1) return { index: frame.index, count: frame.slides.length, labels: numbered(frame.slides.length) };
   if (frame.kind === 'psalm' && frame.pages.length > 1) return { index: frame.index, count: frame.pages.length, labels: numbered(frame.pages.length) };
   if (frame.kind === 'image' && frame.deck) return { index: frame.deck.index, count: frame.deck.slides.length, labels: numbered(frame.deck.slides.length) };
+  // A prayer split into slides carries its place on every slide, so its steps need nothing loaded.
+  if (frame.kind === 'text' && prayerIdOf(frame) !== undefined && frame.page && frame.page.total > 1) {
+    return { index: frame.page.index, count: frame.page.total, labels: numbered(frame.page.total) };
+  }
   // A song's steps are its title card, then its stanzas: stanza n is step n + 1.
   if (hymn && hymn.stanzas.length > 0 && songIdOf(frame) === hymn.id) {
     const index = frame.kind === 'lyrics' && frame.song ? frame.song.position + 1 : 0;
@@ -57,10 +69,11 @@ export function stepsOf(frame: Frame, hymn: Hymn | null): ItemSteps | null {
 
 /**
  * The frame for slide `target` of the item `frame` belongs to. Null when there is no such slide. `slotName` heads a song's title card: the
- * Holy Mass slot the song is sung at.
+ * Holy Mass slot the song is sung at. `note` is the prayer behind a prayer's slide, read fresh so an edit made a moment ago is used.
  */
-export function frameAt(frame: Frame, target: number, hymn: Hymn | null, slotName?: string | null): Frame | null {
+export function frameAt(frame: Frame, target: number, hymn: Hymn | null, slotName?: string | null, note?: Note | null): Frame | null {
   if (target < 0) return null;
+  if (note && prayerIdOf(frame) === note.id) return slideFramesOf(note)[target] ?? null;
   if (frame.kind === 'deck') return target < frame.slides.length ? { ...frame, index: target } : null;
   if (frame.kind === 'psalm') return target < frame.pages.length ? { ...frame, index: target } : null;
   if (frame.kind === 'image' && frame.deck) {
@@ -84,6 +97,37 @@ export function slotNameAt(state: LiveState): string | null {
 async function hymnOf(frame: Frame): Promise<Hymn | null> {
   const id = songIdOf(frame);
   return id == null ? null : bridge.lyrics.getHymn(id);
+}
+
+/** The prayer behind a prayer's slide, read fresh from Notes & Prayers. Null for anything else, or a prayer that was deleted. */
+async function noteOf(frame: Frame): Promise<Note | null> {
+  const id = prayerIdOf(frame);
+  return id == null ? null : bridge.notes.get(id).catch(() => null);
+}
+
+/**
+ * Loads the prayer behind the slide on screen, so the console can show its next slide. Null for anything else. Notes & Prayers sends no
+ * change event, so it is read again whenever the slide changes: a prayer re-split there is re-staged with new text or a new count.
+ */
+export function useNoteOf(frame: Frame): Note | null {
+  const id = prayerIdOf(frame);
+  const shown = frame.kind === 'text' ? `${frame.page?.total ?? 1}|${frame.text}` : '';
+  const [note, setNote] = useState<Note | null>(null);
+  useEffect(() => {
+    if (id == null) {
+      setNote(null);
+      return;
+    }
+    let alive = true;
+    bridge.notes
+      .get(id)
+      .then((n) => alive && setNote(n))
+      .catch(() => alive && setNote(null));
+    return () => {
+      alive = false;
+    };
+  }, [id, shown]);
+  return note && note.id === id ? note : null;
 }
 
 /**
@@ -151,7 +195,7 @@ export async function goWithin(target: number, from?: Frame): Promise<void> {
   const state = useLive.getState().state;
   // `from` is the slide the console shows: the one on screen, or the one staged and ready, which a jump then puts on screen.
   const frame = from ?? state.projector.live;
-  const next = frameAt(frame, target, await hymnOf(frame), slotNameAt(state));
+  const next = frameAt(frame, target, await hymnOf(frame), slotNameAt(state), await noteOf(frame));
   if (next) showWithin(next);
 }
 
@@ -167,7 +211,7 @@ export async function stepMass(delta: 1 | -1): Promise<void> {
     const hymn = await hymnOf(frame);
     const steps = stepsOf(frame, hymn);
     const target = steps ? steps.index + delta : -1;
-    const next = steps && target >= 0 && target < steps.count ? frameAt(frame, target, hymn, slotNameAt(state)) : null;
+    const next = steps && target >= 0 && target < steps.count ? frameAt(frame, target, hymn, slotNameAt(state), await noteOf(frame)) : null;
     if (next) {
       showWithin(next);
       return;
@@ -184,15 +228,25 @@ export async function stepMass(delta: 1 | -1): Promise<void> {
 
 /**
  * Plays queue item `index` at its last slide, for Back from the first slide of the item after it. The last slide is staged before the take, so
- * the first slide never flashes on screen. A prayer (which shows itself) and a play that has to ask to turn the projector on start the item at
- * its first slide, as any other play does.
+ * the first slide never flashes on screen. A full-screen prayer goes up at its last slide straight away. A lower-third prayer (which has no
+ * slides) and a play that has to ask to turn the projector on start the item at its first slide, as any other play does.
  */
 async function playMassFromEnd(index: number): Promise<void> {
   const state = useLive.getState().state;
   const item = state.queue[index];
   if (!item) return;
-  if (item.module === 'notes' || (!isAnyOutputLive(state) && useUi.getState().projectorPromptChoice !== 'skip')) {
+  if (!isAnyOutputLive(state) && useUi.getState().projectorPromptChoice !== 'skip') {
     await playMassAt(index);
+    return;
+  }
+  if (item.module === 'notes') {
+    const note = item.stale ? null : await bridge.notes.get(Number(item.sourceId)).catch(() => null);
+    if (note?.display !== 'full') {
+      await playMassAt(index);
+      return;
+    }
+    dispatch({ type: 'queue/cursor', index });
+    takePrayer(note, 'MASS_QUEUE', Math.max(0, slideFramesOf(note).length - 1));
     return;
   }
   const before = frameKey(state.projector.staged);

@@ -26,7 +26,7 @@ const STRINGS = {
     citationReadingPlaceholder: 'Lk 4:1-13',
     versesLabel: 'Psalm verses',
     readingLabel: 'Reading text',
-    versesPlaceholder: 'Paste the verses. Leave a line with --- between slides.',
+    versesPlaceholder: 'Paste the verses. Each stanza is its own slide: leave a blank line (or a line with ---) between them.',
     readingPlaceholder: 'Paste the reading. Leave a line with --- to force a new slide.',
     autoPaginate: 'Auto-paginate',
     breakAtCursor: 'Break at cursor',
@@ -54,6 +54,13 @@ const STRINGS = {
     slot_second: 'Second Reading',
     slot_acclamation: 'Gospel Acclamation',
     slot_gospel: 'Gospel',
+    slot_prayers: 'Prayer of the Faithful',
+    prayersHint: 'Fills slot 6 of the Holy Mass plan',
+    responsePrayersPlaceholder: 'Lord, hear our prayer.',
+    responseFirstPrayers: 'Enter the congregation response before staging the Prayer of the Faithful.',
+    citationPrayersPlaceholder: 'Optional: where the intentions are from',
+    intentionsLabel: 'Intentions',
+    intentionsPlaceholder: 'Paste the intentions. Each one is its own slide: leave a blank line (or a line with ---) between them.',
   },
   tl: {
     eyebrow: 'Mga Pagbasa sa Araw-araw na Misa',
@@ -99,6 +106,7 @@ const STRINGS = {
     slot_second: 'Ikalawang Pagbasa',
     slot_acclamation: 'Aleluya bago ang Mabuting Balita',
     slot_gospel: 'Mabuting Balita',
+    slot_prayers: 'Panalangin ng Bayan',
   },
   ceb: {
     eyebrow: 'Mga Basahon sa Adlaw-adlaw nga Misa',
@@ -144,6 +152,7 @@ const STRINGS = {
     slot_second: 'Ikaduhang Basahon',
     slot_acclamation: 'Aleluya sa Dili pa ang Maayong Balita',
     slot_gospel: 'Maayong Balita',
+    slot_prayers: 'Pag-ampo sa Katawhan',
   },
 };
 

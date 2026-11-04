@@ -179,3 +179,17 @@ test('the Go Live consoles show every section chip, with no Show all verses swit
     assert.doesNotMatch(read(file), /ShowAllVerses|showAllVerses|visibleSlideIndexes|jumpTools/, file);
   }
 });
+
+test('a prayer split into slides steps slide by slide in the Holy Mass, with a numbered chip for each', () => {
+  const live = read('src/golive/massLive.ts');
+  // The steps come from the place every prayer slide carries, and the slide to show from the prayer read fresh from Notes & Prayers.
+  assert.match(live, /if \(frame\.kind === 'text' && prayerIdOf\(frame\) !== undefined && frame\.page && frame\.page\.total > 1\) \{\s+return \{ index: frame\.page\.index, count: frame\.page\.total, labels: numbered\(frame\.page\.total\) \};/);
+  assert.match(live, /if \(note && prayerIdOf\(frame\) === note\.id\) return slideFramesOf\(note\)\[target\] \?\? null;/);
+  assert.match(live, /frameAt\(frame, target, await hymnOf\(frame\), slotNameAt\(state\), await noteOf\(frame\)\)/, 'a chip jumps within the prayer');
+  assert.match(live, /frameAt\(frame, target, hymn, slotNameAt\(state\), await noteOf\(frame\)\)/, 'Next and Back step within the prayer');
+  // Back from the item after a prayer puts the prayer up at its last slide.
+  assert.match(live, /takePrayer\(note, 'MASS_QUEUE', Math\.max\(0, slideFramesOf\(note\)\.length - 1\)\);/);
+  const view = read('src/golive/MassLiveView.tsx');
+  assert.match(view, /const note = useNoteOf\(frame\);/);
+  assert.match(view, /frameAt\(frame, steps\.index \+ 1, hymn, slotNameAt\(live\), note\)/, 'the next-slide preview shows the prayer\'s next slide');
+});

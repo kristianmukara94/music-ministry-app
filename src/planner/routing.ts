@@ -4,7 +4,8 @@ import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
 import { turnOnProjectorAndGo } from '../live/startup';
 import { massPartFrame } from '../liturgy/massOrder';
-import { pagesOf } from '../announcements/paginate';
+import { readingPagesOf } from '../lectionary/pages';
+import { hasResponse } from '../../shared/daily-readings.js';
 import { loadPassage, scriptureSlides } from '../bible/projection';
 import { parseSourceId } from '../../shared/bible-ref.js';
 import { announcementSource } from '../../shared/flow-insert.js';
@@ -98,7 +99,8 @@ export async function openQueueItem(item: QueueItem, index: number, opts: PlayOp
 
     case 'lectionary': {
       const [date, readingType] = item.sourceId.split('|');
-      setUi({ view: 'lectionary', pendingFocus: { kind: 'reading', date, readingType } });
+      // In place (the Go Live console, the planner's ▷) the operator stays where they are, so stepping through the Mass never leaves it.
+      if (!opts.inPlace) setUi({ view: 'lectionary', pendingFocus: { kind: 'reading', date, readingType } });
       return stageReading(date, readingType);
     }
 
@@ -225,10 +227,11 @@ async function stageReading(date: string, readingType: string): Promise<boolean>
   const row = day.readings.find((r) => r.readingType === readingType);
   if (!row?.rawText) return false;
 
-  const pages = pagesOf(row.rawText);
+  const pages = readingPagesOf(readingType, row.rawText);
   const title = [day.seasonInfo, readingType, row.citation].map((s) => s.trim()).filter(Boolean).join(' · ');
+  // The psalm and the Prayer of the Faithful keep their response pinned above every stanza or intention.
   const frame: Frame =
-    readingType === 'Responsorial Psalm'
+    hasResponse(readingType)
       ? { kind: 'psalm', title, response: row.congregationResponse, pages, index: 0, style: row.style }
       : {
           kind: 'deck',

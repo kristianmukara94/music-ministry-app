@@ -38,6 +38,7 @@ const SLOT_SHORT: Record<ReadingType, string> = {
   'Second Reading': '2nd',
   'Gospel Acclamation': 'Alleluia',
   Gospel: 'Gospel',
+  'Prayer of the Faithful': 'Prayers',
 };
 
 /** Local calendar date as YYYY-MM-DD, the form the library stores. */
@@ -260,6 +261,7 @@ const SLOT_GUIDE: [ReadingType, string][] = [
   ['Second Reading', 'Sundays and solemnities have one. It is optional on weekdays.'],
   ['Gospel Acclamation', 'Entered for Praise & Worship. The Holy Mass planner leaves it out of its library.'],
   ['Gospel', 'Read at every Holy Mass.'],
+  ['Prayer of the Faithful', 'The response is pinned above the intentions, one intention to a slide. A Holy Mass plan puts it in slot 6, as it puts the psalm in slot 4.'],
 ];
 
 /** How a reading becomes slides. Written from the editor, so what it says is what the Lectionary does. */

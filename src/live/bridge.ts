@@ -556,7 +556,7 @@ const offlineLectionary: LectionaryApi = {
   saveReading: async () => offlineError(),
   clearReading: async () => offlineError(),
   setSeasonInfo: async () => offlineError(),
-  overview: async () => ({ readings: 0, days: 0, earliest: null, latest: null, bySlot: { 'First Reading': 0, 'Responsorial Psalm': 0, 'Second Reading': 0, 'Gospel Acclamation': 0, Gospel: 0 }, range: [] }),
+  overview: async () => ({ readings: 0, days: 0, earliest: null, latest: null, bySlot: { 'First Reading': 0, 'Responsorial Psalm': 0, 'Second Reading': 0, 'Gospel Acclamation': 0, Gospel: 0, 'Prayer of the Faithful': 0 }, range: [] }),
   exportJSON: async () => offlineError(),
   importJSON: async () => offlineError(),
 };

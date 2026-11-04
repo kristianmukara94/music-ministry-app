@@ -21,7 +21,7 @@ import { BLOCKS } from '../planner/types';
 import { useT } from '../i18n/strings';
 import { setUi } from '../state/ui';
 import type { QueueItem } from '../../shared/live.js';
-import { endMassSession, frameAt, goLiveMassAt, goWithin, massShowing, playMassAt, slotNameAt, stepMass, stepsOf, useHymnOf, useMassClock } from './massLive';
+import { endMassSession, frameAt, goLiveMassAt, goWithin, massShowing, playMassAt, slotNameAt, stepMass, stepsOf, useHymnOf, useMassClock, useNoteOf } from './massLive';
 import { LiveStageCanvas, type StageChipGroup } from '../components/LiveStageCanvas';
 import { useGoLiveT } from './strings';
 import { InFlowSlidePickerModal } from './InFlowSlidePickerModal';
@@ -256,6 +256,8 @@ export function MassLiveView({ planName }: { planName: string | null }) {
   // While the Mass has the screen, the console follows the slide on screen. Otherwise it shows what is ready to go.
   const frame = onAir ? live.projector.live : live.projector.staged;
   const hymn = useHymnOf(frame);
+  // The prayer behind a prayer's slide, for its next slide.
+  const note = useNoteOf(frame);
 
   const run = async (task: () => Promise<void>) => {
     setBusy(true);
@@ -320,7 +322,7 @@ export function MassLiveView({ planName }: { planName: string | null }) {
   const steps = item ? stepsOf(frame, hymn) : null;
   // Next and Back step inside the item only while it is on screen; from a staged item they move through the queue.
   const liveSteps = onAir ? steps : null;
-  const nextInItem = steps && steps.index + 1 < steps.count ? frameAt(frame, steps.index + 1, hymn, slotNameAt(live)) : null;
+  const nextInItem = steps && steps.index + 1 < steps.count ? frameAt(frame, steps.index + 1, hymn, slotNameAt(live), note) : null;
   const nextItemIndex = queue.findIndex((q, i) => i > cursor && !q.stale);
   const nextItem = nextItemIndex >= 0 ? queue[nextItemIndex] : null;
   // A song after this item opens on its title card, so that card is what comes next. Any other item is shown by its name.

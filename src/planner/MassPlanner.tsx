@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, ListMusic, Pencil, Play, Plus, Search, Send, Trash2 } from 'lucide-react';
-import { clearSlot, moveToSlot, placeInSlot, additionalIn, MASS_SLOTS } from '../../shared/mass-slots.js';
+import { AlertTriangle, ArrowDown, ArrowUp, ListMusic, Pencil, Play, Plus, Search, Send, Trash2, Zap } from 'lucide-react';
+import { clearSlot, moveToSlot, placeInSlot, additionalIn, slotById, MASS_SLOTS } from '../../shared/mass-slots.js';
+import { DAILY_READING_SLOTS } from '../../shared/daily-readings.js';
 import { SHOW_STAGED_UI, activeRowIndex, canStageRow, songRowActions, textRowActions } from '../../shared/stage-plan-row.js';
 import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
@@ -18,7 +19,7 @@ import type { Translation } from '../bible/types';
 import type { PrimaryCategory, SongCategory } from '../lyrics/types';
 import { GOSPEL_ACCLAMATION } from '../lectionary/types';
 import { blockRows, moveInto, queueFromPlan, type DragSource } from './logic';
-import { syncQueueIfLoaded } from './plan-api';
+import { autoPopulateDailyReadings, fillDailyReadings, syncQueueIfLoaded } from './plan-api';
 import { openQueueItem } from './routing';
 import { HolyMassPlan } from './HolyMassPlanner';
 import { MassTemplates } from './MassTemplates';
@@ -80,6 +81,15 @@ const isoOf = (d: Date) => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
+/** Holy Mass slots by number and name, as a notice lists them: "4. Responsorial Psalm, 6. Prayer of the Faithful". */
+const slotNames = (ids: string[]) =>
+  ids
+    .flatMap((id) => {
+      const slot = slotById(id);
+      return slot ? [`${slot.number}. ${slot.name}`] : [];
+    })
+    .join(', ');
+
 /** The coming Sunday (today if it is one): the Mass the operator usually plans. */
 const upcomingSunday = () => {
   const today = new Date();
@@ -269,7 +279,21 @@ export function MassPlanner() {
       setItems([]);
       return;
     }
-    api.get(planId).then((plan) => setItems(plan.items)).catch(fail);
+    let cancelled = false;
+    // The plan opens as saved, then the day's psalm and prayers go into its empty slots 4 and 6 (a new plan's too).
+    api.get(planId).then((plan) => {
+      if (cancelled) return;
+      setItems(plan.items);
+      return fillDailyReadings(planId).then(({ items: filled, filled: slots }) => {
+        if (cancelled || slots.length === 0) return;
+        setItems(filled);
+        syncQueueIfLoaded(planId, filled);
+        setNotice(t('autoFillOpened', { slots: slotNames(slots) }));
+      });
+    }).catch(fail);
+    return () => {
+      cancelled = true;
+    };
   }, [planId]);
 
   useEffect(() => {
@@ -308,9 +332,12 @@ export function MassPlanner() {
     };
   }, [items, lyricsRevision]);
 
-  /** Saves the plan's items. On failure the stored plan is reloaded, so the screen never disagrees with the database. */
+  /**
+   * Saves the plan's items. On failure the stored plan is reloaded, so the screen never disagrees with the database. Resolves true when the
+   * items were saved.
+   */
   const persist = async (next: PlanItem[]) => {
-    if (planId == null) return;
+    if (planId == null) return false;
     setItems(next);
     setError(null);
     setNotice(null);
@@ -319,11 +346,44 @@ export function MassPlanner() {
       const stored = await api.get(planId);
       setItems(stored.items);
       syncQueueIfLoaded(planId, stored.items);
+      return true;
     } catch (err) {
       fail(err);
       const stored = await api.get(planId);
       setItems(stored.items);
       syncQueueIfLoaded(planId, stored.items);
+      return false;
+    }
+  };
+
+  /**
+   * ⚡ Auto-Fill Readings: puts the Lectionary's Responsorial Psalm and Prayer of the Faithful for the plan's date in slots 4 and 6. A slot
+   * holding the operator's own choice (a sung psalm, a prayer from Notes & Prayers) is replaced only once they confirm. The 15 other slots
+   * are never touched, and either slot can be changed again from its picker.
+   */
+  const autoFill = async () => {
+    const plan = plans.find((p) => p.id === planId);
+    if (planId == null || !plan) return;
+    setError(null);
+    setNotice(null);
+    try {
+      const date = plan.liturgicalDate;
+      const shownDate = formatIsoDay(date, region);
+      const own = (await autoPopulateDailyReadings(items, date)).kept;
+      const replace = own.length === 0 || window.confirm(t('autoFillReplace', { slots: slotNames(own), date: shownDate }));
+      const daily = await autoPopulateDailyReadings(items, date, { replace });
+      if (daily.filled.length > 0 && !(await persist(daily.items))) return;
+      const lines = [
+        daily.filled.length > 0 && t('autoFillDone', { date: shownDate, slots: slotNames(daily.filled) }),
+        daily.current.length > 0 && t('autoFillCurrent', { slots: slotNames(daily.current) }),
+        daily.kept.length > 0 && t('autoFillKept', { slots: slotNames(daily.kept) }),
+        daily.missing.length > 0 && t('autoFillMissing', { date: shownDate, slots: slotNames(daily.missing) }),
+      ].filter(Boolean).join(' ');
+      // With nothing saved for the date at all, there is nothing to fill: that is shown as a problem to fix in the Lectionary.
+      if (daily.missing.length === DAILY_READING_SLOTS.length) setError(lines);
+      else setNotice(lines);
+    } catch (err) {
+      fail(err);
     }
   };
 
@@ -867,6 +927,15 @@ export function MassPlanner() {
                 <MassTemplates t={t} lang={lang} items={items} onApply={applyTemplate} onError={setError} onNotice={setNotice} onClose={() => setTemplatesOpen(false)} />
               )}
             </div>
+            <button
+              type="button"
+              onClick={() => void autoFill()}
+              disabled={currentPlan == null}
+              title={currentPlan ? t('autoFillTip', { date: formatIsoDay(currentPlan.liturgicalDate, region) }) : undefined}
+              className="flex h-10 items-center gap-1.5 rounded-md border border-accent/50 bg-accent/10 px-3 text-xs font-semibold tracking-wide uppercase text-accent transition hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Zap size={14} aria-hidden /> {t('autoFill')}
+            </button>
             {planId != null && (
               <button type="button" onClick={deletePlan} aria-label={t('deletePlan')} title={t('deletePlan')} className="grid size-10 place-items-center rounded-md border border-fg/15 bg-panel-2 text-fg/60 transition hover:border-danger/60 hover:text-danger">
                 <Trash2 size={14} aria-hidden />

@@ -1,6 +1,7 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 import fs from 'node:fs';
 import { parseTextStyle, sanitizeTextStyle } from '../shared/text-style.js';
+import { hasResponse } from '../shared/daily-readings.js';
 import { createLectionaryWriter, isCalendarDate, parseBackup, READING_TYPES, readAllLectionary } from './lectionary-backup.js';
 
 export { READING_TYPES };
@@ -9,7 +10,6 @@ const BACKUP_FILE_NAME = 'apccmma_lectionary_backup.json';
 const MAX_OVERVIEW_DAYS = 400;
 /** Entered here for Praise & Worship. Mass plans leave it out, so the Mass planner behaves as it did before it existed. */
 export const GOSPEL_ACCLAMATION = 'Gospel Acclamation';
-const PSALM = 'Responsorial Psalm';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_TEXT = 20000;
 const MAX_LABEL = 160;
@@ -64,6 +64,33 @@ export const LECTIONARY_ACCLAMATION_MIGRATIONS = [
     liturgical_date         TEXT NOT NULL CHECK (liturgical_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
     liturgical_season_info  TEXT NOT NULL DEFAULT '',
     reading_type            TEXT NOT NULL CHECK (reading_type IN ('First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel Acclamation', 'Gospel')),
+    citation                TEXT NOT NULL DEFAULT '',
+    congregation_response   TEXT NOT NULL DEFAULT '',
+    raw_text                TEXT NOT NULL DEFAULT '',
+    updated_at              TEXT NOT NULL DEFAULT (datetime('now')),
+    style                   TEXT,
+    UNIQUE (liturgical_date, reading_type)
+  );
+  INSERT INTO lectionary_readings_new
+    (id, liturgical_date, liturgical_season_info, reading_type, citation, congregation_response, raw_text, updated_at, style)
+    SELECT id, liturgical_date, liturgical_season_info, reading_type, citation, congregation_response, raw_text, updated_at, style
+    FROM lectionary_readings;
+  DROP TABLE lectionary_readings;
+  ALTER TABLE lectionary_readings_new RENAME TO lectionary_readings;
+  `,
+];
+
+/**
+ * Rebuilds lectionary_readings again so its CHECK constraint accepts 'Prayer of the Faithful': the day's response and intentions, which a
+ * Holy Mass plan puts in slot 6 as it puts the psalm in slot 4. Existing readings keep their ids and text.
+ */
+export const LECTIONARY_PRAYER_MIGRATIONS = [
+  `
+  CREATE TABLE lectionary_readings_new (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    liturgical_date         TEXT NOT NULL CHECK (liturgical_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+    liturgical_season_info  TEXT NOT NULL DEFAULT '',
+    reading_type            TEXT NOT NULL CHECK (reading_type IN ('First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel Acclamation', 'Gospel', 'Prayer of the Faithful')),
     citation                TEXT NOT NULL DEFAULT '',
     congregation_response   TEXT NOT NULL DEFAULT '',
     raw_text                TEXT NOT NULL DEFAULT '',
@@ -135,8 +162,8 @@ export function createLectionaryService(db, deps = {}) {
         seasonInfo: clean(input.seasonInfo, MAX_LABEL, 'Liturgical label'),
         readingType,
         citation: clean(input.citation, MAX_LABEL, 'Citation'),
-        // The response only means something for the psalm; other slots store nothing.
-        congregationResponse: readingType === PSALM ? clean(input.congregationResponse, MAX_LABEL, 'Congregation response') : '',
+        // The response only means something for the psalm and the Prayer of the Faithful; other slots store nothing.
+        congregationResponse: hasResponse(readingType) ? clean(input.congregationResponse, MAX_LABEL, 'Congregation response') : '',
         rawText,
         style: sanitizeTextStyle(input.style) ? JSON.stringify(sanitizeTextStyle(input.style)) : null,
       });

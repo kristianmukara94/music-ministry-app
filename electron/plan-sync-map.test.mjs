@@ -46,6 +46,16 @@ test('a song with no uuid on the laptop is kept there, not sent', () => {
   assert.equal(massBody(entries).items.length, 0);
 });
 
+test("the day's Prayer of the Faithful from the Lectionary is kept on the laptop, and the rest of the plan is still sent", () => {
+  const rows = [
+    { block: 'word', module: 'lectionary', sourceId: '2026-11-08|Responsorial Psalm', label: 'Responsorial Psalm', order: 1, slot: 'psalm' },
+    { block: 'word', module: 'lectionary', sourceId: '2026-11-08|Prayer of the Faithful', label: 'Prayer of the Faithful', order: 2, slot: 'prayer-faithful' },
+  ];
+  const entries = massEntries(rows, hymnUuidOf);
+  assert.deepEqual(entries.map((e) => e.synced), [true, false]);
+  assert.deepEqual(massBody(entries).items.map((i) => [i.kind, i.text, i.slot]), [['reading', 'Responsorial Psalm', 4]]);
+});
+
 test('a reading whose label is not a reading name refuses the plan and names no content', () => {
   const verse = 'For God so loved the world that he gave his only Son';
   const rows = [{ block: 'word', module: 'lectionary', sourceId: '2026-11-01|Gospel', label: verse, order: 1 }];

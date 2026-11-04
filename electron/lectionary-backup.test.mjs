@@ -10,10 +10,10 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { LECTIONARY_ACCLAMATION_MIGRATIONS, LECTIONARY_MIGRATIONS, LECTIONARY_STYLE_MIGRATIONS, createLectionaryService } = await import('./lectionary.js');
+const { LECTIONARY_ACCLAMATION_MIGRATIONS, LECTIONARY_MIGRATIONS, LECTIONARY_PRAYER_MIGRATIONS, LECTIONARY_STYLE_MIGRATIONS, createLectionaryService } = await import('./lectionary.js');
 const { BACKUP_FORMAT, BACKUP_VERSION, createLectionaryWriter, isCalendarDate, normalizeReading, parseBackup, readAllLectionary } = await import('./lectionary-backup.js');
 
-function laptopDb() {
+function laptopDb({ prayers = true } = {}) {
   const db = new DatabaseSync(':memory:');
   db.transaction = (work) => (...args) => {
     db.exec('BEGIN');
@@ -26,7 +26,7 @@ function laptopDb() {
       throw err;
     }
   };
-  for (const sqlText of [...LECTIONARY_MIGRATIONS, ...LECTIONARY_STYLE_MIGRATIONS, ...LECTIONARY_ACCLAMATION_MIGRATIONS]) db.exec(sqlText);
+  for (const sqlText of [...LECTIONARY_MIGRATIONS, ...LECTIONARY_STYLE_MIGRATIONS, ...LECTIONARY_ACCLAMATION_MIGRATIONS, ...(prayers ? LECTIONARY_PRAYER_MIGRATIONS : [])]) db.exec(sqlText);
   return db;
 }
 
@@ -162,7 +162,7 @@ test('an overview of an empty library is empty, and a bad range is refused', () 
   const service = createLectionaryService(laptopDb());
   assert.deepEqual(service.overview('2026-01-01', '2026-12-31'), {
     readings: 0, days: 0, earliest: null, latest: null,
-    bySlot: { 'First Reading': 0, 'Responsorial Psalm': 0, 'Second Reading': 0, 'Gospel Acclamation': 0, Gospel: 0 }, range: [],
+    bySlot: { 'First Reading': 0, 'Responsorial Psalm': 0, 'Second Reading': 0, 'Gospel Acclamation': 0, Gospel: 0, 'Prayer of the Faithful': 0 }, range: [],
   });
   assert.throws(() => service.overview('2026-03-31', '2026-03-01'), /after the end/);
   assert.throws(() => service.overview('2026-02-30', '2026-03-01'), /real dates/);
@@ -194,4 +194,27 @@ test('export writes the file and import reads it back; cancelling does nothing; 
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('the Prayer of the Faithful is a reading of its own, and keeps its congregation response as the psalm does', () => {
+  const service = createLectionaryService(laptopDb());
+  service.saveReading({ date: '2026-11-08', readingType: 'Prayer of the Faithful', congregationResponse: 'Lord, hear our prayer.', rawText: 'Intention one.\n\nIntention two.' });
+  const row = service.getDay('2026-11-08').readings.find((r) => r.readingType === 'Prayer of the Faithful');
+  assert.equal(row.congregationResponse, 'Lord, hear our prayer.');
+  assert.equal(row.rawText, 'Intention one.\n\nIntention two.');
+  const cleaned = normalizeReading(reading({ reading_type: 'Prayer of the Faithful', congregation_response: ' Lord, hear our prayer. ' }));
+  assert.equal(cleaned.congregation_response, 'Lord, hear our prayer.');
+});
+
+test('the Prayer of the Faithful migration keeps every saved reading and then accepts the new slot', () => {
+  const db = laptopDb({ prayers: false });
+  const before = createLectionaryService(db);
+  before.saveReading({ date: '2026-03-08', readingType: 'Responsorial Psalm', seasonInfo: '3rd Sunday of Lent', congregationResponse: 'R.', rawText: 'Verse.', style: { textColor: '#ffffff' } });
+  assert.throws(() => before.saveReading({ date: '2026-03-08', readingType: 'Prayer of the Faithful', rawText: 'Intention.' }), /CHECK/);
+  const day = before.getDay('2026-03-08');
+  for (const sqlText of LECTIONARY_PRAYER_MIGRATIONS) db.exec(sqlText);
+  const after = createLectionaryService(db);
+  assert.deepEqual(after.getDay('2026-03-08'), day);
+  after.saveReading({ date: '2026-03-08', readingType: 'Prayer of the Faithful', congregationResponse: 'Lord, hear our prayer.', rawText: 'Intention.' });
+  assert.equal(count(db), 2);
 });

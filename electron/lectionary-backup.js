@@ -6,11 +6,11 @@
  * moves them to another laptop.
  */
 import { parseTextStyle, sanitizeTextStyle } from '../shared/text-style.js';
+import { hasResponse } from '../shared/daily-readings.js';
 
 export const BACKUP_FORMAT = 'apccmma-lectionary';
 export const BACKUP_VERSION = 1;
-export const READING_TYPES = ['First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel Acclamation', 'Gospel'];
-const PSALM = 'Responsorial Psalm';
+export const READING_TYPES = ['First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel Acclamation', 'Gospel', 'Prayer of the Faithful'];
 
 /** The limits the editor enforces, so a file cannot hold what the editor would refuse. */
 export const MAX_TEXT = 20000;
@@ -43,18 +43,21 @@ function text(where, row, field, { required = false, max }) {
   return trimmed;
 }
 
-/** Checks one reading and returns its clean form. The congregation response only means something for the psalm, so other slots drop it. */
+/**
+ * Checks one reading and returns its clean form. The congregation response only means something for the psalm and the Prayer of the
+ * Faithful, so other slots drop it.
+ */
 export function normalizeReading(row, where = 'Reading') {
   if (!row || typeof row !== 'object' || Array.isArray(row)) fail(where, 'is not an object.');
   if (!isCalendarDate(row.liturgical_date)) fail(where, '"liturgical_date" must be a real date written YYYY-MM-DD.');
   if (!READING_TYPES.includes(row.reading_type)) fail(where, `"reading_type" must be one of ${READING_TYPES.join(', ')}.`);
-  const isPsalm = row.reading_type === PSALM;
+  const withResponse = hasResponse(row.reading_type);
   return {
     liturgical_date: row.liturgical_date,
     reading_type: row.reading_type,
     liturgical_season_info: text(where, row, 'liturgical_season_info', { max: MAX_LABEL }),
     citation: text(where, row, 'citation', { max: MAX_LABEL }),
-    congregation_response: isPsalm ? text(where, row, 'congregation_response', { max: MAX_LABEL }) : '',
+    congregation_response: withResponse ? text(where, row, 'congregation_response', { max: MAX_LABEL }) : '',
     raw_text: text(where, row, 'raw_text', { required: true, max: MAX_TEXT }),
     // The style is checked as the editor checks it: unknown or invalid parts fall away, and none at all means the default look.
     style: row.style && typeof row.style === 'object' ? sanitizeTextStyle(row.style) : null,
@@ -85,7 +88,7 @@ export function readAllLectionary(db) {
     .prepare(
       `SELECT liturgical_date, liturgical_season_info, reading_type, citation, congregation_response, raw_text, style
        FROM lectionary_readings
-       ORDER BY liturgical_date, CASE reading_type WHEN 'First Reading' THEN 0 WHEN 'Responsorial Psalm' THEN 1 WHEN 'Second Reading' THEN 2 WHEN 'Gospel Acclamation' THEN 3 ELSE 4 END`,
+       ORDER BY liturgical_date, CASE reading_type WHEN 'First Reading' THEN 0 WHEN 'Responsorial Psalm' THEN 1 WHEN 'Second Reading' THEN 2 WHEN 'Gospel Acclamation' THEN 3 WHEN 'Gospel' THEN 4 ELSE 5 END`,
     )
     .all();
   return {

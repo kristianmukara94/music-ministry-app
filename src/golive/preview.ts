@@ -3,7 +3,8 @@ import type { TextStyle } from '../../shared/text-style';
 import { parseSourceId } from '../../shared/bible-ref.js';
 import { bibleT } from '../../shared/bible-i18n.js';
 import { bridge } from '../live/bridge';
-import { pagesOf } from '../announcements/paginate';
+import { readingPagesOf } from '../lectionary/pages';
+import { hasResponse } from '../../shared/daily-readings.js';
 import { loadPassage, scriptureSlides } from '../bible/projection';
 import { massPartFrame } from '../liturgy/massOrder';
 import type { SourceModule } from '../planner/types';
@@ -39,9 +40,9 @@ export async function previewFor(module: SourceModule, sourceId: string, lang: L
       const day = await bridge.lectionary.getDay(date);
       const row = day.readings.find((r) => r.readingType === readingType);
       if (!row?.rawText) return null;
-      // The psalm's response stays on every page, as it does on the projector.
+      // The response of the psalm and of the Prayer of the Faithful stays on every page, as it does on the projector.
       const response = row.congregationResponse.trim();
-      const pages = pagesOf(row.rawText).map((page) => (readingType === 'Responsorial Psalm' && response ? `${response}\n\n${page}` : page));
+      const pages = readingPagesOf(readingType, row.rawText).map((page) => (hasResponse(readingType) && response ? `${response}\n\n${page}` : page));
       return { pages, style: row.style ?? null };
     }
 

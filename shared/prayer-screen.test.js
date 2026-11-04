@@ -88,3 +88,11 @@ test('the full-screen view draws every slide at one size', () => {
   assert.ok(pages.length > 1);
   assert.equal(new Set(pages.map((p) => p.fontPx)).size, 1);
 });
+
+test('a long prayer of four stanzas is shown as several slides, never crammed onto one', () => {
+  const stanza = (n) => `Stanza ${n}: we praise you, we bless you, we adore you, we glorify you, we give you thanks for your great glory, Lord God, heavenly King.`;
+  const body = [1, 2, 3, 4].map((n) => [stanza(n), stanza(n), stanza(n)].join('\n')).join('\n\n');
+  const pages = screenPagesOf({ title: 'Prayer', body, style: null, split: null });
+  assert.ok(pages.length > 1, `${pages.length} slide(s)`);
+  assert.equal(pages.map((p) => p.text).join(' ').replace(/\s+/g, ' '), body.replace(/\s+/g, ' '));
+});

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Play, Save, Scissors, Sparkles, Trash2 } from 'lucide-react';
 import { bridge } from '../live/bridge';
 import { dispatch } from '../live/store';
@@ -14,6 +14,8 @@ import { fontCss } from '../../shared/text-style.js';
 import { autoPaginateText, BREAK, pagesOf, withFitter } from '../announcements/paginate';
 import { useLectT, type LectT } from './strings';
 import { READING_TYPES, type LectionaryDay, type ReadingType } from './types';
+import { readingPagesOf, RESPONSE_HEIGHT_SHARE } from './pages';
+import { hasResponse } from '../../shared/daily-readings.js';
 
 const api = bridge.lectionary;
 const PSALM: ReadingType = 'Responsorial Psalm';
@@ -23,6 +25,7 @@ const SLOT_KEY: Record<ReadingType, string> = {
   'Second Reading': 'slot_second',
   'Gospel Acclamation': 'slot_acclamation',
   Gospel: 'slot_gospel',
+  'Prayer of the Faithful': 'slot_prayers',
 };
 const DATE_LOCALE = { en: 'en-PH', tl: 'fil-PH', ceb: 'en-PH' } as const;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -76,7 +79,10 @@ export function LectionaryDeck() {
   const editor = useRef<HTMLTextAreaElement>(null);
 
   const isPsalm = slot === PSALM;
-  const pages = pagesOf(master);
+  // The psalm and the Prayer of the Faithful have a congregation response, pinned above a slide per stanza or intention.
+  const withResponse = hasResponse(slot);
+  // The same slides the Holy Mass shows when it plays this reading from a plan.
+  const pages = useMemo(() => (withResponse ? readingPagesOf(slot, master) : pagesOf(master)), [withResponse, slot, master]);
   const current = Math.min(pageIndex, Math.max(pages.length - 1, 0));
   const fail = (err: unknown) => setError(errorText(err));
 
@@ -128,9 +134,9 @@ export function LectionaryDeck() {
 
   const autoPaginate = () => {
     if (!master.trim()) return;
-    // The psalm verses sit below the pinned response, so they get less height.
+    // The psalm verses and the intentions sit below the pinned response, so they get less height.
     // Readings and psalms are set in serif on the projector, so they are measured in serif too.
-    edit(() => setMaster(withFitter((fits) => autoPaginateText(master, fits), isPsalm ? 0.6 : 0.8, 'serif')));
+    edit(() => setMaster(withFitter((fits) => autoPaginateText(master, fits), withResponse ? RESPONSE_HEIGHT_SHARE : 0.8, 'serif')));
   };
 
   /** Inserts a manual break where the cursor sits. */
@@ -153,7 +159,7 @@ export function LectionaryDeck() {
         readingType: slot,
         seasonInfo: dayLabel,
         citation,
-        congregationResponse: isPsalm ? response : '',
+        congregationResponse: withResponse ? response : '',
         rawText: master,
         style: checked,
       });
@@ -198,11 +204,11 @@ export function LectionaryDeck() {
   const stageReading = async () => {
     setError(null);
     if (pages.length === 0) return setError(t('pasteFirst'));
-    if (isPsalm && !response.trim()) return setError(t('responseFirst'));
+    if (withResponse && !response.trim()) return setError(t(isPsalm ? 'responseFirst' : 'responseFirstPrayers'));
 
     await save();
     const title = [dayLabel, t(SLOT_KEY[slot] as Parameters<LectT>[0]), citation].map((s) => s.trim()).filter(Boolean).join(' · ');
-    if (isPsalm) {
+    if (withResponse) {
       dispatch({ type: 'projector/stage', frame: { kind: 'psalm', title, response: response.trim(), pages, index: 0, style: checked } });
     } else {
       // Blank lines stay in as empty reader lines, so the projector keeps the paragraph spacing.
@@ -322,7 +328,7 @@ export function LectionaryDeck() {
                     </span>
                   </span>
                   <span className="truncate text-xs text-fg/60">
-                    {row?.citation || (type === 'Second Reading' ? t('optional') : ' ')}
+                    {row?.citation || (type === 'Second Reading' ? t('optional') : type === 'Prayer of the Faithful' ? t('prayersHint') : ' ')}
                   </span>
                 </button>
               );
@@ -352,13 +358,13 @@ export function LectionaryDeck() {
             </span>
           </div>
 
-          {isPsalm && (
+          {withResponse && (
             <label className="flex flex-col gap-1.5">
               <span className={LABEL}>{t('responseLabel')}</span>
               <input
                 value={response}
                 maxLength={160}
-                placeholder={t('responsePlaceholder')}
+                placeholder={t(isPsalm ? 'responsePlaceholder' : 'responsePrayersPlaceholder')}
                 onChange={(e) => edit(() => setResponse(e.target.value))}
                 className="h-11 rounded-lg border border-fg/15 bg-panel-2 px-3 text-[15px] font-semibold text-accent outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40"
               />
@@ -370,7 +376,7 @@ export function LectionaryDeck() {
             <input
               value={citation}
               maxLength={160}
-              placeholder={isPsalm ? t('citationPsalmPlaceholder') : t('citationReadingPlaceholder')}
+              placeholder={isPsalm ? t('citationPsalmPlaceholder') : withResponse ? t('citationPrayersPlaceholder') : t('citationReadingPlaceholder')}
               onChange={(e) => edit(() => setCitation(e.target.value))}
               className={input}
             />
@@ -378,7 +384,7 @@ export function LectionaryDeck() {
 
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
             <div className="flex min-h-0 flex-col gap-3">
-              <label htmlFor="lect-text" className={LABEL}>{isPsalm ? t('versesLabel') : t('readingLabel')}</label>
+              <label htmlFor="lect-text" className={LABEL}>{isPsalm ? t('versesLabel') : withResponse ? t('intentionsLabel') : t('readingLabel')}</label>
               <textarea
                 id="lect-text"
                 ref={editor}
@@ -386,7 +392,7 @@ export function LectionaryDeck() {
                 onChange={(e) => edit(() => setMaster(e.target.value))}
                 rows={14}
                 spellCheck={false}
-                placeholder={isPsalm ? t('versesPlaceholder') : t('readingPlaceholder')}
+                placeholder={isPsalm ? t('versesPlaceholder') : withResponse ? t('intentionsPlaceholder') : t('readingPlaceholder')}
                 className="min-h-[240px] flex-1 resize-y rounded-lg border border-fg/15 bg-panel-2 p-3 font-mono text-sm leading-relaxed text-fg outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40"
               />
               <div className="flex flex-wrap items-center gap-2">
@@ -427,7 +433,7 @@ export function LectionaryDeck() {
                 {pages.length > 0 && <span className="font-mono text-xs text-fg/60 tabular-nums">{current + 1} / {pages.length}</span>}
               </div>
               <div className="relative">
-                {isPsalm ? (
+                {withResponse ? (
                   <PsalmPreview response={response} text={pages[current] ?? ''} style={checked} />
                 ) : (
                   <SlidePreview text={pages[current] ?? ''} bgSrc={null} style={checked} className="aspect-video w-full rounded-[10px] border border-fg/15" />
