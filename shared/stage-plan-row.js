@@ -48,6 +48,23 @@ export function lyricsStanzaFrame(hymn, index) {
 }
 
 /**
+ * The title card a Holy Mass song opens on, before its first stanza: the Praise & Worship title design, so the Intro slide switch (Title Card or
+ * Solid Black) works on it too. The title and composer are on the card, with the song's Holy Mass slot above. `massSong` ties the card to its song,
+ * so the Holy Mass console can step on into the stanzas. The card shows no counter: the stanzas after it do not carry one either.
+ */
+export function songTitleFrame(hymn, slotName) {
+  return {
+    kind: 'pw',
+    slide: { kind: 'title', label: hymn.title, subtitle: hymn.composer ?? '' },
+    segmentName: slotName || 'Holy Mass',
+    type: 'song',
+    index: 0,
+    total: 1,
+    massSong: { hymnId: hymn.id },
+  };
+}
+
+/**
  * The live-state actions that stage a library song row: its title and first stanza go to the Stage, and the row becomes CURRENT. `hymn` is the song
  * as the library holds it. Null when the song is gone, deleted, or has no stanzas, so the caller can say so instead of doing nothing.
  */

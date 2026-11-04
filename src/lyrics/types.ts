@@ -126,6 +126,8 @@ export interface LyricsApi {
   createHymns(inputs: NewHymn[]): Promise<BatchSaveResult[]>;
   /** Updates the details and replaces the stanzas with a fresh parse of `input.raw`. */
   editHymn(id: number, input: NewHymn): Promise<{ id: number; warnings: string[] }>;
+  /** Replaces only the words (tagged lyrics), keeping the song's details and filing as they are, even with no song category. */
+  editLyrics(id: number, raw: string): Promise<{ id: number; warnings: string[] }>;
   /**
    * Splits stanza `index` into two that follow each other under its label. The first keeps the stanza's id; saved lineups that sing the song in
    * their own order get the second straight after it.

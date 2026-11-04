@@ -175,7 +175,7 @@ export function confirmTakeover(): boolean {
  * segment's cue asks for it, otherwise only staged, so the Lower third toggle can bring it up.
  * With the projector off, the operator is asked to turn it on first, as the Mass Queue does.
  */
-export function showPosition(session: PwSession, deck: LiveStep[][], pos: PwPosition, frameOverride?: Frame, options: { lowerThirdOn?: boolean } = {}) {
+export function showPosition(session: PwSession, deck: LiveStep[][], pos: PwPosition, frameOverride?: Frame) {
   const segment = session.segments[pos.segment];
   const s = deck[pos.segment]?.[pos.slide];
   if (!segment || !s) return;
@@ -204,8 +204,6 @@ export function showPosition(session: PwSession, deck: LiveStep[][], pos: PwPosi
       if (segment.cues.lowerThird || ((newSong || newSegment) && now.lowerThird.live?.template === 'segment')) dispatch({ type: 'lowerThird/show', value });
       else dispatch({ type: 'lowerThird/stage', value });
     }
-    // Go Live: the lower third is on from the first slide, showing the band staged above, without the operator pressing the toggle.
-    if (options.lowerThirdOn) dispatch({ type: 'lowerThird/on' });
   };
   if (!isAnyOutputLive(live)) {
     // The operator chose to skip for this session: go live in the app only, with no prompt and no projector window.
@@ -250,7 +248,8 @@ export function goLive() {
   const deck = liveDeck(session);
   const at = pw && pw.sessionId === session.id ? livePosition(session.segments, pw) : null;
   const pos = at && deck[at.segment]?.[at.slide] ? at : { segment: 0, slide: 0 };
-  showPosition(session, deck, pos, undefined, { lowerThirdOn: true });
+  // Go Live does not turn the lower third on: the segment's band is staged for the Lower third toggle (or shown, for a segment with its own cue).
+  showPosition(session, deck, pos);
 }
 
 /**

@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld('apcc', {
     listDeletedHymns: () => ipcRenderer.invoke('lyrics:listDeletedHymns'),
     undoDeleteHymn: (id) => ipcRenderer.invoke('lyrics:undoDeleteHymn', id),
     editHymn: (id, input) => ipcRenderer.invoke('lyrics:editHymn', id, input),
+    editLyrics: (id, raw) => ipcRenderer.invoke('lyrics:editLyrics', id, raw),
     splitStanza: (id, index, parts) => ipcRenderer.invoke('lyrics:splitStanza', id, index, parts),
     listSetlists: () => ipcRenderer.invoke('lyrics:listSetlists'),
     createSetlist: (input) => ipcRenderer.invoke('lyrics:createSetlist', input),

@@ -11,7 +11,8 @@ import { announcementSource } from '../../shared/flow-insert.js';
 import { bibleT } from '../../shared/bible-i18n.js';
 import { setUi, useUi } from '../state/ui';
 import { stagePrayer, takePrayer } from '../notes/present';
-import { stanzaFrame } from '../lyrics/frames';
+import { songTitleFrame } from '../../shared/stage-plan-row.js';
+import { slotById } from '../../shared/mass-slots.js';
 import { announcementFrame } from '../announcements/frames';
 import { frameForWhiteboardSlide } from '../whiteboard/projectSlide';
 
@@ -20,10 +21,13 @@ export interface PlayOptions {
   inPlace?: boolean;
 }
 
-/** Stages a song's first stanza. Resolves false when the song is gone or has no stanzas. */
-async function stageSong(sourceId: string): Promise<boolean> {
-  const hymn = await bridge.lyrics.getHymn(Number(sourceId));
-  const frame = hymn && !hymn.deletedAt ? stanzaFrame(hymn, 0) : null;
+/**
+ * Stages a Holy Mass song on its title card, with its slot's name above it. Next then goes to its first stanza. Resolves false when the song is gone
+ * or has no stanzas.
+ */
+async function stageSong(item: QueueItem): Promise<boolean> {
+  const hymn = await bridge.lyrics.getHymn(Number(item.sourceId));
+  const frame = hymn && !hymn.deletedAt && hymn.stanzas.length > 0 ? songTitleFrame(hymn, slotById(item.slot)?.name) : null;
   if (!frame) return false;
   dispatch({ type: 'projector/stage', frame });
   return true;
@@ -72,7 +76,7 @@ export async function openQueueItem(item: QueueItem, index: number, opts: PlayOp
   dispatch({ type: 'queue/cursor', index });
   switch (item.module) {
     case 'lyrics':
-      if (opts.inPlace) return stageSong(item.sourceId);
+      if (opts.inPlace) return stageSong(item);
       // The song deck loads the hymn, then takes its first stanza live on the queue's account.
       setUi({ view: 'lyrics', pendingFocus: { kind: 'hymn', id: Number(item.sourceId) } });
       return false;

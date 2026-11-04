@@ -15,7 +15,7 @@ import { sundayCycle } from '../liturgy/lectionary';
 import { deckRow, decksOf } from '../../shared/flow-insert.js';
 import { formatRuns, formatSourceId, parsePassageInput, stripHits } from '../../shared/bible-ref.js';
 import type { Translation } from '../bible/types';
-import type { SongCategory } from '../lyrics/types';
+import type { PrimaryCategory, SongCategory } from '../lyrics/types';
 import { GOSPEL_ACCLAMATION } from '../lectionary/types';
 import { blockRows, moveInto, queueFromPlan, type DragSource } from './logic';
 import { syncQueueIfLoaded } from './plan-api';
@@ -24,6 +24,7 @@ import { HolyMassPlan } from './HolyMassPlanner';
 import { MassTemplates } from './MassTemplates';
 import type { PickedItem } from './MassItemSelect';
 import { usePlannerT, type PlannerT } from './strings';
+import type { PlannerKey } from '../../shared/planner-i18n.js';
 import { builtInItems, type NewPlanTemplate } from './templates';
 import { NewPlanForm } from './NewPlanForm';
 import { songCategoryOf, stepFor, type MassStep } from '../../shared/mass-flow.js';
@@ -68,6 +69,13 @@ const MODULE_TONE: Record<string, string> = {
 };
 const toneOf = (module: string) => MODULE_TONE[module] ?? MODULE_TONE.custom;
 
+/** The song type toggle over the song list. General shows every song; the other two show their own songs and the General ones. */
+const SONG_SCOPES: { id: PrimaryCategory; key: PlannerKey }[] = [
+  { id: 'MASS', key: 'songScopeMass' },
+  { id: 'PRAISE_AND_WORSHIP', key: 'songScopePraise' },
+  { id: 'GENERAL', key: 'songScopeAll' },
+];
+
 const isoOf = (d: Date) => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -88,6 +96,7 @@ export async function loadLibrary(
   t: PlannerT,
   translationId: string,
   songCategory?: string,
+  songScope?: PrimaryCategory,
 ): Promise<LibraryItem[]> {
   const q = query.trim().toLowerCase();
   const match = (text: string) => !q || text.toLowerCase().includes(q);
@@ -118,7 +127,7 @@ export async function loadLibrary(
       }));
     }
     case 'lyrics': {
-      const hymns = await bridge.lyrics.listHymns({ search: query, songCategory });
+      const hymns = await bridge.lyrics.listHymns({ search: query, songCategory, primaryCategory: songScope });
       return hymns.map((h): LibraryItem => ({
         module: 'lyrics',
         sourceId: String(h.id),
@@ -224,6 +233,8 @@ export function MassPlanner() {
   // The song category the song list is filtered by while a song step is being filled. Empty means all songs.
   const [songFilter, setSongFilter] = useState('');
   const [songCategories, setSongCategories] = useState<SongCategory[]>([]);
+  // The song type the song list shows: Holy Mass by default in the planner, or Praise & Worship, or all songs (General).
+  const [songScope, setSongScope] = useState<PrimaryCategory>('MASS');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // The Holy Mass Order part whose words are being edited (`id: null` is a new parish item), and the parish's own words (so the library marks edited parts).
@@ -269,10 +280,10 @@ export function MassPlanner() {
   // The library search is debounced so typing does not send a request per keystroke.
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      loadLibrary(tab, query, readingDate, lang, t, bibleTranslation, songFilter || undefined).then(setLibrary).catch(fail);
+      loadLibrary(tab, query, readingDate, lang, t, bibleTranslation, songFilter || undefined, songScope).then(setLibrary).catch(fail);
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [tab, query, readingDate, lang, bibleTranslation, songFilter, lyricsRevision, massOrderRevision]);
+  }, [tab, query, readingDate, lang, bibleTranslation, songFilter, songScope, lyricsRevision, massOrderRevision]);
 
   useEffect(() => bridge.lyrics.onChanged(() => setLyricsRevision((n) => n + 1)), []);
 
@@ -330,6 +341,8 @@ export function MassPlanner() {
     setTab(step.kind === 'reading' ? 'bible' : 'lyrics');
     // A song step starts on its own song category. The operator can switch to all songs.
     setSongFilter(songCategoryOf(step) ?? '');
+    // A song step is a part of the Mass, so its songs are looked for among the Holy Mass ones.
+    if (step.kind === 'song') setSongScope('MASS');
   };
 
   /** A library row picked for the step being filled. */
@@ -669,6 +682,24 @@ export function MassPlanner() {
                   className="h-10 w-full rounded-md border border-fg/15 bg-panel-2 pr-3 pl-9 text-sm outline-none focus:border-accent"
                 />
               </label>
+            )}
+            {tab === 'lyrics' && (
+              <div role="radiogroup" aria-label={t('songScopeLabel')} className="grid grid-cols-3 gap-1 rounded-md border border-fg/15 bg-panel-2 p-1">
+                {SONG_SCOPES.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={songScope === s.id}
+                    onClick={() => setSongScope(s.id)}
+                    className={`min-w-0 truncate rounded px-2 py-1.5 text-[11px] font-semibold transition ${
+                      songScope === s.id ? 'bg-accent text-on-accent' : 'text-fg/75 hover:bg-fg/10 hover:text-fg'
+                    }`}
+                  >
+                    {t(s.key)}
+                  </button>
+                ))}
+              </div>
             )}
             {tab === 'bible' && (
               <label className="flex items-center gap-2 text-xs text-muted">

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { AlertTriangle, Check, Music, Play } from 'lucide-react';
-import { livePosition, readiness, runtimeOf, segmentStatus, step, visibleSlideIndexes } from '../../shared/pw.js';
+import { AlertTriangle, Check, Play } from 'lucide-react';
+import { livePosition, readiness, runtimeOf, segmentStatus, step } from '../../shared/pw.js';
 import { dispatch, useLive } from '../live/store';
 import { ProjectorView } from '../output/ProjectorView';
 import { LowerThirdStage } from '../output/LowerThirdView';
@@ -15,9 +15,7 @@ import { IntroSlideToggle } from './IntroSlideToggle';
 import { SlideTypography } from './SlideTypography';
 import { SecondaryControls } from './SecondaryControls';
 import { LineupHotEdit } from './LineupHotEdit';
-import { useHolyMassOnAir } from './holyMass';
-import { ShowAllVerses } from '../components/ShowAllVerses';
-import { useUi } from '../state/ui';
+import { LiveStageCanvas, type StageChipGroup } from '../components/LiveStageCanvas';
 import { setPwState, usePw } from './store';
 import { usePwT, type PwT } from './strings';
 import type { PwSession } from './types';
@@ -40,8 +38,8 @@ function shownAt(session: PwSession, deck: LiveStep[][], at: { segment: number; 
   return { slide: null, segmentName: seg?.name ?? '', type: seg?.type ?? 'song', index: 0, total: 1 };
 }
 
-/** mm:ss, or h:mm:ss once past an hour. */
-function clock(ms: number) {
+/** mm:ss, or h:mm:ss once past an hour. The Holy Mass console's clocks read the same. */
+export function clock(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
@@ -56,6 +54,20 @@ function stepChip(s: LiveStep, t: PwT) {
   if (s.slide.kind === 'lyrics') return { label: s.slide.chip, name: s.slide.label };
   if (s.slide.kind === 'title') return { label: 'T', name: t('titleChip') };
   return { label: String(s.index + 1), name: s.slide.label };
+}
+
+/** The segment's chips for Jump to section: a song's under its title, the title card, a prayer or a reading in a row of their own. */
+function chipGroups(steps: LiveStep[], t: PwT): StageChipGroup[] {
+  const groups: StageChipGroup[] = [];
+  steps.forEach((s, i) => {
+    const lyric = s.kind === 'slide' && s.slide.kind === 'lyrics' ? s.slide : null;
+    const key = lyric ? `song-${lyric.hymnId}` : 'other';
+    const chip = { index: i, ...stepChip(s, t) };
+    const last = groups[groups.length - 1];
+    if (last && last.key.startsWith(`${key}@`)) last.chips.push(chip);
+    else groups.push({ key: `${key}@${i}`, label: lyric ? lyric.hymnTitle : null, chips: [chip] });
+  });
+  return groups;
 }
 
 function LiveLineup({ session, segment }: { session: PwSession; segment: number }) {
@@ -108,14 +120,12 @@ export function LiveView() {
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   // A slide whose stanza the operator double-clicked to edit, handed to the lineup editor.
   const [editRequest, setEditRequest] = useState<number | null>(null);
-  const holyMassOnAir = useHolyMassOnAir();
   const session = usePw((s) => s.session);
   // Subscribed so the deck is rebuilt when songs, prayers or the day's readings finish loading.
   const hymns = usePw((s) => s.hymns);
   usePw((s) => s.prayers);
   usePw((s) => s.day);
   const live = useLive((s) => s.state);
-  const showAllVerses = useUi((s) => s.showAllVerses);
   const now = useNow().getTime();
   if (!session) return <p className="rounded-[10px] border border-line bg-panel p-6 text-muted">{t('noSessions')}</p>;
 
@@ -145,8 +155,6 @@ export function LiveView() {
   const segmentIndex = at.segment;
   // The slide after this one, across segments, as the Next key would reach it. Null at the end of the lineup.
   const nextAt = step(deck.map((d) => d.length), at, 1);
-  // While "Show all verses" is off, a song's chips are its live section and the next one.
-  const chipFilter = session.segments[segmentIndex]?.type === 'song' && !showAllVerses ? visibleSlideIndexes(deck[segmentIndex]?.length ?? 0, at.slide) : null;
   const segment = session.segments[segmentIndex];
   const steps = deck[segmentIndex] ?? [];
   const group = session.groups.find((g) => g.key === segment?.group)?.name ?? '';
@@ -202,103 +210,45 @@ export function LiveView() {
 
         {segment && (
           <section aria-labelledby="pw-live-title" className="flex min-w-0 flex-col gap-4 rounded-[10px] border border-line bg-panel p-5">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold tracking-wider text-accent uppercase">
-                  {t('nowEyebrow', { n: pad2(segmentIndex + 1), total: session.segments.length, group })}
-                </p>
-                <h2 id="pw-live-title" className="mt-1 text-2xl leading-tight font-bold tracking-tight">{segment.name}</h2>
-                {songs.length > 0 && (
-                  <ul aria-label={t('lineup')} className="mt-2 flex flex-wrap gap-1.5">
-                    {songs.map((song) => (
-                      <li
-                        key={song.id}
-                        className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-                          song.id === playingHymn ? 'border-accent/60 bg-accent/15 text-accent' : 'border-fg/15 bg-panel-2 text-fg/80'
-                        }`}
-                      >
-                        <Music size={11} aria-hidden /> {song.title}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className="flex min-w-56 flex-col gap-1.5">
-                <div className="flex items-baseline justify-between gap-3">
-                  <span id="pw-seg-time" className="text-sm text-muted">{t('segmentTime')}</span>
-                  <span className="font-mono">{clock(elapsed)} / {clock(planned)}</span>
-                </div>
-                <div role="progressbar" aria-labelledby="pw-seg-time" aria-valuemin={0} aria-valuemax={planned / 1000} aria-valuenow={Math.round(elapsed / 1000)} className="h-2 overflow-hidden rounded-full bg-panel-2">
-                  <div className={`h-full rounded-full ${elapsed > planned ? 'bg-danger' : 'bg-accent'}`} style={{ width: `${planned ? Math.min(100, (elapsed / planned) * 100) : 0}%` }} />
-                </div>
-              </div>
-            </div>
-
-            {segmentStatus(segment) === 'needs_song' && (
-              <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-accent px-4 py-3 text-accent">
-                <AlertTriangle size={18} aria-hidden />
-                <span className="flex-1">{t('noSongBanner')}</span>
-                <button type="button" className="min-h-11 font-semibold underline underline-offset-2" onClick={() => setPwState({ tab: 'plan', selected: segmentIndex })}>
-                  {t('fixInPlanner')}
-                </button>
-              </div>
-            )}
-
-            {/* The current step, with the next one beside it. Drawn locally; the real projector is on the right. */}
-            <CurrentNextPreview
-              current={shownAt(session, deck, at)}
-              next={nextAt ? shownAt(session, deck, nextAt) : null}
-              endLabel={t('previewEnd')}
-            />
-
-            <div className="flex flex-col gap-2">
-              <h3 className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('jumpToSection')}</h3>
-              {segment.type === 'song' && <ShowAllVerses label={t('showAllVerses')} />}
-              {(() => {
-                // A song's chips share a row under its title. The title card, a prayer or a reading has no song, so its chips form a row of their own.
-                const groups: { key: string; label: string | null; items: { s: LiveStep; i: number }[] }[] = [];
-                steps.forEach((s, i) => {
-                  if (chipFilter && !chipFilter.includes(i)) return;
-                  const lyric = s.kind === 'slide' && s.slide.kind === 'lyrics' ? s.slide : null;
-                  const key = lyric ? `song-${lyric.hymnId}` : 'other';
-                  const last = groups[groups.length - 1];
-                  if (last && last.key === key) last.items.push({ s, i });
-                  else groups.push({ key, label: lyric ? lyric.hymnTitle : null, items: [{ s, i }] });
-                });
-                return (
-                  <div className="flex flex-col gap-3">
-                    {groups.map((group) => (
-                      <div key={`${group.key}-${group.items[0].i}`} className="flex flex-col gap-1.5">
-                        {group.label && <span className="truncate text-xs font-semibold text-fg/70">{group.label}</span>}
-                        <ol className="flex flex-wrap gap-1.5">
-                          {group.items.map(({ s, i }) => {
-                            const chip = stepChip(s, t);
-                            const here = i === at.slide;
-                            return (
-                              <li key={i}>
-                                <button
-                                  type="button"
-                                  onClick={() => jumpTo(segmentIndex, i)}
-                                  onDoubleClick={holyMassOnAir ? undefined : () => setEditRequest(i)}
-                                  aria-current={here ? 'step' : undefined}
-                                  aria-label={t('stepLabel', { label: chip.name, n: i + 1, total: steps.length })}
-                                  className={`grid h-10 min-w-12 place-items-center rounded-full border px-3 font-mono text-sm font-bold transition ${
-                                    here ? 'border-accent bg-accent text-on-accent' : 'border-fg/15 bg-panel-2 text-fg/85 hover:border-accent hover:text-accent'
-                                  }`}
-                                >
-                                  {chip.label}
-                                </button>
-                              </li>
-                            );
-                          })}
-                        </ol>
-                      </div>
-                    ))}
+            <LiveStageCanvas
+              titleId="pw-live-title"
+              eyebrow={t('nowEyebrow', { n: pad2(segmentIndex + 1), total: session.segments.length, group })}
+              title={segment.name}
+              songs={songs}
+              activeSongId={playingHymn}
+              aside={
+                <div className="flex min-w-56 flex-col gap-1.5">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span id="pw-seg-time" className="text-sm text-muted">{t('segmentTime')}</span>
+                    <span className="font-mono">{clock(elapsed)} / {clock(planned)}</span>
                   </div>
-                );
-              })()}
+                  <div role="progressbar" aria-labelledby="pw-seg-time" aria-valuemin={0} aria-valuemax={planned / 1000} aria-valuenow={Math.round(elapsed / 1000)} className="h-2 overflow-hidden rounded-full bg-panel-2">
+                    <div className={`h-full rounded-full ${elapsed > planned ? 'bg-danger' : 'bg-accent'}`} style={{ width: `${planned ? Math.min(100, (elapsed / planned) * 100) : 0}%` }} />
+                  </div>
+                </div>
+              }
+              alert={
+                segmentStatus(segment) === 'needs_song' && (
+                  <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-accent px-4 py-3 text-accent">
+                    <AlertTriangle size={18} aria-hidden />
+                    <span className="flex-1">{t('noSongBanner')}</span>
+                    <button type="button" className="min-h-11 font-semibold underline underline-offset-2" onClick={() => setPwState({ tab: 'plan', selected: segmentIndex })}>
+                      {t('fixInPlanner')}
+                    </button>
+                  </div>
+                )
+              }
+              // The current step, with the next one beside it. Drawn locally; the real projector is on the right.
+              preview={<CurrentNextPreview current={shownAt(session, deck, at)} next={nextAt ? shownAt(session, deck, nextAt) : null} endLabel={t('previewEnd')} />}
+              jumpHeading={t('jumpToSection')}
+              groups={chipGroups(steps, t)}
+              activeIndex={at.slide}
+              onSelect={(i) => jumpTo(segmentIndex, i)}
+              onChipDoubleClick={(i) => setEditRequest(i)}
+              chipLabel={(chip) => t('stepLabel', { label: chip.name, n: chip.index + 1, total: steps.length })}
+            >
               <LineupHotEdit t={t} segmentIndex={segmentIndex} steps={steps} onAir={at.slide} editRequest={editRequest} onEditHandled={() => setEditRequest(null)} />
-            </div>
+            </LiveStageCanvas>
 
             {backgroundOpen && <BackgroundPanel onClose={() => setBackgroundOpen(false)} />}
 

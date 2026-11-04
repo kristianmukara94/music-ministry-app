@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Check, ClipboardList, Music, Play, Plus, RotateCcw, X } from 'lucide-react';
+import { AlertTriangle, Check, ClipboardList, Play, Plus, RotateCcw, X } from 'lucide-react';
 import { dispatch, useLive } from '../live/store';
 import { BackgroundPanel } from '../operator/BackgroundPanel';
 import { FramePreview, ProjectorView } from '../output/ProjectorView';
@@ -10,13 +10,19 @@ import { slotById } from '../../shared/mass-slots.js';
 import { removeFromFlow, resetMassOrder } from '../planner/plan-api';
 import { SecondaryControls } from '../praise-worship/SecondaryControls';
 import { SlideTypography } from '../praise-worship/SlideTypography';
+import { IntroSlideToggle } from '../praise-worship/IntroSlideToggle';
+import { clock } from '../praise-worship/LiveView';
+import { useNow } from '../operator/useNow';
+import { songTitleFrame } from '../../shared/stage-plan-row.js';
+import { MassHotEdit } from './MassHotEdit';
 import { usePwT } from '../praise-worship/strings';
 import { usePlannerT } from '../planner/strings';
 import { BLOCKS } from '../planner/types';
 import { useT } from '../i18n/strings';
 import { setUi } from '../state/ui';
 import type { QueueItem } from '../../shared/live.js';
-import { frameAt, goLiveMassAt, goWithin, playMassAt, queueOnAir, stepMass, stepsOf, useHymnOf } from './massLive';
+import { endMassSession, frameAt, goLiveMassAt, goWithin, massShowing, playMassAt, slotNameAt, stepMass, stepsOf, useHymnOf, useMassClock } from './massLive';
+import { LiveStageCanvas, type StageChipGroup } from '../components/LiveStageCanvas';
 import { useGoLiveT } from './strings';
 import { InFlowSlidePickerModal } from './InFlowSlidePickerModal';
 
@@ -231,6 +237,10 @@ export function MassLiveView({ planName }: { planName: string | null }) {
   const [adding, setAdding] = useState(false);
   // The Reset order confirmation, while it is open.
   const [confirmingReset, setConfirmingReset] = useState(false);
+  // A step whose stanza the operator double-clicked to edit, handed to the live editor.
+  const [editRequest, setEditRequest] = useState<number | null>(null);
+  const { liveSince, itemSince } = useMassClock();
+  const now = useNow().getTime();
 
   // A confirmation fades on its own, so it never sits over later work.
   useEffect(() => {
@@ -241,8 +251,9 @@ export function MassLiveView({ planName }: { planName: string | null }) {
 
   const queue = live.queue;
   const cursor = live.queueCursor;
-  const onAir = queueOnAir(live);
-  // While the Mass has the projector, the console follows the slide on screen. Otherwise it shows what is ready to go.
+  // The Mass has the screen, with the projector window open or not (the TV and phones, or the app alone).
+  const onAir = massShowing(live);
+  // While the Mass has the screen, the console follows the slide on screen. Otherwise it shows what is ready to go.
   const frame = onAir ? live.projector.live : live.projector.staged;
   const hymn = useHymnOf(frame);
 
@@ -305,22 +316,36 @@ export function MassLiveView({ planName }: { planName: string | null }) {
     const def = BLOCKS.find((b) => b.id === q.block);
     return def ? tPlan(def.titleKey as Parameters<typeof tPlan>[0]) : '';
   };
-  const steps = onAir ? stepsOf(frame, hymn) : null;
-  const nextInItem = steps && steps.index + 1 < steps.count ? frameAt(frame, steps.index + 1, hymn) : null;
+  // The slides of the item the console shows, on screen or staged and ready, so its chips are there before it goes up too.
+  const steps = item ? stepsOf(frame, hymn) : null;
+  // Next and Back step inside the item only while it is on screen; from a staged item they move through the queue.
+  const liveSteps = onAir ? steps : null;
+  const nextInItem = steps && steps.index + 1 < steps.count ? frameAt(frame, steps.index + 1, hymn, slotNameAt(live)) : null;
   const nextItemIndex = queue.findIndex((q, i) => i > cursor && !q.stale);
   const nextItem = nextItemIndex >= 0 ? queue[nextItemIndex] : null;
+  // A song after this item opens on its title card, so that card is what comes next. Any other item is shown by its name.
+  const nextItemFrame = nextItem?.module === 'lyrics' ? songTitleFrame({ id: Number(nextItem.sourceId), title: nextItem.label, stanzas: [] }, slotById(nextItem.slot)?.name) : null;
+  const isSong = item?.module === 'lyrics' && hymn !== null;
+  const chips = (steps?.labels ?? []).map((label, i) => ({ index: i, label, name: isSong && i === 0 ? tp('titleChip') : label }));
+  // As in Praise & Worship: a song's title card chip on a row of its own, then its sections under the song's title. Any other item is one row.
+  const chipGroups: StageChipGroup[] = isSong
+    ? [
+        { key: 'title', label: null, chips: chips.filter((chip) => chip.index === 0) },
+        { key: `song-${hymn!.id}`, label: hymn!.title, chips: chips.filter((chip) => chip.index > 0) },
+      ].filter((group) => group.chips.length > 0)
+    : [{ key: 'item', label: null, chips }];
   const missing = queue.filter((q) => q.stale).length;
   const lowerOn = live.lowerThird.live != null;
   const blackout = live.projector.live.kind === 'blackout';
   const projectorOn = live.outputs.projector;
   // Something other than the Mass has the projector while the Mass has a place: offer to put the Mass back.
   const otherOnAir = cursor >= 0 && projectorOn && !onAir && live.projector.live.kind !== 'idle' && live.projector.live.kind !== 'blackout';
-  const atStart = cursor <= 0 && (!steps || steps.index === 0);
-  const atEnd = nextItemIndex < 0 && (!steps || steps.index >= steps.count - 1);
+  const atStart = cursor <= 0 && (!liveSteps || liveSteps.index === 0);
+  const atEnd = nextItemIndex < 0 && (!liveSteps || liveSteps.index >= liveSteps.count - 1);
 
   return (
     <div className="flex flex-col gap-5">
-      {/* The Mass at a glance: on air or not, the plan, and the way to clear the screen. */}
+      {/* The Mass at a glance: on air or not, the plan, and the ways to clear the screen or end the Mass. */}
       <div className={`${CARD} flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3`}>
         <span
           className={`inline-flex min-h-9 items-center gap-2 rounded-full border px-4 text-sm font-extrabold tracking-[0.18em] uppercase ${
@@ -328,7 +353,11 @@ export function MassLiveView({ planName }: { planName: string | null }) {
           }`}
         >
           <span aria-hidden className={`size-2 rounded-full ${onAir ? 'animate-pulse bg-danger' : 'bg-fg/50'}`} />
-          {onAir ? t('massOnAir') : t('massOffAir')}
+          {onAir ? tp('liveBadge') : tp('offAir')}
+        </span>
+        <span className="flex items-baseline gap-2">
+          <span className="text-xs text-fg/60">{tp('sessionTime')}</span>
+          <span className="font-mono text-2xl tabular-nums text-fg">{clock(liveSince ? now - liveSince : 0)}</span>
         </span>
         {planName && (
           <span className="flex min-w-0 items-baseline gap-2">
@@ -336,7 +365,8 @@ export function MassLiveView({ planName }: { planName: string | null }) {
             <span className="truncate text-base font-semibold text-fg">{planName}</span>
           </span>
         )}
-        <div className="ml-auto flex flex-wrap items-center gap-3">
+        <div className="ml-auto flex flex-wrap items-center gap-4">
+          <IntroSlideToggle />
           <button
             type="button"
             className={`${BTN} hover:!border-danger/60 hover:!text-danger`}
@@ -344,6 +374,9 @@ export function MassLiveView({ planName }: { planName: string | null }) {
             onClick={() => window.confirm(t('massConfirmClear')) && dispatch({ type: 'projector/clear' })}
           >
             {t('massClear')}
+          </button>
+          <button type="button" className={`${BTN} hover:!border-danger/60 hover:!text-danger`} disabled={cursor < 0} onClick={() => window.confirm(t('massConfirmEnd')) && endMassSession()}>
+            {tp('endSession')}
           </button>
         </div>
       </div>
@@ -386,23 +419,79 @@ export function MassLiveView({ planName }: { planName: string | null }) {
 
         <section aria-labelledby="mass-live-title" className={`${CARD} flex min-w-0 flex-col gap-4 p-5`}>
           {item ? (
-            <div className="min-w-0">
-              <p className={EYEBROW}>
-                {t(onAir ? 'massNowEyebrow' : 'massReadyEyebrow', {
-                  n: pad2(cursor + 1),
-                  total: queue.length,
-                  block: blockTitle(item),
-                })}
-              </p>
-              <h2 id="mass-live-title" className="mt-1 text-2xl leading-tight font-bold tracking-tight">{item.label}</h2>
-              {item.module === 'lyrics' && hymn && (
-                <ul className="mt-2 flex flex-wrap gap-1.5">
-                  <li className="flex items-center gap-1.5 rounded-full border border-accent/60 bg-accent/15 px-2.5 py-0.5 text-xs font-medium text-accent">
-                    <Music size={11} aria-hidden /> {hymn.title}
-                  </li>
-                </ul>
-              )}
-            </div>
+            <LiveStageCanvas
+              titleId="mass-live-title"
+              eyebrow={t(onAir ? 'massNowEyebrow' : 'massReadyEyebrow', { n: pad2(cursor + 1), total: queue.length, block: blockTitle(item) })}
+              title={item.label}
+              songs={item.module === 'lyrics' && hymn ? [{ id: hymn.id, title: hymn.title }] : []}
+              activeSongId={onAir ? hymn?.id : null}
+              // The Holy Mass items have no planned length, so the item's time counts up with no target.
+              aside={
+                <div className="flex min-w-40 items-baseline justify-between gap-3">
+                  <span className="text-sm text-muted">{t('massItemTime')}</span>
+                  <span className="font-mono">{clock(onAir && itemSince ? now - itemSince : 0)}</span>
+                </div>
+              }
+              // The slide on screen, with the next one beside it: the next slide of this item, or the next item.
+              preview={
+                <div className="@container/preview">
+                  <div className="grid grid-cols-1 gap-4 @md/preview:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                    <figure className="flex min-w-0 flex-col gap-1.5">
+                      <figcaption className={EYEBROW}>{t('massCurrent')}</figcaption>
+                      <div className={STAGE}>
+                        <FramePreview frame={frame} />
+                        {steps && (
+                          <span className="absolute right-2 bottom-2 rounded-full bg-black/75 px-2.5 py-0.5 font-mono text-[11px] font-bold tracking-wider text-white shadow">
+                            {steps.index + 1} / {steps.count}
+                          </span>
+                        )}
+                      </div>
+                    </figure>
+                    <figure className="flex min-w-0 flex-col gap-1.5">
+                      <figcaption className={EYEBROW}>{nextInItem ? t('massNextSlide') : t('massNextItemCard')}</figcaption>
+                      {nextInItem ? (
+                        <div className={STAGE}>
+                          <FramePreview frame={nextInItem} />
+                          <span className="absolute right-2 bottom-2 rounded-full bg-black/75 px-2.5 py-0.5 font-mono text-[11px] font-bold tracking-wider text-white shadow">
+                            {steps!.index + 2} / {steps!.count}
+                          </span>
+                        </div>
+                      ) : nextItemFrame ? (
+                        <div className={STAGE}>
+                          <FramePreview frame={nextItemFrame} />
+                        </div>
+                      ) : nextItem ? (
+                        <div className="flex aspect-video w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-line bg-stone-950 p-3 text-center text-white">
+                          <span className="text-[10px] font-semibold tracking-wider text-white/50 uppercase">{MODULE_TAG[nextItem.module]}</span>
+                          <span className="line-clamp-3 text-sm font-bold">{nextItem.label}</span>
+                        </div>
+                      ) : (
+                        <div className="grid aspect-video w-full place-items-center rounded-lg border border-dashed border-fg/15 p-3 text-center text-sm text-muted">
+                          {t('massEndOfQueue')}
+                        </div>
+                      )}
+                    </figure>
+                  </div>
+                </div>
+              }
+              jumpHeading={tp('jumpToSection')}
+              groups={chipGroups}
+              activeIndex={steps?.index ?? -1}
+              onSelect={(i) => void run(() => goWithin(i, frame))}
+              chipLabel={(chip) => t('massSlideLabel', { label: chip.name, n: chip.index + 1, total: steps?.count ?? 1 })}
+              disabled={busy}
+              onChipDoubleClick={isSong ? (i) => setEditRequest(i) : undefined}
+              noChips={<p className="text-sm text-muted">{t('massOneSlide')}</p>}
+            >
+              <MassHotEdit
+                t={tp}
+                hymn={isSong ? hymn : null}
+                onAir={isSong && liveSteps ? liveSteps.index : null}
+                editRequest={editRequest}
+                onEditHandled={() => setEditRequest(null)}
+                onShow={(step) => void run(() => goWithin(step))}
+              />
+            </LiveStageCanvas>
           ) : (
             <div className="flex flex-col items-start gap-3">
               <h2 id="mass-live-title" className="text-2xl leading-tight font-bold tracking-tight">{t('massReadyTitle', { name: planName ?? '' })}</h2>
@@ -411,73 +500,6 @@ export function MassLiveView({ planName }: { planName: string | null }) {
                 <button type="button" className={BTN_GO} disabled={busy} onClick={() => void run(() => goLiveMassAt(firstPlayable, planName))}>
                   <Play size={16} aria-hidden fill="currentColor" /> {t('massStart', { name: queue[firstPlayable].label })}
                 </button>
-              )}
-            </div>
-          )}
-
-          {/* The slide on screen, with the next one beside it: the next slide of this item, or the next item. */}
-          {item && (
-            <div className="@container/preview">
-              <div className="grid grid-cols-1 gap-4 @md/preview:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-                <figure className="flex min-w-0 flex-col gap-1.5">
-                  <figcaption className={EYEBROW}>{t('massCurrent')}</figcaption>
-                  <div className={STAGE}>
-                    <FramePreview frame={frame} />
-                    {steps && (
-                      <span className="absolute top-2 right-2 rounded-full bg-black/75 px-2.5 py-0.5 font-mono text-[11px] font-bold tracking-wider text-white uppercase shadow">
-                        {t('massSlidePill', { n: steps.index + 1, total: steps.count })}
-                      </span>
-                    )}
-                  </div>
-                </figure>
-                <figure className="flex min-w-0 flex-col gap-1.5">
-                  <figcaption className={EYEBROW}>{nextInItem ? t('massNextSlide') : t('massNextItemCard')}</figcaption>
-                  {nextInItem ? (
-                    <div className={STAGE}>
-                      <FramePreview frame={nextInItem} />
-                    </div>
-                  ) : nextItem ? (
-                    <div className="flex aspect-video w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-line bg-panel-2 p-3 text-center">
-                      <span className="text-[10px] font-semibold tracking-wider text-fg/50 uppercase">{MODULE_TAG[nextItem.module]}</span>
-                      <span className="line-clamp-3 text-sm font-bold text-fg">{nextItem.label}</span>
-                    </div>
-                  ) : (
-                    <div className="grid aspect-video w-full place-items-center rounded-lg border border-dashed border-fg/15 p-3 text-center text-sm text-muted">
-                      {t('massEndOfQueue')}
-                    </div>
-                  )}
-                </figure>
-              </div>
-            </div>
-          )}
-
-          {item && (
-            <div className="flex flex-col gap-2">
-              <h3 className={EYEBROW}>{t('massJump')}</h3>
-              {steps ? (
-                <ol className="flex flex-wrap gap-1.5">
-                  {steps.labels.map((label, i) => {
-                    const here = i === steps.index;
-                    return (
-                      <li key={i}>
-                        <button
-                          type="button"
-                          onClick={() => void run(() => goWithin(i))}
-                          disabled={busy}
-                          aria-current={here ? 'step' : undefined}
-                          aria-label={t('massSlideLabel', { label, n: i + 1, total: steps.count })}
-                          className={`grid h-10 min-w-12 place-items-center rounded-full border px-3 font-mono text-sm font-bold transition ${
-                            here ? 'border-accent bg-accent text-on-accent' : 'border-fg/15 bg-panel-2 text-fg/85 hover:border-accent hover:text-accent'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ol>
-              ) : (
-                <p className="text-sm text-muted">{t('massOneSlide')}</p>
               )}
             </div>
           )}

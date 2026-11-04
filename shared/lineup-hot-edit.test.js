@@ -149,7 +149,9 @@ test('the new stanza\'s slide is found from the slide it was added after', () =>
 
 test('the Live panel wires double-click and the editor; the editor saves through the song and never touches the lineup copy first', () => {
   const view = read('src/praise-worship/LiveView.tsx');
-  assert.match(view, /onDoubleClick=\{holyMassOnAir \? undefined : \(\) => setEditRequest\(i\)\}/);
+  assert.match(view, /onChipDoubleClick=\{\(i\) => setEditRequest\(i\)\}/);
+  // The shared stage canvas draws the chips and hands a chip's double-click back to the view.
+  assert.match(read('src/components/LiveStageCanvas.tsx'), /onDoubleClick=\{onChipDoubleClick \? \(\) => onChipDoubleClick\(chip\.index\) : undefined\}/);
   assert.match(view, /<LineupHotEdit t=\{t\} segmentIndex=\{segmentIndex\} steps=\{steps\} onAir=\{at\.slide\}/);
   const editor = read('src/praise-worship/LineupHotEdit.tsx');
   assert.match(editor, /useLiveHotEditor\(hymn,/);

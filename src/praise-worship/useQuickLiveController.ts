@@ -125,9 +125,9 @@ export function useQuickLiveController() {
         }
         dispatch({ type: 'projector/show', frame, source: 'DIRECT_DECK' });
         setCue(hymn);
-        // Go Live turns the lower third on, naming the song, without the operator pressing the toggle.
+        // The band naming the song is staged, not turned on: the operator shows it with the Lower third toggle when ready.
         bandRef.current = quickLiveBand(hymn);
-        dispatch({ type: 'lowerThird/on', value: bandRef.current });
+        dispatch({ type: 'lowerThird/stage', value: bandRef.current });
         // The warnings are told in order of how much they matter: no window at all, then output off, then no second screen.
         if (windowOpen === false) say({ hymnId, kind: 'screen', text: 'The projector window is not open. Open it from the projector switch, then show the song again.' });
         else if (!projectorOn) say({ hymnId, kind: 'screen', text: 'The projector output is off. The song is ready and shows when it is switched on.' });

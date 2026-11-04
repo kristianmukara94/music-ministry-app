@@ -115,7 +115,17 @@ export type Frame =
   /** A whiteboard slide, drawn from its design. */
   | { kind: 'whiteboard'; slide: { title: string; content: string; design: WhiteboardDesign } }
   /** One Praise & Worship slide, drawn by PwSlideFace. `index` and `total` count the segment's slides. */
-  | { kind: 'pw'; slide: PwSlide; segmentName: string; type: PwType; index: number; total: number; footer?: string };
+  | {
+      kind: 'pw';
+      slide: PwSlide;
+      segmentName: string;
+      type: PwType;
+      index: number;
+      total: number;
+      footer?: string;
+      /** Set on a Holy Mass song's title card (see songTitleFrame): the song it opens. Such a card is the Holy Mass's, not a Praise & Worship lineup's. */
+      massSong?: { hymnId: number };
+    };
 
 /** A background layer item: an image or a looping video. */
 export interface MediaFrame {
@@ -251,7 +261,6 @@ export type LiveAction =
   | { type: 'lowerThird/clear' }
   | { type: 'lowerThird/toggle' }
   /** Go Live: shows `value` (or the staged one) on the lower third and sets the operator's choice to On. */
-  | { type: 'lowerThird/on'; value?: LowerThird }
   | { type: 'lowerThird/stage'; value: LowerThird }
   | { type: 'settings/projector'; value: Partial<ProjectorSettings> }
   | { type: 'settings/welcome'; value: Partial<WelcomeSettings> }

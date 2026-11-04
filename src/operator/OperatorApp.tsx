@@ -29,6 +29,7 @@ import { watchProjectorPromptChoice } from '../live/prompt-choice';
 import { watchRemoteCommands } from '../live/remoteBridge';
 import { watchRemoteSteps, watchSlideScale } from '../praise-worship/live';
 import { stepLive } from '../praise-worship/live';
+import { massShowing, stepMass } from '../golive/massLive';
 import { CommandPalette } from './CommandPalette';
 import { ProjectorPrompt } from './ProjectorPrompt';
 import { SplitStanzaDialog } from '../praise-worship/SplitStanzaDialog';
@@ -76,12 +77,25 @@ function useGlobalHotkeys() {
         runShortcut(shortcut);
         return;
       }
-      // Presentation clickers send PageUp/PageDown. While Praise & Worship is on air they step its lineup instead.
-      const delta = e.key === 'PageDown' || e.key === 'ArrowRight' ? 1 : e.key === 'PageUp' || e.key === 'ArrowLeft' ? -1 : 0;
+      // Presentation clickers send PageUp/PageDown. While Praise & Worship or the Holy Mass is on air they step its lineup instead, the same way
+      // as the console's Next and Back. On a live console, Down, Up and Space step it too; a focused button keeps Space for itself.
+      const live = useLive.getState().state;
+      const lineup = live.pw?.onAir ? 'pw' : massShowing(live) ? 'mass' : null;
+      const consoleKeys = lineup !== null && (ui.view === 'goLive' || ui.view === 'praiseWorship') && !(e.key === ' ' && (e.target as HTMLElement).closest('button'));
+      const delta =
+        e.key === 'PageDown' || e.key === 'ArrowRight' || (consoleKeys && (e.key === 'ArrowDown' || e.key === ' '))
+          ? 1
+          : e.key === 'PageUp' || e.key === 'ArrowLeft' || (consoleKeys && e.key === 'ArrowUp')
+            ? -1
+            : 0;
+      // With a dialog open (Add slides, Reset order), the keys are the dialog's: nothing on screen moves behind it.
+      if (!delta || document.querySelector('[aria-modal="true"]')) return;
       // Keys a control already handled (tab lists, arrangement chips) do not step the lineup.
-      if (delta && useLive.getState().state.pw?.onAir) {
-        if (!e.defaultPrevented) void stepLive(delta);
-      } else if (delta) dispatch({ type: 'projector/step', delta });
+      if (lineup) {
+        if (e.defaultPrevented) return;
+        e.preventDefault();
+        void (lineup === 'pw' ? stepLive(delta) : stepMass(delta));
+      } else dispatch({ type: 'projector/step', delta });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

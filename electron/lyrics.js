@@ -314,11 +314,14 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
       });
     },
 
-    /** Updates the hymn's details and replaces its stanzas with a fresh parse of `raw`. */
-    editHymn(id, input = {}) {
+    /**
+     * Updates the hymn's details and replaces its stanzas with a fresh parse of `raw`. `wordsOnly` is for editLyrics, which sends the song's own
+     * details back unchanged; the IPC handler never passes it, so the song form always needs a song category.
+     */
+    editHymn(id, input = {}, { wordsOnly = false } = {}) {
       // Refused before anything is written: saving an existing hymn needs a song category too. Hymns already saved without one are
-      // left as they are until they are next saved.
-      if (isSongCategoryMissing(input.songCategory)) throw new Error(SONG_CATEGORY_REQUIRED_EN);
+      // left as they are until they are next saved in the song form. A change to the words alone keeps the song's filing, whatever it is.
+      if (!wordsOnly && isSongCategoryMissing(input.songCategory)) throw new Error(SONG_CATEGORY_REQUIRED_EN);
       const current = q.hymn.get(id);
       if (!current) throw new Error('That hymn no longer exists.');
       if (current.deletedAt) throw new Error('That hymn was deleted. Undo the delete to change it.');
@@ -333,6 +336,30 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
       const removed = dropped.map((d) => `${d.stanzaType} (stanza ${d.position}) was removed by this edit, and taken out of ${lineupsChanged} saved lineup arrangement${lineupsChanged === 1 ? '' : 's'}.`);
       changed(id);
       return { id, warnings: [...hymn.warnings, ...removed] };
+    },
+
+    /**
+     * Replaces only the song's words with a fresh parse of `raw`: the live editor's save (Edit slide on air, Add slide) and the stanza split.
+     * The title, composer, key, scope and song category are written back as they are stored, so the song keeps its filing and its Mass slot.
+     * A song saved before a song category was required keeps having none: the words can change on air without anyone choosing one.
+     */
+    editLyrics(id, raw) {
+      const hymn = this.getHymn(id);
+      if (!hymn) throw new Error('That hymn no longer exists.');
+      if (hymn.deletedAt) throw new Error('That hymn was deleted. Undo the delete to change it.');
+      return this.editHymn(
+        id,
+        {
+          title: hymn.title,
+          composer: hymn.composer,
+          language: hymn.language,
+          musicalKey: hymn.musicalKey,
+          songCategory: hymn.songCategory,
+          primaryCategory: hymn.primaryCategory,
+          raw,
+        },
+        { wordsOnly: true },
+      );
     },
 
     /**
@@ -354,15 +381,7 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
         { stanzaType: stanza.stanzaType, lyricsText: second },
         ...hymn.stanzas.slice(at + 1),
       ];
-      const result = this.editHymn(id, {
-        title: hymn.title,
-        composer: hymn.composer,
-        language: hymn.language,
-        musicalKey: hymn.musicalKey,
-        songCategory: hymn.songCategory,
-        primaryCategory: hymn.primaryCategory,
-        raw: toTaggedLyrics(stanzas),
-      });
+      const result = this.editLyrics(id, toTaggedLyrics(stanzas));
       const saved = q.stanzas.all(id);
       const firstId = saved[at]?.id ?? null;
       const secondId = saved[at + 1]?.id ?? null;
@@ -462,6 +481,7 @@ export function setupLyrics(db, options = {}) {
   handle('listDeletedHymns', () => service.listDeletedHymns());
   handle('undoDeleteHymn', (id) => service.undoDeleteHymn(Number(id)));
   handle('editHymn', (id, input) => service.editHymn(Number(id), input));
+  handle('editLyrics', (id, raw) => service.editLyrics(Number(id), String(raw ?? '')));
   handle('splitStanza', (id, index, parts) => service.splitStanza(Number(id), Number(index), parts));
   handle('setStyle', (id, style) => service.setStyle(Number(id), style));
   handle('listSetlists', () => service.listSetlists());

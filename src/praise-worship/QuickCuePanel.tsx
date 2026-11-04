@@ -55,12 +55,10 @@ export function QuickCuePanel({ quick, t }: { quick: QuickLive; t: PwT }) {
           <p className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('liveCues')}</p>
           <h3 className="truncate text-base font-bold">{cue.title}</h3>
         </div>
-        {!hot.locked && (
-          <button type="button" onClick={hot.startAdd} disabled={hot.busy || hot.adding !== null} title={t('addSlideTip')} className={`${SMALL_BTN} border-fg/15 text-fg/85 hover:border-accent hover:text-accent`}>
-            <Plus size={14} aria-hidden />
-            {t('addSlide')}
-          </button>
-        )}
+        <button type="button" onClick={hot.startAdd} disabled={hot.busy || hot.adding !== null} title={t('addSlideTip')} className={`${SMALL_BTN} border-fg/15 text-fg/85 hover:border-accent hover:text-accent`}>
+          <Plus size={14} aria-hidden />
+          {t('addSlide')}
+        </button>
         <button
           type="button"
           onClick={exit}
@@ -111,7 +109,7 @@ export function QuickCuePanel({ quick, t }: { quick: QuickLive; t: PwT }) {
               <button
                 type="button"
                 onClick={() => quick.showStanza(i)}
-                onDoubleClick={hot.locked ? undefined : () => hot.startEdit(i)}
+                onDoubleClick={() => hot.startEdit(i)}
                 aria-current={live ? 'true' : undefined}
                 aria-label={`${live ? `${t('onAirBadge')}: ` : ''}${stanza.stanzaType}`}
                 className={`w-full rounded-lg border p-3 pr-11 text-left transition ${
@@ -124,7 +122,6 @@ export function QuickCuePanel({ quick, t }: { quick: QuickLive; t: PwT }) {
                 </span>
                 <span className="line-clamp-3 block text-sm leading-snug whitespace-pre-line">{stanza.lyricsText || ' '}</span>
               </button>
-              {!hot.locked && (
               <button
                 type="button"
                 onClick={() => hot.startEdit(i)}
@@ -135,7 +132,6 @@ export function QuickCuePanel({ quick, t }: { quick: QuickLive; t: PwT }) {
               >
                 <Pencil size={13} aria-hidden />
               </button>
-              )}
             </li>
           );
         })}

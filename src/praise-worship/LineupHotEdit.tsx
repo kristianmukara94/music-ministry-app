@@ -116,9 +116,6 @@ export function LineupHotEdit({ t, segmentIndex, steps, onAir, editRequest, onEd
 
   const editingStanza = hot.editing && hymn ? hymn.stanzas[hot.editing.index] : null;
 
-  // The Holy Mass is on air: the lineup editor is not shown.
-  if (hot.locked) return null;
-
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">

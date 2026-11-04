@@ -3,7 +3,6 @@ import { bridge } from '../live/bridge';
 import type { Hymn, Stanza } from '../lyrics/types';
 import { splitAtMidpoint } from '../../shared/pw-hot-edit.js';
 import { applySplitToSession } from './store';
-import { HOLY_MASS_LOCKED, useHolyMassOnAir } from './holyMass';
 
 /** The section labels a stanza added on the fly can take. Each is one the lyrics parser reads back as a section header. */
 export const ADD_LABELS = ['Verse', 'Chorus', 'Bridge', 'Outro'] as const;
@@ -48,30 +47,17 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
   const [adding, setAdding] = useState<HotAdd | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // The Holy Mass is on air: no edit, add or split is made, whatever asks for one. Praise & Worship and Quick Live are not affected.
-  const locked = useHolyMassOnAir();
 
   /** Saves a new list of stanzas. Resolves to the saved song, or null when it was refused (the reason is in `error`). */
   const saveStanzas = useCallback(
     async (stanzas: Pick<Stanza, 'stanzaType' | 'lyricsText'>[]): Promise<Hymn | null> => {
       if (!hymn) return null;
-      if (locked) {
-        setError(HOLY_MASS_LOCKED);
-        return null;
-      }
       setBusy(true);
       setError(null);
       try {
-        // Only the words change. The scope and song category are sent as they are, so the song keeps its filing and its Mass slot.
-        await bridge.lyrics.editHymn(hymn.id, {
-          title: hymn.title,
-          composer: hymn.composer,
-          language: hymn.language,
-          musicalKey: hymn.musicalKey,
-          songCategory: hymn.songCategory,
-          primaryCategory: hymn.primaryCategory,
-          raw: tagged(stanzas),
-        });
+        // Only the words change. The song keeps its stored details, scope and song category, so its filing and Mass slot stay put, and a song
+        // saved before a song category was required can still be edited on air.
+        await bridge.lyrics.editLyrics(hymn.id, tagged(stanzas));
         const fresh = await bridge.lyrics.getHymn(hymn.id);
         if (!fresh) throw new Error('The song could not be read back after saving.');
         onSaved(fresh);
@@ -83,7 +69,7 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
         setBusy(false);
       }
     },
-    [hymn, onSaved, locked],
+    [hymn, onSaved],
   );
 
   /** A stanza's new words, checked: not empty, and with no line that would start a section of its own. */
@@ -94,7 +80,7 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
   };
 
   const startEdit = (index: number) => {
-    if (locked || !hymn?.stanzas[index]) return;
+    if (!hymn?.stanzas[index]) return;
     setAdding(null);
     setError(null);
     setEditing({ index, text: hymn.stanzas[index].lyricsText });
@@ -124,10 +110,6 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
    */
   const commitSplit = async (index: number): Promise<boolean> => {
     if (!hymn?.stanzas[index]) return false;
-    if (locked) {
-      setError(HOLY_MASS_LOCKED);
-      return false;
-    }
     const words = editing?.index === index ? editing.text : hymn.stanzas[index].lyricsText;
     const parts = splitAtMidpoint(words);
     if (!parts) {
@@ -152,7 +134,6 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
   };
 
   const startAdd = () => {
-    if (locked) return;
     setEditing(null);
     setError(null);
     setAdding({ label: 'Verse', text: '' });
@@ -185,8 +166,6 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
   };
 
   return {
-    /** True while the Holy Mass is on air: editing and adding are closed, and the controls are not shown. */
-    locked,
     editing,
     adding,
     busy,

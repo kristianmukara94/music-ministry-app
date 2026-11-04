@@ -22,6 +22,7 @@ export interface StageHymn {
   stanzas: { stanzaType: string; lyricsText: string }[];
 }
 export function lyricsStanzaFrame(hymn: StageHymn, index: number): Frame | null;
+export function songTitleFrame(hymn: StageHymn & { composer?: string | null }, slotName?: string | null): Extract<Frame, { kind: 'pw' }>;
 export function songRowActions(row: StageRow | null | undefined, index: number, hymn: StageHymn | null | undefined): StageAction[] | null;
 export function mirrorSource<P extends { paused: boolean; staged: Frame; live: Frame }>(projector: P, options?: { mirror?: boolean; peek?: boolean }): Frame;
 

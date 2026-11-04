@@ -83,6 +83,26 @@ test('editing an existing hymn that has no song category is refused until one is
   assert.equal(db.prepare('SELECT title, song_category FROM hymns WHERE id = ?').get(legacy).song_category, 'Entrance', 'once a category is chosen, the edit saves');
 });
 
+test('a change to the words alone (the live editor, a stanza split) saves on a song with no song category, and keeps its filing', () => {
+  const { db, service } = setup();
+  // A hymn saved before the rule, with no category: the one an operator edits on air during the Mass.
+  const legacy = Number(db.prepare("INSERT INTO hymns (title, composer, category, language, musical_key, song_category) VALUES ('Adlaw-Adlaw', 'Anon', 'Entrance', 'CEB', 'D', '')").run().lastInsertRowid);
+  db.prepare("INSERT INTO hymn_stanzas (hymn_id, display_order, stanza_type, lyrics_text) VALUES (?, 1, 'Verse 1', 'First line')").run(legacy);
+  const filing = () => db.prepare('SELECT title, composer, category, language, musical_key, song_category, primary_category FROM hymns WHERE id = ?').get(legacy);
+  const before = filing();
+
+  service.editLyrics(legacy, '[Verse 1]\nFirst line, edited\n\n[Verse 2]\nA verse added on air');
+  assert.deepEqual(service.getHymn(legacy).stanzas.map((s) => s.lyricsText), ['First line, edited', 'A verse added on air']);
+  assert.deepEqual(filing(), before, 'the title, composer, key, scope, Mass slot and (empty) song category are as they were');
+
+  service.splitStanza(legacy, 0, ['First line,', 'edited']);
+  assert.equal(service.getHymn(legacy).stanzas.length, 3, 'the split saves too');
+  assert.deepEqual(filing(), before);
+
+  // The song form still has to choose one.
+  assert.throws(() => service.editHymn(legacy, { ...HYMN, songCategory: '' }), (err) => err.message === SONG_CATEGORY_REQUIRED_EN);
+});
+
 test('the refusal is the same English message the form recognises, so the form can show its translated prompt', () => {
   assert.equal(SONG_CATEGORY_REQUIRED_EN, 'Choose a song category before saving.');
 });

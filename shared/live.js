@@ -323,15 +323,6 @@ function reduce(s, a) {
       return l.staged ? { ...s, lowerThird: { ...l, live: l.staged, choice: 'on' } } : s;
     }
 
-    // Go Live turns the lower third on: it shows `value` (or, with none, the one staged) and records the operator's choice as On, so the header
-    // toggle reads LIVE and the next segment's band follows. With nothing to show it only records the choice. A paused band stays staged.
-    case 'lowerThird/on': {
-      const l = s.lowerThird;
-      const value = a.value ?? l.staged;
-      if (!value) return { ...s, lowerThird: { ...l, choice: 'on' } };
-      return { ...s, lowerThird: { ...l, staged: value, live: l.paused ? l.live : value, choice: 'on' } };
-    }
-
     case 'lowerThird/pause': {
       const l = s.lowerThird;
       const paused = a.paused ?? !l.paused;

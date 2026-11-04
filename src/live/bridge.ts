@@ -547,6 +547,7 @@ const offlineLyrics: LyricsApi = {
   renameSongCategory: async () => offlineError(),
   deleteSongCategory: async () => offlineError(),
   editHymn: async () => offlineError(),
+  editLyrics: async () => offlineError(),
   splitStanza: async () => offlineError(),
 };
 

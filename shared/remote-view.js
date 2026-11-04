@@ -230,7 +230,7 @@ function snapshotOf(state, target, now) {
 
   const shown = presentFrame(frame, outputLookOf(state).welcome);
   // For Praise & Worship, what comes after this is the next item of its lineup, not of the Mass queue.
-  const lineup = frame.kind === 'pw' ? base.lineup : null;
+  const lineup = frame.kind === 'pw' && !frame.massSong ? base.lineup : null;
   const nextInLineup = lineup && lineup.current >= 0 ? lineup.items[lineup.current + 1]?.name ?? null : undefined;
   // Praise & Worship has no list of slides to jump to. Next and Previous cross from one segment to the next, so they stay on (`steps`).
   // A panel that publishes its own steps and sections (the Rosary) is mirrored: the phone shows them and drives them.
@@ -317,7 +317,8 @@ export function controlAction(state, request) {
 
   // Praise & Worship steps through its own lineup (slides, then the next segment). The operator window carries the step out.
   // Whatever the on-air flag says, a Praise & Worship slide on screen is stepped through its lineup.
-  if (state.pw && state.projector.live?.kind === 'pw') {
+  // A Holy Mass song's title card is drawn as a Praise & Worship title slide, but it is the Holy Mass's: it is not stepped through the lineup.
+  if (state.pw && state.projector.live?.kind === 'pw' && !state.projector.live.massSong) {
     if (request.action === 'next' || request.action === 'previous') {
       return { ok: true, action: { type: 'remote/pwstep', delta: request.action === 'next' ? 1 : -1 } };
     }

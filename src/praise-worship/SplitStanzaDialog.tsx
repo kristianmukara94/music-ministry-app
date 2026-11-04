@@ -85,11 +85,7 @@ export function SplitStanzaDialog() {
         </header>
         {failed && <p role="alert" className="text-sm text-danger">{failed}</p>}
         {hot.error && <p role="alert" className="text-sm text-danger">{hot.error}</p>}
-        {hot.locked ? (
-          <p role="status" className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn">
-            {t('holyMassLocked')}
-          </p>
-        ) : done ? (
+        {done ? (
           <p role="status" className="rounded-lg border border-ok/40 bg-ok/10 px-3 py-2 text-sm text-ok">
             {t('splitDone')}
           </p>
