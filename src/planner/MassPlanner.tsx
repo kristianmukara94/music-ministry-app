@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, ListMusic, Pencil, Play, Plus, Search, Send, Trash2, Zap } from 'lucide-react';
-import { clearSlot, moveToSlot, placeInSlot, additionalIn, slotById, MASS_SLOTS } from '../../shared/mass-slots.js';
-import { DAILY_READING_SLOTS } from '../../shared/daily-readings.js';
+import { clearSlot, moveToSlot, placeInSlot, additionalIn, slotById } from '../../shared/mass-slots.js';
+import { withAllReadings } from '../../shared/daily-readings.js';
+import { MASS_LANGUAGES, bibleOf, massLanguageOf, otherBibles, slotLabel, uiLangOf } from '../../shared/mass-language.js';
+import type { Lang } from '../../shared/live.js';
 import { SHOW_STAGED_UI, activeRowIndex, canStageRow, songRowActions, textRowActions } from '../../shared/stage-plan-row.js';
 import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
@@ -19,7 +21,8 @@ import type { Translation } from '../bible/types';
 import type { PrimaryCategory, SongCategory } from '../lyrics/types';
 import { GOSPEL_ACCLAMATION } from '../lectionary/types';
 import { blockRows, moveInto, queueFromPlan, type DragSource } from './logic';
-import { autoPopulateDailyReadings, fillDailyReadings, syncQueueIfLoaded } from './plan-api';
+import { fillDailyReadings, rememberPlanLanguage, setPlanLanguage, syncQueueIfLoaded } from './plan-api';
+import { fillDayFromBible, notifyLectionaryChanged, type BibleFillResult } from '../services/lectionaryService';
 import { openQueueItem } from './routing';
 import { HolyMassPlan } from './HolyMassPlanner';
 import { MassTemplates } from './MassTemplates';
@@ -30,7 +33,7 @@ import { builtInItems, type NewPlanTemplate } from './templates';
 import { NewPlanForm } from './NewPlanForm';
 import { songCategoryOf, stepFor, type MassStep } from '../../shared/mass-flow.js';
 import { overlayLyricsItems } from '../../shared/hymn-cache.js';
-import { BLOCKS, type LibraryItem, type LiturgicalBlock, type PlanItem, type PlanSummary, type SourceModule } from './types';
+import { BLOCKS, type LibraryItem, type LiturgicalBlock, type MassLanguage, type PlanItem, type PlanSummary, type SourceModule } from './types';
 
 const api = bridge.plans;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -81,12 +84,12 @@ const isoOf = (d: Date) => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
-/** Holy Mass slots by number and name, as a notice lists them: "4. Responsorial Psalm, 6. Prayer of the Faithful". */
-const slotNames = (ids: string[]) =>
+/** Holy Mass slots by place and name in the Mass language, as a notice lists them: "7. Responsorial Psalm, 13. Prayer of the Faithful". */
+const slotNames = (ids: string[], lang: Lang) =>
   ids
     .flatMap((id) => {
       const slot = slotById(id);
-      return slot ? [`${slot.number}. ${slot.name}`] : [];
+      return slot ? [`${slot.position}. ${slotLabel(slot, lang)}`] : [];
     })
     .join(', ');
 
@@ -219,7 +222,9 @@ export function MassPlanner() {
   const region = useRegion();
   const [tab, setTab] = useState<SourceModule>('lyrics');
   const [query, setQuery] = useState('');
-  const [readingDate, setReadingDate] = useState(upcomingSunday);
+  const [readingDate, setReadingDate] = useState(() => useUi.getState().lectionaryDate ?? upcomingSunday());
+  // Bumped when a reading is saved, cleared or applied in the Lectionary: the plan and the library are read again.
+  const lectionaryRevision = useUi((s) => s.lectionaryRevision);
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [bibleTranslation, setBibleTranslation] = useState('WEB');
   const [translations, setTranslations] = useState<Translation[]>([]);
@@ -227,6 +232,9 @@ export function MassPlanner() {
   const [plans, setPlans] = useState<PlanSummary[]>([]);
   const [planId, setPlanId] = useState<number | null>(null);
   const [items, setItems] = useState<PlanItem[]>([]);
+  const currentPlan = plans.find((p) => p.id === planId) ?? null;
+  // The language of the Mass itself: its Mass Order parts, typed responses and Bible readings. The planner's own words stay in the app language.
+  const planLang: Lang = currentPlan ? uiLangOf(currentPlan.language) : lang;
   // Bumped when a song changes in Song Lyrics; the library search and the plan's song rows read the song again.
   const [lyricsRevision, setLyricsRevision] = useState(0);
   // The current title and deleted state of each song in the plan, from the library.
@@ -254,7 +262,7 @@ export function MassPlanner() {
   /** Plan rows with each Holy Mass Order part under its title now; a deleted parish item is marked missing. */
   const named = (list: PlanItem[]) => withPartNames(list, (id) => {
     const part = findMassPart(id);
-    return part ? massPartName(part, lang) : null;
+    return part ? massPartName(part, planLang) : null;
   });
   const dragRef = useRef<DragSource | null>(null);
   const fail = (err: unknown) => setError(errorText(err));
@@ -280,21 +288,52 @@ export function MassPlanner() {
       return;
     }
     let cancelled = false;
-    // The plan opens as saved, then the day's psalm and prayers go into its empty slots 4 and 6 (a new plan's too).
-    api.get(planId).then((plan) => {
+    // The plan opens as saved. A plan with no readings yet takes the day's readings from the built-in Ordo and the offline Bible, in its
+    // language; any other plan takes the day's psalm and prayers into its empty slots 4 and 6.
+    api.get(planId).then(async (plan) => {
       if (cancelled) return;
       setItems(plan.items);
+      rememberPlanLanguage(planId, plan.language);
+      // The Lectionary and the library's readings follow the plan's date, so switching tabs shows its readings.
+      setReadingDate(plan.liturgicalDate);
+      setUi({ lectionaryDate: plan.liturgicalDate });
+      if (!plan.items.some((it) => it.module === 'lectionary')) {
+        const { bible, out } = await readingsFor(plan.items, plan.liturgicalDate, plan.language);
+        if (cancelled || out.placed.length === 0) return;
+        await api.save(planId, out.items);
+        const stored = (await api.get(planId)).items;
+        if (bible.saved.length > 0) notifyLectionaryChanged();
+        if (cancelled) return;
+        setItems(stored);
+        syncQueueIfLoaded(planId, stored);
+        setNotice(fillNotice(plan.liturgicalDate, plan.language, bible, out.placed, [], []));
+        return;
+      }
       return fillDailyReadings(planId).then(({ items: filled, filled: slots }) => {
         if (cancelled || slots.length === 0) return;
         setItems(filled);
         syncQueueIfLoaded(planId, filled);
-        setNotice(t('autoFillOpened', { slots: slotNames(slots) }));
+        setNotice(t('autoFillOpened', { slots: slotNames(slots, planLang) }));
       });
     }).catch(fail);
     return () => {
       cancelled = true;
     };
   }, [planId]);
+
+  // A reading saved or applied in the Lectionary: the plan is read again, with the day's psalm and prayers in their slots, when still empty.
+  useEffect(() => {
+    if (lectionaryRevision === 0 || planId == null) return;
+    let cancelled = false;
+    fillDailyReadings(planId).then(({ items: stored }) => {
+      if (cancelled) return;
+      setItems(stored);
+      syncQueueIfLoaded(planId, stored);
+    }).catch(fail);
+    return () => {
+      cancelled = true;
+    };
+  }, [lectionaryRevision]);
 
   useEffect(() => {
     bridge.bible.getTranslations().then(setTranslations).catch(() => undefined);
@@ -307,7 +346,7 @@ export function MassPlanner() {
       loadLibrary(tab, query, readingDate, lang, t, bibleTranslation, songFilter || undefined, songScope).then(setLibrary).catch(fail);
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [tab, query, readingDate, lang, bibleTranslation, songFilter, songScope, lyricsRevision, massOrderRevision]);
+  }, [tab, query, readingDate, lang, bibleTranslation, songFilter, songScope, lyricsRevision, massOrderRevision, lectionaryRevision]);
 
   useEffect(() => bridge.lyrics.onChanged(() => setLyricsRevision((n) => n + 1)), []);
 
@@ -357,31 +396,88 @@ export function MassPlanner() {
   };
 
   /**
-   * ⚡ Auto-Fill Readings: puts the Lectionary's Responsorial Psalm and Prayer of the Faithful for the plan's date in slots 4 and 6. A slot
-   * holding the operator's own choice (a sung psalm, a prayer from Notes & Prayers) is replaced only once they confirm. The 15 other slots
-   * are never touched, and either slot can be changed again from its picker.
+   * The plan's items with the day's readings, in `language`: each scripture part with nothing saved in the Lectionary for `date` (with
+   * `redraft`, also one saved as a Bible draft in another language) is drafted from the offline Bible by the built-in Ordo's citation and
+   * saved there, then every reading saved for the date goes in its place (see withAllReadings): the First Reading, the psalm, the
+   * Second Reading when the day has one, the Gospel, and the Prayer of the Faithful. Text the operator pasted is never replaced. A slot
+   * holding the operator's own choice (a sung psalm) is kept unless `replace`. Nothing is saved to the plan here.
+   */
+  const readingsFor = async (base: PlanItem[], date: string, language: MassLanguage, { redraft = false, replace = false } = {}) => {
+    const bible = await fillDayFromBible(date, bibleOf(language), { redraftFrom: redraft ? otherBibles(language) : [] });
+    const day = await bridge.lectionary.getDay(date);
+    return { bible, day, out: withAllReadings(base, date, day, { replace }) };
+  };
+
+  /** What an auto-fill did, as one notice: what the Bible drafted, what is in the plan, what was kept and what is still missing. */
+  const fillNotice = (date: string, language: MassLanguage, bible: BibleFillResult, placed: string[], kept: string[], missing: string[]) => {
+    const shownDate = formatIsoDay(date, region);
+    return [
+      bible.saved.length > 0 && t('autoFillBible', { bible: bibleOf(language), parts: bible.saved.join(', ') }),
+      placed.length > 0 && t('autoFillPlaced', { date: shownDate, parts: placed.join(', ') }),
+      kept.length > 0 && t('autoFillKept', { slots: slotNames(kept, planLang) }),
+      missing.length > 0 && t('autoFillMissingParts', { date: shownDate, parts: missing.join(', ') }),
+    ].filter(Boolean).join(' ');
+  };
+
+  /**
+   * ⚡ Auto-Fill Readings: the day's readings for the plan's date, in the plan's language (see readingsFor). Parts with nothing in the
+   * Lectionary are drafted from the offline Bible first. A slot holding the operator's own choice (a sung psalm, a prayer from Notes & Prayers)
+   * is replaced only once they confirm. Songs, notes and the other slots are never touched.
    */
   const autoFill = async () => {
-    const plan = plans.find((p) => p.id === planId);
-    if (planId == null || !plan) return;
+    if (planId == null || !currentPlan) return;
     setError(null);
     setNotice(null);
     try {
-      const date = plan.liturgicalDate;
-      const shownDate = formatIsoDay(date, region);
-      const own = (await autoPopulateDailyReadings(items, date)).kept;
-      const replace = own.length === 0 || window.confirm(t('autoFillReplace', { slots: slotNames(own), date: shownDate }));
-      const daily = await autoPopulateDailyReadings(items, date, { replace });
-      if (daily.filled.length > 0 && !(await persist(daily.items))) return;
-      const lines = [
-        daily.filled.length > 0 && t('autoFillDone', { date: shownDate, slots: slotNames(daily.filled) }),
-        daily.current.length > 0 && t('autoFillCurrent', { slots: slotNames(daily.current) }),
-        daily.kept.length > 0 && t('autoFillKept', { slots: slotNames(daily.kept) }),
-        daily.missing.length > 0 && t('autoFillMissing', { date: shownDate, slots: slotNames(daily.missing) }),
-      ].filter(Boolean).join(' ');
-      // With nothing saved for the date at all, there is nothing to fill: that is shown as a problem to fix in the Lectionary.
-      if (daily.missing.length === DAILY_READING_SLOTS.length) setError(lines);
+      const { liturgicalDate: date, language } = currentPlan;
+      const first = await readingsFor(items, date, language);
+      const own = first.out.slots.kept;
+      const replace = own.length > 0 && window.confirm(t('autoFillReplace', { slots: slotNames(own, planLang), date: formatIsoDay(date, region) }));
+      const out = replace ? withAllReadings(items, date, first.day, { replace: true }) : first.out;
+      // The plan is saved before the Lectionary change is announced, so the re-read that follows finds it saved.
+      if (JSON.stringify(out.items) !== JSON.stringify(items) && !(await persist(out.items))) return;
+      if (first.bible.saved.length > 0) notifyLectionaryChanged();
+      const lines = fillNotice(date, language, first.bible, out.placed, replace ? [] : own, out.missing);
+      // With no reading at all for the date, there is nothing to fill: that is shown as a problem to fix in the Lectionary.
+      if (out.placed.length === 0) setError(lines);
       else setNotice(lines);
+    } catch (err) {
+      fail(err);
+    }
+  };
+
+  /**
+   * The Mass language selector: sets the plan's language, and once the operator confirms, drafts its readings again from the offline Bible in
+   * that language (only parts that were Bible drafts; pasted text stays) and puts its Mass Order parts under their titles in that language. On
+   * air, Kyrie, Gloria, Sanctus and Agnus Dei show the words of the plan's language. Songs, notes and the operator's own choices stay.
+   */
+  const changeLanguage = async (language: MassLanguage) => {
+    if (planId == null || !currentPlan || language === currentPlan.language) return;
+    setError(null);
+    setNotice(null);
+    const name = t(`lang_${language}`);
+    const update = window.confirm(t('switchLanguage', { language: name }));
+    try {
+      await setPlanLanguage(planId, language);
+      setPlans((list) => list.map((p) => (p.id === planId ? { ...p, language } : p)));
+      if (!update) {
+        setNotice(t('languageKept', { language: name }));
+        return;
+      }
+      const relabeled = withPartNames(items, (id) => {
+        const part = findMassPart(id);
+        return part ? massPartName(part, uiLangOf(language)) : null;
+      });
+      const { bible, out } = await readingsFor(relabeled, currentPlan.liturgicalDate, language, { redraft: true });
+      if (JSON.stringify(out.items) !== JSON.stringify(items) && !(await persist(out.items))) return;
+      if (bible.saved.length > 0) notifyLectionaryChanged();
+      setNotice(
+        [
+          t('languageSet', { language: name }),
+          fillNotice(currentPlan.liturgicalDate, language, bible, [], out.slots.kept, []),
+          bible.own.length > 0 && t('languageOwnKept', { parts: bible.own.join(', ') }),
+        ].filter(Boolean).join(' '),
+      );
     } catch (err) {
       fail(err);
     }
@@ -500,7 +596,7 @@ export function MassPlanner() {
     try {
       const row = items[index];
       // A plain-text response (I confess…, May the Lord accept…) has no module to open in, so it is staged as a text slide.
-      const textActions = textRowActions(row, index, MASS_SLOTS.find((s: { id: string }) => s.id === row.slot)?.name ?? row.label);
+      const textActions = textRowActions(row, index, slotById(row.slot) ? slotLabel(slotById(row.slot), planLang) : row.label);
       if (textActions) {
         for (const action of textActions) dispatch(action);
         showStaged();
@@ -528,11 +624,12 @@ export function MassPlanner() {
     setNotice(t('loadedNotice', { n: items.length }));
   };
 
-  /** Makes a plan from the New plan form. Standard Sunday stores nothing (its 17 slots are empty); Weekday fills its slots. */
+  /** Makes a plan from the New plan form. Standard Sunday stores nothing (its slots are empty); Weekday fills its slots. */
   const createPlan = async ({ name, liturgicalDate, template }: { name: string; liturgicalDate: string; template: NewPlanTemplate }) => {
     setError(null);
     try {
-      const created = await api.create({ name, liturgicalDate });
+      // A new plan is celebrated in the app's language until the operator picks another.
+      const created = await api.create({ name, liturgicalDate, language: massLanguageOf(lang) });
       const fills = builtInItems(template, lang);
       if (fills.length > 0) await api.save(created.id, fills);
       setCreating(false);
@@ -671,7 +768,7 @@ export function MassPlanner() {
                                   type="button"
                                   onClick={() => {
                                     const part = MASS_ORDER.find((p) => p.id === step.massOrderId);
-                                    if (part) replaceAt(index, { block: row.block, module: 'mass_order', sourceId: part.id, label: massPartName(part, lang) });
+                                    if (part) replaceAt(index, { block: row.block, module: 'mass_order', sourceId: part.id, label: massPartName(part, planLang) });
                                   }}
                                   className="h-9 rounded-md border border-fg/15 px-3 text-xs font-bold uppercase hover:bg-fg/10"
                                 >
@@ -694,7 +791,6 @@ export function MassPlanner() {
   // The row loaded into the Stage / Preview by its ▷ button: the queue's CURRENT row, when the queue holds this plan.
   const activeIndex = useLive((s) => activeRowIndex(s.state, planId));
 
-  const currentPlan = plans.find((p) => p.id === planId) ?? null;
   const cycle = currentPlan ? sundayCycle(new Date(`${currentPlan.liturgicalDate}T12:00:00`)) : null;
 
   return (
@@ -781,7 +877,10 @@ export function MassPlanner() {
                 <input
                   type="date"
                   value={readingDate}
-                  onChange={(e) => setReadingDate(e.target.value)}
+                  onChange={(e) => {
+                    setReadingDate(e.target.value);
+                    if (e.target.value) setUi({ lectionaryDate: e.target.value });
+                  }}
                   className="h-9 rounded-md border border-fg/15 bg-panel-2 px-2 text-sm text-fg outline-none focus:border-accent"
                 />
               </div>
@@ -909,6 +1008,22 @@ export function MassPlanner() {
             ) : (
               <span className="text-sm text-fg/60">{t('noPlans')}</span>
             )}
+            {currentPlan && (
+              <div role="group" aria-label={t('massLanguage')} title={t('massLanguageTip', { bible: bibleOf(currentPlan.language) })} className="flex h-10 overflow-hidden rounded-md border border-fg/15 bg-panel-2">
+                {MASS_LANGUAGES.map((code) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => void changeLanguage(code)}
+                    aria-pressed={currentPlan.language === code}
+                    title={t(`lang_${code}`)}
+                    className={`min-w-11 px-2.5 text-xs font-extrabold tracking-wider transition ${currentPlan.language === code ? 'bg-accent text-on-accent' : 'text-fg/70 hover:bg-fg/10 hover:text-fg'}`}
+                  >
+                    {code}
+                  </button>
+                ))}
+              </div>
+            )}
             <button type="button" onClick={() => setCreating((open) => !open)} className="h-10 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs font-semibold tracking-wide uppercase text-fg/85 transition hover:bg-fg/10 hover:text-fg">
               {creating ? t('cancel') : t('newPlan')}
             </button>
@@ -963,7 +1078,8 @@ export function MassPlanner() {
           ) : (
             <HolyMassPlan
               t={t}
-              lang={lang}
+              lang={planLang}
+              date={currentPlan?.liturgicalDate}
               items={shown}
               onFill={fillSlot}
               onClear={emptySlot}

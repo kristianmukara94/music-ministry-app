@@ -241,31 +241,34 @@ const fullMass = () => MASS_SLOTS.map((slot) => row(slot.block, slot.id, slot.id
 /** The lineup Go Live shows: a filled slot by its slot id, an empty one as (id), any other row by its source. */
 const lineupOf = (items) => massLineup(items).map((e) => ('slot' in e ? `(${e.slot.id})` : (items[e.index].slot ?? items[e.index].sourceId)));
 
-test('putting a PowerPoint into the Mass keeps all 17 slots, each with its own item', () => {
+test('putting a PowerPoint into the Mass keeps every slot, each with its own item', () => {
   const placed = insertIntoMassFlow(fullMass(), flowRowsOf([{ key: 'folder:7', folderId: 7, title: 'Talk', slideIds: [40, 41, 42] }]), { kind: 'slot', slot: 'kyrie' });
   for (const slot of MASS_SLOTS) {
     const fillers = placed.items.filter((it) => it.slot === slot.id);
     assert.equal(fillers.length, 1, slot.id);
     assert.equal(fillers[0].sourceId, slot.id);
   }
-  assert.equal(placed.items.length, 18);
-  // The deck plays straight after the Kyrie, and the lineup still reads 1 to 17 in order around it.
+  assert.equal(placed.items.length, MASS_SLOTS.length + 1);
+  // The deck plays straight after the Kyrie, and the lineup still reads every slot in order around it.
   assert.deepEqual(lineupOf(placed.items).slice(0, 4), ['entrance', 'confess', 'kyrie', '40']);
   assert.deepEqual(lineupOf(placed.items).filter((x) => x !== '40'), SLOT_IDS);
 });
 
 test('Go Live shows every empty slot in its place, so a plan holding one deck still reads as the whole Mass', () => {
-  // A new Standard Sunday plan stores nothing: all 17 slots are empty.
+  // A new Standard Sunday plan stores nothing: every slot is empty.
   assert.deepEqual(lineupOf([]), SLOT_IDS.map((id) => `(${id})`));
   const placed = insertIntoMassFlow([], [deck], { kind: 'slot', slot: 'prayer-faithful' });
   // A deck put into an empty slot fills it, so it stays tied to the slot that was picked.
   assert.deepEqual(placed.items, [{ block: 'word', module: 'announcements', sourceId: '40', label: 'Talk (3 slides)', slot: 'prayer-faithful' }]);
   const lineup = lineupOf(placed.items);
-  assert.equal(lineup.length, 17);
-  assert.deepEqual(lineup.slice(3, 7), ['(psalm)', '(gospel-acclamation)', 'prayer-faithful', '(offertory)']);
+  assert.equal(lineup.length, SLOT_IDS.length);
+  const at = lineup.indexOf('prayer-faithful');
+  assert.deepEqual(lineup.slice(at - 2, at + 2), ['(homily)', '(creed)', 'prayer-faithful', '(offertory)']);
   // Empty slots sit between the filled ones, and the note put in after the psalm stays after it.
-  assert.deepEqual(lineupOf(plan()).slice(0, 8), ['entrance', '(confess)', 'kyrie', 'psalm', 'note', '(gospel-acclamation)', '(prayer-faithful)', 'offertory']);
-  assert.equal(massLineup(plan()).length, 17 + 1);
+  assert.deepEqual(lineupOf(plan()).slice(0, 10), [
+    'entrance', '(confess)', 'kyrie', '(gloria)', '(collect)', '(first-reading)', 'psalm', 'note', '(second-reading)', '(gospel-acclamation)',
+  ]);
+  assert.equal(massLineup(plan()).length, SLOT_IDS.length + 1);
   // A plan from before slots, with no slot filled, is shown as it is.
   assert.deepEqual(massLineup([row('word', 'reading'), row('eucharist', 'song')]), [{ index: 0 }, { index: 1 }]);
 });
@@ -275,7 +278,8 @@ test('a deck put into an empty slot lands on that slot in the lineup, and a seco
   assert.equal(first.find((it) => it.sourceId === '40').slot, 'gospel-acclamation');
   const second = insertIntoMassFlow(first, [{ ...deck, sourceId: '50' }], { kind: 'slot', slot: 'gospel-acclamation' }).items;
   assert.equal(second.find((it) => it.sourceId === '50').slot, null);
-  assert.deepEqual(lineupOf(second).slice(3, 8), ['psalm', 'note', 'gospel-acclamation', '50', '(prayer-faithful)']);
+  const psalm = lineupOf(second).indexOf('psalm');
+  assert.deepEqual(lineupOf(second).slice(psalm, psalm + 6), ['psalm', 'note', '(second-reading)', 'gospel-acclamation', '50', '(gospel)']);
   // Several decks into one empty slot: the first fills it and the rest follow, so no slot is ever held twice.
   const many = insertIntoMassFlow(plan(), [deck, { ...deck, sourceId: '41' }], { kind: 'slot', slot: 'confess' }).items;
   assert.deepEqual(many.map((it) => it.slot).filter(Boolean), ['entrance', 'confess', 'kyrie', 'psalm', 'offertory', 'sanctus', 'communion', 'recessional']);
@@ -331,9 +335,9 @@ test('Reset order takes out the slide rows a slip put in, and keeps the slots, t
   assert.equal(removed, 218);
   assert.deepEqual(items, [...plan().slice(0, 4), filling, ...plan().slice(4)]);
   assert.equal(massOrderReset(plan()).removed, 0);
-  // Go Live then reads as the whole Mass again: 8 filled slots and 9 empty ones, with the note.
-  assert.equal(massLineup(items).filter((e) => 'slot' in e).length, 9);
-  assert.equal(massLineup(items).length, 17 + 1);
+  // Go Live then reads as the whole Mass again: 8 filled slots and the rest empty, with the note.
+  assert.equal(massLineup(items).filter((e) => 'slot' in e).length, SLOT_IDS.length - 8);
+  assert.equal(massLineup(items).length, SLOT_IDS.length + 1);
 });
 
 // Ten pictures in one Whiteboard folder, with a designed slide (no picture) among them and another folder after.
@@ -399,7 +403,7 @@ test('a slice put into an empty slot fills that slot, and Reset order keeps it b
   assert.equal(reset.removed, 1);
   assert.ok(reset.items.some((it) => it.sourceId === '103:from'));
   assert.ok(!reset.items.some((it) => it.sourceId === '105:from'));
-  assert.equal(massLineup(reset.items).filter((e) => 'slot' in e).length + reset.items.filter((it) => it.slot).length, 17);
+  assert.equal(massLineup(reset.items).filter((e) => 'slot' in e).length + reset.items.filter((it) => it.slot).length, SLOT_IDS.length);
 });
 
 test('Replace swaps the item that fills a slot for the deck, which takes the slot; the rows after the slot stay', () => {

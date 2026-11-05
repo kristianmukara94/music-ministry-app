@@ -45,6 +45,18 @@ export function presentedFrame(frame: Frame, introSlideMode: 'title' | 'black'):
 /** True when the projector or the Secondary display is live. The projector prompt asks only when this is false. */
 export function isAnyOutputLive(state: LiveState): boolean;
 
+/** True when the welcome screen is up over a Holy Mass slide; the slide it covers is the staged frame. */
+export function welcomeOverMass(state: LiveState): boolean;
+
+/** True when Blackout is up over a Holy Mass slide; the queue keeps its place and the slide it covers is the staged frame. */
+export function blackoutOverMass(state: LiveState): boolean;
+
+/** True when the welcome screen is up over a Praise & Worship slide; the session stays on air and the slide it covers is the staged frame. */
+export function welcomeOverPw(state: LiveState): boolean;
+
+/** True when Blackout is up over a Praise & Worship slide; the session stays on air at its place. */
+export function blackoutOverPw(state: LiveState): boolean;
+
 /** The look the audience sees: the look captured at the pause while the projector is paused, else the working look. */
 export interface OutputLook {
   slideFont: string | null;

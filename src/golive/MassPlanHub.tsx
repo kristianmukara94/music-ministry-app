@@ -8,6 +8,8 @@ import { usePlannerT, type PlannerT } from '../planner/strings';
 import { useUi } from '../state/ui';
 import { useGoLiveT } from './strings';
 import { previewFor, type PreviewSlides } from './preview';
+import { uiLangOf } from '../../shared/mass-language.js';
+import type { Lang } from '../../shared/live.js';
 import { PreviewPane } from './PreviewPane';
 
 /** The search tabs the hub offers: songs, readings (with their responses) and Bible verses. */
@@ -33,6 +35,8 @@ export function MassPlanHub({ planId, liturgicalDate }: { planId: number; liturg
   const t = useGoLiveT();
   const plannerT: PlannerT = usePlannerT();
   const lang = useUi((s) => s.lang);
+  // Mass Order parts preview in the plan's language, as they go on air.
+  const [planLang, setPlanLang] = useState<Lang | null>(null);
   const [items, setItems] = useState<PlanItem[]>([]);
   const [tab, setTab] = useState<SourceModule>('lyrics');
   const [query, setQuery] = useState('');
@@ -56,7 +60,10 @@ export function MassPlanHub({ planId, liturgicalDate }: { planId: number; liturg
   useEffect(() => {
     bridge.plans
       .get(planId)
-      .then((plan) => setItems(plan.items))
+      .then((plan) => {
+        setItems(plan.items);
+        setPlanLang(uiLangOf(plan.language));
+      })
       .catch((err) => setError(errorText(err)));
   }, [planId]);
 
@@ -85,7 +92,7 @@ export function MassPlanHub({ planId, liturgicalDate }: { planId: number; liturg
   /** Loads the slides of one item into the preview pane. Reads only; nothing is staged or sent to the projector. */
   const showPreview = (label: string, module: SourceModule, sourceId: string) => {
     const request = ++previewRequest.current;
-    previewFor(module, sourceId, lang)
+    previewFor(module, sourceId, planLang ?? lang)
       .then((slides) => {
         if (request !== previewRequest.current) return;
         setPreview({ label, slides, error: null });

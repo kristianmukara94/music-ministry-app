@@ -8,7 +8,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
 const { HYMN_DELETE_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } = await import('./lyrics.js');
-const { MASS_PLAN_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_NOTES_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS } = await import('./mass-plans.js');
+const { MASS_PLAN_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_LANGUAGE_MIGRATIONS, PLAN_NOTES_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS } = await import('./mass-plans.js');
 const { PW_MIGRATIONS } = await import('./pw-sessions.js');
 const { SONG_CATEGORY_MIGRATIONS, SONG_SCOPE_MIGRATIONS } = await import('./song-categories.js');
 const {
@@ -26,7 +26,7 @@ const {
 const EARLIER = [
   ...LYRICS_MIGRATIONS,
   ...HYMN_DELETE_MIGRATIONS,
-  ...MASS_PLAN_MIGRATIONS,
+  ...MASS_PLAN_MIGRATIONS, ...PLAN_LANGUAGE_MIGRATIONS,
   ...PLAN_BIBLE_MIGRATIONS,
   ...LYRICS_STYLE_MIGRATIONS,
   ...PLAN_CUSTOM_MIGRATIONS,

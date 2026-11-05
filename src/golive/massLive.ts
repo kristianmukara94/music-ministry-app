@@ -8,10 +8,13 @@ import { slideFramesOf, takePrayer } from '../notes/present';
 import type { Note } from '../notes/types';
 import { openQueueItem, playQueueAt, stepQueue } from '../planner/routing';
 import { useUi } from '../state/ui';
+import { useLiveNotice } from '../live/liveNotice';
+import { ON_AIR_LIMITS, needsSplit } from '../utils/textOptimizer';
 import { sectionChip } from '../../shared/pw.js';
+import { pwT } from '../../shared/pw-i18n.js';
 import { slotById } from '../../shared/mass-slots.js';
 import { frameKey, songTitleFrame } from '../../shared/stage-plan-row.js';
-import { isAnyOutputLive, type Frame, type LiveState, type LowerThird } from '../../shared/live.js';
+import { blackoutOverMass, isAnyOutputLive, welcomeOverMass, type Frame, type LiveState, type LowerThird } from '../../shared/live.js';
 
 // The Mass console plays queue items where the operator is: a song, an announcement or a picture never switches panels.
 const IN_PLACE = { inPlace: true } as const;
@@ -184,17 +187,71 @@ export const useMassClock = create<{ liveSince: number | null; itemSince: number
   });
 }
 
-/** Shows a slide of the item on screen. The take is the queue's own, so the queue keeps its place. */
+/**
+ * The stanzas of a song that would be cut off on screen: over what the projector can show at a readable size (ON_AIR_LIMITS), so its last
+ * lines would fall outside the slide and the "Text cut off" badge would come up.
+ */
+export function stanzasTooLong(hymn: Hymn): { position: number; label: string }[] {
+  return hymn.stanzas.flatMap((s, position) => (needsSplit(s.lyricsText, ON_AIR_LIMITS) ? [{ position, label: s.stanzaType }] : []));
+}
+
+/**
+ * The pre-air check: when the Holy Mass puts a song on air, its stanzas are measured in the background, before the operator steps on to them.
+ * A stanza that would be cut off brings up a notice whose button opens the split dialog on it, where Smart Break cuts it into slides that fit.
+ * Each song is checked once each time its queue item goes up, so a notice the operator dismisses does not come back on every slide.
+ */
+{
+  let checked: string | null = null;
+  useLive.subscribe(({ state }) => {
+    const id = massShowing(state) ? songIdOf(state.projector.live) : undefined;
+    if (id == null) return;
+    const key = `${state.queuePlanId}|${state.queueCursor}|${id}`;
+    if (key === checked) return;
+    checked = key;
+    void bridge.lyrics
+      .getHymn(id)
+      .then((hymn) => {
+        const long = hymn && !hymn.deletedAt ? stanzasTooLong(hymn) : [];
+        // The song may have gone off air while it was read.
+        if (!hymn || long.length === 0 || checked !== key) return;
+        const lang = useUi.getState().lang;
+        useLiveNotice.getState().show({
+          kind: 'tooLong',
+          text: pwT(lang, 'preAirTooLong', { song: hymn.title, stanzas: long.map((s) => s.label).join(', ') }),
+          action: {
+            label: pwT(lang, 'preAirSplit', { name: long[0].label }),
+            run: () => dispatch({ type: 'operator/splitStanza', hymnId: hymn.id, position: long[0].position }),
+          },
+        });
+      })
+      .catch(() => undefined);
+  });
+}
+
+/**
+ * Takes the welcome screen or Blackout down from over the Holy Mass: the slide they cover, staged under them, goes back on screen. Under
+ * Blackout the take only sets the slide to come back, so the welcome screen a Blackout covers never flashes up on the way.
+ */
+export function resumeMass(): void {
+  const blackedOut = blackoutOverMass(useLive.getState().state);
+  dispatch({ type: 'projector/take', source: 'MASS_QUEUE' });
+  if (blackedOut) dispatch({ type: 'projector/blackout' });
+}
+
+/** Shows a slide of the item on screen. The take is the queue's own, so the queue keeps its place. Under Blackout it lifts it onto that slide. */
 function showWithin(frame: Frame) {
+  const blackedOut = blackoutOverMass(useLive.getState().state);
   dispatch({ type: 'projector/stage', frame });
   dispatch({ type: 'projector/take', source: 'MASS_QUEUE' });
+  if (blackedOut) dispatch({ type: 'projector/blackout' });
 }
 
 /** Jumps to slide `target` of the item on screen. */
 export async function goWithin(target: number, from?: Frame): Promise<void> {
   const state = useLive.getState().state;
-  // `from` is the slide the console shows: the one on screen, or the one staged and ready, which a jump then puts on screen.
-  const frame = from ?? state.projector.live;
+  // `from` is the slide the console shows: the one on screen, or the one staged and ready, which a jump then puts on screen. Under the
+  // welcome screen or Blackout it is the Mass slide they cover.
+  const frame = from ?? (welcomeOverMass(state) || blackoutOverMass(state) ? state.projector.staged : state.projector.live);
   const next = frameAt(frame, target, await hymnOf(frame), slotNameAt(state), await noteOf(frame));
   if (next) showWithin(next);
 }
@@ -206,6 +263,11 @@ export async function goWithin(target: number, from?: Frame): Promise<void> {
  */
 export async function stepMass(delta: 1 | -1): Promise<void> {
   const state = useLive.getState().state;
+  // Under the welcome screen or Blackout, Next and Back take it down and put the Mass slide it covers back on screen, as Praise & Worship resumes.
+  if (welcomeOverMass(state) || blackoutOverMass(state)) {
+    resumeMass();
+    return;
+  }
   if (massShowing(state)) {
     const frame = state.projector.live;
     const hymn = await hymnOf(frame);

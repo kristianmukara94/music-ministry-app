@@ -82,7 +82,7 @@ export const LECTIONARY_ACCLAMATION_MIGRATIONS = [
 
 /**
  * Rebuilds lectionary_readings again so its CHECK constraint accepts 'Prayer of the Faithful': the day's response and intentions, which a
- * Holy Mass plan puts in slot 6 as it puts the psalm in slot 4. Existing readings keep their ids and text.
+ * Holy Mass plan puts in its Prayer of the Faithful slot as it puts the psalm in its slot. Existing readings keep their ids and text.
  */
 export const LECTIONARY_PRAYER_MIGRATIONS = [
   `

@@ -1,18 +1,18 @@
 // Putting slides into a service flow that may already be on air: a PowerPoint deck from the Whiteboard, or text slides typed in Go Live, into a
-// Holy Mass slot (1 to 17) or straight after the item on screen. Pure rules, so the Whiteboard, Go Live and the tests agree.
+// Holy Mass slot or straight after the item on screen. Pure rules, so the Whiteboard, Go Live and the tests agree.
 //
 // The Mass Queue plays the plan's rows in order and remembers the row on air by its position (queueCursor). A row put in ahead of that
 // position moves the row on air down, so the position must move with it, in the same change, or CURRENT (and Next) would jump to another
 // row while the projector still shows the old one. Every insert here returns the cursor that keeps pointing at the same row.
 
-import { indexOfSlot, isSlotId, MASS_SECTIONS, MASS_SLOTS, slotById } from './mass-slots.js';
+import { indexOfSlot, isSlotId, MASS_BLOCKS, MASS_SLOTS, slotById } from './mass-slots.js';
 import { SPLIT_LIMITS, splitSlide } from './projector-autofit.js';
 
-const BLOCK_ORDER = MASS_SECTIONS.map((s) => s.block);
+const BLOCK_ORDER = MASS_BLOCKS;
 const blockRank = (block) => BLOCK_ORDER.indexOf(block);
 
 /** A slot's place in the Mass, or -1 for an id that is not a slot. */
-const rankOf = (slotId) => (isSlotId(slotId) ? slotById(slotId).number : -1);
+const rankOf = (slotId) => (isSlotId(slotId) ? slotById(slotId).position : -1);
 
 /**
  * The Whiteboard's PowerPoint pictures as decks: one per Whiteboard folder, in Whiteboard order. A deck is what one queue row plays, since a
@@ -142,7 +142,7 @@ export function massInsertAt(items, target) {
   }
   const anchor = indexOfSlot(items, slot.id);
   if (anchor < 0) {
-    const later = members.find((i) => rankOf(items[i].slot) > slot.number);
+    const later = members.find((i) => rankOf(items[i].slot) > slot.position);
     return { at: later ?? members[members.length - 1] + 1, block: slot.block };
   }
   let at = anchor + 1;
@@ -249,7 +249,7 @@ export function followCursor(before, next, cursor) {
 }
 
 /**
- * The Holy Mass order as Go Live shows it: the queue's rows, with each of the 17 slots that no row fills shown in its place, so the order of
+ * The Holy Mass order as Go Live shows it: the queue's rows, with each slot that no row fills shown in its place, so the order of
  * Mass is always whole however many slides go in around it. An empty slot sits ahead of the next filled slot of its section, after the rows
  * put in after the slots before it. `rows` are the queue's (or the plan's) rows, { block, slot }, grouped by block in Mass order.
  * Returns [{ index }] for a row and [{ slot }] for an empty slot, in order. A plan with rows but no slots (from before slots, or a "Quick
@@ -266,7 +266,7 @@ export function massLineup(rows) {
     // Empty slots of earlier sections come first, then those of this section that come before this row's slot.
     while (
       e < empty.length &&
-      (blockRank(empty[e].block) < blockRank(row.block) || (empty[e].block === row.block && rank > 0 && empty[e].number < rank))
+      (blockRank(empty[e].block) < blockRank(row.block) || (empty[e].block === row.block && rank > 0 && empty[e].position < rank))
     ) {
       out.push({ slot: empty[e++] });
     }
@@ -277,7 +277,7 @@ export function massLineup(rows) {
 }
 
 /**
- * The plan put back to its Holy Mass order: every item that fills one of the 17 slots, and every additional item that is not a slide (a
+ * The plan put back to its Holy Mass order: every item that fills a slot, and every additional item that is not a slide (a
  * reading, a passage, a note) stay; the slides and PowerPoints put in around the slots go. For a plan that a slip or an old build filled with
  * slide rows. Returns { items, removed }.
  */

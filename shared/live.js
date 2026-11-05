@@ -45,6 +45,44 @@ export function isAnyOutputLive(state) {
   return state.outputs.projector === true || state.display?.targets?.secondary?.live === true;
 }
 
+/**
+ * True when the welcome screen is up over a Holy Mass slide. The welcome screen only covers the Mass: the queue keeps its place, and the slide
+ * it covers waits as the staged frame, so Next, Back, a section jump or Welcome again puts that slide back.
+ */
+export function welcomeOverMass(state) {
+  return state.queueCursor >= 0 && state.projector.source === 'MASS_QUEUE' && state.projector.live.kind === 'welcome';
+}
+
+/**
+ * True when Blackout is up over a Holy Mass slide. Like the welcome screen, it only covers the Mass: the queue keeps its place, the slide it
+ * covers waits as the staged frame, and Next, Back, a section jump or Blackout again puts that slide back.
+ */
+export function blackoutOverMass(state) {
+  return state.queueCursor >= 0 && state.projector.source === 'MASS_QUEUE' && state.projector.live.kind === 'blackout';
+}
+
+/**
+ * True when the welcome screen is up over a Praise & Worship slide. As over the Holy Mass, it is only a cover: the session stays on air at its
+ * place, its timers keep running, and the slide it covers waits as the staged frame.
+ */
+export function welcomeOverPw(state) {
+  return state.pw?.onAir === true && state.projector.source === 'PW_SESSION' && state.projector.live.kind === 'welcome';
+}
+
+/**
+ * True when Blackout is up over a Praise & Worship slide (the operator's Blackout, or a segment's own fade-to-black step). The session stays on
+ * air at its place, and Next, Back or a jump lifts it onto the slide they go to.
+ */
+export function blackoutOverPw(state) {
+  return state.pw?.onAir === true && state.projector.source === 'PW_SESSION' && state.projector.live.kind === 'blackout';
+}
+
+// The Holy Mass or a Praise & Worship session has the projector. The welcome screen and Blackout over either are covers that keep its place.
+function liveRunOnAir(s) {
+  const source = s.projector.source;
+  return (source === 'MASS_QUEUE' && s.queueCursor >= 0) || (source === 'PW_SESSION' && s.pw?.onAir === true);
+}
+
 export function initialLiveState() {
   return {
     rev: 0,
@@ -165,6 +203,12 @@ function reduce(s, a) {
       if (a.source === 'PW_SESSION') {
         return { ...s, ...endQueueSelection(s), projector: { ...showFrame(s.projector, a.frame), source: 'PW_SESSION' } };
       }
+      // The welcome screen over a Holy Mass or Praise & Worship slide is an overlay: the queue or session keeps its place and its source (so
+      // Praise & Worship stays on air), and the slide stays staged under it.
+      const p = s.projector;
+      if (a.frame.kind === 'welcome' && liveRunOnAir(s) && !p.paused && p.live.kind !== 'idle' && p.live.kind !== 'blackout') {
+        return { ...s, projector: { ...p, live: a.frame, staged: p.live.kind === 'welcome' ? p.staged : p.live } };
+      }
       const ended = a.source === 'DIRECT_DECK' ? { ...endQueueSelection(s), ...endPwAir(s) } : {};
       return { ...s, ...ended, projector: showFrame(s.projector, a.frame) };
     }
@@ -191,6 +235,11 @@ function reduce(s, a) {
         return { ...s, projector: { ...p, live: p.beforeBlackout ?? IDLE, beforeBlackout: null } };
       }
       // Blackout deliberately ignores pause: it is the emergency exit.
+      // Over a Holy Mass or Praise & Worship slide it is only a cover: the queue or session keeps its place, and the covered slide waits staged under it.
+      if (liveRunOnAir(s) && p.live.kind !== 'idle') {
+        const staged = p.paused || p.live.kind === 'welcome' ? p.staged : p.live;
+        return { ...s, projector: { ...p, live: { kind: 'blackout' }, staged, beforeBlackout: p.live } };
+      }
       return { ...s, ...endQueueSelection(s), projector: { ...p, live: { kind: 'blackout' }, beforeBlackout: p.live } };
     }
 

@@ -43,7 +43,7 @@ export function parsePassageInput(text) {
 }
 
 /**
- * Common Catholic abbreviations and full names, keyed without spaces or full stops, lowercase.
+ * Common Catholic abbreviations (with the ones the Lectionary prints: Jgs, 1 Sm, Prv, Hb, Hg, 1 Thes, 1 Tm, Ti, 1 Pt, 1 Mc) and full names, keyed without spaces or full stops, lowercase.
  * Values are the USFM book codes the Bible data uses, which are the same in every translation.
  */
 const BOOK_ALIASES = {
@@ -53,10 +53,10 @@ const BOOK_ALIASES = {
   NUM: ['num', 'nm', 'nb', 'numbers'],
   DEU: ['deu', 'deut', 'dt', 'deuteronomy'],
   JOS: ['jos', 'josh', 'joshua'],
-  JDG: ['jdg', 'judg', 'jg', 'judges'],
+  JDG: ['jdg', 'judg', 'jg', 'judges', 'jgs'],
   RUT: ['rut', 'ru', 'ruth'],
-  "1SA": ['1sa', '1sam', '1samuel'],
-  "2SA": ['2sa', '2sam', '2samuel'],
+  "1SA": ['1sa', '1sam', '1samuel', '1sm'],
+  "2SA": ['2sa', '2sam', '2samuel', '2sm'],
   "1KI": ['1ki', '1kgs', '1kings'],
   "2KI": ['2ki', '2kgs', '2kings'],
   "1CH": ['1ch', '1chr', '1chronicles'],
@@ -66,7 +66,7 @@ const BOOK_ALIASES = {
   EST: ['est', 'esth', 'esther'],
   JOB: ['job', 'jb'],
   PSA: ['psa', 'ps', 'psl', 'pss', 'psalm', 'psalms'],
-  PRO: ['pro', 'prov', 'pr', 'proverbs'],
+  PRO: ['pro', 'prov', 'pr', 'proverbs', 'prv'],
   ECC: ['ecc', 'eccl', 'qoh', 'ecclesiastes'],
   SNG: ['sng', 'song', 'sg', 'cant', 'songofsolomon', 'songofsongs'],
   ISA: ['isa', 'is', 'isaiah'],
@@ -81,9 +81,9 @@ const BOOK_ALIASES = {
   JON: ['jon', 'jonah'],
   MIC: ['mic', 'mi', 'micah'],
   NAM: ['nam', 'na', 'nahum'],
-  HAB: ['hab', 'habakkuk'],
+  HAB: ['hab', 'habakkuk', 'hb'],
   ZEP: ['zep', 'zeph', 'zephaniah'],
-  HAG: ['hag', 'haggai'],
+  HAG: ['hag', 'haggai', 'hg'],
   ZEC: ['zec', 'zech', 'zechariah'],
   MAL: ['mal', 'malachi'],
   MAT: ['mat', 'matt', 'mt', 'matthew'],
@@ -98,16 +98,16 @@ const BOOK_ALIASES = {
   EPH: ['eph', 'ephesians'],
   PHP: ['php', 'phil', 'philippians'],
   COL: ['col', 'colossians'],
-  "1TH": ['1th', '1thess', '1thessalonians'],
-  "2TH": ['2th', '2thess', '2thessalonians'],
-  "1TI": ['1ti', '1tim', '1timothy'],
-  "2TI": ['2ti', '2tim', '2timothy'],
-  TIT: ['tit', 'titus'],
+  "1TH": ['1th', '1thess', '1thessalonians', '1thes'],
+  "2TH": ['2th', '2thess', '2thessalonians', '2thes'],
+  "1TI": ['1ti', '1tim', '1timothy', '1tm'],
+  "2TI": ['2ti', '2tim', '2timothy', '2tm'],
+  TIT: ['tit', 'titus', 'ti'],
   PHM: ['phm', 'phlm', 'philemon'],
   HEB: ['heb', 'hebrews'],
   JAS: ['jas', 'jm', 'james'],
-  "1PE": ['1pe', '1pet', '1peter'],
-  "2PE": ['2pe', '2pet', '2peter'],
+  "1PE": ['1pe', '1pet', '1peter', '1pt'],
+  "2PE": ['2pe', '2pet', '2peter', '2pt'],
   "1JN": ['1jn', '1john'],
   "2JN": ['2jn', '2john'],
   "3JN": ['3jn', '3john'],
@@ -118,8 +118,8 @@ const BOOK_ALIASES = {
   WIS: ['wis', 'wisdom'],
   SIR: ['sir', 'sirach', 'ecclesiasticus'],
   BAR: ['bar', 'baruch'],
-  "1MA": ['1ma', '1mac', '1macc', '1maccabees'],
-  "2MA": ['2ma', '2mac', '2macc', '2maccabees'],
+  "1MA": ['1ma', '1mac', '1macc', '1maccabees', '1mc'],
+  "2MA": ['2ma', '2mac', '2macc', '2maccabees', '2mc'],
 };
 
 const ALIAS_CODE = new Map(Object.entries(BOOK_ALIASES).flatMap(([code, names]) => names.map((n) => [n, code])));

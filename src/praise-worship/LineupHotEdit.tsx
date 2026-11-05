@@ -147,7 +147,7 @@ export function LineupHotEdit({ t, segmentIndex, steps, onAir, editRequest, onEd
         </p>
       )}
       {editingStanza && slide && hot.editing && (
-        <StanzaEditBox t={t} hot={hot} stanza={editingStanza} live={target === onAir} onSave={() => void hot.commitEdit()} onSplit={() => void hot.commitSplit(hot.editing!.index)} />
+        <StanzaEditBox t={t} hot={hot} stanza={editingStanza} live={target === onAir} onSave={() => void hot.commitEdit()} onSplit={() => void hot.commitSplit(hot.editing!.index)} onSmartBreak={() => void hot.commitSmartBreak(hot.editing!.index)} />
       )}
       {hymn && slide && (
         <StanzaAddBox t={t} hot={hot} stanzas={hymn.stanzas} where={t('newSlideAfter', { name: slide.label })} onAdd={(show) => void saveAdd(show)} />

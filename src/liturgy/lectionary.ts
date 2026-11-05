@@ -22,11 +22,11 @@ export function sundayCycle(date: Date): SundayCycle {
 }
 
 /**
- * Year I is read in the liturgical years that begin in odd-numbered calendar years (Advent 2025 starts Year I).
- * liturgicalYear() gives the ending year, one more than the starting year, so an even label means Year I.
+ * Year I is read in odd-numbered liturgical years, named for the year they end in (2025, 2027); Year II in even ones (2026).
+ * Advent 2025 starts liturgical year 2026, so it starts Year II.
  */
 export function weekdayCycle(date: Date): WeekdayCycle {
-  return liturgicalYear(date) % 2 === 0 ? 'I' : 'II';
+  return liturgicalYear(date) % 2 === 1 ? 'I' : 'II';
 }
 
 /**

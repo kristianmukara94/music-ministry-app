@@ -33,10 +33,32 @@ export function pickFitStep(fits, steps = FIT_STEPS, leading = FIT_LEADING) {
  */
 export const SAFE_AREA = Object.freeze({ top: 0.09, bottom: 0.09, side: 0.06 });
 
-/** How much one projected slide may hold before it is split: about what fits at the 2.0rem step, so split text is still easy to read. */
-export const SPLIT_LIMITS = Object.freeze({ maxChars: 260, maxLines: 8 });
+/**
+ * How much one projected slide may hold before it is split: about what fits at the 2.0rem step, so split text is still easy to read. Lines are
+ * counted as the screen wraps them, at about `charsPerLine` characters to a row at that step, so eight long lines that would wrap to twelve rows
+ * are split too.
+ */
+export const SPLIT_LIMITS = Object.freeze({ maxChars: 260, maxLines: 8, charsPerLine: 64 });
 
 const textLength = (lines) => lines.reduce((n, line) => n + line.text.length, 0);
+
+/** How many screen rows a line of text takes when wrapped between words at `width` characters. An empty line still takes one. */
+export function wrappedRows(text, width = SPLIT_LIMITS.charsPerLine) {
+  let rows = 1;
+  let used = 0;
+  for (const word of String(text).split(/s+/).filter(Boolean)) {
+    if (used > 0 && used + 1 + word.length <= width) used += 1 + word.length;
+    else {
+      if (used > 0) rows += 1;
+      // A word wider than a row runs over as many rows as it needs.
+      rows += Math.ceil(word.length / width) - 1;
+      used = word.length % width || width;
+    }
+  }
+  return rows;
+}
+
+const rowsOf = (lines, width) => lines.reduce((n, line) => n + wrappedRows(line.text, width), 0);
 
 /** Cuts a long line into pieces of at most `maxChars`: at sentence ends first, then at commas and semicolons, then between words. */
 export function splitLongLine(line, maxChars) {
@@ -78,24 +100,29 @@ export function splitLongLine(line, maxChars) {
  * One slide's lines as one or more slides, each within `maxChars` and `maxLines`. Parts are balanced (two halves rather than a full slide and
  * a line), and lines are never reordered. A slide within the limits comes back as it was.
  */
-export function splitSlide(lines, { maxChars, maxLines } = SPLIT_LIMITS) {
-  if (textLength(lines) <= maxChars && lines.length <= maxLines) return [lines];
-  const pieces = lines.flatMap((line) => splitLongLine(line, maxChars));
+export function splitSlide(lines, { maxChars, maxLines, charsPerLine = SPLIT_LIMITS.charsPerLine } = SPLIT_LIMITS) {
+  if (textLength(lines) <= maxChars && rowsOf(lines, charsPerLine) <= maxLines) return [lines];
+  // A piece is never more rows than a slide holds, so every part can fit.
+  const pieces = lines.flatMap((line) => splitLongLine(line, Math.min(maxChars, maxLines * charsPerLine)));
   const total = textLength(pieces);
-  const parts = Math.max(Math.ceil(total / maxChars), Math.ceil(pieces.length / maxLines), 1);
+  const parts = Math.max(Math.ceil(total / maxChars), Math.ceil(rowsOf(pieces, charsPerLine) / maxLines), 1);
   const target = Math.ceil(total / parts);
   const out = [];
   let current = [];
   let chars = 0;
+  let rows = 0;
   for (const piece of pieces) {
-    const over = current.length > 0 && (chars + piece.text.length > maxChars || current.length >= maxLines || chars >= target);
+    const pieceRows = wrappedRows(piece.text, charsPerLine);
+    const over = current.length > 0 && (chars + piece.text.length > maxChars || rows + pieceRows > maxLines || chars >= target);
     if (over) {
       out.push(current);
       current = [];
       chars = 0;
+      rows = 0;
     }
     current.push(piece);
     chars += piece.text.length;
+    rows += pieceRows;
   }
   if (current.length > 0) out.push(current);
   return out;

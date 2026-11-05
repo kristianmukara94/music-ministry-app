@@ -1,4 +1,4 @@
-// The web planner's Holy Mass editor: the 17 numbered slots in five collapsible sections, items kept in their slots through a view and a save,
+// The web planner's Holy Mass editor: the 28 numbered slots in the four collapsible parts of the Mass, items kept in their slots through a view and a save,
 // and "Holy Mass" in every label. Run with: node --test server/test/web-holy-mass-slots.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,24 +25,24 @@ const ROWS = SECTIONS.flatMap((section) => section.rows);
 
 // ---- The slots ----
 
-test('the web\'s 17 slots are the church laptop\'s 17, with the same numbers, names, sections and song categories', () => {
-  assert.equal(slots.MASS_SLOTS.length, 17);
+test('the web\'s 28 slots are the church laptop\'s 28, in the same order, with the same numbers, names, sections and song categories', () => {
+  assert.equal(slots.MASS_SLOTS.length, 28);
   assert.deepEqual(
-    slots.MASS_SLOTS.map((s) => [s.number, s.name, s.group, s.category ?? null, s.kind]),
-    laptop.MASS_SLOTS.map((s) => [s.number, s.name, s.block, s.songCategory ?? null, s.kind]),
+    slots.MASS_SLOTS.map((s) => [s.number, s.position, s.name, s.group, s.category ?? null, s.kind]),
+    laptop.MASS_SLOTS.map((s) => [s.number, s.position, s.name, s.block, s.songCategory ?? null, s.kind]),
   );
-  assert.deepEqual(slots.MASS_SECTIONS.map((s) => [s.group, s.title]), laptop.MASS_SECTIONS.map((s) => [s.block, s.name]));
-  assert.deepEqual(slots.MASS_SLOTS.map((s) => s.number), Array.from({ length: 17 }, (_, i) => i + 1));
+  assert.deepEqual(slots.MASS_SECTIONS.map((s) => [s.groups, s.title]), laptop.MASS_SECTIONS.map((s) => [s.blocks, s.name]));
+  assert.equal(slots.SLOT_COUNT, 28);
 });
 
-test('the editor has five sections, each with its numbered slots first: 3, 3, 9, 1 and 1', () => {
-  assert.deepEqual(SECTIONS.map((s) => s.title), ['Introductory Rites', 'Liturgy of the Word', 'Liturgy of the Eucharist', 'Communion', 'Concluding Rites']);
-  assert.deepEqual(SECTIONS.map((s) => s.rows.filter((r) => r.slot).length), [3, 3, 9, 1, 1]);
-  assert.deepEqual(ROWS.filter((r) => r.slot).map((r) => r.slot), Array.from({ length: 17 }, (_, i) => i + 1));
+test('the editor has the four parts of the Mass, each with its numbered slots first: 5, 8, 12 and 3', () => {
+  assert.deepEqual(SECTIONS.map((s) => s.title), ['Introductory Rites', 'Liturgy of the Word', 'Liturgy of the Eucharist', 'Concluding Rites']);
+  assert.deepEqual(SECTIONS.map((s) => s.rows.filter((r) => r.slot).length), [5, 8, 12, 3]);
+  assert.deepEqual(ROWS.filter((r) => r.slot).map((r) => r.n), Array.from({ length: 28 }, (_, i) => i + 1), 'a slot is shown by its place in the Mass');
   for (const section of SECTIONS) {
     const firstOther = section.rows.findIndex((r) => !r.slot);
     if (firstOther >= 0) assert.ok(section.rows.slice(firstOther).every((r) => !r.slot), `${section.title}: slots come before other steps`);
-    assert.ok(section.rows.every((r) => r.group === section.group), 'a row is in its own section');
+    assert.ok(section.rows.every((r) => section.groups.includes(r.group)), 'a row is in its own section');
   }
 });
 
@@ -81,7 +81,7 @@ test('a plan saved by the earlier editor, with step keys and no slots, is read i
     { key: '5', group: 'introductory', order: 4, kind: 'song', text: 'Gloria setting' },
   ];
   const state = model.massFromItems(items, ROWS);
-  assert.deepEqual(Object.keys(state.segments).sort(), ['5', 's1', 's3', 's7'], 'Gloria has no slot, so it stays its own step');
+  assert.deepEqual(Object.keys(state.segments).sort(), ['s1', 's18', 's3', 's7'], 'the Gloria step is read into the Gloria slot');
   assert.equal(state.segments.s3.text, 'Kyrie (Lord, have mercy)');
   assert.deepEqual(state.extra, []);
 });
@@ -98,16 +98,23 @@ test('a second item for a slot, or an item that fits no row, is kept among the i
 
 // ---- Saving ----
 
-test('a slot\'s item is saved with its number, 1 to 17, and the section the slot is in', () => {
-  const state = { segments: { s1: { songId: SONG_A }, s12: { songId: SONG_B }, s13: { text: 'Through him, and with him' } }, notes: {}, extra: [], meta: {} };
+test('a slot\'s item is saved with its number, 1 to 28, and the section the slot is in, in Mass order', () => {
+  const state = { segments: { s1: { songId: SONG_A }, s12: { songId: SONG_B }, s13: { text: 'Through him, and with him' }, s28: { text: 'Go in Peace' } }, notes: {}, extra: [], meta: {} };
   const items = model.massToItems(state, ROWS);
+  // The Doxology (13) closes the Eucharistic Prayer, so it comes before the Lord's Prayer (12).
   assert.deepEqual(items.map((i) => [i.key, i.slot, i.group, i.kind, i.order]), [
     ['s1', 1, 'introductory', 'song', 1],
-    ['s12', 12, 'eucharist', 'song', 2],
-    ['s13', 13, 'eucharist', 'rite', 3],
+    ['s13', 13, 'eucharist', 'rite', 2],
+    ['s12', 12, 'eucharist', 'song', 3],
+    ['s28', 28, 'concluding', 'rite', 4],
   ]);
   // The server takes them as they are.
-  assert.deepEqual(checkItems(items, songIds).map((i) => i.slot), [1, 12, 13]);
+  assert.deepEqual(checkItems(items, songIds).map((i) => i.slot), [1, 13, 12, 28]);
+});
+
+test('a reading slot is saved as a reading, so the laptop reads it back as one', () => {
+  const state = { segments: { s20: { text: 'First Reading' } }, notes: {}, extra: [], meta: {} };
+  assert.deepEqual(model.massToItems(state, ROWS).map((i) => [i.key, i.slot, i.group, i.kind]), [['s20', 20, 'word', 'reading']]);
 });
 
 test('an item keeps the key, kind and slot it came with through a view and a save, so it never moves to another slot or drops out of one', () => {

@@ -13,7 +13,7 @@ import { PGlite } from '@electric-sql/pglite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
 const { HYMN_DELETE_MIGRATIONS, LYRICS_MIGRATIONS } = await import('./lyrics.js');
-const { MASS_PLAN_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_NOTES_MIGRATIONS } = await import('./mass-plans.js');
+const { MASS_PLAN_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_LANGUAGE_MIGRATIONS, PLAN_NOTES_MIGRATIONS } = await import('./mass-plans.js');
 const { PW_MIGRATIONS } = await import('./pw-sessions.js');
 const { TRANSFER_MIGRATIONS } = await import('./transfer.js');
 const { PLAN_SYNC_MIGRATIONS } = await import('./plan-sync-schema.js');
@@ -96,7 +96,7 @@ function laptopDb() {
       throw err;
     }
   };
-  for (const sqlText of [...LYRICS_MIGRATIONS, ...HYMN_DELETE_MIGRATIONS, ...MASS_PLAN_MIGRATIONS, ...PLAN_BIBLE_MIGRATIONS, ...PLAN_CUSTOM_MIGRATIONS, ...PLAN_NOTES_MIGRATIONS,
+  for (const sqlText of [...LYRICS_MIGRATIONS, ...HYMN_DELETE_MIGRATIONS, ...MASS_PLAN_MIGRATIONS, ...PLAN_LANGUAGE_MIGRATIONS, ...PLAN_BIBLE_MIGRATIONS, ...PLAN_CUSTOM_MIGRATIONS, ...PLAN_NOTES_MIGRATIONS,
     ...PW_MIGRATIONS, ...PLAN_COMMUNION_MIGRATIONS, ...MASS_SLOT_MIGRATIONS, ...TRANSFER_MIGRATIONS, ...PLAN_SYNC_MIGRATIONS]) {
     db.exec(sqlText);
   }
@@ -672,13 +672,13 @@ test('an item the website sends back without its slot keeps the slot the laptop 
   assert.deepEqual(slotsOf(l.db, uuid), [['Praise to the Lord', 'entrance'], ['Kyrie', 'kyrie'], ['Gospel', null]]);
 });
 
-test('the website refuses a slot that is not 1 to 17, or two items in one slot', async () => {
+test('the website refuses a slot that is not 1 to 28, or two items in one slot', async () => {
   const created = await serverCreate(laptopToken);
   const row = await serverRow(created.id);
   const push = (items) => api().pushPlans({ httpMethod: 'POST', headers: { authorization: `Bearer ${laptopToken}` }, body: JSON.stringify({ plans: [{ id: created.id, name: row.name, date: '2026-11-01', kind: 'mass', items, baseUpdatedAt: new Date(row.updated_at).toISOString() }] }) });
   const resultOf = async (items) => JSON.parse((await push(items)).body).results?.[0] ?? JSON.parse((await push(items)).body);
-  const bad = await resultOf([readingItem('a', 1, 'Gospel'), { ...readingItem('b', 2, 'First Reading'), slot: 18 }]);
-  assert.match(JSON.stringify(bad), /slot must be a number from 1 to 17/);
+  const bad = await resultOf([readingItem('a', 1, 'Gospel'), { ...readingItem('b', 2, 'First Reading'), slot: 29 }]);
+  assert.match(JSON.stringify(bad), /slot must be a number from 1 to 28/);
   const twice = await resultOf([{ ...readingItem('a', 1, 'Gospel'), slot: 4 }, { ...readingItem('b', 2, 'First Reading'), slot: 4 }]);
   assert.match(JSON.stringify(twice), /same Holy Mass slot/);
 });

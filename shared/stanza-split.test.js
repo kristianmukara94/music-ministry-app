@@ -75,7 +75,13 @@ test('the badge opens the split in the operator window, and every edit box offer
   assert.match(read('src/praise-worship/QuickCuePanel.tsx'), /onSplit=\{\(\) => void hot\.commitSplit\(i\)\}/);
   assert.match(read('src/praise-worship/LineupHotEdit.tsx'), /onSplit=\{\(\) => void hot\.commitSplit\(hot\.editing!\.index\)\}/);
   const hot = read('src/praise-worship/useLiveHotEditor.ts');
-  assert.match(hot, /const words = editing\?\.index === index \? editing\.text : hymn\.stanzas\[index\]\.lyricsText;/, 'a change typed first is split');
+  assert.match(hot, /const wordsOf = \(index: number\) => \(editing\?\.index === index \? editing\.text : hymn\?\.stanzas\[index\]\?\.lyricsText \?\? ''\);/, 'a change typed first is split');
   assert.match(hot, /applySplitToSession\(hymn\.id, result\.firstId, result\.secondId\)/, 'the open lineup keeps the second half too');
+  // Smart Break cuts a stanza into as many parts as it needs, one library split per cut, and every edit box offers it beside Auto-split.
+  assert.match(hot, /bridge\.lyrics\.splitStanza\(hymn\.id, index \+ k, \[parts\[k\], parts\.slice\(k \+ 1\)\.join\('\\n'\)\]\)/);
+  assert.match(forms, /disabled=\{hot\.busy \|\| !hot\.canSmartBreak\}/);
+  assert.match(read('src/praise-worship/QuickCuePanel.tsx'), /onSmartBreak=\{\(\) => void hot\.commitSmartBreak\(i\)\}/);
+  assert.match(read('src/golive/MassHotEdit.tsx'), /onSmartBreak=\{\(\) => void hot\.commitSmartBreak\(hot\.editing!\.index\)\}/);
+  assert.match(dialog, /onSmartBreak=\{\(\) => void smartBreak\(\)\}/);
   assert.match(read('src/lyrics/SongLyrics.tsx'), /return api\.onChanged\(\(id\) => \{\s+if \(id !== openHymnId\) return;/, 'the Song Lyrics cues follow the split');
 });

@@ -4,7 +4,7 @@ export type ReadingType = 'First Reading' | 'Responsorial Psalm' | 'Second Readi
 
 export const READING_TYPES: readonly ReadingType[] = ['First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel Acclamation', 'Gospel', 'Prayer of the Faithful'];
 
-/** The day's response and intentions for slot 6 of a Holy Mass plan. Like the psalm, its response is pinned above every slide. */
+/** The day's response and intentions for the Prayer of the Faithful slot of a Holy Mass plan. Like the psalm, its response is pinned above every slide. */
 export const PRAYER_OF_THE_FAITHFUL: ReadingType = 'Prayer of the Faithful';
 
 /** Entered in the Lectionary for Praise & Worship. The Mass planner leaves it out of its library. */

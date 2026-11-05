@@ -1,4 +1,4 @@
-// The Holy Mass order of 17 slots: the slots, how an item is placed in one, and how the planner is wired to them.
+// The Holy Mass order of the Philippines, 28 slots: the slots, how an item is placed in one, and how the planner is wired to them.
 // Run with: node --test shared/mass-slots.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,6 +17,10 @@ import {
   moveToSlot,
   placeInSlot,
   slotsOfBlock,
+  slotsOfSection,
+  slotIdOfNumber,
+  slotNumberOf,
+  filledInSection,
 } from './mass-slots.js';
 import { MASS_FLOW } from './mass-flow.js';
 import { plannerT } from './planner-i18n.js';
@@ -26,41 +30,70 @@ const hymn = (id, extra = {}) => ({ module: 'lyrics', sourceId: String(id), labe
 
 // ---- The slots ----
 
-test('there are 17 numbered slots in five sections of 3, 3, 9, 1 and 1', () => {
-  assert.equal(MASS_SLOTS.length, 17);
-  assert.deepEqual(MASS_SLOTS.map((s) => s.number), Array.from({ length: 17 }, (_, i) => i + 1));
-  assert.deepEqual(MASS_SECTIONS.map((s) => [s.block, slotsOfBlock(s.block).length]), [
-    ['introductory', 3],
-    ['word', 3],
-    ['eucharist', 9],
-    ['communion', 1],
-    ['concluding', 1],
+test('there are 28 slots in the four parts of the Mass: 5, 8, 12 and 3', () => {
+  assert.equal(MASS_SLOTS.length, 28);
+  assert.deepEqual(MASS_SLOTS.map((s) => s.position), Array.from({ length: 28 }, (_, i) => i + 1), 'positions run in Mass order');
+  assert.deepEqual([...MASS_SLOTS.map((s) => s.number)].sort((a, b) => a - b), Array.from({ length: 28 }, (_, i) => i + 1), 'numbers are 1 to 28');
+  assert.deepEqual(MASS_SECTIONS.map((s) => [s.id, s.blocks, slotsOfSection(s.id).length]), [
+    ['introductory_rites', ['introductory'], 5],
+    ['liturgy_of_the_word', ['word'], 8],
+    ['liturgy_of_the_eucharist', ['eucharist', 'communion'], 12],
+    ['concluding_rites', ['concluding'], 3],
   ]);
-  assert.equal(new Set(SLOT_IDS).size, 17, 'slot ids are unique');
+  assert.equal(new Set(SLOT_IDS).size, 28, 'slot ids are unique');
+  assert.equal(new Set(MASS_SLOTS.map((s) => s.type)).size, 28, 'slot types are unique');
 });
 
-test('the slots have the names and numbers of the Holy Mass order', () => {
-  const names = Object.fromEntries(MASS_SLOTS.map((s) => [s.number, s.name]));
-  assert.deepEqual(names, {
-    1: 'Entrance Hymn',
-    2: 'I Confess',
-    3: 'Lord, Have Mercy',
-    4: 'Responsorial Psalm',
-    5: 'Gospel Acclamation',
-    6: 'Prayer of the Faithful',
-    7: 'Offertory Hymn',
-    8: 'May the Lord Accept the Sacrifice',
-    9: 'Holy, Holy, Holy',
-    10: 'Memorial Acclamation',
-    11: 'Great Amen',
-    12: "The Lord's Prayer",
-    13: 'Doxology',
-    14: 'Lamb of God',
-    15: 'Lord, I Am Not Worthy',
-    16: 'Communion Hymn',
-    17: 'Recessional Hymn',
-  });
-  assert.deepEqual(MASS_SECTIONS.map((s) => s.name), ['Introductory Rites', 'Liturgy of the Word', 'Liturgy of the Eucharist', 'Communion', 'Concluding Rites']);
+test('the slots have the names of the Philippine order of Mass, in Mass order', () => {
+  assert.deepEqual(MASS_SLOTS.map((s) => s.name), [
+    'Entrance Hymn',
+    'I Confess (Confiteor)',
+    'Lord, Have Mercy (Kyrie)',
+    'Glory to God (Gloria)',
+    'Opening Prayer (Collect)',
+    'First Reading',
+    'Responsorial Psalm',
+    'Second Reading',
+    'Gospel Acclamation',
+    'Holy Gospel',
+    'Homily',
+    'Profession of Faith (Creed)',
+    'Prayer of the Faithful',
+    'Offertory / Presentation of Gifts',
+    'May the Lord Accept the Sacrifice',
+    'Holy, Holy, Holy (Sanctus)',
+    'Memorial Acclamation',
+    'Doxology',
+    'Great Amen',
+    "The Lord's Prayer (Our Father)",
+    'Sign of Peace',
+    'Lamb of God (Agnus Dei)',
+    'Lord, I Am Not Worthy',
+    'Communion Hymn',
+    'Prayer after Communion',
+    'Parish Announcements',
+    'Final Blessing & Dismissal',
+    'Recessional Hymn',
+  ]);
+  assert.deepEqual(MASS_SECTIONS.map((s) => s.name), ['Introductory Rites', 'Liturgy of the Word', 'Liturgy of the Eucharist', 'Concluding Rites']);
+});
+
+test('the 17 slots from before keep their ids and numbers, so saved plans and the website still find them', () => {
+  const kept = {
+    entrance: 1, confess: 2, kyrie: 3, psalm: 4, 'gospel-acclamation': 5, 'prayer-faithful': 6, offertory: 7, 'accept-sacrifice': 8,
+    sanctus: 9, 'memorial-acclamation': 10, 'great-amen': 11, 'lords-prayer': 12, doxology: 13, 'agnus-dei': 14, 'not-worthy': 15,
+    communion: 16, recessional: 17,
+  };
+  for (const [id, number] of Object.entries(kept)) assert.equal(slotNumberOf(id), number, id);
+  for (const [id, number] of Object.entries(kept)) assert.equal(slotIdOfNumber(number), id, String(number));
+  assert.deepEqual(MASS_SLOTS.filter((s) => s.number > 17).map((s) => s.number), Array.from({ length: 11 }, (_, i) => i + 18), 'new slots are 18 on, in Mass order');
+});
+
+test('the Lectionary fills the readings, the psalm and the prayers; the Gloria and the Second Reading are for Sundays and solemnities', () => {
+  assert.deepEqual(MASS_SLOTS.filter((s) => s.isReading).map((s) => s.id), ['first-reading', 'psalm', 'second-reading', 'gospel', 'prayer-faithful']);
+  assert.deepEqual(MASS_SLOTS.filter((s) => s.kind === 'reading').map((s) => s.id), ['first-reading', 'second-reading', 'gospel']);
+  assert.deepEqual(MASS_SLOTS.filter((s) => s.sundayOnly).map((s) => s.id), ['gloria', 'second-reading']);
+  assert.deepEqual(MASS_SLOTS.filter((s) => s.optional).map((s) => s.id), ['homily', 'sign-of-peace', 'announcements']);
 });
 
 test('each hymn slot is filtered by a song category the app has, and each Mass Order text it names is a real one', () => {
@@ -129,8 +162,9 @@ test('an additional item moved into a slot stops being an additional one', () =>
 test('progress counts the slots filled in a section, and items of no slot are additional', () => {
   const note = { block: 'introductory', module: 'custom', sourceId: 'n', label: 'n' };
   const items = placeInSlot(placeInSlot([note], 'entrance', hymn(1)), 'confess', hymn(2));
-  assert.deepEqual(filledIn(items, 'introductory'), { filled: 2, total: 3 });
-  assert.deepEqual(filledIn(items, 'word'), { filled: 0, total: 3 });
+  assert.deepEqual(filledIn(items, 'introductory'), { filled: 2, total: 5 });
+  assert.deepEqual(filledIn(items, 'word'), { filled: 0, total: 8 });
+  assert.deepEqual(filledInSection(placeInSlot(items, 'communion', hymn(3)), 'liturgy_of_the_eucharist'), { filled: 1, total: 12 }, 'the Communion Rite counts in the Liturgy of the Eucharist');
   assert.deepEqual(additionalIn(items, 'introductory'), [2]);
 });
 
@@ -146,11 +180,11 @@ test('the built-in templates: Standard Sunday is empty, and Weekday fills only s
 
 // ---- The planner ----
 
-test('the planner shows the five sections as collapsible, with a numbered slot each and a picker for each empty one', () => {
+test('the planner shows the four parts of the Mass as collapsible, with a numbered slot each and a picker for each empty one', () => {
   const plan = read('src/planner/HolyMassPlanner.tsx');
   assert.match(plan, /aria-expanded=\{!closed\}/);
   assert.match(plan, /MASS_SECTIONS\.map\(\(section\) =>/);
-  assert.match(plan, /slotsOfBlock\(section\.block\)\.map\(slotRow\)/);
+  assert.match(plan, /slotsOfSection\(section\.id\)\.map\(slotRow\)/);
   assert.match(plan, /<MassItemSelect/);
   assert.match(plan, /t\(slot\.kind === 'song' \? 'slotAddHymn' : 'slotAddItem'\)/);
   assert.match(plan, /onDrop=\{\(e\) => \{\s+e\.preventDefault\(\);\s+setOverSlot\(null\);\s+setPicking\(null\);\s+onDropOnSlot\(slot\.id\);/, 'a drop on a slot fills it');

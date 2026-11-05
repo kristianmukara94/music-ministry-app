@@ -272,6 +272,7 @@ const offlinePlans: PlansApi = {
   deletePlan: async () => offlineError(),
   get: async () => offlineError(),
   save: async () => offlineError(),
+  setLanguage: async () => offlineError(),
   listTemplates: async () => [],
   getTemplate: async () => offlineError(),
   saveTemplate: async () => offlineError(),

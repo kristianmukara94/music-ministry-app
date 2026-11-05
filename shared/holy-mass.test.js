@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { initialLiveState, liveReducer, presentedFrame } from './live.js';
+import { blackoutOverMass, initialLiveState, liveReducer, presentedFrame, welcomeOverMass } from './live.js';
 import { songTitleFrame } from './stage-plan-row.js';
 import { controlAction } from './remote-view.js';
 import { goLiveT as goT } from './golive-i18n.js';
@@ -13,6 +13,15 @@ import { plannerT as plT } from './planner-i18n.js';
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), 'utf8');
 const run = (state, ...actions) => actions.reduce((s, a) => liveReducer(s, a), state);
+// A Holy Mass plan whose second item has `slide` on air.
+const massOnAir = (slide) =>
+  run(
+    initialLiveState(),
+    { type: 'queue/set', planId: 7, items: [{ module: 'notes', sourceId: '1', label: 'A' }, { module: 'notes', sourceId: '2', label: 'B' }] },
+    { type: 'queue/cursor', index: 1 },
+    { type: 'projector/stage', frame: slide },
+    { type: 'projector/take', source: 'MASS_QUEUE' },
+  );
 const BAND = { template: 'segment', tag: 'Praise', line1: 'Joyful Song', line2: 'Anon' };
 
 // ---- Labels ----
@@ -45,6 +54,22 @@ test('Go Live only stages the band: the lower third stays off until the operator
   assert.deepEqual(s.lowerThird.live, BAND, 'the toggle shows the staged band');
 });
 
+test('Go Live starts with the lower third off: a Holy Mass Go Live (band staged, item taken) leaves it off', () => {
+  assert.equal(initialLiveState().lowerThird.live, null, 'a fresh state has no band on air');
+  const s = run(
+    initialLiveState(),
+    { type: 'output/set', output: 'projector', on: true },
+    { type: 'lowerThird/stage', value: { template: 'segment', tag: 'Holy Mass', line1: 'Sunday' } },
+    { type: 'queue/set', planId: 7, items: [{ module: 'notes', sourceId: '1', label: 'A' }] },
+    { type: 'queue/cursor', index: 0 },
+    { type: 'projector/stage', frame: { kind: 'text', text: 'In the name of the Father' } },
+    { type: 'projector/take', source: 'MASS_QUEUE' },
+  );
+  assert.equal(s.lowerThird.live, null, 'the lower third is still off on air');
+  assert.equal(s.outputs.lowerThird, false, 'the lower-third output is not switched on either');
+  assert.equal(liveReducer(s, { type: 'lowerThird/toggle' }).lowerThird.live?.tag, 'Holy Mass', 'the operator\'s toggle shows it');
+});
+
 test('a band the operator already has on stays on through Go Live', () => {
   const other = { template: 'segment', tag: 'Holy Mass', line1: 'Sunday' };
   const s = run(initialLiveState(), { type: 'lowerThird/show', value: BAND }, { type: 'lowerThird/stage', value: other });
@@ -54,7 +79,11 @@ test('a band the operator already has on stays on through Go Live', () => {
 test('Go Live in Praise & Worship, the Holy Mass and Quick Live never turn the lower third on', () => {
   const pw = read('src/praise-worship/live.ts');
   assert.doesNotMatch(pw, /lowerThirdOn|lowerThird\/on/);
-  assert.match(pw, /\(newSong \|\| newSegment\) && now\.lowerThird\.live\?\.template === 'segment'/, 'a band on screen follows the segment it moves to');
+  assert.match(
+    pw,
+    /const band = now\.lowerThird\.live;\s+if \(band && \(segment\.cues\.lowerThird \|\| band\.template === 'segment'\)\) dispatch\(\{ type: 'lowerThird\/show', value \}\);\s+else dispatch\(\{ type: 'lowerThird\/stage', value \}\);/,
+    'a segment\'s cue only updates a band already on screen; with the band off, the value is only staged',
+  );
   const mass = read('src/golive/massLive.ts');
   assert.match(mass, /dispatch\(\{ type: 'lowerThird\/stage', value: holyMassBand\(planName\) \}\);\s+await playQueueAt\(index, IN_PLACE\);/);
   assert.match(read('src/golive/GoLiveConsole.tsx'), /await goLiveMassAt\(resume, massPlan\.name\);/);
@@ -192,4 +221,85 @@ test('a prayer split into slides steps slide by slide in the Holy Mass, with a n
   const view = read('src/golive/MassLiveView.tsx');
   assert.match(view, /const note = useNoteOf\(frame\);/);
   assert.match(view, /frameAt\(frame, steps\.index \+ 1, hymn, slotNameAt\(live\), note\)/, 'the next-slide preview shows the prayer\'s next slide');
+});
+
+test('the welcome screen over the Holy Mass is an overlay: the queue keeps its place, and a take puts the covered slide back', () => {
+  const slide = { kind: 'text', text: 'Lord, have mercy' };
+  const welcome = { kind: 'welcome', lang: 'en' };
+  const onAir = run(
+    initialLiveState(),
+    { type: 'queue/set', planId: 7, items: [{ module: 'notes', sourceId: '1', label: 'A' }, { module: 'notes', sourceId: '2', label: 'B' }] },
+    { type: 'queue/cursor', index: 1 },
+    { type: 'projector/stage', frame: slide },
+    { type: 'projector/take', source: 'MASS_QUEUE' },
+  );
+  const covered = run(onAir, { type: 'projector/show', frame: welcome, source: 'DIRECT_DECK' });
+  assert.equal(covered.queueCursor, 1, 'the Mass keeps its place');
+  assert.equal(covered.projector.source, 'MASS_QUEUE');
+  assert.equal(covered.projector.live, welcome);
+  assert.equal(covered.projector.staged, slide, 'the covered slide waits staged');
+  assert.equal(welcomeOverMass(covered), true);
+  // Showing it again keeps the covered slide.
+  assert.equal(run(covered, { type: 'projector/show', frame: welcome, source: 'DIRECT_DECK' }).projector.staged, slide);
+  const resumed = run(covered, { type: 'projector/take', source: 'MASS_QUEUE' });
+  assert.equal(resumed.projector.live, slide);
+  assert.equal(resumed.queueCursor, 1);
+  assert.equal(welcomeOverMass(resumed), false);
+  // Anything else shown directly still ends the Mass's selection.
+  assert.equal(run(onAir, { type: 'projector/show', frame: { kind: 'announcements', lang: 'en' }, source: 'DIRECT_DECK' }).queueCursor, -1);
+});
+
+test('Next, Back, a section jump and Welcome again take the welcome screen down from over the Holy Mass', () => {
+  const live = read('src/golive/massLive.ts');
+  assert.match(live, /if \(welcomeOverMass\(state\) \|\| blackoutOverMass\(state\)\) \{\s+resumeMass\(\);\s+return;/);
+  assert.match(live, /from \?\? \(welcomeOverMass\(state\) \|\| blackoutOverMass\(state\) \? state\.projector\.staged : state\.projector\.live\)/);
+  assert.match(read('src/operator/actions.ts'), /if \(welcomeOverMass\(state\)\) dispatch\(\{ type: 'projector\/take', source: 'MASS_QUEUE' \}\);/);
+  const view = read('src/golive/MassLiveView.tsx');
+  assert.match(view, /const covered = welcomeOverMass\(live\) \|\| blackoutOverMass\(live\);/);
+  assert.match(view, /const frame = onAir && !covered \? live\.projector\.live : live\.projector\.staged;/);
+});
+
+test('Blackout over the Holy Mass is a cover: the queue keeps its place, and the covered slide waits staged', () => {
+  const slide = { kind: 'text', text: 'Lord, have mercy' };
+  const onAir = massOnAir(slide);
+  const dark = run(onAir, { type: 'projector/blackout' });
+  assert.equal(dark.projector.live.kind, 'blackout');
+  assert.equal(dark.queueCursor, 1, 'the Mass keeps its place');
+  assert.equal(dark.queuePlanId, 7);
+  assert.equal(dark.projector.source, 'MASS_QUEUE');
+  assert.equal(dark.projector.staged, slide, 'the covered slide waits staged');
+  assert.equal(blackoutOverMass(dark), true);
+  assert.equal(blackoutOverMass(onAir), false);
+  // Blackout again puts the covered slide back.
+  const back = run(dark, { type: 'projector/blackout' });
+  assert.equal(back.projector.live, slide);
+  assert.equal(back.queueCursor, 1);
+  assert.equal(blackoutOverMass(back), false);
+  // Blackout over something that is not the Mass still ends the Mass's selection.
+  const deck = run(onAir, { type: 'projector/show', frame: { kind: 'announcements', lang: 'en' }, source: 'DIRECT_DECK' });
+  assert.equal(run(deck, { type: 'projector/blackout' }).queueCursor, -1);
+});
+
+test('Next, Back and a section jump lift Blackout from over the Holy Mass onto their slide', () => {
+  const slide = { kind: 'text', text: 'Lord, have mercy' };
+  const dark = run(massOnAir(slide), { type: 'projector/blackout' });
+  // Next and Back (resumeMass): the take sets the slide to come back, and Blackout goes down onto it.
+  const resumed = run(dark, { type: 'projector/take', source: 'MASS_QUEUE' }, { type: 'projector/blackout' });
+  assert.equal(resumed.projector.live, slide);
+  assert.equal(resumed.queueCursor, 1);
+  // A section jump (showWithin): the target slide is staged and taken under Blackout, then Blackout goes down onto it.
+  const target = { kind: 'text', text: 'Christ, have mercy' };
+  const jumped = run(dark, { type: 'projector/stage', frame: target }, { type: 'projector/take', source: 'MASS_QUEUE' });
+  assert.equal(jumped.projector.live.kind, 'blackout', 'the target never shows before Blackout goes down');
+  const shown = run(jumped, { type: 'projector/blackout' });
+  assert.equal(shown.projector.live, target);
+  assert.equal(shown.queueCursor, 1);
+  assert.equal(shown.projector.source, 'MASS_QUEUE');
+  // Blackout over the welcome screen over the Mass: Next goes straight to the Mass slide, without the welcome screen on the way.
+  const welcomeDark = run(dark, { type: 'projector/blackout' }, { type: 'projector/show', frame: { kind: 'welcome', lang: 'en' }, source: 'DIRECT_DECK' }, { type: 'projector/blackout' });
+  assert.equal(blackoutOverMass(welcomeDark), true);
+  assert.equal(welcomeDark.projector.staged, slide);
+  assert.equal(run(welcomeDark, { type: 'projector/take', source: 'MASS_QUEUE' }, { type: 'projector/blackout' }).projector.live, slide);
+  const live = read('src/golive/massLive.ts');
+  assert.match(live, /dispatch\(\{ type: 'projector\/take', source: 'MASS_QUEUE' \}\);\s+if \(blackedOut\) dispatch\(\{ type: 'projector\/blackout' \}\);/);
 });

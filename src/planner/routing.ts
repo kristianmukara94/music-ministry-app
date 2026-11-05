@@ -4,7 +4,7 @@ import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
 import { turnOnProjectorAndGo } from '../live/startup';
 import { massPartFrame } from '../liturgy/massOrder';
-import { readingPagesOf } from '../lectionary/pages';
+import { readingSlides } from '../lectionary/pages';
 import { hasResponse } from '../../shared/daily-readings.js';
 import { loadPassage, scriptureSlides } from '../bible/projection';
 import { parseSourceId } from '../../shared/bible-ref.js';
@@ -16,6 +16,8 @@ import { songTitleFrame, textRowActions } from '../../shared/stage-plan-row.js';
 import { slotById } from '../../shared/mass-slots.js';
 import { announcementFrame } from '../announcements/frames';
 import { frameForWhiteboardSlide } from '../whiteboard/projectSlide';
+import { uiLangOf } from '../../shared/mass-language.js';
+import { planLanguage } from './plan-api';
 
 /** How a queue item is played. `inPlace` shows songs, announcements and media where the operator is (the Go Live console), without switching panels. */
 export interface PlayOptions {
@@ -105,7 +107,9 @@ export async function openQueueItem(item: QueueItem, index: number, opts: PlayOp
     }
 
     case 'mass_order': {
-      const frame = massPartFrame(item.sourceId, useUi.getState().lang);
+      // A part is shown in the language of the plan it belongs to (Kyrie in Cebuano for a Cebuano Mass), whatever the app's own language.
+      const language = await planLanguage(useLive.getState().state.queuePlanId);
+      const frame = massPartFrame(item.sourceId, language ? uiLangOf(language) : useUi.getState().lang);
       if (!frame) return false;
       dispatch({ type: 'projector/stage', frame });
       return true;
@@ -222,12 +226,12 @@ export async function stepQueue(delta: 1 | -1, opts: PlayOptions = {}): Promise<
 }
 
 /** Stages a saved reading straight from the database, so it works without the deck's editor state. Resolves true when staged. */
-async function stageReading(date: string, readingType: string): Promise<boolean> {
+export async function stageReading(date: string, readingType: string): Promise<boolean> {
   const day = await bridge.lectionary.getDay(date);
   const row = day.readings.find((r) => r.readingType === readingType);
   if (!row?.rawText) return false;
 
-  const pages = readingPagesOf(readingType, row.rawText);
+  const pages = readingSlides(readingType, row.rawText);
   const title = [day.seasonInfo, readingType, row.citation].map((s) => s.trim()).filter(Boolean).join(' · ');
   // The psalm and the Prayer of the Faithful keep their response pinned above every stanza or intention.
   const frame: Frame =

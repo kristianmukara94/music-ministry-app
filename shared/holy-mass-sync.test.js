@@ -36,12 +36,12 @@ test('a template\'s items all fill slots, so a new plan has nothing among the ad
 
 // ---- Slots on the website ----
 
-test('a slot travels as its number, 1 to 17, and comes back as the same slot', () => {
+test('a slot travels as its number, 1 to 28, and comes back as the same slot', () => {
   for (const slot of MASS_SLOTS) {
     assert.equal(slotNumberOf(slot.id), slot.number);
     assert.equal(slotIdOfNumber(slot.number), slot.id);
   }
-  for (const bad of [0, 18, 1.5, '3', null, undefined]) assert.equal(slotIdOfNumber(bad), null, String(bad));
+  for (const bad of [0, 29, 1.5, '3', null, undefined]) assert.equal(slotIdOfNumber(bad), null, String(bad));
   assert.equal(slotNumberOf('nope'), null);
   assert.equal(slotNumberOf(null), null);
 });
@@ -61,11 +61,11 @@ test('a pull takes the website\'s slot when it names one, keeps the laptop\'s ot
   assert.match(read('electron/plan-sync.js'), /i\.note \?\? null, i\.slot \?\? null\]/, 'a change of slot alone is a change');
 });
 
-test('the website accepts a slot from 1 to 17, once per plan', () => {
+test('the website accepts a slot from 1 to 28, once per plan', () => {
   const server = read('server/lib/plan-sync.js');
   assert.match(server, /const ITEM_FIELDS = \[[^\]]*'slot'\]/);
   assert.match(server, /item\.slot < 1 \|\| item\.slot > MASS_SLOT_COUNT/);
-  assert.match(server, /export const MASS_SLOT_COUNT = 17;/);
+  assert.match(server, /export const MASS_SLOT_COUNT = 28;/);
 });
 
 test('the website\'s editor carries a step\'s slot through an edit, and leaves the laptop\'s own items as they are', () => {

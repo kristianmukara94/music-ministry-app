@@ -99,6 +99,7 @@ contextBridge.exposeInMainWorld('apcc', {
     deletePlan: (id) => ipcRenderer.invoke('plans:delete', id),
     get: (id) => ipcRenderer.invoke('plans:get', id),
     save: (id, items) => ipcRenderer.invoke('plans:save', id, items),
+    setLanguage: (id, language) => ipcRenderer.invoke('plans:setLanguage', id, language),
     listTemplates: () => ipcRenderer.invoke('plans:listTemplates'),
     getTemplate: (id) => ipcRenderer.invoke('plans:getTemplate', id),
     saveTemplate: (input) => ipcRenderer.invoke('plans:saveTemplate', input),

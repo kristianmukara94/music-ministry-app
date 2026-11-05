@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, Check, Play } from 'lucide-react';
 import { livePosition, readiness, runtimeOf, segmentStatus, step } from '../../shared/pw.js';
+import { blackoutOverPw, welcomeOverPw } from '../../shared/live.js';
 import { dispatch, useLive } from '../live/store';
 import { ProjectorView } from '../output/ProjectorView';
 import { LowerThirdStage } from '../output/LowerThirdView';
@@ -168,8 +169,10 @@ export function LiveView() {
   const { missingSongs } = readiness(session.segments);
   const lowerOn = live.lowerThird.live != null;
   const blackout = live.projector.live.kind === 'blackout';
-  const atStart = segmentIndex === 0 && at.slide === 0;
-  const atEnd = segmentIndex === deck.length - 1 && at.slide === steps.length - 1;
+  // The welcome screen or Blackout is up over the session: it stays on air at its place, and Next and Back always work, putting a slide back.
+  const covered = welcomeOverPw(live) || blackoutOverPw(live);
+  const atStart = !covered && segmentIndex === 0 && at.slide === 0;
+  const atEnd = !covered && segmentIndex === deck.length - 1 && at.slide === steps.length - 1;
 
   return (
     <div className="flex flex-col gap-5">

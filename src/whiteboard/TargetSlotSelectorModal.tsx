@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Church, ListPlus, Music, Presentation, Replace, X } from 'lucide-react';
-import { MASS_SECTIONS, slotById, slotsOfBlock } from '../../shared/mass-slots.js';
+import { MASS_SECTIONS, slotById, slotsOfSection } from '../../shared/mass-slots.js';
 import type { PictureDeck } from '../../shared/flow-insert.js';
 import { bridge } from '../live/bridge';
 import { useLive } from '../live/store';
@@ -54,17 +54,17 @@ export function MassSlotPicker({ value, onChange }: { value: string | null; onCh
   return (
     <div className="flex flex-col gap-3">
       {MASS_SECTIONS.map((section) => (
-        <section key={section.block} aria-label={section.name}>
+        <section key={section.id} aria-label={section.name}>
           <h3 className="mb-1 px-1 text-[10px] font-bold tracking-wider text-fg/50 uppercase">
             {section.number}. {section.name}
           </h3>
           <ul className="flex flex-col gap-0.5">
-            {slotsOfBlock(section.block).map((slot) => {
+            {slotsOfSection(section.id).map((slot) => {
               const filler = items.find((it) => it.slot === slot.id);
               return (
                 <li key={slot.id}>
                   <button type="button" aria-pressed={value === slot.id} onClick={() => onChange(slot.id)} className={CHOICE(value === slot.id)}>
-                    <span className="grid size-7 shrink-0 place-items-center rounded-full bg-panel-2 font-mono text-[11px] text-muted">{slot.number}</span>
+                    <span className="grid size-7 shrink-0 place-items-center rounded-full bg-panel-2 font-mono text-[11px] text-muted">{slot.position}</span>
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate font-semibold">{slot.name}</span>
                       <span className="truncate text-[11px] text-fg/50">{filler ? filler.label : 'Empty'}</span>
@@ -81,7 +81,7 @@ export function MassSlotPicker({ value, onChange }: { value: string | null; onCh
 }
 
 /**
- * Where a PowerPoint from the Whiteboard goes: a Holy Mass slot (1 to 17) in the plan loaded in the Service Queue, or a card of a Praise &
+ * Where a PowerPoint from the Whiteboard goes: a Holy Mass slot in the plan loaded in the Service Queue, or a card of a Praise &
  * Worship session. Each deck goes in whole, as one item that steps through its slides. A slot that is already filled offers a choice: Insert
  * after slot keeps what fills it and plays the deck after it; Replace existing puts the deck in its place. Nothing on the projector changes,
  * except when the item replaced is on air: then the new deck goes on air in its place.
@@ -134,7 +134,7 @@ export function TargetSlotSelectorModal({ decks, onClose, onDone }: { decks: Pic
       if (flow === 'mass' && slot && mode === 'replace') {
         const { added, skipped, replaced } = await replaceSlotInFlow(decks, slot);
         const target = slotById(slot);
-        const where = target ? `${target.number}. ${target.name}` : 'the slot';
+        const where = target ? `${target.position}. ${target.name}` : 'the slot';
         const what = decks.length === 1 ? `"${decks[0].title}"` : plural(added, 'PowerPoint', 'PowerPoints');
         const left = skipped > 0 ? ` ${plural(skipped, 'was', 'were')} already in it.` : '';
         onDone(`${replaced ? `Replaced "${replaced}" with` : 'Added'} ${what} at ${where}.${left}`);
@@ -142,7 +142,7 @@ export function TargetSlotSelectorModal({ decks, onClose, onDone }: { decks: Pic
         const { added, skipped } = await insertDeckIntoFlow(decks, { kind: 'slot', slot });
         const target = slotById(slot);
         const left = skipped > 0 ? ` ${plural(skipped, 'was', 'were')} already in it.` : '';
-        onDone(`Added ${plural(added, 'PowerPoint', 'PowerPoints')} to the Holy Mass, at ${target ? `${target.number}. ${target.name}` : 'the slot'}.${left}`);
+        onDone(`Added ${plural(added, 'PowerPoint', 'PowerPoints')} to the Holy Mass, at ${target ? `${target.position}. ${target.name}` : 'the slot'}.${left}`);
       } else if (session && segmentKey) {
         const added = await chainPicturesInto(session.id, segmentKey, decks.map((d) => d.slideIds));
         const card = session.segments.find((s) => s.key === segmentKey)?.name ?? 'the card';

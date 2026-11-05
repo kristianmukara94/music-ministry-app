@@ -8,7 +8,7 @@ export const NEW_PLAN_TEMPLATES: NewPlanTemplate[] = ['standard', 'weekday'];
 
 /**
  * A built-in template as plan items: the slots it fills, each with the Mass Order text it names, labelled in the operator's language.
- * Standard Sunday fills none, so a plan made from it is the 17 slots, empty, with nothing stored and no additional items.
+ * Standard Sunday fills none, so a plan made from it is the slots, empty, with nothing stored and no additional items.
  */
 export function builtInItems(id: string, lang: 'en' | 'tl' | 'ceb'): PlanItem[] {
   const template = BUILT_IN_TEMPLATES.find((tpl) => tpl.id === id);

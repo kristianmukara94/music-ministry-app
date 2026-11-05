@@ -4,6 +4,7 @@ import { GOSPEL_ACCLAMATION } from './lectionary.js';
 import { recordTombstone } from './plan-sync-schema.js';
 import { isSlotId } from '../shared/mass-slots.js';
 import { announcementSource } from '../shared/flow-insert.js';
+import { DEFAULT_MASS_LANGUAGE, isMassLanguage, massLanguageOf } from '../shared/mass-language.js';
 
 export const PLAN_BLOCKS = ['introductory', 'word', 'eucharist', 'communion', 'concluding'];
 export const PLAN_MODULES = ['lyrics', 'lectionary', 'announcements', 'media', 'mass_order', 'bible', 'custom', 'notes'];
@@ -136,7 +137,7 @@ export const PLAN_COMMUNION_MIGRATIONS = [
 ];
 
 /**
- * The Holy Mass order of 17 slots (see shared/mass-slots.js). An item names the slot it fills in `slot`, or has none (an additional item, or an
+ * The Holy Mass order of slots (see shared/mass-slots.js). An item names the slot it fills in `slot`, or has none (an additional item, or an
  * item from before slots). Templates are plans the operator saved to load into another: a name and the items, as JSON. Appended to the end of
  * the migration list only.
  */
@@ -152,6 +153,9 @@ export const MASS_SLOT_MIGRATIONS = [
   `,
 ];
 
+/** The language each plan is celebrated in: EN, TL or CEB (see shared/mass-language.js). Plans made before it are English. */
+export const PLAN_LANGUAGE_MIGRATIONS = [`ALTER TABLE mass_plans ADD COLUMN language TEXT NOT NULL DEFAULT 'EN';`];
+
 const MAX_TEMPLATE_NAME = 80;
 const MAX_TEMPLATES = 100;
 
@@ -159,10 +163,11 @@ const MAX_TEMPLATES = 100;
 export function createMassPlanService(db) {
   const q = {
     plans: db.prepare(`
-      SELECT id, name, liturgical_date AS liturgicalDate, created_at AS createdAt
+      SELECT id, name, liturgical_date AS liturgicalDate, language, created_at AS createdAt
       FROM mass_plans ORDER BY liturgical_date DESC, id DESC`),
-    plan: db.prepare('SELECT id, name, liturgical_date AS liturgicalDate FROM mass_plans WHERE id = ?'),
-    insertPlan: db.prepare('INSERT INTO mass_plans (name, liturgical_date) VALUES (?, ?)'),
+    plan: db.prepare('SELECT id, name, liturgical_date AS liturgicalDate, language FROM mass_plans WHERE id = ?'),
+    insertPlan: db.prepare('INSERT INTO mass_plans (name, liturgical_date, language) VALUES (?, ?, ?)'),
+    setLanguage: db.prepare('UPDATE mass_plans SET language = ? WHERE id = ?'),
     deletePlan: db.prepare('DELETE FROM mass_plans WHERE id = ?'),
     planUuid: db.prepare('SELECT uuid FROM mass_plans WHERE id = ?'),
     items: db.prepare(`
@@ -277,8 +282,17 @@ export function createMassPlanService(db) {
       if (!name || name.length > MAX_NAME) throw new Error(`Plan name must be 1 to ${MAX_NAME} characters.`);
       const liturgicalDate = String(input.liturgicalDate ?? '');
       if (!DATE.test(liturgicalDate)) throw new Error('Date must be in the form YYYY-MM-DD.');
-      const { lastInsertRowid } = q.insertPlan.run(name, liturgicalDate);
-      return { id: Number(lastInsertRowid), name, liturgicalDate };
+      const language = input.language == null ? DEFAULT_MASS_LANGUAGE : massLanguageOf(input.language);
+      const { lastInsertRowid } = q.insertPlan.run(name, liturgicalDate, language);
+      return { id: Number(lastInsertRowid), name, liturgicalDate, language };
+    },
+
+    /** Sets the language a plan is celebrated in. Its items are not changed here: the planner re-drafts and relabels them. */
+    setLanguage(id, language) {
+      requirePlan(id);
+      if (!isMassLanguage(language)) throw new Error('The Holy Mass language must be EN, TL or CEB.');
+      q.setLanguage.run(language, id);
+      return language;
     },
 
     deletePlan(id) {
@@ -360,6 +374,7 @@ export function setupMassPlans(db) {
   handle('delete', (id) => service.deletePlan(Number(id)));
   handle('get', (id) => service.getPlan(Number(id)));
   handle('save', (id, items) => service.savePlan(Number(id), items));
+  handle('setLanguage', (id, language) => service.setLanguage(Number(id), language));
   handle('listTemplates', () => service.listTemplates());
   handle('getTemplate', (id) => service.getTemplate(Number(id)));
   handle('saveTemplate', (input) => service.saveTemplate(input));

@@ -30,8 +30,8 @@ export function massSteps(template) {
 }
 
 /**
- * The rows the Holy Mass editor shows, in sections: for each of the five sections, its numbered slots (1 to 17) first, then the other steps
- * of the website's earlier editor that fill no slot (Greeting, Gloria, the readings, the Homily …), still there to fill.
+ * The rows the Holy Mass editor shows, in sections: for each of the four parts of the Mass, its numbered slots first, then the other steps
+ * of the website's earlier editor that fill no slot (Greeting, Preface, Dismissal …), still there to fill.
  *
  * A row is { id, n, slot, name, kind, category, group, optional, hint, legacyKey }. `id` names the row in the editor's state: "s7" for a
  * slot, the step number for another step. `n` is the number shown. `legacyKey` is the key the earlier editor gave the step that stands for
@@ -42,12 +42,12 @@ export function massSections(template) {
   const steps = massSteps(template);
   const slotByStep = new Map(steps.map((step) => [String(step.n), LEGACY_STEP_SLOT[step.n] ?? null]));
   return MASS_SECTIONS.map((section) => {
-    const slots = MASS_SLOTS.filter((slot) => slot.group === section.group).map((slot) => ({
+    const slots = MASS_SLOTS.filter((slot) => section.groups.includes(slot.group)).map((slot) => ({
       id: `s${slot.number}`,
-      n: slot.number,
+      n: slot.position,
       slot: slot.number,
       name: slot.name,
-      kind: slot.kind === 'song' ? 'song' : 'slot-text',
+      kind: slot.kind === 'text' ? 'slot-text' : slot.kind,
       category: slot.category ?? '',
       group: slot.group,
       optional: false,
@@ -55,7 +55,7 @@ export function massSections(template) {
       legacyKey: Object.entries(LEGACY_STEP_SLOT).find(([, number]) => number === slot.number)?.[0] ?? null,
     }));
     const others = steps
-      .filter((step) => step.group === section.group && !slotByStep.get(String(step.n)))
+      .filter((step) => section.groups.includes(step.group) && !slotByStep.get(String(step.n)))
       .map((step) => ({ ...step, id: String(step.n), slot: null, legacyKey: null }));
     return { ...section, rows: [...slots, ...others] };
   });
@@ -158,7 +158,7 @@ export function massFromItems(items, rows) {
 
 /**
  * The items the server takes, for a Holy Mass plan: one per row that has a choice or a note, in the editor's order, then the items the editor
- * does not show. A slot's item carries its number (1 to 17), so it keeps its place on the laptop and on every other pull. An item keeps the key
+ * does not show. A slot's item carries its number (1 to 28), so it keeps its place on the laptop and on every other pull. An item keeps the key
  * and kind it was read with; a new one gets "s7" for slot 7, or the step number for another step. The order is then renumbered from 1.
  */
 export function massToItems({ segments, notes, extra, meta = {} }, rows) {

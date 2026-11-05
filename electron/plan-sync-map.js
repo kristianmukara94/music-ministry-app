@@ -46,7 +46,7 @@ const byOrder = (a, b) => a.order - b.order;
 const entry = (key, row, item = null) => ({ key, synced: item !== null, item, row });
 
 /**
- * The Holy Mass slot an item fills, as the website knows it: its number, 1 to 17. An item that fills no slot has none, and the field is left
+ * The Holy Mass slot an item fills, as the website knows it: its number, 1 to 28. An item that fills no slot has none, and the field is left
  * out, so a plan from before slots sends exactly what it always did. The key never includes it, so filling a slot never changes an item's key.
  */
 const withSlot = (item, row) => {
@@ -70,7 +70,7 @@ export function massEntries(rows, hymnUuidOf) {
       return entry(derived, row, uuid ? withSlot({ kind: 'song', group: row.block, songId: uuid }, row) : null);
     }
     if (row.module === 'lectionary') {
-      // The day's Prayer of the Faithful is the parish's own text for slot 6, which the website has no reading for: it stays on the laptop.
+      // The day's Prayer of the Faithful is the parish's own text for the Prayer of the Faithful slot, which the website has no reading for: it stays on the laptop.
       if (String(row.sourceId).split('|')[1] === PRAYER_OF_THE_FAITHFUL) return entry(derived, row, null);
       // The label is the reading's name. Anything else could carry text, so the plan is refused rather than sent.
       if (!READING_TYPES.includes(row.label)) throw new MapRefused('A reading in this plan is not a reading name. Nothing was sent.');

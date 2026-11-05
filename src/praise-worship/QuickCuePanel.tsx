@@ -100,7 +100,7 @@ export function QuickCuePanel({ quick, t }: { quick: QuickLive; t: PwT }) {
           if (hot.editing?.index === i) {
             return (
               <li key={stanza.id}>
-                <StanzaEditBox t={t} hot={hot} stanza={stanza} live={live} onSave={() => void hot.commitEdit()} onSplit={() => void hot.commitSplit(i)} />
+                <StanzaEditBox t={t} hot={hot} stanza={stanza} live={live} onSave={() => void hot.commitEdit()} onSplit={() => void hot.commitSplit(i)} onSmartBreak={() => void hot.commitSmartBreak(i)} />
               </li>
             );
           }

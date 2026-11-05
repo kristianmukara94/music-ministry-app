@@ -20,14 +20,15 @@ export function SplitStanzaDialog() {
   const [open, setOpen] = useState<{ hymnId: number; position: number } | null>(null);
   const [hymn, setHymn] = useState<Hymn | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  // The number of slides the stanza was split into, once it was; 0 before.
+  const [done, setDone] = useState(0);
   const hot = useLiveHotEditor(hymn, setHymn);
 
   useEffect(() => {
     if (!request || request.seq <= seen.current) return;
     seen.current = request.seq;
     setOpen({ hymnId: request.hymnId, position: request.position });
-    setDone(false);
+    setDone(0);
     setFailed(null);
     setHymn(null);
     bridge.lyrics
@@ -61,9 +62,8 @@ export function SplitStanzaDialog() {
   if (!open) return null;
   const stanza = hymn?.stanzas[open.position];
 
-  const split = async () => {
-    if (await hot.commitSplit(open.position)) setDone(true);
-  };
+  const split = async () => setDone(await hot.commitSplit(open.position));
+  const smartBreak = async () => setDone(await hot.commitSmartBreak(open.position));
   const save = async () => {
     if (await hot.commitEdit()) close();
   };
@@ -87,12 +87,12 @@ export function SplitStanzaDialog() {
         {hot.error && <p role="alert" className="text-sm text-danger">{hot.error}</p>}
         {done ? (
           <p role="status" className="rounded-lg border border-ok/40 bg-ok/10 px-3 py-2 text-sm text-ok">
-            {t('splitDone')}
+            {t('splitDone', { n: done })}
           </p>
         ) : (
           <>
             <p className="text-sm text-muted">{t('splitHint')}</p>
-            {stanza && hot.editing && <StanzaEditBox t={t} hot={hot} stanza={stanza} live={false} onSave={() => void save()} onSplit={() => void split()} />}
+            {stanza && hot.editing && <StanzaEditBox t={t} hot={hot} stanza={stanza} live={false} onSave={() => void save()} onSplit={() => void split()} onSmartBreak={() => void smartBreak()} />}
           </>
         )}
         {done && (

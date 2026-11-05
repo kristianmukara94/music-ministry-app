@@ -22,9 +22,26 @@ export function editKeys(e: ReactKeyboardEvent, save: () => void, cancel: () => 
 
 /**
  * The box that changes one stanza's words. Ctrl + Enter saves, Escape cancels. With `onSplit`, Auto-split at midpoint cuts the stanza in two
- * that follow each other, for a stanza too long for one slide.
+ * that follow each other, for a stanza too long for one slide. With `onSmartBreak`, Smart Break cuts it into as many slides as it needs, at
+ * its pauses (see smartBreakParts).
  */
-export function StanzaEditBox({ t, hot, stanza, live, onSave, onSplit }: { t: PwT; hot: LiveHotEditor; stanza: Pick<Stanza, 'stanzaType'>; live: boolean; onSave: () => void; onSplit?: () => void }) {
+export function StanzaEditBox({
+  t,
+  hot,
+  stanza,
+  live,
+  onSave,
+  onSplit,
+  onSmartBreak,
+}: {
+  t: PwT;
+  hot: LiveHotEditor;
+  stanza: Pick<Stanza, 'stanzaType'>;
+  live: boolean;
+  onSave: () => void;
+  onSplit?: () => void;
+  onSmartBreak?: () => void;
+}) {
   if (!hot.editing) return null;
   return (
     <div className={`flex flex-col gap-2 rounded-lg border p-3 ${live ? 'border-danger bg-danger/10' : 'border-accent/50 bg-panel'}`}>
@@ -43,6 +60,17 @@ export function StanzaEditBox({ t, hot, stanza, live, onSave, onSplit }: { t: Pw
         className={FIELD}
       />
       <div className="flex flex-wrap justify-end gap-2">
+        {onSmartBreak && (
+          <button
+            type="button"
+            onClick={onSmartBreak}
+            disabled={hot.busy || !hot.canSmartBreak}
+            title={hot.canSmartBreak ? t('smartBreakTip', { name: stanza.stanzaType }) : t('smartBreakFits', { name: stanza.stanzaType })}
+            className={`${SMALL_BTN} ${onSplit ? '' : 'mr-auto'} border-accent/60 text-accent hover:bg-accent/10`}
+          >
+            {t('smartBreak')}
+          </button>
+        )}
         {onSplit && (
           <button
             type="button"

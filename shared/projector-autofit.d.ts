@@ -8,7 +8,8 @@ export function pickFitStep(
   leading?: readonly (number | null)[],
 ): { index: number; scale: number; leading: number | null; overflow: boolean };
 export const SAFE_AREA: Readonly<{ top: number; bottom: number; side: number }>;
-export const SPLIT_LIMITS: Readonly<{ maxChars: number; maxLines: number }>;
+export const SPLIT_LIMITS: Readonly<{ maxChars: number; maxLines: number; charsPerLine: number }>;
+export function wrappedRows(text: string, width?: number): number;
 export function splitLongLine(line: SlideLine, maxChars: number): SlideLine[];
-export function splitSlide(lines: SlideLine[], limits?: { maxChars: number; maxLines: number }): SlideLine[][];
-export function splitDeck(title: string, slides: SlideLine[][], limits?: { maxChars: number; maxLines: number }): { slides: SlideLine[][]; labels: string[] | null };
+export function splitSlide(lines: SlideLine[], limits?: { maxChars: number; maxLines: number; charsPerLine?: number }): SlideLine[][];
+export function splitDeck(title: string, slides: SlideLine[][], limits?: { maxChars: number; maxLines: number; charsPerLine?: number }): { slides: SlideLine[][]; labels: string[] | null };

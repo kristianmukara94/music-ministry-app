@@ -2,7 +2,7 @@
 // Run with: node --test shared/projector-autofit.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FIT_LEADING, FIT_STEPS, SAFE_AREA, SPLIT_LIMITS, pickFitStep, splitDeck, splitLongLine, splitSlide } from './projector-autofit.js';
+import { FIT_LEADING, FIT_STEPS, SAFE_AREA, SPLIT_LIMITS, pickFitStep, splitDeck, splitLongLine, splitSlide, wrappedRows } from './projector-autofit.js';
 
 const rem = (scale) => Math.round(scale * 3.5 * 100) / 100;
 
@@ -79,4 +79,26 @@ test('one very long line is cut at sentence ends first, then between words, and 
   const word = splitLongLine({ role: 'all', text: 'word '.repeat(100).trim() }, 50);
   assert.ok(word.every((p) => p.text.length <= 50));
   assert.equal(word.map((p) => p.text).join(' '), 'word '.repeat(100).trim());
+});
+
+test('lines are counted as the screen wraps them', () => {
+  assert.equal(wrappedRows('Every day, O Lord'), 1);
+  assert.equal(wrappedRows(''), 1, 'an empty line keeps its height');
+  assert.equal(wrappedRows('word '.repeat(30).trim(), 20), 8);
+});
+
+test('eight long lines that wrap past one slide are split, though they are under eight lines', () => {
+  // Each line is about 100 characters: two rows on screen, so the eight lines take sixteen. Under the character limit only because it is split.
+  const line = (i) => all(`Lord, in your mercy, hear the prayer of your people gathered here, line ${i}, and grant them peace`);
+  const long = Array.from({ length: 6 }, (_, i) => line(i + 1));
+  assert.ok(long.length <= SPLIT_LIMITS.maxLines);
+  const parts = splitSlide(long, { maxChars: 10_000, maxLines: 8 });
+  assert.ok(parts.length >= 2);
+  assert.deepEqual(parts.flat(), long, 'the lines in order, none dropped');
+  for (const part of parts) assert.ok(part.reduce((n, l) => n + wrappedRows(l.text), 0) <= 8);
+});
+
+test('a short seven-line stanza that fits one slide is left whole', () => {
+  const kyrie = ['Every day, O Lord', 'Every day, O Lord', 'Every day you walk with us', 'Every day you never leave us', 'Every day, O Lord', 'Every day, O Lord', 'Whatever the season'].map(all);
+  assert.deepEqual(splitSlide(kyrie), [kyrie]);
 });

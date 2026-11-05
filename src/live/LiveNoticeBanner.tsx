@@ -14,6 +14,18 @@ export function LiveNoticeBanner() {
   return (
     <div role="alert" className="flex flex-wrap items-center gap-3 border-b border-danger/40 bg-panel px-5 py-3 text-sm">
       <span className="min-w-0 flex-1">{notice.text}</span>
+      {notice.action && (
+        <button
+          type="button"
+          className={BTN}
+          onClick={() => {
+            notice.action?.run();
+            clear();
+          }}
+        >
+          {notice.action.label}
+        </button>
+      )}
       {notice.kind === 'deleted' && (
         <button
           type="button"

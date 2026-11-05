@@ -71,6 +71,13 @@ interface UiState {
   slideStyleOpen: boolean;
   /** The Song Lyrics verse list shows every verse, not just the live and next one. Kept for the session only, not persisted. */
   showAllVerses: boolean;
+  /**
+   * The date the Lectionary shows. The Mass planner sets it to the date of the plan it opens, so switching to the Lectionary shows that
+   * plan's readings. Null until either sets it; transient, so a restart opens the Lectionary on the coming Sunday.
+   */
+  lectionaryDate: string | null;
+  /** Bumped whenever a reading is saved or cleared, so the Mass planner picks up the change without being reopened. Not persisted. */
+  lectionaryRevision: number;
 }
 
 /** The entry the Go Live hub has chosen: a Mass plan, or a Praise & Worship session, by its id in its own module. */
@@ -125,6 +132,8 @@ export const useUi = create<UiState>()(
       goLiveChoice: null,
       pendingMassPlanId: null,
       showAllVerses: false,
+      lectionaryDate: null,
+      lectionaryRevision: 0,
     }),
     {
       name: 'apccmma.ui',

@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { bridge } from '../live/bridge';
 import type { Hymn, Stanza } from '../lyrics/types';
 import { splitAtMidpoint } from '../../shared/pw-hot-edit.js';
+import { smartBreakParts } from '../utils/textOptimizer';
 import { applySplitToSession } from './store';
 
 /** The section labels a stanza added on the fly can take. Each is one the lyrics parser reads back as a section header. */
@@ -104,33 +105,56 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
     return Boolean(saved);
   };
 
+  /** The words of a stanza as they stand: the ones in the edit box when the stanza is open there, so a change typed first is kept. */
+  const wordsOf = (index: number) => (editing?.index === index ? editing.text : hymn?.stanzas[index]?.lyricsText ?? '');
+
   /**
-   * Splits a stanza into two at its middle (see splitAtMidpoint), for a stanza too long for one slide. The words split are the ones in the edit
-   * box when the stanza is open there, so a change typed first is kept. Both halves keep the stanza's label. Resolves true when it was saved.
+   * Replaces a stanza with `parts`, stanzas that follow each other under its label. Each cut is one split in the library, the rest of the words
+   * split again at the next stanza, so every lineup that sings the song in its own order gets each new part in turn. Resolves to the number of
+   * parts saved, or 0 when nothing was (the reason is in `error`). A failure part way keeps the cuts already saved: the words are all there.
    */
-  const commitSplit = async (index: number): Promise<boolean> => {
-    if (!hymn?.stanzas[index]) return false;
-    const words = editing?.index === index ? editing.text : hymn.stanzas[index].lyricsText;
-    const parts = splitAtMidpoint(words);
-    if (!parts) {
-      setError('This stanza has only one line, so there is nothing to split.');
-      return false;
-    }
+  const splitInto = async (index: number, parts: string[]): Promise<number> => {
+    if (!hymn?.stanzas[index] || parts.length < 2) return 0;
     setBusy(true);
     setError(null);
     try {
-      const result = await bridge.lyrics.splitStanza(hymn.id, index, parts);
-      if (result.firstId !== null && result.secondId !== null) applySplitToSession(hymn.id, result.firstId, result.secondId);
-      const fresh = await bridge.lyrics.getHymn(hymn.id);
-      if (fresh) onSaved(fresh);
+      for (let k = 0; k < parts.length - 1; k += 1) {
+        const result = await bridge.lyrics.splitStanza(hymn.id, index + k, [parts[k], parts.slice(k + 1).join('\n')]);
+        if (result.firstId !== null && result.secondId !== null) applySplitToSession(hymn.id, result.firstId, result.secondId);
+      }
       setEditing(null);
-      return true;
+      return parts.length;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      return false;
+      return 0;
     } finally {
+      const fresh = await bridge.lyrics.getHymn(hymn.id).catch(() => null);
+      if (fresh) onSaved(fresh);
       setBusy(false);
     }
+  };
+
+  /** Splits a stanza into two at its middle (see splitAtMidpoint), for a stanza too long for one slide. Resolves to the number of parts saved. */
+  const commitSplit = async (index: number): Promise<number> => {
+    const parts = splitAtMidpoint(wordsOf(index));
+    if (!parts) {
+      setError('This stanza has only one line, so there is nothing to split.');
+      return 0;
+    }
+    return splitInto(index, parts);
+  };
+
+  /**
+   * Smart Break: cuts a stanza into as many slides as it needs to fit the screen, at its full stops and line ends, with the slides kept about
+   * even (see smartBreakParts). Resolves to the number of parts saved.
+   */
+  const commitSmartBreak = async (index: number): Promise<number> => {
+    const parts = smartBreakParts(wordsOf(index));
+    if (!parts) {
+      setError('This stanza already fits one slide, so there is nothing to break.');
+      return 0;
+    }
+    return splitInto(index, parts);
   };
 
   const startAdd = () => {
@@ -176,6 +200,9 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
     commitSplit,
     /** Whether the stanza being edited has two lines or more, so Auto-split has something to split. */
     canSplit: editing !== null && splitAtMidpoint(editing.text) !== null,
+    commitSmartBreak,
+    /** Whether the stanza being edited is over one slide's limits, so Smart Break has something to cut. */
+    canSmartBreak: editing !== null && smartBreakParts(editing.text) !== null,
     startAdd,
     changeAdd: (patch: Partial<HotAdd>) => setAdding((a) => (a ? { ...a, ...patch } : a)),
     commitAdd,

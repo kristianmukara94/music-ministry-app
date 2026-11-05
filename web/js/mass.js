@@ -271,7 +271,7 @@ function renderDrawer() {
   const body = cur.kind === 'song' ? songBody() : cur.kind === 'reading' ? readingBody(cur) : cur.kind === 'slot-text' ? slotTextBody(cur) : riteBody(cur);
   drawer.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 6px">
-          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #b48d99">${cur.slot ? `SLOT ${cur.slot} OF ${SLOT_COUNT}` : 'OTHER STEP'}</span>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #b48d99">${cur.slot ? `SLOT ${cur.n} OF ${SLOT_COUNT}` : 'OTHER STEP'}</span>
           <h2 style="margin: 0; font-size: 24px; font-weight: 800; line-height: 1.15">${esc(cur.name)}</h2>
           <span style="font-size: 13px; color: #dbb3bf">${esc(subOf(cur))}</span>
         </div>${body}`;

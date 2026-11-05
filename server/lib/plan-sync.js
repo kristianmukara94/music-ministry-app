@@ -19,7 +19,7 @@ const KINDS = ['song', 'reading', 'rite'];
 const PLAN_KINDS = ['mass', 'pw'];
 const ITEM_FIELDS = ['key', 'group', 'order', 'kind', 'songId', 'text', 'minutes', 'note', 'slot'];
 // The Holy Mass slot an item fills on the laptop, by number. The website keeps it as it is, so a plan edited here goes back with its slots.
-export const MASS_SLOT_COUNT = 17;
+export const MASS_SLOT_COUNT = 28;
 // Field names that would carry lyrics, slides, media, Bible text or announcements. Refused by name, so nothing is silently dropped.
 const FORBIDDEN = /lyric|stanza|slide|media|bible|verse|announce|audio|video|image|file|hymn|scripture/i;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -116,7 +116,7 @@ export function checkItems(items, songIds) {
       clean.minutes = item.minutes;
     }
     if (item.slot !== undefined && item.slot !== null) {
-      if (!Number.isInteger(item.slot) || item.slot < 1 || item.slot > MASS_SLOT_COUNT) throw refuse('A Holy Mass slot must be a number from 1 to 17. Nothing was saved.');
+      if (!Number.isInteger(item.slot) || item.slot < 1 || item.slot > MASS_SLOT_COUNT) throw refuse(`A Holy Mass slot must be a number from 1 to ${MASS_SLOT_COUNT}. Nothing was saved.`);
       if (slots.has(item.slot)) throw refuse('Two items in the plan fill the same Holy Mass slot. Nothing was saved.');
       slots.add(item.slot);
       clean.slot = item.slot;

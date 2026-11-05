@@ -16,7 +16,7 @@ import { withDailyReadings, type DailyReadingsOutcome } from '../../shared/daily
 import { queueOnAir, whenLive } from '../golive/massLive';
 import { queueFromPlan } from './logic';
 import { playQueueAt } from './routing';
-import type { PlanItem } from './types';
+import type { MassLanguage, PlanItem } from './types';
 
 const api = bridge.plans;
 
@@ -28,6 +28,30 @@ const isoToday = () => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
+
+// Each plan's language, as last read or set, so a Mass Order part going on air speaks its plan's language without reading the whole plan.
+const languages = new Map<number, MassLanguage>();
+
+/** The language plan `planId` is celebrated in, or null with no plan (or one that cannot be read). */
+export async function planLanguage(planId: number | null): Promise<MassLanguage | null> {
+  if (planId == null) return null;
+  const known = languages.get(planId);
+  if (known) return known;
+  const plan = await api.get(planId).catch(() => null);
+  if (plan) languages.set(planId, plan.language);
+  return plan?.language ?? null;
+}
+
+/** Saves a plan's language. Its readings and Mass Order rows are changed by the planner (see switchPlanLanguage). */
+export async function setPlanLanguage(planId: number, language: MassLanguage): Promise<void> {
+  await api.setLanguage(planId, language);
+  languages.set(planId, language);
+}
+
+/** Notes a plan's language as read from the database. */
+export function rememberPlanLanguage(planId: number, language: MassLanguage): void {
+  languages.set(planId, language);
+}
 
 /**
  * Appends items to the end of a plan. The plan's rows keep their blocks, so an appended row
@@ -60,7 +84,7 @@ export function syncQueueIfLoaded(planId: number, items: PlanItem[]): void {
 }
 
 /**
- * A plan's items with the day's Responsorial Psalm (slot 4) and Prayer of the Faithful (slot 6) from the Lectionary for `planDate`, the
+ * A plan's items with the day's Responsorial Psalm and Prayer of the Faithful from the Lectionary for `planDate`, the
  * plan's liturgical date. Only slots with nothing usable in them are filled, unless `replace` (see withDailyReadings). Nothing is saved here.
  */
 export async function autoPopulateDailyReadings(items: PlanItem[], planDate: string, opts: { replace?: boolean } = {}): Promise<DailyReadingsOutcome<PlanItem>> {
@@ -75,9 +99,10 @@ export async function autoPopulateDailyReadings(items: PlanItem[], planDate: str
  */
 export async function fillDailyReadings(planId: number): Promise<{ items: PlanItem[]; filled: string[] }> {
   const plan = await api.get(planId);
+  languages.set(planId, plan.language);
   try {
     const daily = await autoPopulateDailyReadings(plan.items, plan.liturgicalDate);
-    if (daily.filled.length === 0) return { items: plan.items, filled: [] };
+    if (daily.filled.length === 0 && daily.moved.length === 0) return { items: plan.items, filled: [] };
     await api.save(planId, daily.items);
     return { items: (await api.get(planId)).items, filled: daily.filled };
   } catch {
@@ -103,7 +128,7 @@ export async function addToQueue(added: PlanItem[]): Promise<number> {
 }
 
 /** The plan loaded in the Service Queue, or a new "Quick passages" plan for today when none is. */
-async function queuePlanOrQuick(): Promise<number> {
+export async function queuePlanOrQuick(): Promise<number> {
   const planId = useLive.getState().state.queuePlanId;
   if (planId != null) return planId;
   return (await api.create({ name: QUICK_PLAN_NAME, liturgicalDate: isoToday() })).id;
@@ -113,7 +138,7 @@ async function queuePlanOrQuick(): Promise<number> {
 let inserting: Promise<unknown> = Promise.resolve();
 
 /**
- * Puts a PowerPoint deck or text slides into the Holy Mass flow loaded in the Service Queue: into a slot (1 to 17), or straight after the row
+ * Puts a PowerPoint deck or text slides into the Holy Mass flow loaded in the Service Queue: into a slot, or straight after the row
  * on air. A deck always goes in as one row that steps through its slides, never a row per slide, and a deck or slide already in the Mass is
  * not put in again. With no plan loaded, a "Quick passages" plan is made and loaded. The change is made without touching the projector: what
  * is on air stays on air, and CURRENT moves with its row when the new rows go in ahead of it, in the same queue change (see
@@ -233,7 +258,7 @@ async function playWhenQueued(next: ReturnType<typeof queueFromPlan>, index: num
 }
 
 /**
- * Puts the plan loaded in the Service Queue back to its Holy Mass order, for a plan that was filled with slide rows by mistake: the 17 slots
+ * Puts the plan loaded in the Service Queue back to its Holy Mass order, for a plan that was filled with slide rows by mistake: the slots
  * and what fills them stay, as do the readings, passages and notes; the slides and PowerPoints put in around the slots go (see massOrderReset).
  * The queue is reloaded from the saved plan. The projector is not touched, and CURRENT stays on its row when that row is kept.
  * Resolves to how many rows were taken out.

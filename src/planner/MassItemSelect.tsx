@@ -4,7 +4,10 @@ import { bridge } from '../live/bridge';
 import { allMassParts, massPartName } from '../liturgy/massOrder';
 import { useMassOrderTexts } from '../liturgy/massOrderStore';
 import { responseChoices } from './slotChoices';
+import { autoSplitText } from '../utils/textOptimizer';
 import type { MassSlot } from '../../shared/mass-slots.js';
+import { textResponseFrame } from '../../shared/stage-plan-row.js';
+import { slotLabel } from '../../shared/mass-language.js';
 import type { HymnSummary } from '../lyrics/types';
 import type { Note } from '../notes/types';
 import type { PlannerT } from './strings';
@@ -37,6 +40,8 @@ interface Option extends PickedItem {
 interface Props {
   slot: MassSlot;
   lang: 'en' | 'tl' | 'ceb';
+  /** The plan's liturgical date: a reading slot offers that day's reading. */
+  date?: string;
   t: PlannerT;
   onPick: (item: PickedItem) => void;
   onClose: () => void;
@@ -56,7 +61,7 @@ const matches = (query: string, ...fields: (string | null | undefined)[]) => {
 };
 
 /**
- * The picker that opens under a Holy Mass slot. Every one of the 17 slots offers the same three tabs, so any slot can take a song or a text:
+ * The picker that opens under a Holy Mass slot. Every slot offers the same three tabs, so any slot can take a song or a text:
  * - Songs: the songs that suit the slot (its own song category by default), widened by the chips to every Holy Mass song, the Praise &
  *   Worship songs, or all songs.
  * - Prayer Notes & Passages: the slot's ready-made texts first, then every Holy Mass Order part and the prayers saved in Notes & Prayers.
@@ -66,7 +71,8 @@ const matches = (query: string, ...fields: (string | null | undefined)[]) => {
  *
  * The search tabs are a combobox: Down and Up move through the results, Enter picks the one marked, Escape or a click outside closes it.
  */
-export function MassItemSelect({ slot, lang, t, onPick, onClose }: Props) {
+export function MassItemSelect({ slot, lang, date, t, onPick, onClose }: Props) {
+  const slotName = slotLabel(slot, lang);
   const listId = useId();
   const tabsId = useId();
   const box = useRef<HTMLDivElement>(null);
@@ -77,6 +83,8 @@ export function MassItemSelect({ slot, lang, t, onPick, onClose }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
   const [draft, setDraft] = useState('');
+  // A note from Auto-Format: the text was too long to split within the slot's limit. Cleared by the next change to the text.
+  const [formatNote, setFormatNote] = useState<string | null>(null);
   const [active, setActive] = useState(0);
   // The parish's own Mass Order parts and titles, so a text edited in the Mass Order shows here at once.
   useMassOrderTexts();
@@ -141,7 +149,7 @@ export function MassItemSelect({ slot, lang, t, onPick, onClose }: Props) {
     if (tab !== 'prayers') return [];
     const list: Option[] = [];
     // The slot's ready-made fills: its Mass Order text, and the opening words of its own text.
-    const own = responseChoices(slot, lang);
+    const own = responseChoices(slot, lang, date);
     for (const choice of own) {
       if (!matches(query, choice.label)) continue;
       list.push({ key: `slot-${choice.module}-${choice.sourceId}`, group: 'slot', icon: 'text', ...choice, sub: choice.module === 'mass_order' ? t('pickerMassOrder', { name: choice.label }) : t('pickerUseText', { text: choice.label }) });
@@ -167,7 +175,7 @@ export function MassItemSelect({ slot, lang, t, onPick, onClose }: Props) {
       });
     }
     return list;
-  }, [tab, songs, notes, slot, query, lang, t]);
+  }, [tab, songs, notes, slot, query, lang, date, t]);
 
   // The marked option follows the list: back to the first when the results change.
   useEffect(() => setActive(0), [tab, query, filter, songs]);
@@ -264,12 +272,28 @@ export function MassItemSelect({ slot, lang, t, onPick, onClose }: Props) {
   };
 
   const custom = customNoteItem(draft);
+  // The slides the note will show, counted the way the projector stages it, and what Auto-Format would make of it.
+  const slideCount = useMemo(() => {
+    if (!custom) return 0;
+    const frame = textResponseFrame(slotName, custom.sourceId);
+    return frame.kind === 'deck' ? frame.slides.length : 1;
+  }, [custom?.sourceId, slotName]);
+  const formatted = useMemo(() => autoSplitText(draft), [draft]);
+  const canFormat = custom !== null && formatted.formattedText !== draft.trim();
+  const autoFormat = () => {
+    // The split adds a line break at each cut, so text near the limit may not fit the plan row any more: it is left as it was.
+    if (formatted.formattedText.length > MAX_TEXT) {
+      setFormatNote(t('pickerCustomTooLong', { n: formatted.formattedText.length - MAX_TEXT }));
+      return;
+    }
+    setDraft(formatted.formattedText);
+  };
 
   return (
     <div
       ref={box}
       role="dialog"
-      aria-label={t('pickerLabel', { slot: slot.name })}
+      aria-label={t('pickerLabel', { slot: slotName })}
       className="absolute top-full right-0 left-0 z-30 mt-1 flex max-h-[28rem] flex-col overflow-hidden rounded-lg border border-line-strong bg-panel shadow-2xl shadow-black/50"
     >
       <div className="flex items-center gap-1 border-b border-line px-2 pt-2">
@@ -308,13 +332,16 @@ export function MassItemSelect({ slot, lang, t, onPick, onClose }: Props) {
             }}
           >
             <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-semibold text-fg/70">{t('pickerCustomLabel', { slot: slot.name })}</span>
+              <span className="text-[11px] font-semibold text-fg/70">{t('pickerCustomLabel', { slot: slotName })}</span>
               <textarea
                 autoFocus
                 rows={5}
                 maxLength={MAX_TEXT}
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  setFormatNote(null);
+                }}
                 onKeyDown={(e) => {
                   if (closeOnEscape(e)) return;
                   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -330,13 +357,32 @@ export function MassItemSelect({ slot, lang, t, onPick, onClose }: Props) {
               <p className="min-w-0 flex-1 text-[11px] text-muted">{t('pickerCustomHint')}</p>
               <span className="shrink-0 font-mono text-[11px] text-muted tabular-nums">{t('pickerCustomCount', { n: draft.length, max: MAX_TEXT })}</span>
             </div>
-            <button
-              type="submit"
-              disabled={!custom}
-              className="inline-flex h-8 items-center justify-center gap-1.5 self-end rounded-md bg-accent px-3 text-[11px] font-bold tracking-wide text-on-accent uppercase transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {t('pickerCustomAttach')}
-            </button>
+            {formatNote && (
+              <p role="alert" className="text-[11px] text-warn">
+                {formatNote}
+              </p>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={!canFormat}
+                onClick={autoFormat}
+                title={canFormat ? t('pickerCustomFormatTip') : t('pickerCustomFitsAlready')}
+                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-accent/60 px-3 text-[11px] font-bold tracking-wide text-accent uppercase transition hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {t('pickerCustomFormat')}
+              </button>
+              <span role="status" className="min-w-0 flex-1 font-mono text-[11px] text-muted tabular-nums">
+                {custom ? t('pickerCustomSlides', { n: slideCount }) : ''}
+              </span>
+              <button
+                type="submit"
+                disabled={!custom}
+                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-accent px-3 text-[11px] font-bold tracking-wide text-on-accent uppercase transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {t('pickerCustomAttach')}
+              </button>
+            </div>
           </form>
         ) : (
           <>

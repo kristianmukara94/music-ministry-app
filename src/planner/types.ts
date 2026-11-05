@@ -1,3 +1,6 @@
+import type { MassLanguage } from '../../shared/mass-language.js';
+
+export type { MassLanguage };
 export type LiturgicalBlock = 'introductory' | 'word' | 'eucharist' | 'communion' | 'concluding';
 export type SourceModule = 'lyrics' | 'lectionary' | 'announcements' | 'media' | 'mass_order' | 'bible' | 'custom' | 'notes';
 
@@ -34,6 +37,8 @@ export interface PlanSummary {
   id: number;
   name: string;
   liturgicalDate: string;
+  /** The language the Mass is celebrated in: its Bible translation, Mass Order words and reading endings. */
+  language: MassLanguage;
   createdAt: string;
 }
 
@@ -41,6 +46,7 @@ export interface PlanDetail {
   id: number;
   name: string;
   liturgicalDate: string;
+  language: MassLanguage;
   items: PlanItem[];
 }
 
@@ -54,10 +60,12 @@ export interface LibraryItem {
 
 export interface PlansApi {
   list(): Promise<PlanSummary[]>;
-  create(input: { name: string; liturgicalDate: string }): Promise<{ id: number; name: string; liturgicalDate: string }>;
+  create(input: { name: string; liturgicalDate: string; language?: MassLanguage }): Promise<{ id: number; name: string; liturgicalDate: string; language: MassLanguage }>;
   deletePlan(id: number): Promise<boolean>;
   get(id: number): Promise<PlanDetail>;
   save(id: number, items: PlanItem[]): Promise<number>;
+  /** Sets the plan's language. Its items are left as they are. */
+  setLanguage(id: number, language: MassLanguage): Promise<MassLanguage>;
   listTemplates(): Promise<PlanTemplateSummary[]>;
   getTemplate(id: number): Promise<PlanTemplate>;
   /** Saves items as a template under a name. A name already used is refused. */

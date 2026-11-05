@@ -11,7 +11,7 @@ import { plannerT } from './planner-i18n.js';
 import { pwT } from './pw-i18n.js';
 import { NOTE_CATEGORIES, noteCategoryLabel } from './notes.js';
 import { PRIMARY_LABELS_EN, PRIMARY_CATEGORIES } from './song-taxonomy.js';
-import { MASS_SECTIONS } from './mass-slots.js';
+import { MASS_BLOCKS } from './mass-slots.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel) => readFileSync(join(root, rel), 'utf8');
@@ -98,7 +98,7 @@ test('a note category shows as Holy Mass Intention, and is still stored as it al
 
 test('the names behind the screen keep their old spelling, so saved sessions, plans and sync keep working', () => {
   assert.ok(PRIMARY_CATEGORIES.includes('MASS'));
-  assert.deepEqual(MASS_SECTIONS.map((s) => s.block), ['introductory', 'word', 'eucharist', 'communion', 'concluding']);
+  assert.deepEqual(MASS_BLOCKS, ['introductory', 'word', 'eucharist', 'communion', 'concluding']);
   assert.match(read('src/golive/GoLiveConsole.tsx'), /setTab\('mass'\)/);
   assert.match(read('src/planner/ServiceQueue.tsx'), /mass_order: \{ label: 'HOLY MASS'/);
   assert.match(read('electron/mass-plans.js'), /export const PLAN_MODULES = \[[^\]]*'mass_order'/);

@@ -74,14 +74,14 @@ function TextLines({ lines, serif = false, style = null, safe = false }: { lines
   // A chosen style replaces the default size, face, colour and alignment. Without one, the default classes apply.
   const sizes = customSizes(style);
   const chars = charsPerLine(0.86, sizes ? sizes.body : 4.1 * 19.2);
-  const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'clamp(28px,4.1cqw,88px)', slideScale);
+  const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'min(4.1cqw,88px)', slideScale);
   const body = (textRef?: RefObject<HTMLDivElement>) => (
     <div className="relative shrink-0">
       <div aria-hidden className={BACKING} />
       <div
         ref={textRef}
         className={`relative flex max-w-[86cqw] flex-col gap-[2.2cqh] leading-[1.22] text-white ${
-          sizes ? '' : 'text-center text-[clamp(28px,4.1cqw,88px)]'
+          sizes ? '' : 'text-center text-[length:min(4.1cqw,88px)]'
         } ${serif ? 'font-serif font-semibold' : 'font-medium'}`}
         style={{
           textAlign: style?.textAlign ?? undefined,
@@ -116,15 +116,15 @@ function HeadedText({ headline, body, style = null }: { headline: string; body: 
     <div className="relative flex max-w-[86cqw] flex-col items-center gap-[3cqh] text-center" style={{ textAlign: look.textAlign }}>
       <div aria-hidden className={BACKING} />
       <h2
-        className={`relative leading-[1.1] font-bold text-white ${sizes ? '' : 'text-[clamp(36px,4.6cqw,96px)]'} ${LEGIBLE}`}
-        style={{ ...look, fontSize: scaledSize(sizes ? `${sizes.headline / 19.2}cqw` : 'clamp(36px,4.6cqw,96px)', slideScale) }}
+        className={`relative leading-[1.1] font-bold text-white ${sizes ? '' : 'text-[length:min(4.6cqw,96px)]'} ${LEGIBLE}`}
+        style={{ ...look, fontSize: scaledSize(sizes ? `${sizes.headline / 19.2}cqw` : 'min(4.6cqw,96px)', slideScale) }}
       >
         {slideLine(headline, headlineChars)}
       </h2>
       {body && (
         <div
-          className={`relative flex flex-col gap-[2.2cqh] leading-[1.25] font-medium text-white ${sizes ? '' : 'text-[clamp(28px,3.6cqw,80px)]'}`}
-          style={{ ...look, fontSize: scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'clamp(28px,3.6cqw,80px)', slideScale) }}
+          className={`relative flex flex-col gap-[2.2cqh] leading-[1.25] font-medium text-white ${sizes ? '' : 'text-[length:min(3.6cqw,80px)]'}`}
+          style={{ ...look, fontSize: scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'min(3.6cqw,80px)', slideScale) }}
         >
           {body.split('\n').map((line, i) => (
             <p key={i} className={LEGIBLE}>
@@ -146,13 +146,13 @@ function Slide({ lines, style = null, safe = false }: { lines: SlideLine[]; styl
   const slideScale = useSlideScale();
   const sizes = customSizes(style);
   const chars = charsPerLine(0.86, sizes ? sizes.body : 4.1 * 19.2);
-  const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'clamp(28px,4.1cqw,88px)', slideScale);
+  const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'min(4.1cqw,88px)', slideScale);
   const body = (textRef?: RefObject<HTMLDivElement>) => (
     <div className="relative shrink-0">
       <div aria-hidden className={BACKING} />
       <div
         ref={textRef}
-        className={`relative flex max-w-[86cqw] flex-col gap-[2.2cqh] leading-[1.22] ${sizes ? '' : 'text-center text-[clamp(28px,4.1cqw,88px)]'}`}
+        className={`relative flex max-w-[86cqw] flex-col gap-[2.2cqh] leading-[1.22] ${sizes ? '' : 'text-center text-[length:min(4.1cqw,88px)]'}`}
         style={{ textAlign: style?.textAlign ?? 'center', fontFamily: fontCss(style) ?? slideFont, fontSize: naturalSize }}
       >
         {lines.map((line, i) => {
@@ -290,7 +290,7 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
           {frame.style?.bgColor && <div className="absolute inset-0" style={{ backgroundColor: frame.style.bgColor }} />}
           <div className="absolute inset-x-0 top-0 flex flex-col items-center px-[6cqw] pt-[5cqh] text-center">
             <div className="font-mono text-[1cqw] font-bold tracking-[0.25em] text-gold/80 uppercase">Congregation response</div>
-            <p className={`mt-[1.5cqh] max-w-[88cqw] font-serif text-[clamp(28px,3.6cqw,76px)] leading-[1.2] font-bold text-gold ${LEGIBLE}`}>
+            <p className={`mt-[1.5cqh] max-w-[88cqw] font-serif text-[length:min(3.6cqw,76px)] leading-[1.2] font-bold text-gold ${LEGIBLE}`}>
               <span className="mr-[0.4em]">℟</span>
               {slideLine(frame.response, charsPerLine(0.86, 3.6 * 19.2))}
             </p>
@@ -367,7 +367,7 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
               {frame.decade && ` · ${frame.decade}`}
             </div>
             {frame.mystery && (
-              <div className="mt-[1cqh] font-serif text-[clamp(32px,3.6cqw,80px)] leading-none font-semibold tracking-wide text-gold">{frame.mystery}</div>
+              <div className="mt-[1cqh] font-serif text-[length:min(3.6cqw,80px)] leading-none font-semibold tracking-wide text-gold">{frame.mystery}</div>
             )}
             {frame.scripture && <div className="mt-[0.8cqh] font-serif text-[1.3cqw] tracking-wide text-gold/80 italic">{frame.scripture}</div>}
           </div>
@@ -476,7 +476,7 @@ function SongLyricsSlide({ label, text, style, slideFont, slideScale, song }: { 
   const labelRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLParagraphElement>(null);
   const sizes = customSizes(style);
-  const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'clamp(36px,4.6cqw,96px)', slideScale);
+  const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'min(4.6cqw,96px)', slideScale);
   const shown = slideText(text, charsPerLine(0.88, sizes ? sizes.body : 4.6 * 19.2));
   const { isTruncated } = useTextAutoFit({ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: [shown, style, slideFont] });
   // True on the congregation's projector, false on the operator's mirror and previews. The warning is for the operator only.

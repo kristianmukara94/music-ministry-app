@@ -1,6 +1,6 @@
 import { livePosition, slidesFor, step, type PwPosition, type PwSegment, type PwSlide } from '../../shared/pw.js';
 import { pwT } from '../../shared/pw-i18n.js';
-import { isAnyOutputLive } from '../../shared/live.js';
+import { blackoutOverPw, isAnyOutputLive, welcomeOverPw } from '../../shared/live.js';
 import type { Frame, LiveState, LowerThird } from '../../shared/live.js';
 import { dispatch, useLive } from '../live/store';
 import { turnOnProjectorAndGo } from '../live/startup';
@@ -184,13 +184,13 @@ export function showPosition(session: PwSession, deck: LiveStep[][], pos: PwPosi
     const now = useLive.getState().state;
     const before = now.pw;
     const beforePos = before && livePosition(session.segments, before);
-    // Leaving this session's own end-of-segment black step lifts it. A blackout the operator pressed is left alone:
-    // new slides wait behind it, as they do for every module.
-    const leavingBlackStep =
-      before?.onAir && now.projector.live.kind === 'blackout' && beforePos && deck[beforePos.segment]?.[beforePos.slide]?.kind === 'black' && s.kind !== 'black';
+    // Blackout over this session (the operator's, or a segment's own black step) is a cover: stepping lifts it onto the slide stepped to.
+    // The welcome screen needs nothing here, since the show below replaces it. Either way the session never left the air, so its place and
+    // timers carry on.
+    const liftBlackout = blackoutOverPw(now) && s.kind !== 'black';
     dispatch({ type: 'projector/show', frame: frameOverride ?? frameFor(segment, s), source: 'PW_SESSION' });
     dispatch({ type: 'pw/cursor', segmentKey: segment.key, slide: pos.slide, now: Date.now() });
-    if (leavingBlackStep) dispatch({ type: 'projector/blackout' });
+    if (liftBlackout) dispatch({ type: 'projector/blackout' });
     const newSegment = !before?.onAir || before.segmentKey !== segment.key;
     // Moving on to another song of the same segment names that song on the lower third.
     const hymnNow = hymnOf(s);
@@ -198,10 +198,11 @@ export function showPosition(session: PwSession, deck: LiveStep[][], pos: PwPosi
     const newSong = !newSegment && hymnNow !== null && hymnNow !== hymnBefore;
     if (newSegment || newSong) {
       const value = lowerThirdFor(session, segment, hymnNow);
-      // A segment with no Lower 3rd cue does not change the Lower 3rd on or off: its value is only staged, for the operator to take live.
-      // A band already on screen for this segment is updated in place, so it never names the wrong song.
-      // A segment band already on screen names the segment it came from, so a new segment updates it in place and never leaves the last one's name up.
-      if (segment.cues.lowerThird || ((newSong || newSegment) && now.lowerThird.live?.template === 'segment')) dispatch({ type: 'lowerThird/show', value });
+      // Stepping never turns the Lower 3rd on, Go Live included: only the operator's toggle or hotkey does. While a band is on screen, the
+      // segment's cue (or a segment band, which names the segment it came from) updates it in place, so it never names the wrong song or
+      // segment. Otherwise the value is only staged, for the toggle to take live.
+      const band = now.lowerThird.live;
+      if (band && (segment.cues.lowerThird || band.template === 'segment')) dispatch({ type: 'lowerThird/show', value });
       else dispatch({ type: 'lowerThird/stage', value });
     }
   };
@@ -248,7 +249,7 @@ export function goLive() {
   const deck = liveDeck(session);
   const at = pw && pw.sessionId === session.id ? livePosition(session.segments, pw) : null;
   const pos = at && deck[at.segment]?.[at.slide] ? at : { segment: 0, slide: 0 };
-  // Go Live does not turn the lower third on: the segment's band is staged for the Lower third toggle (or shown, for a segment with its own cue).
+  // Go Live never turns the lower third on, whatever the segment's cue: the segment's band is staged for the Lower third toggle.
   showPosition(session, deck, pos);
 }
 
@@ -269,13 +270,16 @@ async function ensureLiveSession(): Promise<PwSession | null> {
 /** Next (+1) or Back (-1): through the segment's slides, then on to the next segment. Nothing happens at either end. */
 export async function stepLive(delta: 1 | -1) {
   const session = await ensureLiveSession();
-  const pw = useLive.getState().state.pw;
+  const live = useLive.getState().state;
+  const pw = live.pw;
   if (!session || !pw) return;
   const deck = liveDeck(session);
   const at = livePosition(session.segments, pw);
   if (!at) return;
   const next = step(deck.map((d) => d.length), at, delta);
   if (next) showPosition(session, deck, next);
+  // At either end of the lineup, under the welcome screen or Blackout, Next and Back put the covered slide back.
+  else if (welcomeOverPw(live) || blackoutOverPw(live)) showPosition(session, deck, at);
 }
 
 /** Jumps to a segment's first slide, or one of its slides. */

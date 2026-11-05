@@ -20,7 +20,7 @@ import { usePlannerT } from '../planner/strings';
 import { BLOCKS } from '../planner/types';
 import { useT } from '../i18n/strings';
 import { setUi } from '../state/ui';
-import type { QueueItem } from '../../shared/live.js';
+import { blackoutOverMass, welcomeOverMass, type QueueItem } from '../../shared/live.js';
 import { endMassSession, frameAt, goLiveMassAt, goWithin, massShowing, playMassAt, slotNameAt, stepMass, stepsOf, useHymnOf, useMassClock, useNoteOf } from './massLive';
 import { LiveStageCanvas, type StageChipGroup } from '../components/LiveStageCanvas';
 import { useGoLiveT } from './strings';
@@ -124,7 +124,7 @@ function MassLineup({
               <li key={`slot-${slot.id}`} className="flex flex-col">
                 {sectionHeader(slot.block)}
                 <div className="flex min-h-12 w-full items-center gap-3 rounded-lg border border-dashed border-fg/15 px-3 py-2 text-left opacity-60">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-full border border-dashed border-fg/25 font-mono text-[11px] text-muted">{slot.number}</span>
+                  <span className="grid size-8 shrink-0 place-items-center rounded-full border border-dashed border-fg/25 font-mono text-[11px] text-muted">{slot.position}</span>
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-[15px] leading-tight text-fg/70">{slot.name}</span>
                     <span className="text-[10px] font-semibold tracking-wider text-fg/45 uppercase">{t('massEmptySlot')}</span>
@@ -166,7 +166,7 @@ function MassLineup({
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className={`truncate text-[15px] leading-tight ${isDone ? 'text-muted' : 'font-semibold'} ${item.stale ? 'line-through' : ''}`}>{item.label}</span>
                     <span className="truncate text-[10px] font-semibold tracking-wider text-fg/45 uppercase">
-                      {slot ? `${slot.number}. ${slot.name} · ` : ''}
+                      {slot ? `${slot.position}. ${slot.name} · ` : ''}
                       {MODULE_TAG[item.module]}
                     </span>
                   </span>
@@ -253,8 +253,10 @@ export function MassLiveView({ planName }: { planName: string | null }) {
   const cursor = live.queueCursor;
   // The Mass has the screen, with the projector window open or not (the TV and phones, or the app alone).
   const onAir = massShowing(live);
-  // While the Mass has the screen, the console follows the slide on screen. Otherwise it shows what is ready to go.
-  const frame = onAir ? live.projector.live : live.projector.staged;
+  // The welcome screen or Blackout is up over the Mass: the Mass keeps its place, and the slide it covers waits staged under it.
+  const covered = welcomeOverMass(live) || blackoutOverMass(live);
+  // While the Mass has the screen, the console follows the slide on screen. Otherwise, or under a cover, it shows what is staged.
+  const frame = onAir && !covered ? live.projector.live : live.projector.staged;
   const hymn = useHymnOf(frame);
   // The prayer behind a prayer's slide, for its next slide.
   const note = useNoteOf(frame);
@@ -291,11 +293,11 @@ export function MassLiveView({ planName }: { planName: string | null }) {
     void run(async () => {
       const removed = await removeFromFlow(i);
       const slot = slotById(removed.slot);
-      setNotice(slot ? t('massSlotCleared', { item: removed.label, slot: `${slot.number}. ${slot.name}` }) : t('massRemoved', { item: removed.label }));
+      setNotice(slot ? t('massSlotCleared', { item: removed.label, slot: `${slot.position}. ${slot.name}` }) : t('massRemoved', { item: removed.label }));
     });
   };
 
-  // A loaded plan with nothing in it still shows its 17 slots, so slides can be added to them here.
+  // A loaded plan with nothing in it still shows its slots, so slides can be added to them here.
   if (queue.length === 0 && live.queuePlanId == null) {
     return (
       <div className={`${CARD} flex flex-col items-start gap-4 p-6`}>
@@ -342,8 +344,9 @@ export function MassLiveView({ planName }: { planName: string | null }) {
   const projectorOn = live.outputs.projector;
   // Something other than the Mass has the projector while the Mass has a place: offer to put the Mass back.
   const otherOnAir = cursor >= 0 && projectorOn && !onAir && live.projector.live.kind !== 'idle' && live.projector.live.kind !== 'blackout';
-  const atStart = cursor <= 0 && (!liveSteps || liveSteps.index === 0);
-  const atEnd = nextItemIndex < 0 && (!liveSteps || liveSteps.index >= liveSteps.count - 1);
+  // Under the welcome screen or Blackout, Next and Back always work: they put the covered slide back.
+  const atStart = !covered && cursor <= 0 && (!liveSteps || liveSteps.index === 0);
+  const atEnd = !covered && nextItemIndex < 0 && (!liveSteps || liveSteps.index >= liveSteps.count - 1);
 
   return (
     <div className="flex flex-col gap-5">

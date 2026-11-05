@@ -102,6 +102,6 @@ test('the planner auto-fills on opening a plan and from its button, and Go Live 
 test('a reading played in place stays in the Go Live console, and the psalm and prayers keep their response pinned', () => {
   const routing = read('src/planner/routing.ts');
   assert.match(routing, /if \(!opts\.inPlace\) setUi\(\{ view: 'lectionary'/);
-  assert.match(routing, /const pages = readingPagesOf\(readingType, row\.rawText\);/);
+  assert.match(routing, /const pages = readingSlides\(readingType, row\.rawText\);/);
   assert.match(routing, /hasResponse\(readingType\)\s+\? \{ kind: 'psalm'/);
 });

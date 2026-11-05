@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
 const { HYMN_DELETE_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS, createLyricsService } = await import('./lyrics.js');
-const { MASS_PLAN_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_NOTES_MIGRATIONS, createMassPlanService } = await import('./mass-plans.js');
+const { MASS_PLAN_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_LANGUAGE_MIGRATIONS, PLAN_NOTES_MIGRATIONS, createMassPlanService } = await import('./mass-plans.js');
 const { PW_MIGRATIONS } = await import('./pw-sessions.js');
 const { SONG_CATEGORY_MIGRATIONS, SONG_SCOPE_MIGRATIONS } = await import('./song-categories.js');
 const { TRANSFER_MIGRATIONS, applyImport, collectLibrary, decodeTransfer, encodeTransfer } = await import('./transfer.js');
@@ -31,7 +31,7 @@ function open(withSlots = true) {
       throw err;
     }
   };
-  for (const sql of [...LYRICS_MIGRATIONS, ...LYRICS_STYLE_MIGRATIONS, ...HYMN_DELETE_MIGRATIONS, ...MASS_PLAN_MIGRATIONS, ...PLAN_BIBLE_MIGRATIONS,
+  for (const sql of [...LYRICS_MIGRATIONS, ...LYRICS_STYLE_MIGRATIONS, ...HYMN_DELETE_MIGRATIONS, ...MASS_PLAN_MIGRATIONS, ...PLAN_LANGUAGE_MIGRATIONS, ...PLAN_BIBLE_MIGRATIONS,
     ...PLAN_CUSTOM_MIGRATIONS, ...PLAN_NOTES_MIGRATIONS, ...PW_MIGRATIONS, ...PLAN_COMMUNION_MIGRATIONS, ...SONG_CATEGORY_MIGRATIONS, ...SONG_SCOPE_MIGRATIONS,
     ...(withSlots ? MASS_SLOT_MIGRATIONS : []), ...TRANSFER_MIGRATIONS, ...PLAN_SYNC_MIGRATIONS,
     ...LECTIONARY_MIGRATIONS, ...MEDIA_MIGRATIONS, ...BIBLE_MIGRATIONS, ...PRAYER_NOTES_MIGRATIONS]) {
@@ -137,4 +137,17 @@ test('the slot column and the templates table are added by the migration, and ar
   for (const sql of MASS_SLOT_MIGRATIONS) db.exec(sql);
   assert.deepEqual(db.prepare('SELECT slot FROM mass_plan_items').all(), []);
   assert.deepEqual(db.prepare('SELECT * FROM mass_plan_templates').all(), []);
+});
+
+test('a plan keeps the language it is celebrated in: English unless made or set otherwise, and only EN, TL or CEB', () => {
+  const { plans, plan } = setup();
+  assert.equal(plan.language, 'EN');
+  assert.equal(plans.getPlan(plan.id).language, 'EN');
+  const tagalog = plans.createPlan({ name: 'Misa', liturgicalDate: '2026-11-08', language: 'TL' });
+  assert.equal(plans.listPlans().find((p) => p.id === tagalog.id).language, 'TL');
+  assert.equal(plans.setLanguage(plan.id, 'CEB'), 'CEB');
+  assert.equal(plans.getPlan(plan.id).language, 'CEB');
+  assert.throws(() => plans.setLanguage(plan.id, 'FR'), /EN, TL or CEB/);
+  assert.equal(plans.getPlan(plan.id).language, 'CEB', 'a refused language changes nothing');
+  assert.throws(() => plans.setLanguage(9999, 'EN'), /no longer exists/);
 });

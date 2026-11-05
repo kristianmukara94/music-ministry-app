@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Play, Save, Scissors, Sparkles, Trash2 } from 'lucide-react';
+import { BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, Play, Save, Scissors, Sparkles, Trash2, Zap } from 'lucide-react';
 import { bridge } from '../live/bridge';
 import { dispatch } from '../live/store';
 import { setUi, useUi } from '../state/ui';
@@ -11,22 +11,19 @@ import { ColorField, StyleToolbar } from '../announcements/StyleControls';
 import { BACKGROUND_COLORS, sanitizeTextStyle } from '../../shared/text-style.js';
 import type { TextStyle } from '../../shared/text-style';
 import { fontCss } from '../../shared/text-style.js';
-import { autoPaginateText, BREAK, pagesOf, withFitter } from '../announcements/paginate';
-import { useLectT, type LectT } from './strings';
+import { autoPaginateText, BREAK, withFitter } from '../announcements/paginate';
+import { SLOT_KEY, useLectT, type LectT } from './strings';
 import { READING_TYPES, type LectionaryDay, type ReadingType } from './types';
-import { readingPagesOf, RESPONSE_HEIGHT_SHARE } from './pages';
+import { readingSlides, RESPONSE_HEIGHT_SHARE } from './pages';
 import { hasResponse } from '../../shared/daily-readings.js';
+import { citationFor, notifyLectionaryChanged, ordoDay, resolveDrafts } from '../services/lectionaryService';
+import { FullReadings } from './FullReadings';
+import { fromScripture, resolveCitationToText, TRANSLATION_FOR_LANG, type ResolvedScripture } from '../services/citationResolver';
+import { getTranslations } from '../services/bibleService';
+import type { Translation } from '../bible/types';
 
 const api = bridge.lectionary;
 const PSALM: ReadingType = 'Responsorial Psalm';
-const SLOT_KEY: Record<ReadingType, string> = {
-  'First Reading': 'slot_first',
-  'Responsorial Psalm': 'slot_psalm',
-  'Second Reading': 'slot_second',
-  'Gospel Acclamation': 'slot_acclamation',
-  Gospel: 'slot_gospel',
-  'Prayer of the Faithful': 'slot_prayers',
-};
 const DATE_LOCALE = { en: 'en-PH', tl: 'fil-PH', ceb: 'en-PH' } as const;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -61,7 +58,9 @@ export function LectionaryDeck() {
   const t = useLectT();
   const tAnn = useAnnT();
   const lang = useUi((s) => s.lang);
-  const [date, setDate] = useState(upcomingSunday);
+  // The date the Mass planner last opened a plan for, so switching here shows that plan's readings without searching again.
+  const [date, setDate] = useState(() => useUi.getState().lectionaryDate ?? upcomingSunday());
+  const sharedDate = useUi((s) => s.lectionaryDate);
   const [day, setDay] = useState<LectionaryDay | null>(null);
   const [dayLabel, setDayLabel] = useState('');
   const [slot, setSlot] = useState<ReadingType>('First Reading');
@@ -77,12 +76,24 @@ export function LectionaryDeck() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const editor = useRef<HTMLTextAreaElement>(null);
+  // The offline Bible the readings are fetched from, following the sidebar language until the operator picks one.
+  const [translationId, setTranslationId] = useState(() => TRANSLATION_FOR_LANG[useUi.getState().lang] ?? 'WEB');
+  const [translations, setTranslations] = useState<Translation[]>([]);
+  const nameOf = (id: string) => translations.find((tr) => tr.id === id)?.name ?? id;
+  // Bible text for each part that has a citation but no saved text, fetched again on every date. Nothing is saved until the operator saves.
+  const [drafts, setDrafts] = useState<Partial<Record<ReadingType, ResolvedScripture>>>({});
+  const [resolving, setResolving] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  // The translation the editor's text was fetched from, while it is not saved. Save stays on for it, but moving away does not ask.
+  const [bibleSource, setBibleSource] = useState<string | null>(null);
+  const editorKey = useRef('');
+  editorKey.current = `${date}|${slot}`;
 
   const isPsalm = slot === PSALM;
   // The psalm and the Prayer of the Faithful have a congregation response, pinned above a slide per stanza or intention.
   const withResponse = hasResponse(slot);
   // The same slides the Holy Mass shows when it plays this reading from a plan.
-  const pages = useMemo(() => (withResponse ? readingPagesOf(slot, master) : pagesOf(master)), [withResponse, slot, master]);
+  const pages = useMemo(() => readingSlides(slot, master), [slot, master]);
   const current = Math.min(pageIndex, Math.max(pages.length - 1, 0));
   const fail = (err: unknown) => setError(errorText(err));
 
@@ -97,25 +108,62 @@ export function LectionaryDeck() {
     setSlot(pending.readingType as ReadingType);
   }, []);
 
-  // Date change: load the day's slots and its label.
+  // A plan opened in the Mass planner moves the Lectionary to its date, unless typed text would be lost.
+  useEffect(() => {
+    if (sharedDate && sharedDate !== date && !dirty) setDate(sharedDate);
+  }, [sharedDate]);
+
+  // Date change: load the day's slots and its label, and tell the planner which date is shown.
+  useEffect(() => {
+    getTranslations().then(setTranslations).catch(() => setTranslations([]));
+  }, []);
+
+  // A date with no label saved takes the liturgical day's name from the built-in Ordo.
   useEffect(() => {
     setNotice(null);
+    setDrafts({});
+    setUi({ lectionaryDate: date });
     api.getDay(date).then((loaded) => {
       setDay(loaded);
-      setDayLabel(loaded.seasonInfo);
+      setDayLabel(loaded.seasonInfo || ordoDay(date).name);
     }).catch(fail);
   }, [date]);
 
-  // Slot change (or a reload after saving): fill the editor from the stored row.
+  // A loaded day (or another translation): fetch the text of every scripture part with nothing saved, from the offline Bible, by its saved
+  // citation or the built-in Ordo's.
   useEffect(() => {
+    if (!day || day.date !== date) return;
+    let live = true;
+    setResolving(true);
+    resolveDrafts(day, translationId)
+      .then((next) => live && setDrafts(next))
+      .catch(() => live && setDrafts({}))
+      .finally(() => live && setResolving(false));
+    return () => {
+      live = false;
+    };
+  }, [day, translationId]);
+
+  // Slot change (or a reload after saving): fill the editor from the stored row, or from the Bible when no text is saved. The citation is
+  // the saved one, or the built-in Ordo's for the day.
+  // Bible text that arrives later fills it too, unless the operator has started typing.
+  const loadedFor = useRef<{ day: LectionaryDay | null; slot: ReadingType } | null>(null);
+  useEffect(() => {
+    const fresh = loadedFor.current?.day !== day || loadedFor.current?.slot !== slot;
+    loadedFor.current = { day, slot };
+    if (!fresh && dirty) return;
     const row = day?.readings.find((r) => r.readingType === slot);
-    setCitation(row?.citation ?? '');
-    setResponse(row?.congregationResponse ?? '');
-    setMaster(row?.rawText ?? '');
-    setReadingStyle(row?.style ?? {});
-    setDirty(false);
-    setPageIndex(0);
-  }, [day, slot]);
+    const draft = row?.rawText ? undefined : drafts[slot];
+    if (fresh) {
+      setCitation(day ? citationFor(day, slot) : '');
+      setResponse(row?.congregationResponse ?? '');
+      setReadingStyle(row?.style ?? {});
+      setDirty(false);
+      setPageIndex(0);
+    }
+    setMaster(row?.rawText || draft?.text || '');
+    setBibleSource(draft ? draft.translationId : null);
+  }, [day, slot, drafts]);
 
   /** Guards against silently discarding typed text when moving to another date or slot. */
   const confirmDiscard = () => !dirty || window.confirm(t('discardConfirm'));
@@ -137,6 +185,50 @@ export function LectionaryDeck() {
     // The psalm verses and the intentions sit below the pinned response, so they get less height.
     // Readings and psalms are set in serif on the projector, so they are measured in serif too.
     edit(() => setMaster(withFitter((fits) => autoPaginateText(master, fits), withResponse ? RESPONSE_HEIGHT_SHARE : 0.8, 'serif')));
+  };
+
+  /** ⚡ Fetch from Bible DB: fills the editor with the citation's verses, asking first before it replaces text that differs. */
+  const fetchFromBible = async () => {
+    setError(null);
+    const cite = citation.trim();
+    if (!cite) return setError(t('citationFirst'));
+    const key = editorKey.current;
+    setFetching(true);
+    try {
+      const out = await resolveCitationToText(cite, slot, translationId);
+      if (key !== editorKey.current) return;
+      if (out.status === 'unreadable') return setError(t('citationUnreadable', { citation: cite }));
+      if (out.status === 'notFound') return setError(t('citationNotFound', { citation: cite, translation: nameOf(translationId) }));
+      const { text } = out.scripture;
+      if (master.trim() && master !== text && !window.confirm(t('replaceWithBible', { citation: cite, translation: nameOf(translationId) }))) return;
+      edit(() => setMaster(text));
+      setBibleSource(translationId);
+      setPageIndex(0);
+    } catch (err) {
+      fail(err);
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  /** Saves every part still showing fetched Bible text, so ⚡ Apply All carries it to the Holy Mass plan. Typed edits in the editor are left for Save. */
+  const saveDrafts = async () => {
+    const pending = READING_TYPES.filter((type) => drafts[type] && !(dirty && type === slot));
+    if (pending.length === 0) return;
+    for (const type of pending) {
+      const row = day?.readings.find((r) => r.readingType === type);
+      await api.saveReading({
+        date,
+        readingType: type,
+        seasonInfo: dayLabel,
+        citation: row?.citation ?? drafts[type]!.citation,
+        congregationResponse: hasResponse(type) ? (row?.congregationResponse ?? '') : '',
+        rawText: drafts[type]!.text,
+        style: row?.style ?? null,
+      });
+    }
+    await reloadDay();
+    notifyLectionaryChanged();
   };
 
   /** Inserts a manual break where the cursor sits. */
@@ -164,8 +256,10 @@ export function LectionaryDeck() {
         style: checked,
       });
       setDirty(false);
+      setBibleSource(null);
       setNotice(t('savedNotice'));
       await reloadDay();
+      notifyLectionaryChanged();
     } catch (err) {
       fail(err);
     } finally {
@@ -179,6 +273,7 @@ export function LectionaryDeck() {
     try {
       await api.clearReading(date, slot);
       await reloadDay();
+      notifyLectionaryChanged();
     } catch (err) {
       fail(err);
     } finally {
@@ -235,7 +330,7 @@ export function LectionaryDeck() {
   const saveRef = useRef(save);
   saveRef.current = save;
   const canSaveRef = useRef(false);
-  canSaveRef.current = dirty && !busy;
+  canSaveRef.current = (dirty || bibleSource !== null) && !busy;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's') return;
@@ -247,6 +342,9 @@ export function LectionaryDeck() {
   }, []);
 
   const savedCount = day?.readings.filter((r) => r.rawText).length ?? 0;
+  const readyCount = READING_TYPES.filter((type) => drafts[type] && !day?.readings.find((r) => r.readingType === type)?.rawText).length;
+  // The citation on screen is the built-in Ordo's, not one the operator saved.
+  const fromOrdo = Boolean(day && citation.trim() && !day.readings.find((r) => r.readingType === slot)?.citation.trim() && citation === citationFor(day, slot));
   const region = useRegion();
   const dateLabel = `${formatIsoWeekday(date, DATE_LOCALE[lang])}, ${formatIsoDay(date, region)}`;
 
@@ -302,7 +400,7 @@ export function LectionaryDeck() {
           <nav aria-label={t('readingsHeading')} className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
               <span className={LABEL}>{t('readingsHeading')}</span>
-              <span className="text-xs text-fg/60 tabular-nums">{t('progress', { n: savedCount, total: READING_TYPES.length })}</span>
+              <span className="text-xs text-fg/60 tabular-nums">{readyCount > 0 ? t('progressReady', { n: savedCount, total: READING_TYPES.length, ready: readyCount }) : t('progress', { n: savedCount, total: READING_TYPES.length })}</span>
             </div>
             <div role="progressbar" aria-label={t('readingsHeading')} aria-valuemin={0} aria-valuemax={READING_TYPES.length} aria-valuenow={savedCount} className="mb-1 h-1 overflow-hidden rounded-full bg-fg/10">
               <div className="h-full rounded-full bg-ok transition-all" style={{ width: `${(savedCount / READING_TYPES.length) * 100}%` }} />
@@ -310,6 +408,7 @@ export function LectionaryDeck() {
             {READING_TYPES.map((type) => {
               const row = day?.readings.find((r) => r.readingType === type);
               const filled = Boolean(row?.rawText);
+              const drafted = !filled && Boolean(drafts[type]);
               const active = slot === type;
               return (
                 <button
@@ -323,12 +422,12 @@ export function LectionaryDeck() {
                 >
                   <span className={`flex items-center gap-2 text-sm font-semibold ${active ? 'text-accent' : 'text-fg'}`}>
                     {t(SLOT_KEY[type] as Parameters<LectT>[0])}
-                    <span className={`ml-auto rounded-full border px-2 py-0.5 text-[10px] font-extrabold tracking-wider uppercase ${filled ? 'border-ok/60 bg-ok/15 text-ok' : 'border-fg/20 bg-fg/[0.06] text-fg/60'}`}>
-                      {filled ? t('saved') : t('empty')}
+                    <span className={`ml-auto rounded-full border px-2 py-0.5 text-[10px] font-extrabold tracking-wider uppercase ${filled ? 'border-ok/60 bg-ok/15 text-ok' : drafted ? 'border-accent/60 bg-accent/15 text-accent' : 'border-fg/20 bg-fg/[0.06] text-fg/60'}`}>
+                      {filled ? t('saved') : drafted ? t('fromBible') : t('empty')}
                     </span>
                   </span>
                   <span className="truncate text-xs text-fg/60">
-                    {row?.citation || (type === 'Second Reading' ? t('optional') : type === 'Prayer of the Faithful' ? t('prayersHint') : ' ')}
+                    {(day && citationFor(day, type)) || (type === 'Second Reading' ? t('optional') : type === 'Prayer of the Faithful' ? t('prayersHint') : ' ')}
                   </span>
                 </button>
               );
@@ -380,11 +479,15 @@ export function LectionaryDeck() {
               onChange={(e) => edit(() => setCitation(e.target.value))}
               className={input}
             />
+            {fromOrdo && <span className="text-xs text-accent">{t('ordoCitation', { day: ordoDay(date).name })}</span>}
           </label>
 
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
             <div className="flex min-h-0 flex-col gap-3">
-              <label htmlFor="lect-text" className={LABEL}>{isPsalm ? t('versesLabel') : withResponse ? t('intentionsLabel') : t('readingLabel')}</label>
+              <label htmlFor="lect-text" className={`${LABEL} flex items-center gap-2`}>
+                {isPsalm ? t('versesLabel') : withResponse ? t('intentionsLabel') : t('readingLabel')}
+                {(fetching || (resolving && !master && citation.trim())) && <Loader2 size={12} className="animate-spin text-accent" aria-label={t('fetchingBible')} />}
+              </label>
               <textarea
                 id="lect-text"
                 ref={editor}
@@ -392,9 +495,43 @@ export function LectionaryDeck() {
                 onChange={(e) => edit(() => setMaster(e.target.value))}
                 rows={14}
                 spellCheck={false}
-                placeholder={isPsalm ? t('versesPlaceholder') : withResponse ? t('intentionsPlaceholder') : t('readingPlaceholder')}
+                placeholder={
+                  fetching || (resolving && citation.trim())
+                    ? t('fetchingBible')
+                    : isPsalm
+                      ? t('versesPlaceholder')
+                      : withResponse
+                        ? t('intentionsPlaceholder')
+                        : t('readingPlaceholder')
+                }
                 className="min-h-[240px] flex-1 resize-y rounded-lg border border-fg/15 bg-panel-2 p-3 font-mono text-sm leading-relaxed text-fg outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40"
               />
+              {fromScripture(slot) && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void fetchFromBible()}
+                    disabled={busy || fetching || !citation.trim()}
+                    title={citation.trim() ? t('fetchBibleTip') : t('citationFirst')}
+                    className={`${button} !border-accent/50 !text-accent`}
+                  >
+                    {fetching ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Zap size={14} aria-hidden />} {t('fetchBible')}
+                  </button>
+                  <label className="flex items-center gap-2">
+                    <span className={LABEL}>{t('bibleTranslation')}</span>
+                    <select
+                      value={translationId}
+                      onChange={(e) => setTranslationId(e.target.value)}
+                      className="h-9 rounded-md border border-fg/15 bg-panel-2 px-2 text-xs text-fg outline-none focus:border-accent"
+                    >
+                      {(translations.length > 0 ? translations : [{ id: translationId, name: translationId }]).map((tr) => (
+                        <option key={tr.id} value={tr.id}>{tr.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {bibleSource && <span className="text-xs text-accent">{t('fetchedNotice', { translation: nameOf(bibleSource) })}</span>}
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" onClick={autoPaginate} disabled={!master.trim()} className={button}>
                   <Sparkles size={14} aria-hidden /> {t('autoPaginate')}
@@ -475,7 +612,7 @@ export function LectionaryDeck() {
             <button type="button" onClick={clearSlot} disabled={busy || !day?.readings.find((r) => r.readingType === slot)?.rawText} className={`${button} mr-auto !text-danger`}>
               <Trash2 size={14} aria-hidden /> {t('clearSlot')}
             </button>
-            <button type="button" onClick={save} disabled={busy || !dirty} title={`${t('save')} (Ctrl+S)`} className={button}>
+            <button type="button" onClick={save} disabled={busy || (!dirty && !bibleSource)} title={`${t('save')} (Ctrl+S)`} className={button}>
               <Save size={14} aria-hidden /> {t('save')}
             </button>
             <button
@@ -499,6 +636,20 @@ export function LectionaryDeck() {
           </div>
         </section>
       </div>
+
+      <FullReadings
+        date={date}
+        dateLabel={dateLabel}
+        day={day}
+        unsavedSlot={dirty ? slot : null}
+        drafts={drafts}
+        draftSource={nameOf(translationId)}
+        onSaveDrafts={saveDrafts}
+        onEdit={(type) => {
+          changeSlot(type);
+          editor.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }}
+      />
     </div>
   );
 }

@@ -85,7 +85,7 @@ export function MassHotEdit({ t, hymn, onAir, editRequest, onEditHandled, onShow
         </p>
       )}
       {editingStanza && hot.editing && (
-        <StanzaEditBox t={t} hot={hot} stanza={editingStanza} live={hot.editing.index === onAirStanza} onSave={() => void hot.commitEdit()} onSplit={() => void hot.commitSplit(hot.editing!.index)} />
+        <StanzaEditBox t={t} hot={hot} stanza={editingStanza} live={hot.editing.index === onAirStanza} onSave={() => void hot.commitEdit()} onSplit={() => void hot.commitSplit(hot.editing!.index)} onSmartBreak={() => void hot.commitSmartBreak(hot.editing!.index)} />
       )}
       {hymn && <StanzaAddBox t={t} hot={hot} stanzas={hymn.stanzas} where={t('newSlideAfter', { name: after })} onAdd={(show) => void saveAdd(show)} />}
     </div>
