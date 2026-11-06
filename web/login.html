@@ -16,7 +16,7 @@
 <body class="login">
 <div class="shell" style="display: flex; flex-wrap: wrap; background: #0f0407; color: #f7eef0; font-family: 'Archivo','Segoe UI',system-ui,sans-serif">
 
-  <main class="pad" style="flex: 1 1 480px; min-width: 0; padding: 56px 72px; display: flex; flex-direction: column; justify-content: center; gap: 36px">
+  <main class="pad login-main" style="flex: 1 1 480px; min-width: 0; display: flex; flex-direction: column; justify-content: center">
     <div style="display: flex; align-items: center; gap: 12px">
       <img src="img/logo.png" alt="" width="44" height="44" class="brand-mark">
       <div style="display: flex; flex-direction: column; line-height: 1.15">
@@ -29,30 +29,43 @@
       </span>
     </div>
 
-    <div style="display: flex; flex-direction: column; gap: 12px; max-width: 440px">
+    <div class="login-intro" style="display: flex; flex-direction: column; max-width: 480px">
       <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #ecc98a">ASSUMPTION PARISH · MUSIC MINISTRY</span>
-      <h1 style="margin: 0; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 56px; line-height: 1.02">Plan the Holy Mass from anywhere</h1>
+      <h1 style="margin: 0; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; line-height: 1.02">Plan the Holy Mass from anywhere</h1>
       <p style="margin: 0; font-size: 16px; line-height: 1.55; color: #dbb3bf">Sign in to build Holy Mass plans and Praise &amp; Worship nights. They appear in the app on the church laptop the next time it syncs.</p>
     </div>
 
-    <form id="sign-in" style="display: flex; flex-direction: column; gap: 18px; max-width: 440px">
-      <label style="display: flex; flex-direction: column; gap: 8px">
-        <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Username</span>
-        <input type="text" name="username" required autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="Your username" style="height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 15px; outline: 0">
+    <form id="sign-in" class="login-card">
+      <label class="login-field">
+        <span class="login-label">Username</span>
+        <input type="text" name="username" required autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="Your username" class="login-input">
       </label>
-      <div style="display: flex; flex-direction: column; gap: 8px">
+      <div class="login-field">
         <span style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
-          <label for="password" style="font-size: 13px; font-weight: 600; color: #dbb3bf">Password</label>
+          <label for="password" class="login-label">Password</label>
           <button type="button" id="forgot-open" class="link-button" aria-haspopup="dialog">Forgot password?</button>
         </span>
-        <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Your password" style="height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 15px; outline: 0">
+        <div class="password-wrap">
+          <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Your password" class="login-input">
+          <button type="button" id="password-toggle" class="password-toggle" aria-controls="password" aria-pressed="false" aria-label="Show password">
+            <svg class="eye-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="eye-closed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.2A10.4 10.4 0 0 1 12 4c6.4 0 10 8 10 8a17.6 17.6 0 0 1-2.7 3.9"/><path d="M6.6 6.6C3.7 8.5 2 12 2 12s3.6 8 10 8a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M2 2l20 20"/></svg>
+          </button>
+        </div>
       </div>
-      <label style="display: flex; flex-direction: column; gap: 8px">
-        <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Church code <span style="font-weight: 400; color: #b48d99">(asked the first time; then remembered on this laptop)</span></span>
-        <input type="text" name="churchCode" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. K7QM-4XD2" style="height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 15px; outline: 0">
-      </label>
-      <p id="sign-in-error" role="alert" aria-live="assertive" style="margin: 0; min-height: 1.4em; font-size: 14px; color: #ff9a9a"></p>
-      <button type="submit" style="height: 50px; border-radius: 10px; border: 0; background: #ecc98a; color: #1c070d; font-size: 15px; font-weight: 700; cursor: pointer">Sign in</button>
+      <div class="login-field">
+        <span class="login-label-row">
+          <label for="church-code" class="login-label">Church code</label>
+          <span class="info-tip">
+            <button type="button" class="info-badge" aria-label="Where the church code comes from" aria-describedby="church-code-tip">i</button>
+            <span id="church-code-tip" role="tooltip" class="info-tip-text">Set by your Parish Admin in Desktop App Settings</span>
+          </span>
+          <span class="login-hint">(asked once, then remembered on this laptop)</span>
+        </span>
+        <input type="text" id="church-code" name="churchCode" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. K7QM-4XD2" class="login-input">
+      </div>
+      <p id="sign-in-error" role="alert" aria-live="assertive" style="margin: -6px 0; min-height: 1.4em; font-size: 14px; color: #ff9a9a"></p>
+      <button type="submit" class="login-submit">Sign in</button>
       <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #b48d99">Only parish ministry members can sign in. Ask the music ministry lead for an invite.</p>
     </form>
   </main>

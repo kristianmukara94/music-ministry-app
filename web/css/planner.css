@@ -20,7 +20,7 @@ select {
   font-family: inherit;
 }
 
-/* Keyboard focus. Inputs keep the design's own focus (outline: 0 inline). */
+/* Keyboard focus. Text fields get the gold ring further down. */
 a:focus-visible,
 button:focus-visible {
   outline: 2px solid #ecc98a;
@@ -130,11 +130,6 @@ button:focus-visible {
   font-size: 15px;
 }
 
-.change-password-form input:focus {
-  outline: 2px solid #ecc98a;
-  outline-offset: 1px;
-}
-
 .change-password-form button {
   height: 50px;
   border: 0;
@@ -182,12 +177,6 @@ button:focus-visible {
   background: #150610;
   color: #f7eef0;
   font-size: 14px;
-}
-
-.field input:focus,
-.field select:focus {
-  outline: 2px solid #ecc98a;
-  outline-offset: 1px;
 }
 
 button.primary,
@@ -324,6 +313,236 @@ dialog.modal::backdrop {
   white-space: nowrap;
 }
 
+/*
+ * Sign in: vertical rhythm. The spacing follows the viewport height, so on a 1366 x 768 laptop (about 650 px of page once the
+ * browser's own bars are drawn) the Sign in button stays above the fold, and a 1920 x 1080 screen keeps the roomier layout.
+ */
+.login-main {
+  --login-gap: 16px;
+  padding: clamp(24px, 5vh, 56px) 72px;
+  gap: var(--login-gap);
+}
+
+.login-main > * + * {
+  margin-top: clamp(0px, 2.4vh - 8px, 20px);
+}
+
+.login-intro {
+  gap: 8px;
+}
+
+.login h1 {
+  font-size: clamp(40px, 5.6vh, 56px);
+}
+
+.login-intro p {
+  font-size: 15px !important;
+}
+
+/* The sign-in form: a dark glass card. */
+.login-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 480px;
+  padding: 24px 28px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(160deg, rgba(42, 12, 24, 0.72), rgba(21, 6, 16, 0.6));
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 18px 48px -12px rgba(0, 0, 0, 0.6), 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #dbb3bf;
+}
+
+.login-label-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.login-hint {
+  font-size: 12px;
+  color: #b48d99;
+}
+
+.login-input {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid #55202f;
+  background: #150610;
+  color: #f7eef0;
+  font-size: 15px;
+  outline: 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.login-input::placeholder {
+  color: #8f6b77;
+}
+
+.login-submit {
+  height: 48px;
+  border-radius: 10px;
+  border: 0;
+  background: #ecc98a;
+  color: #1c070d;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.login-submit:hover:not(:disabled) {
+  background: #f2d59f;
+}
+
+.login-submit:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+/* Password: the eye button sits inside the field, on the right. */
+.password-wrap {
+  position: relative;
+}
+
+.password-wrap .login-input {
+  padding-right: 52px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #b48d99;
+  cursor: pointer;
+}
+
+.password-toggle:hover {
+  color: #ecc98a;
+}
+
+.password-toggle .eye-closed,
+.password-toggle[aria-pressed='true'] .eye-open {
+  display: none;
+}
+
+.password-toggle[aria-pressed='true'] .eye-closed {
+  display: block;
+}
+
+/* Church code: an "i" badge whose tooltip shows on hover and on keyboard focus. */
+.info-tip {
+  position: relative;
+  display: inline-flex;
+}
+
+.info-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(236, 201, 138, 0.55);
+  background: rgba(236, 201, 138, 0.12);
+  color: #ecc98a;
+  font: italic 700 11px/1 Georgia, serif;
+  cursor: help;
+}
+
+/* A bigger invisible tap area than the 18 px dot. */
+.info-badge::after {
+  content: '';
+  position: absolute;
+  inset: -13px;
+}
+
+.info-tip-text {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  z-index: 20;
+  width: max-content;
+  max-width: 240px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #2a0c18;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  color: #f7eef0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 4px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+}
+
+.info-tip-text::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border: 5px solid transparent;
+  border-top-color: #2a0c18;
+}
+
+.info-tip:hover .info-tip-text,
+.info-badge:focus-visible + .info-tip-text {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+/*
+ * Text fields: one gold focus state everywhere, a #e5a93c border with a soft 3 px ring. Inline borders in the page designs win over
+ * a stylesheet, hence !important on the colour.
+ */
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):focus,
+textarea:focus,
+select:focus {
+  border-color: #e5a93c !important;
+  /* Transparent, not none: Windows high-contrast mode drops the ring but draws this outline. */
+  outline: 2px solid transparent !important;
+  box-shadow: 0 0 0 3px rgba(229, 169, 60, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-input,
+  .info-tip-text {
+    transition: none;
+  }
+}
+
 .steps-list {
   margin: 0;
   padding-left: 20px;
@@ -344,12 +563,6 @@ dialog.modal::backdrop {
 .segmented button[aria-checked='false']:not(:disabled):hover {
   color: #f7eef0;
   background: #22101a;
-}
-
-.plan-details select:focus,
-.plan-details input:focus {
-  outline: 2px solid #ecc98a;
-  outline-offset: 1px;
 }
 
 /* Song list placeholders, as on the Songs board */

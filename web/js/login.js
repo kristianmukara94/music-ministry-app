@@ -26,6 +26,25 @@ function remember(code) {
 
 form.elements.churchCode.value = rememberedCode();
 
+// The eye button inside the password field shows or hides what was typed. The caret stays where it was.
+const password = form.elements.password;
+const eye = document.getElementById('password-toggle');
+function showPassword(show) {
+  password.type = show ? 'text' : 'password';
+  eye.setAttribute('aria-pressed', String(show));
+  eye.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+}
+eye.addEventListener('click', () => {
+  const { selectionStart, selectionEnd } = password;
+  showPassword(password.type === 'password');
+  password.focus();
+  try {
+    password.setSelectionRange(selectionStart, selectionEnd);
+  } catch {
+    // Some browsers refuse a selection range on a password field. The caret then goes to the end, which is harmless.
+  }
+});
+
 // "Forgot password?": a dialog with who to contact. Passwords are reset by the church's admin, never by email. Escape and the backdrop
 // close it too, and focus goes back to the button that opened it.
 const forgot = document.getElementById('forgot-dialog');
@@ -67,5 +86,6 @@ form.addEventListener('submit', async (event) => {
   } finally {
     button.disabled = false;
     form.elements.password.value = '';
+    showPassword(false);
   }
 });
