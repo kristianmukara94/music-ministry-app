@@ -9,9 +9,10 @@ import { MEDIA_SCHEME, registerMediaRoute } from './protocol.js';
 import { readPptxSlides } from './documents.js';
 import { renderLayers } from './pptx-render.js';
 import { createImportReporter, sendToWindow } from './powerpoint-importer.js';
+import { WHITEBOARD_POWERPOINT_FOLDER } from '../shared/deck-items.js';
 
 /** The Announcements folder that holds the pictures of imported PowerPoint slides. */
-export const POWERPOINT_FOLDER = 'Whiteboard PowerPoint';
+export const POWERPOINT_FOLDER = WHITEBOARD_POWERPOINT_FOLDER;
 
 /** The longest a Whiteboard folder's name may be. */
 export const MAX_FOLDER_NAME = 60;
@@ -66,6 +67,13 @@ export const WHITEBOARD_RESTORE_MIGRATIONS = [`ALTER TABLE whiteboard_slides ADD
  */
 export const WHITEBOARD_LAYER_MIGRATIONS = [`ALTER TABLE whiteboard_slides ADD COLUMN layers TEXT;`];
 
+/**
+ * Speaker notes for a slide made here (a designed slide, or a PowerPoint slide changed into one). A PowerPoint picture keeps its notes on
+ * its Announcements image instead. NULL means none were written; '' means they were cleared on purpose, so an edited PowerPoint slide no
+ * longer falls back to its picture's notes.
+ */
+export const WHITEBOARD_NOTES_MIGRATIONS = [`ALTER TABLE whiteboard_slides ADD COLUMN notes TEXT;`];
+
 /** The asset folder that holds the backgrounds of PowerPoint slides taken apart for editing. Each file is named by a UUID. */
 export const LAYER_FOLDER = 'whiteboard';
 const LAYER_FILE = /^[0-9a-f-]{36}\.jpg$/;
@@ -89,7 +97,7 @@ function parseLayers(raw) {
 // A picture slide whose Announcements image was deleted is left out, rather than shown empty.
 const VISIBLE = '(w.slide_id IS NULL OR a.id IS NOT NULL)';
 const SELECT = `
-  SELECT w.id, w.title, w.content, w.design, w.slide_id AS slideId, w.folder_id AS folderId, a.notes AS notes, o.id AS originalFound, w.layers AS layers
+  SELECT w.id, w.title, w.content, w.design, w.slide_id AS slideId, w.folder_id AS folderId, CASE WHEN w.slide_id IS NOT NULL THEN a.notes ELSE COALESCE(w.notes, o.notes) END AS notes, o.id AS originalFound, w.layers AS layers
   FROM whiteboard_slides w
   LEFT JOIN announcement_slides a ON a.id = w.slide_id
   LEFT JOIN announcement_slides o ON o.id = w.original_slide_id
@@ -110,7 +118,7 @@ function toSlide(row) {
     slideId: row.slideId ?? null,
     folderId: row.folderId ?? null,
     image: row.slideId == null ? null : `${MEDIA_SCHEME}://slide/${row.slideId}`,
-    notes: row.notes ?? null,
+    notes: row.notes || null,
     // The picture this slide was before it was edited, when it can still be brought back.
     originalImage: row.originalFound == null ? null : `${MEDIA_SCHEME}://slide/${row.originalFound}`,
     // The slide taken apart for editing: its background without its words, and its words as text boxes. Null when not available.
@@ -120,6 +128,14 @@ function toSlide(row) {
 
 /** The longest a PowerPoint slide's speaker notes may be. */
 export const MAX_SLIDE_NOTES = 4000;
+
+/** Speaker notes as stored: Windows line endings made plain, cut to MAX_SLIDE_NOTES, trailing space trimmed. Blank notes are ''. */
+export function cleanNotes(raw) {
+  return String(raw ?? '')
+    .replace(/\r\n?/g, '\n')
+    .slice(0, MAX_SLIDE_NOTES)
+    .trimEnd();
+}
 
 /**
  * A PowerPoint slide's words as slide content: its title as a plain line, then each paragraph as a bullet. Empty when the slide had no text,
@@ -166,6 +182,9 @@ export function createWhiteboardService(db, deps = {}) {
   const remove = db.prepare('DELETE FROM whiteboard_slides WHERE id = ?');
   const setPosition = db.prepare('UPDATE whiteboard_slides SET position = ? WHERE id = ?');
   const setFolder = db.prepare('UPDATE whiteboard_slides SET folder_id = ? WHERE id = ?');
+  const slideIdOf = db.prepare('SELECT slide_id AS slideId FROM whiteboard_slides WHERE id = ?');
+  const setOwnNotes = db.prepare("UPDATE whiteboard_slides SET notes = ?, updated_at = datetime('now') WHERE id = ?");
+  const setPictureNotes = db.prepare('UPDATE announcement_slides SET notes = ? WHERE id = ?');
   const makeEditable = db.prepare(
     "UPDATE whiteboard_slides SET title = ?, content = ?, design = ?, original_slide_id = slide_id, slide_id = NULL, updated_at = datetime('now') WHERE id = ? AND slide_id IS NOT NULL",
   );
@@ -206,6 +225,8 @@ export function createWhiteboardService(db, deps = {}) {
   const deleteFolder = db.prepare('DELETE FROM whiteboard_folders WHERE id = ?');
   const unfileFolder = db.prepare('UPDATE whiteboard_slides SET folder_id = NULL WHERE folder_id = ?');
   const countIn = db.prepare(`SELECT COUNT(*) AS n FROM whiteboard_slides w LEFT JOIN announcement_slides a ON a.id = w.slide_id WHERE w.folder_id = ? AND ${VISIBLE}`);
+  const unfiledIds = db.prepare('SELECT id FROM whiteboard_slides WHERE folder_id IS NULL');
+  const countUnfiled = db.prepare(`SELECT COUNT(*) AS n FROM whiteboard_slides w LEFT JOIN announcement_slides a ON a.id = w.slide_id WHERE w.folder_id IS NULL AND ${VISIBLE}`);
 
   /** A folder id that exists, or null for Unfiled. Anything else is refused, so a slide never points at a folder that is gone. */
   const folderIdOf = (raw) => {
@@ -298,10 +319,33 @@ export function createWhiteboardService(db, deps = {}) {
       return removeSlides(wanted);
     },
 
+    /**
+     * Deletes every Unfiled slide in one step. Slides in folders are never touched. Resolves to how many the operator could see (an Unfiled
+     * picture slide whose Announcements image is gone is hidden, so it is cleared too but not counted).
+     */
+    clearUnfiled() {
+      const shown = countUnfiled.get().n;
+      removeSlides(unfiledIds.all().map((row) => row.id));
+      return shown;
+    },
+
     /** Changes only a slide's title. Works for every slide, including PowerPoint slides. */
     rename(id, rawTitle) {
       const title = validSlideTitle(rawTitle);
       if (renameSlide.run(title, Number(id)).changes === 0) throw new Error('That slide no longer exists.');
+      return toSlide(get.get(Number(id)));
+    },
+
+    /**
+     * Saves a slide's speaker notes, cut to MAX_SLIDE_NOTES. A PowerPoint picture's notes live on its Announcements image, so they are
+     * written there; every other slide keeps its own. Blank notes clear them.
+     */
+    setNotes(id, rawNotes) {
+      const row = slideIdOf.get(Number(id));
+      if (!row) throw new Error('That slide no longer exists.');
+      const notes = cleanNotes(rawNotes);
+      if (row.slideId != null) setPictureNotes.run(notes || null, row.slideId);
+      else setOwnNotes.run(notes, Number(id));
       return toSlide(get.get(Number(id)));
     },
 
@@ -348,12 +392,19 @@ export function createWhiteboardService(db, deps = {}) {
       })();
     },
 
-    /** Moves slides into a folder, or to Unfiled when `folderId` is null. Resolves to how many moved. */
+    /**
+     * Moves slides into a folder, or to Unfiled when `folderId` is null, in one transaction: either every slide moves or none does.
+     * Resolves to how many slides were moved. Ids that no longer exist are skipped and not counted.
+     */
     moveSlides(ids, folderId) {
       const target = folderIdOf(folderId);
       const wanted = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter(Number.isInteger))];
-      db.transaction(() => wanted.forEach((id) => setFolder.run(target, id)))();
-      return wanted.length;
+      return db.transaction(() => wanted.reduce((n, id) => n + Number(setFolder.run(target, id).changes), 0))();
+    },
+
+    /** The bulk "Move to folder": `{ slideIds, targetFolderId }`, where a null target means Unfiled. Resolves to how many moved. */
+    moveSelectedToFolder({ slideIds, targetFolderId } = {}) {
+      return this.moveSlides(slideIds, targetFolderId ?? null);
     },
 
     /**
@@ -548,7 +599,9 @@ export function setupWhiteboard(db, announcements, { onChanged = () => {}, conve
   handle('delete', (_win, id) => service.remove(id), { changes: true });
   handle('reorder', (_win, ids) => service.reorder(Array.isArray(ids) ? ids : []), { changes: true });
   handle('deleteMany', (_win, ids) => service.removeMany(ids), { changes: true });
+  handle('clearUnfiled', () => service.clearUnfiled(), { changes: true });
   handle('rename', (_win, id, title) => service.rename(id, title), { changes: true });
+  handle('setNotes', (_win, id, notes) => service.setNotes(id, notes), { changes: true });
   handle('makeEditable', (_win, id, input) => service.makeEditable(id, input), { changes: true });
   handle('restorePicture', (_win, id) => service.restorePicture(id), { changes: true });
   handle('pptxSource', (_win, id) => service.pptxSource(id));
@@ -558,6 +611,7 @@ export function setupWhiteboard(db, announcements, { onChanged = () => {}, conve
   handle('renameFolder', (_win, id, name) => service.renameFolder(id, name), { changes: true });
   handle('deleteFolder', (_win, id) => service.deleteFolder(id), { changes: true });
   handle('move', (_win, ids, folderId) => service.moveSlides(ids, folderId), { changes: true });
+  handle('moveSelectedToFolder', (_win, request) => service.moveSelectedToFolder(request), { changes: true });
   handle('importPowerPoint', (win, folderId) => service.importPowerPoint(win, folderId ?? null), { changes: true });
   return service;
 }

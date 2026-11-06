@@ -73,8 +73,12 @@ export interface WhiteboardApi {
   remove(id: number): Promise<boolean>;
   /** Deletes several slides at once. Resolves to how many were removed. */
   removeMany(ids: number[]): Promise<number>;
+  /** Deletes every Unfiled slide. Slides in folders are kept. Resolves to how many were removed. */
+  clearUnfiled(): Promise<number>;
   /** Changes only a slide's title, including a PowerPoint slide's. Resolves to the updated slide. */
   rename(id: number, title: string): Promise<WhiteboardSlide>;
+  /** Saves a slide's speaker notes (a PowerPoint picture's go on its Announcements image). Blank notes clear them. */
+  setNotes(id: number, notes: string): Promise<WhiteboardSlide>;
   reorder(ids: number[]): Promise<boolean>;
   folders(): Promise<WhiteboardFolder[]>;
   createFolder(name: string): Promise<WhiteboardFolder>;
@@ -83,6 +87,8 @@ export interface WhiteboardApi {
   deleteFolder(id: number): Promise<number>;
   /** Moves slides into a folder, or to Unfiled when `folderId` is null. Resolves to how many moved. */
   move(ids: number[], folderId: number | null): Promise<number>;
+  /** Moves several slides to a folder (or Unfiled when the target is null) in one transaction. Resolves to how many moved. */
+  moveSelectedToFolder(request: { slideIds: number[]; targetFolderId: number | null }): Promise<number>;
   /** Opens the file picker and imports the chosen PowerPoint files into the folder. Resolves to the number of slides added, or null if cancelled. */
   importPowerPoint(folderId?: number | null): Promise<number | null>;
   /** Hears how far a PowerPoint import has got, as it goes on. Returns the function that stops listening. */

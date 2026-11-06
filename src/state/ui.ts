@@ -4,6 +4,15 @@ import type { Lang } from '../../shared/live.js';
 import { ACTION_IDS, DEFAULT_SHORTCUTS, sanitizeShortcuts, shortcutsFromKeymap, type Shortcut } from '../../shared/shortcuts.js';
 import { DEFAULT_DISPLAY_NAMES } from './shortcut-labels';
 import { DEFAULT_REGION_SETTINGS, type RegionSettings } from './region';
+import { sanitizeMassTimes, type MassTime } from '../../shared/service-schedule.js';
+
+/**
+ * The operator window's lighting. Standard Dark is the theme as it is. Red-Shift Booth washes the console in a dim red-amber that keeps
+ * the operator's night vision in a dark booth. High Contrast Day lifts contrast and brightness for a sunlit booth. The projector and
+ * every other output are never touched.
+ */
+export type BoothPreset = 'standard' | 'redShift' | 'highContrast';
+export const BOOTH_PRESETS: BoothPreset[] = ['standard', 'redShift', 'highContrast'];
 
 export type ViewKey =
   | 'dashboard'
@@ -48,7 +57,8 @@ interface UiState {
   view: ViewKey;
   collapsed: boolean;
   paletteOpen: boolean;
-  queueOpen: boolean;
+  /** The right-side Remote Control drawer is open. */
+  remoteOpen: boolean;
   /** The floating live preview is on screen. Toggled by the Preview button in the top bar. */
   previewOpen: boolean;
   /** A row was just staged from the planner: the operator's preview shows the staged frame until something else goes live. */
@@ -57,6 +67,10 @@ interface UiState {
   /** The keyboard shortcuts. One per action, each with the key combo that runs it. */
   shortcuts: Shortcut[];
   launchpad: LaunchItem[];
+  /** The parish's Mass times, for the dashboard's countdown. Saved with the other operator preferences. */
+  massTimes: MassTime[];
+  /** The operator window's lighting preset, chosen on the booth clock. Saved with the other operator preferences. */
+  boothPreset: BoothPreset;
   pendingFocus: PendingFocus | null;
   /** Shown when a queue item is played while the projector is off. Not persisted. */
   projectorPrompt: ProjectorPrompt | null;
@@ -71,6 +85,16 @@ interface UiState {
   slideStyleOpen: boolean;
   /** The Song Lyrics verse list shows every verse, not just the live and next one. Kept for the session only, not persisted. */
   showAllVerses: boolean;
+  /**
+   * Song Lyrics Go Live: while on, a stanza click or key sends that stanza straight to the projector; while off it is only staged, and
+   * Play (Enter) takes it. Kept for the session only, not persisted, so a restart never opens with the projector armed.
+   */
+  lyricsGoLive: boolean;
+  /**
+   * Song Lyrics key stepper: semitones each setlist song is moved by, keyed by setlist and song (see transposeId). Kept for the session
+   * only, not persisted: the song's own key in the library never changes.
+   */
+  transpose: Record<string, number>;
   /**
    * The date the Lectionary shows. The Mass planner sets it to the date of the plan it opens, so switching to the Lectionary shows that
    * plan's readings. Null until either sets it; transient, so a restart opens the Lectionary on the coming Sunday.
@@ -118,12 +142,14 @@ export const useUi = create<UiState>()(
       view: 'dashboard',
       collapsed: false,
       paletteOpen: false,
-      queueOpen: false,
+      remoteOpen: false,
       previewOpen: false,
       stagePeek: false,
       capturingHotkey: false,
       shortcuts: DEFAULT_SHORTCUTS,
       launchpad: [],
+      massTimes: [],
+      boothPreset: 'standard',
       pendingFocus: null,
       projectorPrompt: null,
       projectorPromptChoice: 'ask',
@@ -132,13 +158,15 @@ export const useUi = create<UiState>()(
       goLiveChoice: null,
       pendingMassPlanId: null,
       showAllVerses: false,
+      lyricsGoLive: false,
+      transpose: {},
       lectionaryDate: null,
       lectionaryRevision: 0,
     }),
     {
       name: 'apccmma.ui',
       // Only operator preferences survive restarts; transient UI does not.
-      partialize: ({ lang, region, collapsed, shortcuts, launchpad }) => ({ lang, region, collapsed, shortcuts, launchpad }),
+      partialize: ({ lang, region, collapsed, shortcuts, launchpad, massTimes, boothPreset }) => ({ lang, region, collapsed, shortcuts, launchpad, massTimes, boothPreset }),
       // Version 0 kept one key per action under `keymap`. Version 1 keeps a list of shortcuts that can be added to and removed.
       version: 1,
       migrate: (persisted, version) => {
@@ -151,7 +179,9 @@ export const useUi = create<UiState>()(
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<UiState>;
         const shortcuts = Array.isArray(saved.shortcuts) ? sanitizeShortcuts(saved.shortcuts, [...ACTION_IDS]) : current.shortcuts;
-        return { ...current, ...saved, shortcuts };
+        const massTimes = sanitizeMassTimes(saved.massTimes);
+        const boothPreset = BOOTH_PRESETS.includes(saved.boothPreset as BoothPreset) ? (saved.boothPreset as BoothPreset) : current.boothPreset;
+        return { ...current, ...saved, shortcuts, massTimes, boothPreset };
       },
     },
   ),

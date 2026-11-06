@@ -1,7 +1,7 @@
 import type { SourceLine } from '../../shared/song-batch.js';
 import type { TextStyle } from '../../shared/text-style';
-import type { PrimaryCategory } from '../../shared/song-taxonomy.js';
-export type { PrimaryCategory };
+import type { CategoryTargetMode, PrimaryCategory } from '../../shared/song-taxonomy.js';
+export type { CategoryTargetMode, PrimaryCategory };
 export type HymnCategory = 'Entrance' | 'Offertory' | 'Communion' | 'Recessional' | 'General';
 export type HymnLanguage = 'EN' | 'TL' | 'CEB';
 
@@ -109,11 +109,12 @@ export interface LyricsImport {
   raw: string;
 }
 
-/** One song category for the Mass, as the operator named it. */
+/** One song category, as the operator named it, with where it is offered: Holy Mass, Praise & Worship or All. */
 export interface SongCategory {
   id: number;
   name: string;
   position: number;
+  targetMode: CategoryTargetMode;
 }
 
 export interface LyricsApi {
@@ -154,10 +155,10 @@ export interface LyricsApi {
   readBatchFile(filePath: string): Promise<BatchFile>;
   /** The song categories, in the order the operator set. */
   listSongCategories(): Promise<SongCategory[]>;
-  /** Adds a category. Names are 1 to 40 characters and must not repeat (letter case does not count). */
-  createSongCategory(input: { name: string }): Promise<SongCategory>;
-  /** Renames a category, and the hymns that use it. */
-  renameSongCategory(id: number, input: { name: string }): Promise<SongCategory>;
+  /** Adds a category. Names are 1 to 40 characters and must not repeat (letter case does not count). A missing target mode means All. */
+  createSongCategory(input: { name: string; targetMode?: CategoryTargetMode }): Promise<SongCategory>;
+  /** Renames a category (and the hymns that use it) and sets its target mode. A missing target mode keeps the one it has. */
+  renameSongCategory(id: number, input: { name?: string; targetMode?: CategoryTargetMode }): Promise<SongCategory>;
   /** Removes a category. Hymns that used it keep their text. */
   deleteSongCategory(id: number): Promise<boolean>;
 }

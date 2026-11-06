@@ -7,7 +7,7 @@
 //   PRAISE_AND_WORSHIP   Sung in a Praise & Worship service.
 //
 // A song category is a name from the operator's list (Song categories). The names below are the ones the app ships with, each with the
-// scopes it is suggested for. A name the operator adds is suggested everywhere.
+// scopes it is suggested for. Every category on the operator's list also stores a target mode (see below), which wins over these defaults.
 import { SONG_CATEGORY_NAMES } from './mass-flow.js';
 
 export const PRIMARY_CATEGORIES = ['GENERAL', 'MASS', 'PRAISE_AND_WORSHIP'];
@@ -45,33 +45,87 @@ export const isPrimaryCategory = (value) => PRIMARY_CATEGORIES.includes(value);
 /** A scope from stored or typed text, or the default when it is not one. */
 export const normalizePrimary = (value, fallback = DEFAULT_PRIMARY) => (isPrimaryCategory(value) ? value : fallback);
 
-/** The scopes a song category is suggested for. A name the app does not ship (one the operator added) suits every scope. */
-export function scopesOfCategory(name) {
+// ── A category's target mode ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Each category on the operator's list says where it is used: the Holy Mass, Praise & Worship, or All (both). It is stored with the
+// category (song_categories.target_mode), so a category the operator adds can belong to Praise & Worship as surely as a shipped one.
+// The helpers below take the operator's list as an optional `modes` lookup (categoryModeLookup); a name the lookup does not hold falls back
+// to the shipped defaults above.
+
+export const CATEGORY_TARGET_MODES = ['HOLY_MASS', 'PRAISE_AND_WORSHIP', 'ALL'];
+
+/** The target mode a category gets when none was chosen. */
+export const DEFAULT_TARGET_MODE = 'ALL';
+
+export const isCategoryTargetMode = (value) => CATEGORY_TARGET_MODES.includes(value);
+
+/** A target mode from stored or typed text, or the default when it is not one. */
+export const normalizeTargetMode = (value, fallback = DEFAULT_TARGET_MODE) => (isCategoryTargetMode(value) ? value : fallback);
+
+/** The song scopes a target mode suits. All suits every scope. */
+export function scopesOfTargetMode(mode) {
+  if (mode === 'HOLY_MASS') return ['MASS'];
+  if (mode === 'PRAISE_AND_WORSHIP') return ['PRAISE_AND_WORSHIP'];
+  return PRIMARY_CATEGORIES;
+}
+
+/**
+ * The target mode a shipped category starts with: Holy Mass or Praise & Worship when it suits only one of them, All when it suits both. A name
+ * the app does not ship is All. The migration fills the stored column with this, so no shipped category moves when the column appears.
+ */
+export function defaultTargetModeOf(name) {
+  const scopes = SCOPES_OF.get(String(name ?? '').trim().toLowerCase());
+  if (!scopes) return DEFAULT_TARGET_MODE;
+  const mass = scopes.includes('MASS');
+  const pw = scopes.includes('PRAISE_AND_WORSHIP');
+  return mass && !pw ? 'HOLY_MASS' : pw && !mass ? 'PRAISE_AND_WORSHIP' : 'ALL';
+}
+
+/** Every shipped category name with the target mode it starts with. */
+export const DEFAULT_TARGET_MODES = [...THEME_NAMES, ...MASS_PART_NAMES].map((name) => ({ name, targetMode: defaultTargetModeOf(name) }));
+
+/** A lookup from category name (any letter case) to its stored target mode, built from the operator's list ({ name, targetMode }[]). */
+export function categoryModeLookup(categories) {
+  const map = new Map();
+  for (const c of categories ?? []) if (c && typeof c.name === 'string') map.set(c.name.trim().toLowerCase(), normalizeTargetMode(c.targetMode));
+  return map;
+}
+
+const storedModeOf = (name, modes) => modes?.get(String(name ?? '').trim().toLowerCase()) ?? null;
+
+/**
+ * The scopes a song category is suggested for: its stored target mode's scopes when `modes` holds it, else the shipped ones. A name neither
+ * knows suits every scope.
+ */
+export function scopesOfCategory(name, modes) {
+  const stored = storedModeOf(name, modes);
+  if (stored) return scopesOfTargetMode(stored);
   return SCOPES_OF.get(String(name ?? '').trim().toLowerCase()) ?? PRIMARY_CATEGORIES;
 }
 
 /**
- * The one scope a song category is listed under in a grouped dropdown: the first scope it is suggested for. A category the app does not ship
- * (one the operator added) is listed under General.
+ * The one scope a song category is listed under in a grouped dropdown. With a stored target mode: Mass, Praise & Worship, or General for All.
+ * Without one: the first scope it is suggested for, and General for a name the app does not ship.
  */
-export function homeScopeOfCategory(name) {
+export function homeScopeOfCategory(name, modes) {
+  const stored = storedModeOf(name, modes);
+  if (stored) return stored === 'HOLY_MASS' ? 'MASS' : stored === 'PRAISE_AND_WORSHIP' ? 'PRAISE_AND_WORSHIP' : 'GENERAL';
   const scopes = SCOPES_OF.get(String(name ?? '').trim().toLowerCase());
   return scopes ? scopes[0] : 'GENERAL';
 }
 
 /** Whether a song category is suggested under a scope. General suggests every category. */
-export function suggestedFor(scope, name) {
-  return scope === 'GENERAL' || scopesOfCategory(name).includes(scope);
+export function suggestedFor(scope, name, modes) {
+  return scope === 'GENERAL' || scopesOfCategory(name, modes).includes(scope);
 }
 
 /**
- * Splits category names for a scope's dropdown: the ones suggested for it first, in the list's order, then the rest. Nothing is dropped, so
- * a song can still be given a category from another scope, and a song that already has one keeps showing it.
+ * Splits category names for a scope's dropdown: the ones suggested for it first, in the list's order, then the rest. Nothing is dropped here;
+ * the dropdown decides which of the rest it still shows (a song's own category, so editing it never loses it).
  */
-export function groupCategories(names, scope) {
+export function groupCategories(names, scope, modes) {
   const suggested = [];
   const other = [];
-  for (const name of names) (suggestedFor(scope, name) ? suggested : other).push(name);
+  for (const name of names) (suggestedFor(scope, name, modes) ? suggested : other).push(name);
   return { suggested, other };
 }
 

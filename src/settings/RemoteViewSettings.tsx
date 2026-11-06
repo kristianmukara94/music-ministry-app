@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import qrcode from 'qrcode-generator';
 import { Copy, KeyRound, Smartphone, Tv, WifiOff } from 'lucide-react';
+import { qrDataUrl } from '../remote/qr';
 import { bridge, type RemoteRole, type RemoteRoleStatus, type RemoteViewPatch, type RemoteViewStatus } from '../live/bridge';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -50,14 +50,6 @@ function Switch({ label, on, disabled, onChange }: { label: string; on: boolean;
       </span>
     </button>
   );
-}
-
-/** The address as a QR code. It is drawn here in the app, so it needs no internet. */
-function qrDataUrl(text: string): string {
-  const qr = qrcode(0, 'M');
-  qr.addData(text);
-  qr.make();
-  return qr.createDataURL(6, 4);
 }
 
 interface ViewerProps {

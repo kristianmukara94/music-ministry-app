@@ -5,6 +5,7 @@ import { TEXT_FONT_GROUPS, TEXT_FONTS, slideFontCss } from '../../shared/text-st
 import { bridge } from '../live/bridge';
 import { useLive } from '../live/store';
 import { Card, FOCUS, SUB } from './settingsUi';
+import { SlotTitleToggle } from '../operator/SlotTitleToggle';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -121,6 +122,11 @@ export function SlideTextCard({ id, sample, note }: { id: string; sample: string
               <span>100%</span>
               <span>{Math.round(SLIDE_FONT_SCALES[last] * 100)}%</span>
             </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-semibold text-fg">Slot title</span>
+            <SlotTitleToggle />
+            <p className={SUB}>The small banner naming the slot or reading, such as "First Reading", above the words. A Holy Mass plan can choose its own in the planner.</p>
           </div>
           <p className={SUB}>{note}</p>
         </div>

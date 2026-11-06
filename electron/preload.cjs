@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('apcc', {
     importPaths: (folderId, paths) => ipcRenderer.invoke('announcements:importPaths', folderId, paths),
     reorder: (folderId, slideIds) => ipcRenderer.invoke('announcements:reorder', folderId, slideIds),
     deleteSlide: (id) => ipcRenderer.invoke('announcements:deleteSlide', id),
+    moveSlides: (ids, folderId) => ipcRenderer.invoke('announcements:moveSlides', ids, folderId),
+    setNotes: (id, notes) => ipcRenderer.invoke('announcements:setNotes', id, notes),
     pickBackground: (lang) => ipcRenderer.invoke('announcements:pickBackground', lang),
     discardBackground: (name) => ipcRenderer.invoke('announcements:discardBackground', name),
     createTextSlides: (folderId, pages, backgroundName, style) =>
@@ -100,6 +102,8 @@ contextBridge.exposeInMainWorld('apcc', {
     get: (id) => ipcRenderer.invoke('plans:get', id),
     save: (id, items) => ipcRenderer.invoke('plans:save', id, items),
     setLanguage: (id, language) => ipcRenderer.invoke('plans:setLanguage', id, language),
+    slotTitle: (id) => ipcRenderer.invoke('plans:slotTitle', id),
+    setSlotTitle: (id, show) => ipcRenderer.invoke('plans:setSlotTitle', id, show),
     listTemplates: () => ipcRenderer.invoke('plans:listTemplates'),
     getTemplate: (id) => ipcRenderer.invoke('plans:getTemplate', id),
     saveTemplate: (input) => ipcRenderer.invoke('plans:saveTemplate', input),
@@ -154,6 +158,7 @@ contextBridge.exposeInMainWorld('apcc', {
 
   projector: {
     save: (patch) => ipcRenderer.invoke('projector:save', patch),
+    openConfidenceWindow: () => ipcRenderer.invoke('projector:openConfidenceWindow'),
   },
 
   welcome: {
@@ -182,6 +187,8 @@ contextBridge.exposeInMainWorld('apcc', {
   remoteView: {
     get: () => ipcRenderer.invoke('remoteView:get'),
     save: (patch) => ipcRenderer.invoke('remoteView:save', patch),
+    getNetworkInfo: (role) => ipcRenderer.invoke('remoteView:getNetworkInfo', role),
+    disconnect: (role, ip) => ipcRenderer.invoke('remoteView:disconnect', { role, ip }),
   },
 
   library: {
@@ -222,13 +229,16 @@ contextBridge.exposeInMainWorld('apcc', {
     closeEditor: () => ipcRenderer.send('editor:close'),
     remove: (id) => ipcRenderer.invoke('whiteboard:delete', id),
     removeMany: (ids) => ipcRenderer.invoke('whiteboard:deleteMany', ids),
+    clearUnfiled: () => ipcRenderer.invoke('whiteboard:clearUnfiled'),
     rename: (id, title) => ipcRenderer.invoke('whiteboard:rename', id, title),
+    setNotes: (id, notes) => ipcRenderer.invoke('whiteboard:setNotes', id, notes),
     reorder: (ids) => ipcRenderer.invoke('whiteboard:reorder', ids),
     folders: () => ipcRenderer.invoke('whiteboard:folders'),
     createFolder: (name) => ipcRenderer.invoke('whiteboard:createFolder', name),
     renameFolder: (id, name) => ipcRenderer.invoke('whiteboard:renameFolder', id, name),
     deleteFolder: (id) => ipcRenderer.invoke('whiteboard:deleteFolder', id),
     move: (ids, folderId) => ipcRenderer.invoke('whiteboard:move', ids, folderId),
+    moveSelectedToFolder: (request) => ipcRenderer.invoke('whiteboard:moveSelectedToFolder', request),
     importPowerPoint: (folderId) => ipcRenderer.invoke('whiteboard:importPowerPoint', folderId),
     /** Called as a PowerPoint import goes on, with { currentSlide, totalSlides, percentage, statusText, ... }. Returns the function that stops listening. */
     onImportProgress: (callback) => {
@@ -274,6 +284,10 @@ contextBridge.exposeInMainWorld('apcc', {
       ipcRenderer.on('config:migrationProgress', handler);
       return () => ipcRenderer.removeListener('config:migrationProgress', handler);
     },
+  },
+
+  system: {
+    health: () => ipcRenderer.invoke('system:health'),
   },
 
   database: {

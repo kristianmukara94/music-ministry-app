@@ -1,6 +1,7 @@
 import { OperatorApp } from './operator/OperatorApp';
 import { LowerThirdView } from './output/LowerThirdView';
 import { ProjectorView } from './output/ProjectorView';
+import { MirrorWindow } from './output/MirrorWindow';
 import { PdfConverter } from './announcements/PdfConverter';
 import { VideoThumbnailer } from './media/VideoThumbnailer';
 import { EditorWindow } from './golive/EditorWindow';
@@ -18,7 +19,7 @@ export function App() {
     case 'projector':
       return <ProjectorView />;
     case 'preview':
-      return <ProjectorView mirror />;
+      return <MirrorWindow />;
     case 'lower-third':
       return <LowerThirdView />;
     case 'pdf-converter':

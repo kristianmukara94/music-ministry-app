@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { stanzaFrame } from './frames';
-import { ArrowDown, ArrowUp, Check, ListMusic, Music, Pencil, Play, Plus, Search, Trash2, Type } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, GripVertical, ListMusic, Music, Pencil, Play, Plus, Search, Trash2, Type } from 'lucide-react';
+import { firstSungStanza, goLiveOffActions, lyricsOnAir, presentSongStanzaActions, setlistOnAir, setlistStanzaFrame, type SetlistPlace } from '../../shared/lyrics-live.js';
+import { clampTranspose, filterSetlist, transposeId } from '../../shared/setlist-tools.js';
+import { LiveQuickControls } from './LiveQuickControls';
+import { KeyStepper } from './KeyStepper';
 import { BACKGROUND_COLORS, sanitizeTextStyle } from '../../shared/text-style.js';
 import type { TextStyle } from '../../shared/text-style';
 import { ColorField, StyleToolbar } from '../announcements/StyleControls';
@@ -50,6 +54,9 @@ const todayIso = () => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
+/** How a setlist song opened by double-click or by the filter's Enter goes out: straight on air, or staged for Play. */
+type OpenMode = 'project' | 'stage';
+
 /** What is being dragged: a library hymn, or a row already in the setlist. */
 type DragSource = { kind: 'library'; hymnId: number } | { kind: 'setlist'; index: number };
 
@@ -94,14 +101,26 @@ export function SongLyrics() {
   const styleOpen = useUi((s) => s.slideStyleOpen);
   const [hymn, setHymn] = useState<Hymn | null>(null);
   const [cue, setCue] = useState(-1);
-  const liveFrame = useLive((s) => s.state.projector.live);
+  // Go Live: armed, a stanza pick goes straight to the projector. Off, it is only staged. Session only.
+  const goLive = useUi((s) => s.lyricsGoLive);
+  const projector = useLive((s) => s.state.projector);
+  const projectorOn = useLive((s) => s.state.outputs.projector);
+  // The song and stanza on the projector, read from the live frame every window shares (also from behind a blackout).
+  const onAir = lyricsOnAir(projector);
+  // The song to send out once it has loaded: a setlist row double-clicked (project) or picked from the filter (stage) before its stanzas were read.
+  const openOnLoad = useRef<{ hymnId: number; mode: OpenMode } | null>(null);
+  // The in-setlist filter. Rows keep their own numbers while it is on.
+  const [setlistQuery, setSetlistQuery] = useState('');
+  const shownEntries = filterSetlist(entries, setlistQuery);
+  // The key stepper: semitones the open song is moved by, for this setlist and this session.
+  const transpose = useUi((s) => s.transpose);
 
   const [error, setError] = useState<string | null>(null);
   const dragRef = useRef<DragSource | null>(null);
   const fail = (err: unknown) => setError(errorText(err));
   const modalOpen = adding !== null || editing !== null;
   const inSetlist = new Set(entries.map((e) => e.hymnId));
-  const onAirTitle = liveFrame.kind === 'lyrics' ? liveFrame.title : null;
+  const liveFromSetlist = setlistOnAir(projector, setlistId);
 
   // A hymn opened from the Service Queue. Its cues load even if it is not in this setlist.
   const [focusedId, setFocusedId] = useState<number | null>(null);
@@ -137,6 +156,7 @@ export function SongLyrics() {
     setSelected(null);
     setHymn(null);
     setCue(-1);
+    setSetlistQuery('');
     if (setlistId == null) {
       setEntries([]);
       return;
@@ -158,6 +178,14 @@ export function SongLyrics() {
       .getHymn(activeHymnId)
       .then((loaded) => {
         setHymn(loaded);
+        // A setlist song double-clicked in Go Live (projected), or picked with Enter in the setlist filter (staged): its first sung verse
+        // goes out as soon as its stanzas are read.
+        const pending = openOnLoad.current;
+        if (loaded && pending?.hymnId === loaded.id) {
+          openOnLoad.current = null;
+          if (!loaded.deletedAt && (pending.mode === 'stage' || useUi.getState().lyricsGoLive)) sendFirst(loaded, placeOf(loaded.id), pending.mode);
+          return;
+        }
         // A hymn opened from the Service Queue takes its first stanza live straight away, on the queue's account.
         if (loaded && openedFromQueue.current) {
           openedFromQueue.current = false;
@@ -185,10 +213,19 @@ export function SongLyrics() {
     });
   }, [openHymnId]);
 
+  /**
+   * Where a song sits in the open setlist, for the frame it is sent in, so every window can tell which setlist song is on air. Null for a
+   * song opened from the Mass Queue or a file, or when the selected row no longer holds that song.
+   */
+  const placeOf = (hymnId: number): SetlistPlace | null =>
+    focusedId == null && selected != null && setlistId != null && entries[selected]?.hymnId === hymnId
+      ? { id: setlistId, index: selected, count: entries.length }
+      : null;
+
   /** Stages one stanza. It shows in the staged slot, and the screen does not change until it is taken live. */
   const stage = (index: number) => {
     if (!hymn) return;
-    const frame = stanzaFrame(hymn, index);
+    const frame = setlistStanzaFrame(hymn, index, placeOf(hymn.id));
     if (!frame) return;
     dispatch({ type: 'projector/stage', frame });
     setCue(index);
@@ -197,14 +234,96 @@ export function SongLyrics() {
   /** Sends the staged stanza to the projector and the mirror. */
   const takeLive = () => dispatch({ type: 'projector/take', source: hymnFromQueue.current ? 'MASS_QUEUE' : 'DIRECT_DECK' });
 
-  /** Stages a stanza and takes it live at once. The arrow keys step this way, one stanza at a time. */
+  /** Puts a stanza on the projector at once. A queue song stays on the queue's account; any other is a direct projection. */
   const showNow = (index: number) => {
-    stage(index);
-    takeLive();
+    if (!hymn) return;
+    if (hymnFromQueue.current) {
+      stage(index);
+      takeLive();
+      return;
+    }
+    const actions = presentSongStanzaActions({ hymn, stanzaIndex: index, setlist: placeOf(hymn.id) });
+    if (!actions) return;
+    actions.forEach(dispatch);
+    setCue(index);
   };
 
-  // Keyboard: Space or Down steps to the next stanza and takes it live, Up steps back, and Enter takes the staged stanza.
-  // Ignored while typing or while a dialog is open.
+  // A song from the Mass Queue is already live, so its stanzas always go straight out. Otherwise Go Live decides: on air, or staged.
+  const direct = goLive || hymnFromQueue.current;
+  /** A stanza picked by click or key: straight to the projector in Go Live, else staged for Play. */
+  const pick = (index: number) => (direct ? showNow(index) : stage(index));
+
+  /**
+   * The ON AIR / GO LIVE toggle. Off: the song Song Lyrics put on the projector comes off the screen at once (a Mass Queue or Praise &
+   * Worship song stays). On: the cued stanza goes straight out. The setlist row and the cue are kept either way, so Go Live resumes in place.
+   */
+  const toggleGoLive = () => {
+    if (useUi.getState().lyricsGoLive) {
+      setUi({ lyricsGoLive: false });
+      goLiveOffActions(useLive.getState().state.projector).forEach(dispatch);
+      return;
+    }
+    setUi({ lyricsGoLive: true });
+    if (hymn && !hymn.deletedAt && cue >= 0 && !hymnFromQueue.current && !(onAir && !onAir.blackout && onAir.hymnId === hymn.id && onAir.stanzaIndex === cue)) {
+      showNow(cue);
+    }
+  };
+
+  /** Sends a song's first sung verse out: projected at once, or only staged for Play. */
+  function sendFirst(song: Hymn, place: SetlistPlace | null, mode: OpenMode) {
+    const first = firstSungStanza(song.stanzas);
+    if (mode === 'project') {
+      presentSongStanzaActions({ hymn: song, stanzaIndex: first, setlist: place })?.forEach(dispatch);
+    } else {
+      const frame = setlistStanzaFrame(song, first, place);
+      if (!frame) return;
+      dispatch({ type: 'projector/stage', frame });
+    }
+    setCue(first);
+  }
+
+  /** Opens a setlist row and sends its first sung verse out, now when the song is already open, else once it has loaded. */
+  const openEntry = (index: number, mode: OpenMode) => {
+    const entry = entries[index];
+    setSelected(index);
+    openOnLoad.current = null;
+    if (!entry || entry.deleted || setlistId == null) return;
+    hymnFromQueue.current = false;
+    if (hymn && hymn.id === entry.hymnId) sendFirst(hymn, { id: setlistId, index, count: entries.length }, mode);
+    else openOnLoad.current = { hymnId: entry.hymnId, mode };
+  };
+
+  /** A setlist song double-clicked: in Go Live it is opened and its first sung verse projected. Otherwise it is only opened. */
+  const projectEntry = (index: number) => {
+    if (useUi.getState().lyricsGoLive) openEntry(index, 'project');
+    else setSelected(index);
+  };
+
+  // The stanza on air moved somewhere else (the preview's step keys, a phone, a live edit): the cue follows it, so every view agrees.
+  const onAirHymnId = onAir?.hymnId ?? null;
+  const onAirStanza = onAir?.stanzaIndex ?? null;
+  useEffect(() => {
+    if (onAirHymnId === null || onAirStanza === null || hymn?.id !== onAirHymnId) return;
+    setCue(onAirStanza);
+  }, [onAirHymnId, onAirStanza, hymn?.id]);
+
+  // The setlist song on air is the selected row: on return to Song Lyrics, and when another window moves to the next song. Each on-air
+  // song is applied once, so picking another row to prepare the next song is never snapped back.
+  const onAirSetlistId = onAir?.setlistId ?? null;
+  const onAirSongIndex = onAir?.songIndex ?? null;
+  const syncedSong = useRef<string | null>(null);
+  useEffect(() => {
+    if (onAirSetlistId === null || onAirSongIndex === null || onAirSetlistId !== setlistId) return;
+    // A song opened from the Mass Queue keeps the cue panel.
+    if (focusedId !== null || openedFromQueue.current) return;
+    const key = `${onAirSetlistId}:${onAirSongIndex}:${onAirHymnId}`;
+    if (syncedSong.current === key || entries[onAirSongIndex]?.hymnId !== onAirHymnId) return;
+    syncedSong.current = key;
+    setSelected(onAirSongIndex);
+  }, [onAirSetlistId, onAirSongIndex, onAirHymnId, setlistId, entries, focusedId]);
+
+  // Keyboard: Space or Down steps to the next stanza, Up steps back, 1 to 9 pick a stanza by its pill, and Enter takes the staged
+  // stanza. In Go Live (or for a queue song) each step goes on air; otherwise it is staged. Ignored while typing or while a dialog is open.
   useEffect(() => {
     if (!hymn || modalOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -212,18 +331,24 @@ export function SongLyrics() {
       if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
       if (e.key === ' ' || e.key === 'ArrowDown') {
         e.preventDefault();
-        if (cue + 1 < hymn.stanzas.length) showNow(cue + 1);
+        if (cue + 1 < hymn.stanzas.length) pick(cue + 1);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        if (cue > 0) showNow(cue - 1);
+        if (cue > 0) pick(cue - 1);
       } else if (e.key === 'Enter') {
         e.preventDefault();
         if (cue >= 0) takeLive();
+      } else if (/^[1-9]$/.test(e.key) && !e.repeat) {
+        const index = Number(e.key) - 1;
+        if (index < hymn.stanzas.length) {
+          e.preventDefault();
+          pick(index);
+        }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [hymn, cue, modalOpen]);
+  }, [hymn, cue, modalOpen, goLive, selected, entries, setlistId, focusedId]);
 
   /** Saves a new order. The setlist is re-read afterwards so the list always matches the database. */
   const applyOrder = async (ids: number[]) => {
@@ -336,11 +461,22 @@ export function SongLyrics() {
     }
   };
 
-  const isLive = (index: number) =>
-    hymn !== null &&
-    liveFrame.kind === 'lyrics' &&
-    liveFrame.title === hymn.title &&
-    liveFrame.text === hymn.stanzas[index]?.lyricsText;
+  // Read from the frame's song and stanza position, so two stanzas with the same words are told apart. A blacked-out stanza is not live.
+  const isLive = (index: number) => hymn !== null && onAir !== null && !onAir.blackout && onAir.hymnId === hymn.id && onAir.stanzaIndex === index;
+
+  // The open song's transposition: per setlist and song for a setlist song, per song for one opened from the queue or a file.
+  const keyId = transposeId(focusedId == null ? setlistId : null, hymn?.id ?? 0);
+  const setTranspose = (semitones: number) => {
+    const next = { ...useUi.getState().transpose };
+    const n = clampTranspose(semitones);
+    if (n === 0) delete next[keyId];
+    else next[keyId] = n;
+    setUi({ transpose: next });
+  };
+
+  /** Whether a setlist row is the song on air: by its place in this setlist when it was sent from here, else by the song. */
+  const rowOnAir = (entry: SetlistEntry, index: number) =>
+    onAir !== null && onAir.hymnId === entry.hymnId && (onAir.setlistId === setlistId ? onAir.songIndex === index : onAir.setlistId === null);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -451,14 +587,41 @@ export function SongLyrics() {
               <ListMusic size={16} aria-hidden />
               <span className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('setlistTitle')}</span>
               {setlistId != null && <span className="rounded-full bg-fg/10 px-2 py-px font-mono text-[10px] font-bold text-fg/70 tabular-nums">{entries.length}</span>}
+              {goLive ? (
+                <button
+                  type="button"
+                  onClick={toggleGoLive}
+                  aria-pressed
+                  title={liveFromSetlist ? t('onAirHint') : t('armedHint')}
+                  className="ml-auto flex h-8 items-center gap-1.5 rounded-md border border-danger bg-danger px-2.5 text-[11px] font-extrabold tracking-wider text-white uppercase shadow-md transition hover:brightness-110"
+                >
+                  <span aria-hidden className={`size-2 rounded-full bg-white ${liveFromSetlist ? 'animate-pulse' : 'opacity-70'}`} />
+                  {t('onAir')}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={toggleGoLive}
+                  aria-pressed={false}
+                  title={t('goLiveHint')}
+                  className="ml-auto flex h-8 items-center gap-1.5 rounded-md border border-ok bg-ok px-2.5 text-[11px] font-extrabold tracking-wider text-canvas uppercase shadow-md transition hover:brightness-110"
+                >
+                  <Play size={12} fill="currentColor" aria-hidden /> {t('goLive')}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setNewSetlist((open) => !open)}
-                className="ml-auto h-8 rounded-md border border-fg/15 bg-panel-2 px-2.5 text-[11px] font-semibold tracking-wide uppercase transition hover:bg-fg/10"
+                className="h-8 rounded-md border border-fg/15 bg-panel-2 px-2.5 text-[11px] font-semibold tracking-wide uppercase transition hover:bg-fg/10"
               >
                 {newSetlist ? t('cancel') : t('newSetlist')}
               </button>
             </div>
+            {goLive && (
+              <p role="status" className={`text-[11px] ${projectorOn ? 'text-fg/70' : 'text-warn'}`}>
+                {projectorOn ? (liveFromSetlist ? t('onAirHint') : t('armedHint')) : t('projectorOffWarn')}
+              </p>
+            )}
 
             {setlists.length > 0 ? (
               <div className="flex gap-2">
@@ -478,6 +641,32 @@ export function SongLyrics() {
               </div>
             ) : (
               !newSetlist && <p className="text-sm text-muted">{t('setlistEmpty')}</p>
+            )}
+
+            {/* The in-setlist filter: rows keep their own numbers. Enter opens the first match and stages its first verse; Esc clears. */}
+            {setlistId != null && entries.length > 0 && (
+              <label className="relative">
+                <Search size={13} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted" aria-hidden />
+                <input
+                  type="search"
+                  value={setlistQuery}
+                  onChange={(e) => setSetlistQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const first = shownEntries.find((row) => !row.entry.deleted);
+                      if (first && setlistQuery.trim()) openEntry(first.index, 'stage');
+                    } else if (e.key === 'Escape' && setlistQuery) {
+                      e.preventDefault();
+                      setSetlistQuery('');
+                    }
+                  }}
+                  placeholder={t('filterSetlist')}
+                  aria-label={t('filterSetlist')}
+                  title={t('filterSetlistHint')}
+                  className="h-8 w-full rounded-md border border-fg/15 bg-panel-2 pr-3 pl-8 text-xs outline-none focus:border-accent"
+                />
+              </label>
             )}
 
             {newSetlist && (
@@ -510,7 +699,9 @@ export function SongLyrics() {
           {setlistId != null && (
             <ol className="min-h-0 flex-1 overflow-y-auto p-2" onDragLeave={() => setDropAt(null)}>
               {entries.length === 0 && <li className="grid min-h-40 place-items-center rounded-[10px] border-2 border-dashed border-fg/20 p-6 text-center text-sm text-fg/60">{t('dropHere')}</li>}
-              {entries.map((entry, i) => (
+              {entries.length > 0 && shownEntries.length === 0 && <li className="p-4 text-center text-sm text-fg/60">{t('noSetlistMatch')}</li>}
+              {/* `i` is the row's place in the whole setlist, so a filtered row keeps its number and drops land in the right slot. */}
+              {shownEntries.map(({ entry, index: i }) => (
                 <li
                   key={`${entry.position}-${entry.hymnId}`}
                   draggable
@@ -527,10 +718,28 @@ export function SongLyrics() {
                   }}
                   className={`group flex items-center gap-2 rounded-lg border-t-2 border-l-[3px] px-2 py-2 transition ${
                     dropAt === i ? 'border-t-accent' : 'border-t-transparent'
-                  } ${selected === i ? 'border-l-accent bg-gradient-to-r from-accent/20 to-accent/5' : 'border-l-transparent hover:bg-fg/[0.06]'}`}
+                  } ${
+                    goLive && rowOnAir(entry, i)
+                      ? 'border-l-danger bg-gradient-to-r from-danger/20 to-danger/5 ring-1 ring-danger/50'
+                      : selected === i
+                        ? 'border-l-accent bg-gradient-to-r from-accent/20 to-accent/5'
+                        : 'border-l-transparent hover:bg-fg/[0.06]'
+                  }`}
                 >
-                  <span className="w-6 shrink-0 text-center font-mono text-xs text-fg/50">{onAirTitle === entry.title ? <span className="mx-auto block size-2 animate-pulse rounded-full bg-ok" title={t('live')} /> : i + 1}</span>
-                  <button type="button" onClick={() => setSelected(i)} className="min-w-0 flex-1 text-left" aria-current={selected === i}>
+                  <span aria-hidden title={t('dragHandle')} className="-mr-1 shrink-0 cursor-grab text-fg/35 transition group-hover:text-fg/70 active:cursor-grabbing">
+                    <GripVertical size={14} />
+                  </span>
+                  <span className="w-6 shrink-0 text-center font-mono text-xs text-fg/50">
+                    {rowOnAir(entry, i) ? <span className={`mx-auto block size-2 animate-pulse rounded-full ${goLive ? 'bg-danger' : 'bg-ok'}`} title={t('live')} /> : i + 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(i)}
+                    onDoubleClick={() => projectEntry(i)}
+                    title={goLive ? t('dblProjectHint') : undefined}
+                    className="min-w-0 flex-1 text-left"
+                    aria-current={selected === i}
+                  >
                     <div className={`truncate text-sm font-semibold ${selected === i ? 'text-accent' : 'text-fg'}`}>{entry.title}</div>
                     {entry.deleted && <div className="text-[11px] text-danger">{t('deletedHymnStatus')}</div>}
                     <div className="truncate text-[11px] text-muted">{[entry.composer, t(`cat_${entry.category}`)].filter(Boolean).join(' · ')}</div>
@@ -571,29 +780,50 @@ export function SongLyrics() {
             {hymn ? (
               <>
                 <h2 className="mt-1 text-2xl font-bold tracking-tight">{hymn.title}</h2>
-                <p className="text-xs text-muted">{[hymn.composer, hymn.musicalKey, t(`cat_${hymn.category}`), t(`lang_${hymn.language}`)].filter(Boolean).join(' · ')}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                  <KeyStepper musicalKey={hymn.musicalKey} semitones={transpose[keyId] ?? 0} onChange={setTranspose} t={t} />
+                  <span>{[hymn.composer, t(`cat_${hymn.category}`), t(`lang_${hymn.language}`)].filter(Boolean).join(' · ')}</span>
+                </div>
               </>
             ) : (
               <h2 className="mt-1 text-2xl font-bold tracking-tight text-muted">{t('noHymn')}</h2>
             )}
           </div>
 
+          {/* Blackout, Clear text and the Lower 3rd: always at hand, with their keys while Go Live is armed. */}
+          <LiveQuickControls hymn={hymn} keys={goLive && !modalOpen} t={t} />
+
           {hymn ? (
             <>
-              {/* Section pills: one press takes a whole section live. */}
-              <div role="toolbar" aria-label="Sections" className="flex shrink-0 flex-wrap gap-1.5 border-b border-line p-3">
+              {!direct && <p className="shrink-0 border-b border-line bg-fg/[0.03] px-3 py-2 text-[11px] text-muted">{t('stageMode')}</p>}
+              {/* Section pills: in Go Live one press takes a whole section live; otherwise it is staged. Keys 1 to 9 press them too, and
+                  each of the first nine wears its number. */}
+              <div role="toolbar" aria-label="Sections" className="flex shrink-0 flex-wrap gap-x-3 gap-y-2.5 border-b border-line px-3 pt-4 pb-3">
                 {hymn.stanzas.map((stanza, i) => (
                   <button
                     key={stanza.id}
                     type="button"
-                    onClick={() => showNow(i)}
-                    aria-label={`Take live: ${stanza.stanzaType}`}
-                    title={stanza.stanzaType}
-                    className={`rounded-full border px-2.5 py-1 font-mono text-[11px] font-bold transition-colors ${SECTION_TONE[sectionKind(stanza.stanzaType)]} ${
-                      isLive(i) ? 'ring-2 ring-accent' : ''
+                    onClick={() => pick(i)}
+                    aria-label={`${direct ? 'Take live' : 'Stage'}: ${stanza.stanzaType}`}
+                    aria-keyshortcuts={i < 9 ? String(i + 1) : undefined}
+                    title={i < 9 ? `${stanza.stanzaType} (${i + 1})` : stanza.stanzaType}
+                    className={`relative rounded-full border px-2.5 py-1 font-mono text-[11px] font-bold transition-colors ${SECTION_TONE[sectionKind(stanza.stanzaType)]} ${
+                      isLive(i) ? 'ring-2 ring-accent' : cue === i ? 'ring-2 ring-fg/40' : ''
                     }`}
                   >
                     {sectionPill(stanza.stanzaType)}
+                    {/* The hotkey badge sits on a solid canvas disc, so it reads over every chip colour, live, selected or not. */}
+                    {i < 9 && (
+                      <span
+                        aria-hidden
+                        data-hotkey-badge
+                        className={`pointer-events-none absolute -top-2 -right-2 grid size-4 place-items-center rounded-full border bg-canvas font-mono text-[9px] leading-none font-bold tabular-nums shadow-sm ${
+                          isLive(i) ? 'border-accent text-accent' : cue === i ? 'border-fg/50 text-fg' : 'border-fg/25 text-fg/60'
+                        }`}
+                      >
+                        {i + 1}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -642,7 +872,7 @@ export function SongLyrics() {
                     <li key={stanza.id} className="mb-2">
                       <button
                         type="button"
-                        onClick={() => showNow(i)}
+                        onClick={() => pick(i)}
                         aria-pressed={live}
                         aria-current={selected ? 'true' : undefined}
                         className={`w-full rounded-lg border p-4 text-left transition ${
@@ -670,7 +900,7 @@ export function SongLyrics() {
               <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-t border-line px-4 py-3">
                 <p className="min-w-[15rem] flex-1 text-xs text-muted">
                   <span className="kbd">Space</span> / <span className="kbd">↓</span> {t('hintNext')} ·<span className="kbd">↑</span> {t('hintPrev')} ·{' '}
-                  <span className="kbd">Enter</span> {tAnn('play')}
+                  <span className="kbd">1</span>–<span className="kbd">9</span> {t('hintStanzaKeys')} · <span className="kbd">Enter</span> {tAnn('play')}
                 </p>
                 <button
                   type="button"

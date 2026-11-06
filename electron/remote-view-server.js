@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { Readable } from 'node:stream';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -14,6 +15,10 @@ const PIN_PAUSE_MS = 60_000;
 const HEARTBEAT_MS = 15_000;
 /** A PIN or a control request is a few bytes. Anything bigger is dropped without reading the rest. */
 const MAX_BODY = 1024;
+/** A user agent is kept for the operator's device list only, and cut to this length. */
+const MAX_USER_AGENT = 200;
+/** The WiFi name lookup runs a system command. It is given this long, then the network is shown without a name. */
+const SSID_TIMEOUT_MS = 2000;
 
 // Private network ranges only. A public address must never be served, so the page cannot leave the local network.
 const PRIVATE_IPV4 = [/^192\.168\./, /^10\./, /^172\.(1[6-9]|2\d|3[01])\./];
@@ -84,9 +89,70 @@ export function pickLocalAddress(entries) {
   return found.find((ip) => ip.startsWith('192.168.')) ?? found[0] ?? null;
 }
 
+const interfaceEntries = () => Object.entries(os.networkInterfaces()).flatMap(([name, list]) => (list ?? []).map((info) => ({ name, ...info })));
+
 export function localNetworkAddress() {
-  const entries = Object.entries(os.networkInterfaces()).flatMap(([name, list]) => (list ?? []).map((info) => ({ name, ...info })));
-  return pickLocalAddress(entries);
+  return pickLocalAddress(interfaceEntries());
+}
+
+/** The name of the adapter that has `address`, for example "Wi-Fi", "Ethernet" or "en0". Null when no adapter has it. */
+export function adapterFor(entries, address) {
+  return entries.find((e) => e.address === address)?.name ?? null;
+}
+
+// Adapter names a cable connection goes by. Such an adapter has no WiFi name.
+const WIRED_ADAPTER = /ethernet|^eth\d|^enp|^eno|^ens|local area connection/i;
+
+/**
+ * The WiFi adapters in the output of `netsh wlan show interfaces` (Windows), as `{ name, ssid }`. The SSID is null when an adapter is not
+ * connected. The "BSSID" line is a different value and is skipped.
+ */
+export function parseNetshInterfaces(text) {
+  const adapters = [];
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    const match = /^\s*([^:]+?)\s*:\s?(.*)$/.exec(line);
+    if (!match) continue;
+    const [, key, value] = match;
+    if (/^name$/i.test(key)) adapters.push({ name: value.trim(), ssid: null });
+    else if (/^ssid$/i.test(key) && adapters.length) adapters[adapters.length - 1].ssid = value.trim() || null;
+  }
+  return adapters;
+}
+
+/** The WiFi name in the output of `networksetup -getairportnetwork <device>` (macOS). Null when not on WiFi. */
+export function parseAirportNetwork(text) {
+  const match = /^Current Wi-Fi Network:[ \t]*(.+)$/m.exec(String(text ?? ''));
+  return match ? match[1].trim() || null : null;
+}
+
+/** Runs a system command and resolves with what it printed, or null when it failed or took too long. */
+function run(command, args) {
+  return new Promise((resolve) => {
+    execFile(command, args, { timeout: SSID_TIMEOUT_MS, windowsHide: true }, (err, stdout) => resolve(err ? null : String(stdout)));
+  });
+}
+
+/** The WiFi name `adapter` is connected to, read from the system. Null when it is not WiFi or the name cannot be read. */
+export async function wifiName(adapter, platform = process.platform, exec = run) {
+  if (!adapter || WIRED_ADAPTER.test(adapter)) return null;
+  if (platform === 'win32') {
+    const adapters = parseNetshInterfaces(await exec('netsh', ['wlan', 'show', 'interfaces']));
+    return adapters.find((a) => a.name === adapter)?.ssid ?? null;
+  }
+  if (platform === 'darwin') return parseAirportNetwork(await exec('networksetup', ['-getairportnetwork', adapter]));
+  if (platform === 'linux') return (await exec('iwgetid', ['-r', adapter]))?.trim() || null;
+  return null;
+}
+
+/**
+ * The network phones join to reach `address`: `wifi` with its name, the Windows laptop `hotspot` (its 192.168.137.x range), a `wired` or
+ * unnamed local network, or `none` when there is no address.
+ */
+export async function networkInfo(address, { entries = interfaceEntries(), platform = process.platform, exec = run } = {}) {
+  if (!address) return { kind: 'none', ssid: null, ip: null };
+  if (address.startsWith('192.168.137.')) return { kind: 'hotspot', ssid: null, ip: address };
+  const ssid = await wifiName(adapterFor(entries, address), platform, exec);
+  return { kind: ssid ? 'wifi' : 'wired', ssid, ip: address };
 }
 
 /** A short name for the phone, from its browser's user agent. It is shown in the activity list only. */
@@ -115,12 +181,16 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
   let lastScreen = null;
   let heartbeat = null;
   const streams = new Set();
-  const sessions = new Set();
+  // Unlocked sessions: the cookie token, and the address it was given to, so a disconnected phone's session can be ended.
+  const sessions = new Map();
+  // Addresses the operator disconnected. They are refused until the page restarts.
+  const blocked = new Set();
   const cookieName = `apccmma_remote_${role}`;
   let misses = 0;
   let pausedUntil = 0;
 
   const pinRequired = () => pin !== null;
+  const clientIp = (req) => (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '');
 
   function sessionToken(req) {
     const match = new RegExp(`(?:^|;\\s*)${cookieName}=([0-9a-f]{48})`).exec(req.headers.cookie ?? '');
@@ -169,7 +239,7 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
       if (typeof parsed.pin === 'string' && pinMatches(parsed.pin)) {
         misses = 0;
         const token = crypto.randomBytes(24).toString('hex');
-        sessions.add(token);
+        sessions.set(token, clientIp(req));
         return sendJson(res, 200, { ok: true }, { 'Set-Cookie': `${cookieName}=${token}; Path=/; HttpOnly; SameSite=Strict` });
       }
       misses += 1;
@@ -193,7 +263,8 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
     });
     // The headers go out now, so the phone is connected at once even while the screen has nothing new to send.
     res.flushHeaders();
-    const entry = { res, ip: (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '') };
+    const userAgent = String(req.headers['user-agent'] ?? '').slice(0, MAX_USER_AGENT);
+    const entry = { res, ip: clientIp(req), userAgent, since: Date.now() };
     streams.add(entry);
     if (latest) res.write(`data: ${JSON.stringify(snapshotForRole(latest, role))}\n\n`);
     req.on('close', () => streams.delete(entry));
@@ -210,7 +281,7 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
     }
     readJson(req, res, async (parsed) => {
       if (parsed === null) return sendJson(res, 400, { ok: false, error: 'The request was not understood.' });
-      const device = { ip: (req.socket.remoteAddress ?? '').replace(/^::ffff:/, ''), label: deviceLabel(req.headers['user-agent']) };
+      const device = { ip: clientIp(req), label: deviceLabel(req.headers['user-agent']) };
       let result;
       try {
         result = await onControl(parsed, device);
@@ -340,6 +411,8 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
       res.writeHead(400).end();
       return;
     }
+    // A phone the operator disconnected gets nothing more from this page until it restarts.
+    if (blocked.has(clientIp(req))) return sendJson(res, 403, { ok: false, error: 'This phone was disconnected by the operator.' });
     if (pathname.startsWith('/api/remote/media/')) return media(req, res, pathname);
     // A picture slide (a PowerPoint's slide) for either viewer. Only an Announcements slide id is accepted, never a path.
     if (pathname.startsWith('/api/remote/slide/')) return media(req, res, pathname, { prefix: '/api/remote/slide/', lookup: slideFile, secondaryOnly: false });
@@ -381,6 +454,42 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
     devices: () => new Set([...streams].map((s) => s.ip)).size,
 
     /**
+     * The phones with the page open, one row per address, oldest first: the address, a short device name, the browser's user agent, when
+     * it connected, and how many pages it has open.
+     */
+    clients() {
+      const byIp = new Map();
+      for (const s of streams) {
+        const row = byIp.get(s.ip);
+        if (row) {
+          row.tabs += 1;
+          row.since = Math.min(row.since, s.since);
+        } else {
+          byIp.set(s.ip, { ip: s.ip, label: deviceLabel(s.userAgent), userAgent: s.userAgent, since: s.since, tabs: 1 });
+        }
+      }
+      return [...byIp.values()].sort((a, b) => a.since - b.since);
+    },
+
+    /**
+     * Drops the phone at `ip`: its pages close, its PIN session ends, and it is refused until this page restarts (turned off and on, or a
+     * setting saved). Returns how many pages were closed.
+     */
+    disconnect(ip) {
+      if (typeof ip !== 'string' || !ip) return 0;
+      blocked.add(ip);
+      for (const [token, owner] of sessions) if (owner === ip) sessions.delete(token);
+      let closed = 0;
+      for (const s of [...streams]) {
+        if (s.ip !== ip) continue;
+        streams.delete(s);
+        s.res.end();
+        closed += 1;
+      }
+      return closed;
+    },
+
+    /**
      * Starts the page on `host` (the laptop's network address) and the chosen port. A port that is taken is not moved
      * to another one: the result says so, and the page does not start. Resolves with `{ ok, port }` or
      * `{ ok: false, error }`. Starting again while it runs does nothing.
@@ -419,6 +528,7 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
       for (const s of streams) s.res.end();
       streams.clear();
       sessions.clear();
+      blocked.clear();
       const closing = server;
       server = null;
       bound = null;

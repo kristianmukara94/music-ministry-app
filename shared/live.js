@@ -102,6 +102,8 @@ export function initialLiveState() {
     display: { mode: 'dual', targets: { secondary: { live: false, frame: IDLE, staged: IDLE, layout: 'screen-16x9' } } },
     queue: [],
     queuePlanId: null,
+    // The loaded plan's own choice for slot titles on its slides: true or false, or null to follow the projector setting (showSlotTitle).
+    queueSlotTitle: null,
     queueCursor: -1,
     // Praise & Worship: the session loaded for live use and where the operator is in it. Null when none is loaded.
     pw: null,
@@ -144,6 +146,14 @@ export function outputLookOf(s) {
 }
 
 /** The state with the on-air look in place of the working one. Returns the same state when the two looks are the same. */
+/**
+ * Whether slides show their slot title banner: the loaded Holy Mass plan's own choice when it has one, otherwise the projector setting.
+ */
+export function slotTitleShown(s) {
+  if (s.queuePlanId != null && typeof s.queueSlotTitle === 'boolean') return s.queueSlotTitle;
+  return s.settings?.showSlotTitle !== false;
+}
+
 export function applyLook(s) {
   const look = outputLookOf(s);
   const same =
@@ -396,7 +406,21 @@ function reduce(s, a) {
     case 'queue/set': {
       const samePlan = a.planId != null && a.planId === s.queuePlanId;
       const given = samePlan && Number.isInteger(a.cursor) && a.cursor >= -1 && a.cursor < a.items.length ? a.cursor : null;
-      return { ...s, queue: a.items, queuePlanId: a.planId ?? null, queueCursor: given ?? (samePlan ? s.queueCursor : -1) };
+      // A different plan brings its own slot-title choice, which the operator window reads and sends (queue/slotTitle). Until then, the setting applies.
+      return {
+        ...s,
+        queue: a.items,
+        queuePlanId: a.planId ?? null,
+        queueSlotTitle: samePlan ? (s.queueSlotTitle ?? null) : null,
+        queueCursor: given ?? (samePlan ? s.queueCursor : -1),
+      };
+    }
+
+    // The loaded plan's slot-title choice. Ignored when it is for a plan that is no longer loaded (a slow read that lost a race).
+    case 'queue/slotTitle': {
+      const show = typeof a.show === 'boolean' ? a.show : null;
+      if (a.planId == null || a.planId !== s.queuePlanId || (s.queueSlotTitle ?? null) === show) return s;
+      return { ...s, queueSlotTitle: show };
     }
 
     // The item the operator last opened from the queue. Persisted, so a restart resumes here.

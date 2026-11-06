@@ -8,6 +8,8 @@ import { useUi } from '../state/ui';
 import { LineupRail } from './LineupRail';
 import { Library } from './Library';
 import { SegmentEditor } from './SegmentEditor';
+import { GoLiveTakeover } from './GoLiveTakeover';
+import { useQuickLiveController } from './useQuickLiveController';
 import { createSession, deleteSession, errorText, flushSave, openSession, setPwState, updateSession, usePw } from './store';
 import { usePwT } from './strings';
 
@@ -86,6 +88,9 @@ export function PlanView() {
   const [creating, setCreating] = useState(false);
   const lang = useUi((s) => s.lang);
   const region = useRegion();
+  // Quick Live lives here, above the Library, so its cue song outlasts the Library stepping aside for the focus view.
+  const quick = useQuickLiveController();
+  const focused = usePw((s) => s.isGoLiveFocused) && quick.cue !== null;
 
   if (!session) {
     return (
@@ -102,8 +107,11 @@ export function PlanView() {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Go Live focus: the song's cues take the workspace. Everything below is only hidden, so closing it restores the page as it was. */}
+      {focused && <GoLiveTakeover quick={quick} t={t} />}
+
       {/* Which session: switch, start a new one, or delete this one. */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className={`flex-wrap items-center gap-2 ${focused ? 'hidden' : 'flex'}`}>
         <label className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-fg/60 uppercase">
           {t('session')}
           <select
@@ -139,9 +147,13 @@ export function PlanView() {
           <Trash2 size={16} aria-hidden /> {t('deleteSession')}
         </button>
       </div>
-      {creating && <NewSessionForm onDone={() => setCreating(false)} />}
+      {creating && (
+        <div hidden={focused}>
+          <NewSessionForm onDone={() => setCreating(false)} />
+        </div>
+      )}
 
-      <header className="flex flex-wrap items-start justify-between gap-5">
+      <header className={`flex-wrap items-start justify-between gap-5 ${focused ? 'hidden' : 'flex'}`}>
         <div className="min-w-0">
           <p className="text-sm font-semibold tracking-wider text-accent uppercase">{t('eyebrow_plan')}</p>
           <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{session.name}</h1>
@@ -196,13 +208,13 @@ export function PlanView() {
         Song List on the left, Lineup on the right, the segment editor across the bottom. Narrower than that, everything stacks
         with the Lineup first. Sized by the module's width, not the window's.
       */}
-      <div className="grid grid-cols-1 items-start gap-5 @4xl/pw:grid-cols-2">
+      <div className={`grid-cols-1 items-start gap-5 @4xl/pw:grid-cols-2 ${focused ? 'hidden' : 'grid'}`}>
         <LineupRail />
         <div className="@4xl/pw:col-span-2">
           <SegmentEditor />
         </div>
         <div className="@4xl/pw:order-first">
-          <Library />
+          <Library quick={quick} focused={focused} />
         </div>
       </div>
     </div>

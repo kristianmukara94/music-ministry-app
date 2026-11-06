@@ -35,7 +35,7 @@ export function WelcomeCanvas({ settings, onBackgroundMissing }: { settings: Wel
       style={{ backgroundColor: background.color ?? WELCOME_CANVAS_COLOR, color: settings.textColor }}
     >
       {background.media && <BackgroundMedia media={background.media} onFail={onBackgroundError} />}
-      {background.media && background.shade && settings.welcomeType === 'TEXT' && <BackgroundShade />}
+      {background.media && background.shade && settings.welcomeType === 'TEXT' && <BackgroundShade target="welcome" />}
 
       {settings.welcomeType === 'IMAGE' ? (
         image ? (

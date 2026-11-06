@@ -7,13 +7,13 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { WHITEBOARD_MIGRATIONS, WHITEBOARD_POWERPOINT_MIGRATIONS, WHITEBOARD_FOLDER_MIGRATIONS, WHITEBOARD_RESTORE_MIGRATIONS, WHITEBOARD_LAYER_MIGRATIONS, createWhiteboardService } = await import('./whiteboard.js');
+const { WHITEBOARD_MIGRATIONS, WHITEBOARD_POWERPOINT_MIGRATIONS, WHITEBOARD_FOLDER_MIGRATIONS, WHITEBOARD_RESTORE_MIGRATIONS, WHITEBOARD_LAYER_MIGRATIONS, WHITEBOARD_NOTES_MIGRATIONS, createWhiteboardService } = await import('./whiteboard.js');
 
 function setup(pictures = []) {
   const db = new DatabaseSync(':memory:');
   // Only the part of Announcements the Whiteboard reads: the image slides, and their notes.
   db.exec('CREATE TABLE announcement_slides (id INTEGER PRIMARY KEY, notes TEXT)');
-  for (const sql of [...WHITEBOARD_MIGRATIONS, ...WHITEBOARD_POWERPOINT_MIGRATIONS, ...WHITEBOARD_FOLDER_MIGRATIONS, ...WHITEBOARD_RESTORE_MIGRATIONS, ...WHITEBOARD_LAYER_MIGRATIONS]) db.exec(sql);
+  for (const sql of [...WHITEBOARD_MIGRATIONS, ...WHITEBOARD_POWERPOINT_MIGRATIONS, ...WHITEBOARD_FOLDER_MIGRATIONS, ...WHITEBOARD_RESTORE_MIGRATIONS, ...WHITEBOARD_LAYER_MIGRATIONS, ...WHITEBOARD_NOTES_MIGRATIONS]) db.exec(sql);
   for (const p of pictures) db.prepare('INSERT INTO announcement_slides (id) VALUES (?)').run(p.id);
   // node:sqlite has no .transaction(); the service only needs it to group writes.
   db.transaction = (fn) => () => fn();
@@ -68,6 +68,23 @@ test('slides move between folders and back to Unfiled', () => {
   assert.throws(() => service.moveSlides([two.id], 999), /no longer exists/);
 });
 
+test('moving the selection files every picked slide in one step and counts only slides that still exist', () => {
+  const { service } = setup();
+  const pr = service.createFolder('PR');
+  const one = service.save(text('One'));
+  const two = service.save(text('Two'));
+  const three = service.save(text('Three'));
+  assert.equal(service.moveSelectedToFolder({ slideIds: [one.id, two.id, two.id, 9999], targetFolderId: pr.id }), 2);
+  assert.deepEqual([one, two, three].map((s) => service.get(s.id).folderId), [pr.id, pr.id, null]);
+  // A null target is Unfiled.
+  assert.equal(service.moveSelectedToFolder({ slideIds: [one.id], targetFolderId: null }), 1);
+  assert.equal(service.get(one.id).folderId, null);
+  // A folder that is gone moves nothing.
+  assert.throws(() => service.moveSelectedToFolder({ slideIds: [two.id, three.id], targetFolderId: 999 }), /no longer exists/);
+  assert.deepEqual([two, three].map((s) => service.get(s.id).folderId), [pr.id, null]);
+  assert.equal(service.moveSelectedToFolder({ slideIds: [], targetFolderId: pr.id }), 0);
+});
+
 test('deleting a folder keeps its slides, which become Unfiled', () => {
   const { service } = setup();
   const folder = service.createFolder('Old');
@@ -95,4 +112,20 @@ test('a slide whose picture was deleted is not counted in its folder', async () 
   await service.importFile('deck.pptx', folder.id);
   db.prepare('DELETE FROM announcement_slides WHERE id = 7').run();
   assert.equal(service.listFolders()[0].count, 1);
+});
+
+test('Clear Unfiled deletes every Unfiled slide and keeps slides in folders', () => {
+  const { db, service } = setup();
+  const folder = service.createFolder('Keep');
+  const kept = service.save(text('In folder', folder.id));
+  service.save(text('Loose one'));
+  service.save(text('Loose two'));
+  // An Unfiled picture slide whose Announcements image is gone is hidden: it is cleared too, but not counted.
+  db.prepare("INSERT INTO whiteboard_slides (title, slide_id) VALUES ('Orphan', 999)").run();
+  assert.equal(service.clearUnfiled(), 2);
+  assert.deepEqual(service.list().map((s) => s.id), [kept.id]);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM whiteboard_slides WHERE folder_id IS NULL').get().n, 0);
+  assert.equal(service.listFolders()[0].count, 1);
+  // Nothing left to clear.
+  assert.equal(service.clearUnfiled(), 0);
 });

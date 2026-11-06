@@ -11,7 +11,7 @@ import { clickTick } from '../../shared/library-ticks.js';
 import { usePwT } from './strings';
 import { LibrarySearchContainer, type LibrarySearchHandle } from './LibrarySearchContainer';
 import type { LibraryRow as Row } from './SongSearchResultCard';
-import { useQuickLiveController } from './useQuickLiveController';
+import type { QuickLive } from './useQuickLiveController';
 import { QuickCuePanel } from './QuickCuePanel';
 
 type LibTab = 'song' | 'prayer' | 'scripture';
@@ -43,7 +43,7 @@ function onTabKey(e: KeyboardEvent, current: LibTab, set: (tab: LibTab) => void)
   document.getElementById(`pw-lib-tab-${next}`)?.focus();
 }
 
-export function Library() {
+export function Library({ quick, focused = false }: { quick: QuickLive; focused?: boolean }) {
   const t = usePwT();
   const session = usePw((s) => s.session)!;
   const selected = usePw((s) => s.selected);
@@ -65,7 +65,6 @@ export function Library() {
   const [addNote, setAddNote] = useState<string | null>(null);
   const results = useRef<LibrarySearchHandle>(null);
   const searchInput = useRef<HTMLInputElement>(null);
-  const quick = useQuickLiveController();
 
   // The tab follows the selected segment's type, so Add is ready for it.
   useEffect(() => {
@@ -256,7 +255,7 @@ export function Library() {
           onScope={filter.setScope}
           songCategory={filter.songCategory}
           onSongCategory={filter.setSongCategory}
-          names={filter.categories.map((c) => c.name)}
+          categories={filter.categories}
         />
       )}
       <p id="pw-lib-keys" className="sr-only">{t('resultKeys')}</p>
@@ -309,7 +308,8 @@ export function Library() {
         onActivate={activate}
         onCardClick={handleCardClick}
       />
-      <QuickCuePanel quick={quick} t={t} />
+      {/* In the Go Live focus view the cues are drawn in the takeover instead, so they are never mounted twice. */}
+      {!focused && <QuickCuePanel quick={quick} t={t} />}
       {quick.toast && <p role="status" className="px-1 text-sm font-semibold text-ok">{quick.toast}</p>}
       {quick.offPlan.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 px-1">

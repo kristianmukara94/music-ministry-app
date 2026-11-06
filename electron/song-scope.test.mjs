@@ -9,7 +9,7 @@ register(new URL('./test-support/electron-hook.mjs', import.meta.url));
 const { HYMN_DELETE_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS, createLyricsService } = await import('./lyrics.js');
 const { MASS_PLAN_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_LANGUAGE_MIGRATIONS, PLAN_NOTES_MIGRATIONS } = await import('./mass-plans.js');
 const { PW_MIGRATIONS } = await import('./pw-sessions.js');
-const { SONG_CATEGORY_MIGRATIONS, SONG_SCOPE_MIGRATIONS, createSongCategoryService } = await import('./song-categories.js');
+const { SONG_CATEGORY_MIGRATIONS, SONG_CATEGORY_MODE_MIGRATIONS, SONG_SCOPE_MIGRATIONS, createSongCategoryService } = await import('./song-categories.js');
 const { TRANSFER_MIGRATIONS } = await import('./transfer.js');
 const { PLAN_SYNC_MIGRATIONS } = await import('./plan-sync-schema.js');
 const { THEME_NAMES } = await import('../shared/song-taxonomy.js');
@@ -39,7 +39,7 @@ const HYMN = { title: 'A song', composer: '', category: 'General', language: 'EN
 
 function setup() {
   const db = open();
-  for (const sql of [...BEFORE_SCOPE, ...SONG_SCOPE_MIGRATIONS, ...AFTER_SCOPE]) db.exec(sql);
+  for (const sql of [...BEFORE_SCOPE, ...SONG_SCOPE_MIGRATIONS, ...SONG_CATEGORY_MODE_MIGRATIONS, ...AFTER_SCOPE]) db.exec(sql);
   return { db, service: createLyricsService(db) };
 }
 
@@ -65,7 +65,8 @@ test('the migration adds the themes to the category list once, after the existin
   for (const sql of BEFORE_SCOPE) db.exec(sql);
   const before = db.prepare('SELECT COUNT(*) AS n, MAX(position) AS top FROM song_categories').get();
   // An operator who already made "marian song" keeps theirs, in their own spelling.
-  createSongCategoryService(db).createSongCategory({ name: 'marian song' });
+  // Inserted directly: at this point in the migration history the list has no target_mode column for the service to write.
+  db.prepare("INSERT INTO song_categories (name, position) VALUES ('marian song', (SELECT MAX(position) + 1 FROM song_categories))").run();
   for (const sql of SONG_SCOPE_MIGRATIONS) db.exec(sql);
   const names = db.prepare('SELECT name FROM song_categories ORDER BY position').all().map((r) => r.name);
   for (const theme of THEME_NAMES) assert.equal(names.filter((n) => n.toLowerCase() === theme.toLowerCase()).length, 1, theme);

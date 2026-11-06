@@ -58,7 +58,7 @@ export function PwSlideFace({
   // The picture or video covers the slide, then the shade sits behind the text area, then the text is drawn on top (later in the page).
   // The picture or video is not drawn here: it is one layer the surface keeps mounted across slides (see SlideBackgroundLayer), under
   // this slide. So the slide's root is transparent when there is one, and only the shade and the text are drawn on top of it.
-  const layers = background?.shade && background.media ? <BackgroundShade area={textAreaStyle()} /> : null;
+  const layers = background?.shade && background.media ? <BackgroundShade area={textAreaStyle()} target="slide" /> : null;
   // The slide canvas clips everything: no text or child can draw outside the 16:9 frame.
   const rootClass = background?.media ? 'absolute inset-0 overflow-hidden text-fg' : 'absolute inset-0 overflow-hidden bg-canvas text-fg';
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, Check, Play } from 'lucide-react';
+import { AlertTriangle, Check, Maximize2, Play, X } from 'lucide-react';
 import { livePosition, readiness, runtimeOf, segmentStatus, step } from '../../shared/pw.js';
 import { blackoutOverPw, welcomeOverPw } from '../../shared/live.js';
 import { dispatch, useLive } from '../live/store';
@@ -17,7 +17,10 @@ import { SlideTypography } from './SlideTypography';
 import { SecondaryControls } from './SecondaryControls';
 import { LineupHotEdit } from './LineupHotEdit';
 import { LiveStageCanvas, type StageChipGroup } from '../components/LiveStageCanvas';
+import { subIndexChip } from '../../shared/stage-chips.js';
+import { DetachMonitorButton } from '../components/DetachMonitorButton';
 import { setPwState, usePw } from './store';
+import { setGoLiveFocused, useFocusEscape } from './useGoLiveFocus';
 import { usePwT, type PwT } from './strings';
 import type { PwSession } from './types';
 
@@ -49,11 +52,14 @@ export function clock(ms: number) {
   return h ? `${String(h).padStart(2, '0')}:${mmss}` : mmss;
 }
 
-/** The chip for one step in Jump to section. */
+/** The chip for one step in Jump to section. A stanza over several slides is V1.1, V1.2; a title card and the black step take no number key. */
 function stepChip(s: LiveStep, t: PwT) {
-  if (s.kind === 'black') return { label: '■', name: t('blackStep') };
-  if (s.slide.kind === 'lyrics') return { label: s.slide.chip, name: s.slide.label };
-  if (s.slide.kind === 'title') return { label: 'T', name: t('titleChip') };
+  if (s.kind === 'black') return { label: '■', name: t('blackStep'), hotkey: false };
+  if (s.slide.kind === 'lyrics') {
+    const { chip, part = 0, parts = 1, label } = s.slide;
+    return { label: subIndexChip(chip, part, parts), name: parts > 1 ? `${label} (${part + 1}/${parts})` : label };
+  }
+  if (s.slide.kind === 'title') return { label: 'T', name: t('titleChip'), hotkey: false };
   return { label: String(s.index + 1), name: s.slide.label };
 }
 
@@ -128,6 +134,9 @@ export function LiveView() {
   usePw((s) => s.day);
   const live = useLive((s) => s.state);
   const now = useNow().getTime();
+  // The focus view counts only while this session is live: there is nothing to focus on before Go Live.
+  const focused = usePw((s) => s.isGoLiveFocused) && Boolean(session && live.pw?.sessionId === session.id);
+  useFocusEscape(focused);
   if (!session) return <p className="rounded-[10px] border border-line bg-panel p-6 text-muted">{t('noSessions')}</p>;
 
   const pw = live.pw?.sessionId === session.id ? live.pw : null;
@@ -135,7 +144,14 @@ export function LiveView() {
     return (
       <div className="flex flex-col items-start gap-4 rounded-[10px] border border-line bg-panel p-6">
         <p className="text-muted">{t('notLive')}</p>
-        <button type="button" className={BTN_ACCENT} onClick={goLive}>
+        <button
+          type="button"
+          className={BTN_ACCENT}
+          onClick={() => {
+            setGoLiveFocused(true);
+            goLive();
+          }}
+        >
           <Play size={18} aria-hidden fill="currentColor" /> {t('goLive')}
         </button>
       </div>
@@ -195,6 +211,23 @@ export function LiveView() {
           <button type="button" className={`${BTN} hover:!border-danger/60 hover:!text-danger`} onClick={() => window.confirm(t('confirmEnd')) && endSession()}>
             {t('endSession')}
           </button>
+          {focused ? (
+            // Closes the focus view only: the lineup comes back, and the projector keeps what it shows.
+            <button
+              type="button"
+              onClick={() => setGoLiveFocused(false)}
+              aria-label={t('leaveFocus')}
+              title={t('leaveFocusTip')}
+              aria-keyshortcuts="Escape"
+              className="grid size-9 shrink-0 place-items-center rounded-md border border-fg/25 bg-panel-2 text-fg transition hover:border-accent hover:text-accent focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none"
+            >
+              <X size={18} aria-hidden />
+            </button>
+          ) : (
+            <button type="button" className={BTN} onClick={() => setGoLiveFocused(true)} title={t('focusViewTip')}>
+              <Maximize2 size={15} aria-hidden /> {t('focusView')}
+            </button>
+          )}
         </div>
       </div>
 
@@ -208,8 +241,15 @@ export function LiveView() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 items-start gap-5 @4xl/pw:grid-cols-[minmax(240px,300px)_minmax(0,1fr)] @6xl/pw:grid-cols-[minmax(240px,300px)_minmax(0,1fr)_minmax(260px,320px)]">
-        <LiveLineup session={session} segment={segmentIndex} />
+      {/* In the focus view the lineup steps aside and the stage takes its room; Back and Next on the stage still walk the lineup. */}
+      <div
+        className={`grid grid-cols-1 items-start gap-5 ${
+          focused
+            ? '@4xl/pw:grid-cols-[minmax(0,1fr)_minmax(260px,340px)]'
+            : '@4xl/pw:grid-cols-[minmax(240px,300px)_minmax(0,1fr)] @6xl/pw:grid-cols-[minmax(240px,300px)_minmax(0,1fr)_minmax(260px,320px)]'
+        }`}
+      >
+        {!focused && <LiveLineup session={session} segment={segmentIndex} />}
 
         {segment && (
           <section aria-labelledby="pw-live-title" className="flex min-w-0 flex-col gap-4 rounded-[10px] border border-line bg-panel p-5">
@@ -235,7 +275,7 @@ export function LiveView() {
                   <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-accent px-4 py-3 text-accent">
                     <AlertTriangle size={18} aria-hidden />
                     <span className="flex-1">{t('noSongBanner')}</span>
-                    <button type="button" className="min-h-11 font-semibold underline underline-offset-2" onClick={() => setPwState({ tab: 'plan', selected: segmentIndex })}>
+                    <button type="button" className="min-h-11 font-semibold underline underline-offset-2" onClick={() => setPwState({ tab: 'plan', selected: segmentIndex, isGoLiveFocused: false })}>
                       {t('fixInPlanner')}
                     </button>
                   </div>
@@ -282,9 +322,12 @@ export function LiveView() {
           </section>
         )}
 
-        <div className="flex min-w-0 flex-col gap-5 @4xl/pw:col-span-2 @6xl/pw:col-span-1">
+        <div className={`flex min-w-0 flex-col gap-5 ${focused ? '' : '@4xl/pw:col-span-2 @6xl/pw:col-span-1'}`}>
           <section aria-labelledby="pw-outputs" className="flex flex-col gap-3 rounded-[10px] border border-line bg-panel p-4">
-            <h2 id="pw-outputs" className="text-lg font-bold">{t('outputs')}</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 id="pw-outputs" className="text-lg font-bold">{t('outputs')}</h2>
+              <DetachMonitorButton />
+            </div>
             <span className="text-sm text-muted">{t('congregation')}</span>
             <div className="relative aspect-video overflow-hidden rounded-lg border border-line">
               <ProjectorView mirror embedded />
@@ -319,7 +362,7 @@ export function LiveView() {
             <h2 id="pw-preflight" className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('preflight')}</h2>
             <p>{missingSongs === 0 ? t('preflightOk') : missingSongs === 1 ? t('preflightSongsOne') : t('preflightSongs', { n: missingSongs })}</p>
             {missingSongs > 0 && (
-              <button type="button" className="min-h-11 self-start font-semibold text-accent underline underline-offset-2" onClick={() => setPwState({ tab: 'plan' })}>
+              <button type="button" className="min-h-11 self-start font-semibold text-accent underline underline-offset-2" onClick={() => setPwState({ tab: 'plan', isGoLiveFocused: false })}>
                 {t('fixInPlanner')}
               </button>
             )}

@@ -8,7 +8,10 @@ import {
   MASS_PART_NAMES,
   PRIMARY_CATEGORIES,
   THEME_NAMES,
+  categoryModeLookup,
+  defaultTargetModeOf,
   groupCategories,
+  homeScopeOfCategory,
   normalizePrimary,
   scopesOfCategory,
   scopesShownBy,
@@ -49,6 +52,36 @@ test('the dropdown groups the suggested names first and drops none', () => {
     const g = groupCategories(names, scope);
     assert.equal(g.suggested.length + g.other.length, names.length);
   }
+});
+
+test('a stored target mode decides where an operator\'s category is suggested', () => {
+  const modes = categoryModeLookup([
+    { name: 'Youth Night', targetMode: 'PRAISE_AND_WORSHIP' },
+    { name: 'Psalm Refrain', targetMode: 'HOLY_MASS' },
+    { name: 'Any Time', targetMode: 'ALL' },
+    { name: 'Gloria', targetMode: 'ALL' },
+  ]);
+  assert.equal(suggestedFor('PRAISE_AND_WORSHIP', 'youth night', modes), true, 'letter case does not count');
+  assert.equal(suggestedFor('MASS', 'Youth Night', modes), false);
+  assert.equal(suggestedFor('PRAISE_AND_WORSHIP', 'Psalm Refrain', modes), false);
+  assert.equal(suggestedFor('MASS', 'Psalm Refrain', modes), true);
+  assert.ok(suggestedFor('MASS', 'Any Time', modes) && suggestedFor('PRAISE_AND_WORSHIP', 'Any Time', modes));
+  assert.equal(suggestedFor('PRAISE_AND_WORSHIP', 'Gloria', modes), true, 'the stored mode wins over the shipped one');
+  assert.equal(suggestedFor('GENERAL', 'Youth Night', modes), true, 'General suggests every category');
+  assert.equal(homeScopeOfCategory('Youth Night', modes), 'PRAISE_AND_WORSHIP');
+  assert.equal(homeScopeOfCategory('Psalm Refrain', modes), 'MASS');
+  assert.equal(homeScopeOfCategory('Any Time', modes), 'GENERAL');
+  assert.equal(homeScopeOfCategory('Joyful Song', modes), 'PRAISE_AND_WORSHIP', 'a name not in the lookup keeps the shipped rule');
+  const pw = groupCategories(['Youth Night', 'Psalm Refrain', 'Any Time'], 'PRAISE_AND_WORSHIP', modes);
+  assert.deepEqual(pw, { suggested: ['Youth Night', 'Any Time'], other: ['Psalm Refrain'] });
+});
+
+test('the shipped categories start with the mode their scopes give them', () => {
+  assert.equal(defaultTargetModeOf('Gloria'), 'HOLY_MASS');
+  assert.equal(defaultTargetModeOf('Joyful Song'), 'PRAISE_AND_WORSHIP');
+  assert.equal(defaultTargetModeOf('Thanksgiving Song'), 'ALL');
+  assert.equal(defaultTargetModeOf('Youth Night'), 'ALL');
+  assert.equal(categoryModeLookup([{ name: 'X', targetMode: 'nonsense' }]).get('x'), 'ALL', 'an unknown stored value reads as All');
 });
 
 test('a filter keeps Mass and Praise & Worship apart, lets General songs through, and General shows all', () => {

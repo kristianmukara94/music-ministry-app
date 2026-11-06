@@ -48,6 +48,33 @@ export async function setPlanLanguage(planId: number, language: MassLanguage): P
   languages.set(planId, language);
 }
 
+/** The plan's own choice for slot titles on its slides: true, false, or null to follow the projector setting. Null when it cannot be read. */
+export async function planSlotTitle(planId: number): Promise<boolean | null> {
+  return api.slotTitle(planId).catch(() => null);
+}
+
+/** Saves a plan's slot-title choice, and applies it at once when the plan is the one loaded in the queue. */
+export async function setPlanSlotTitle(planId: number, show: boolean | null): Promise<void> {
+  await api.setSlotTitle(planId, show);
+  if (useLive.getState().state.queuePlanId === planId) dispatch({ type: 'queue/slotTitle', planId, show });
+}
+
+/**
+ * Keeps the live state's slot-title choice in step with the plan loaded in the queue: each time a different plan is loaded, its choice is read
+ * and sent, so the projector shows or hides slot titles as that plan says. Run once in the operator window. Returns the unsubscribe.
+ */
+export function watchPlanSlotTitle(): () => void {
+  let lastPlan: number | null | undefined;
+  const follow = (planId: number | null) => {
+    if (planId === lastPlan) return;
+    lastPlan = planId;
+    if (planId == null) return;
+    void planSlotTitle(planId).then((show) => dispatch({ type: 'queue/slotTitle', planId, show }));
+  };
+  follow(useLive.getState().state.queuePlanId);
+  return useLive.subscribe(({ state }) => follow(state.queuePlanId));
+}
+
 /** Notes a plan's language as read from the database. */
 export function rememberPlanLanguage(planId: number, language: MassLanguage): void {
   languages.set(planId, language);

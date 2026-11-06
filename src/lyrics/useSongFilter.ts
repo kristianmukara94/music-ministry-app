@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { bridge } from '../live/bridge';
-import { EMPTY_CATEGORY_FILTER, suggestedFor, type CategoryFilterState, type PrimaryCategory } from './songTaxonomy';
+import { EMPTY_CATEGORY_FILTER, categoryModeLookup, suggestedFor, type CategoryFilterState, type PrimaryCategory } from './songTaxonomy';
 import type { HymnFilter, HymnLanguage, HymnSummary, SongCategory } from './types';
 
 const SEARCH_DELAY_MS = 150;
@@ -82,9 +82,12 @@ export function useSongFilter({ initial, refreshKey }: UseSongFilterOptions = {}
   const setLanguage = useCallback((language: HymnLanguage | '') => setState((s) => ({ ...s, language })), []);
   const setSongCategory = useCallback((songCategory: string) => setState((s) => ({ ...s, songCategory })), []);
   /** Changes the scope. A song category that does not belong under the new scope is dropped, so the list is never empty for want of a reset. */
+  // The check reads each category's stored target mode, so a Praise & Worship category the operator added is dropped on moving to Holy Mass.
+  const modes = useMemo(() => categoryModeLookup(categories), [categories]);
   const setScope = useCallback(
-    (scope: PrimaryCategory) => setState((s) => ({ ...s, scope, songCategory: s.songCategory && !suggestedFor(scope, s.songCategory) ? '' : s.songCategory })),
-    [],
+    (scope: PrimaryCategory) =>
+      setState((s) => ({ ...s, scope, songCategory: s.songCategory && !suggestedFor(scope, s.songCategory, modes) ? '' : s.songCategory })),
+    [modes],
   );
   /** Clears the filters (scope, song category, language) and leaves the typed search as it is. */
   const clearFilters = useCallback(() => setState((s) => ({ ...s, ...EMPTY_CATEGORY_FILTER, language: '' })), []);

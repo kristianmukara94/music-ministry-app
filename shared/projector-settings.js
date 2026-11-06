@@ -47,6 +47,11 @@ export const PROJECTOR_SETTINGS_DEFAULTS = {
   /** How large slide text is drawn, as a share of its normal size. 1 is the normal size. */
   slideFontScale: 1,
   /**
+   * Whether a slide shows the small banner naming its Holy Mass slot or reading ("FIRST READING", "CONGREGATION RESPONSE") above its text.
+   * A Holy Mass plan can override it for its own Mass (see slotTitleShown in live.js).
+   */
+  showSlotTitle: true,
+  /**
    * The Media Library's background behind every slide, the Live set's slides included, in place of their own Live slide background. A
    * background staged while this is on goes on screen at once. A slide with its own picture still shows its picture.
    */
@@ -59,6 +64,14 @@ export const PROJECTOR_SETTINGS_DEFAULTS = {
   textShadow: 0.6,
   /** Advanced output: the opacity of a thin dark outline around slide text, 0 (none) to 1. */
   textOutline: 0,
+  /**
+   * Auto-legibility: the shade over a background picture or video, and the shadow under slide text, follow how bright and busy the picture
+   * is behind each text zone, so text stays readable (WCAG 4.5:1 and APCA Lc 60; see contrast.js). Off, the shade is manualShade and the
+   * shadow is the fixed one. Advanced mode's shadow and outline, when on, are drawn over either.
+   */
+  autoLegibility: true,
+  /** The shade over a background picture or video when auto-legibility is off, 0 (none) to 1. */
+  manualShade: 0.4,
 };
 
 /** A number from 0 to 1, in steps of 0.05, or the fallback when it is not a number. */
@@ -91,11 +104,14 @@ export function sanitizeProjectorSettings(raw) {
     slideFont: SLIDE_FONTS.includes(p.slideFont) ? p.slideFont : null,
     defaultIntroSlideMode: INTRO_SLIDE_MODES.includes(p.defaultIntroSlideMode) ? p.defaultIntroSlideMode : PROJECTOR_SETTINGS_DEFAULTS.defaultIntroSlideMode,
     slideFontScale: nearestScale(p.slideFontScale),
+    showSlotTitle: typeof p.showSlotTitle === 'boolean' ? p.showSlotTitle : PROJECTOR_SETTINGS_DEFAULTS.showSlotTitle,
     backgroundEverywhere: typeof p.backgroundEverywhere === 'boolean' ? p.backgroundEverywhere : PROJECTOR_SETTINGS_DEFAULTS.backgroundEverywhere,
     advancedOutput: typeof p.advancedOutput === 'boolean' ? p.advancedOutput : PROJECTOR_SETTINGS_DEFAULTS.advancedOutput,
     textColor: normalizeHex(p.textColor),
     textShadow: unit(p.textShadow, PROJECTOR_SETTINGS_DEFAULTS.textShadow),
     textOutline: unit(p.textOutline, PROJECTOR_SETTINGS_DEFAULTS.textOutline),
+    autoLegibility: typeof p.autoLegibility === 'boolean' ? p.autoLegibility : PROJECTOR_SETTINGS_DEFAULTS.autoLegibility,
+    manualShade: unit(p.manualShade, PROJECTOR_SETTINGS_DEFAULTS.manualShade),
   };
 }
 

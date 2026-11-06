@@ -25,7 +25,7 @@ export function SongFilterBar({ filter, t }: { filter: SongFilter; t: LyT }) {
         onScope={filter.setScope}
         songCategory={filter.songCategory}
         onSongCategory={filter.setSongCategory}
-        names={filter.categories.map((c) => c.name)}
+        categories={filter.categories}
       />
       <select value={filter.language} onChange={(e) => filter.setLanguage(e.target.value as HymnLanguage | '')} className={SELECT} aria-label={t('fieldLanguage')}>
         <option value="">{t('allLanguages')}</option>

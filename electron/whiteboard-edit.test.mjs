@@ -7,12 +7,12 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { WHITEBOARD_MIGRATIONS, WHITEBOARD_POWERPOINT_MIGRATIONS, WHITEBOARD_FOLDER_MIGRATIONS, WHITEBOARD_RESTORE_MIGRATIONS, WHITEBOARD_LAYER_MIGRATIONS, createWhiteboardService, validSlideTitle, MAX_SLIDE_TITLE, slideText } = await import('./whiteboard.js');
+const { WHITEBOARD_MIGRATIONS, WHITEBOARD_POWERPOINT_MIGRATIONS, WHITEBOARD_FOLDER_MIGRATIONS, WHITEBOARD_RESTORE_MIGRATIONS, WHITEBOARD_LAYER_MIGRATIONS, WHITEBOARD_NOTES_MIGRATIONS, createWhiteboardService, validSlideTitle, MAX_SLIDE_TITLE, slideText } = await import('./whiteboard.js');
 
 function setup(pictures = []) {
   const db = new DatabaseSync(':memory:');
   db.exec('CREATE TABLE announcement_slides (id INTEGER PRIMARY KEY, notes TEXT)');
-  for (const sql of [...WHITEBOARD_MIGRATIONS, ...WHITEBOARD_POWERPOINT_MIGRATIONS, ...WHITEBOARD_FOLDER_MIGRATIONS, ...WHITEBOARD_RESTORE_MIGRATIONS, ...WHITEBOARD_LAYER_MIGRATIONS]) db.exec(sql);
+  for (const sql of [...WHITEBOARD_MIGRATIONS, ...WHITEBOARD_POWERPOINT_MIGRATIONS, ...WHITEBOARD_FOLDER_MIGRATIONS, ...WHITEBOARD_RESTORE_MIGRATIONS, ...WHITEBOARD_LAYER_MIGRATIONS, ...WHITEBOARD_NOTES_MIGRATIONS]) db.exec(sql);
   for (const p of pictures) db.prepare('INSERT INTO announcement_slides (id, notes) VALUES (?, ?)').run(p.id, null);
   db.transaction = (fn) => () => fn();
   const service = createWhiteboardService(db, { importDeck: async () => pictures });
@@ -77,7 +77,7 @@ test('a PowerPoint slide\'s words become content: its title as a line, then bull
 test('the text of a PowerPoint is kept with its pictures, in slide order, when the counts line up', async () => {
   const db = new DatabaseSync(':memory:');
   db.exec('CREATE TABLE announcement_slides (id INTEGER PRIMARY KEY, notes TEXT)');
-  for (const sql of [...WHITEBOARD_MIGRATIONS, ...WHITEBOARD_POWERPOINT_MIGRATIONS, ...WHITEBOARD_FOLDER_MIGRATIONS, ...WHITEBOARD_RESTORE_MIGRATIONS, ...WHITEBOARD_LAYER_MIGRATIONS]) db.exec(sql);
+  for (const sql of [...WHITEBOARD_MIGRATIONS, ...WHITEBOARD_POWERPOINT_MIGRATIONS, ...WHITEBOARD_FOLDER_MIGRATIONS, ...WHITEBOARD_RESTORE_MIGRATIONS, ...WHITEBOARD_LAYER_MIGRATIONS, ...WHITEBOARD_NOTES_MIGRATIONS]) db.exec(sql);
   for (const id of [7, 8]) db.prepare('INSERT INTO announcement_slides (id) VALUES (?)').run(id);
   db.transaction = (fn) => () => fn();
   const pictures = [{ id: 7, name: 'Deck - Slide 1' }, { id: 8, name: 'Deck - Slide 2' }];
@@ -167,7 +167,7 @@ const BG = (n) => `0000000${n}-0000-4000-8000-000000000000.jpg`;
 function setupLayers(pictures, parts) {
   const db = new DatabaseSync(':memory:');
   db.exec('CREATE TABLE announcement_slides (id INTEGER PRIMARY KEY, notes TEXT)');
-  for (const sql of [...WHITEBOARD_MIGRATIONS, ...WHITEBOARD_POWERPOINT_MIGRATIONS, ...WHITEBOARD_FOLDER_MIGRATIONS, ...WHITEBOARD_RESTORE_MIGRATIONS, ...WHITEBOARD_LAYER_MIGRATIONS]) db.exec(sql);
+  for (const sql of [...WHITEBOARD_MIGRATIONS, ...WHITEBOARD_POWERPOINT_MIGRATIONS, ...WHITEBOARD_FOLDER_MIGRATIONS, ...WHITEBOARD_RESTORE_MIGRATIONS, ...WHITEBOARD_LAYER_MIGRATIONS, ...WHITEBOARD_NOTES_MIGRATIONS]) db.exec(sql);
   for (const p of pictures) db.prepare('INSERT INTO announcement_slides (id, notes) VALUES (?, ?)').run(p.id, null);
   db.transaction = (fn) => () => fn();
   const saved = [];
@@ -259,7 +259,7 @@ test("deleting slides deletes their backgrounds, but never one another slide sti
 function setupOldImport(parts) {
   const db = new DatabaseSync(':memory:');
   db.exec('CREATE TABLE announcement_slides (id INTEGER PRIMARY KEY, notes TEXT, folder_id INTEGER, original_name TEXT, source_name TEXT)');
-  for (const sql of [...WHITEBOARD_MIGRATIONS, ...WHITEBOARD_POWERPOINT_MIGRATIONS, ...WHITEBOARD_FOLDER_MIGRATIONS, ...WHITEBOARD_RESTORE_MIGRATIONS, ...WHITEBOARD_LAYER_MIGRATIONS]) db.exec(sql);
+  for (const sql of [...WHITEBOARD_MIGRATIONS, ...WHITEBOARD_POWERPOINT_MIGRATIONS, ...WHITEBOARD_FOLDER_MIGRATIONS, ...WHITEBOARD_RESTORE_MIGRATIONS, ...WHITEBOARD_LAYER_MIGRATIONS, ...WHITEBOARD_NOTES_MIGRATIONS]) db.exec(sql);
   db.transaction = (fn) => () => fn();
   const add = db.prepare('INSERT INTO announcement_slides (id, folder_id, original_name, source_name) VALUES (?, 1, ?, ?)');
   add.run(7, 'Prayer - Slide 1', 'Prayer.pptx');

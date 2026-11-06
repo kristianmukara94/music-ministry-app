@@ -3,6 +3,7 @@ import { bridge } from '../live/bridge';
 import { useLive } from '../live/store';
 import { SLIDE_FONT_SCALES, SLIDE_FONTS, type ProjectorSettings } from '../../shared/projector-settings.js';
 import { TEXT_FONTS, type TextFontFamily } from '../../shared/text-style.js';
+import { SlotTitleToggle } from '../operator/SlotTitleToggle';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -52,6 +53,7 @@ export function SlideTypography() {
       <button type="button" aria-label="Larger text" onClick={() => step(1)} disabled={index >= SLIDE_FONT_SCALES.length - 1} className={STEP}>
         A+
       </button>
+      <SlotTitleToggle live />
       {error && <span role="alert" className="whitespace-nowrap text-xs text-danger">{error}</span>}
     </div>
   );

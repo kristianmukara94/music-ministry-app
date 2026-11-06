@@ -8,7 +8,9 @@ export type AnnKey =
   | 'textHint' | 'autoPaginate' | 'styleToggle' | 'insertBreak' | 'mergeWithPrevious' | 'uploadBackground'
   | 'changeBackground' | 'removeBackground' | 'preview' | 'prev' | 'next' | 'pageOf' | 'noText'
   | 'saveSequence' | 'dragHint' | 'dialogImport' | 'backgroundDialog' | 'dropHint'
-  | 'notesTitle' | 'notesEmpty' | 'notesNothing'
+  | 'notesTitle' | 'notesEmpty' | 'notesNothing' | 'notesEdit' | 'notesDone' | 'notesPlaceholder' | 'notesSaving' | 'notesSaved'
+  | 'notesSmaller' | 'notesLarger' | 'notesResize'
+  | 'presetMode' | 'presetLoop' | 'presetLoopHint' | 'presetSermon' | 'presetSermonHint'
   | 'slideCount' | 'playback' | 'autoplay' | 'autoplayInterval' | 'secondsUnit' | 'loopDeck' | 'showCount'
   | 'noSlideSelected' | 'firstSlide' | 'nextSlide' | 'startAutoplay' | 'pauseAutoplay' | 'playDeck' | 'pauseDeck'
   | 'clearProjector' | 'keyHint';

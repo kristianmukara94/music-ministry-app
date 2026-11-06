@@ -4,6 +4,7 @@ import { useLive } from '../live/store';
 import { setUi, useUi } from '../state/ui';
 import { ProjectorView } from '../output/ProjectorView';
 import { frameKey, previewBadge } from '../../shared/stage-plan-row.js';
+import { lyricsPositionLabel } from '../../shared/lyrics-live.js';
 
 const ICON = 'grid size-7 place-items-center rounded-lg p-1 text-fg/60 transition hover:bg-fg/10 hover:text-fg';
 
@@ -146,6 +147,7 @@ export function PreviewPanel() {
   const liveKey = useLive((s) => frameKey(s.state.projector.live));
   const stagePeek = useUi((s) => s.stagePeek);
   const badge = previewBadge({ projectorOn, paused, stagePeek });
+  const songPosition = useLive((s) => lyricsPositionLabel(s.state.projector));
   // A row staged from the planner shows here until something else goes live, so it never lingers as a stale preview.
   const firstKey = useRef(liveKey);
   useEffect(() => {
@@ -255,6 +257,12 @@ export function PreviewPanel() {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          {/* The song and stanza on air, from the same live frame Song Lyrics reads, so the preview and the cue panel always agree. */}
+          {songPosition && (
+            <span className="rounded-full border border-line bg-panel-2/80 px-2 py-0.5 font-mono text-[11px] font-bold text-fg/80 tabular-nums" title="Song and stanza on the projector">
+              {songPosition}
+            </span>
+          )}
           {/* The status: a breathing gold badge while the output is live, a steady one while it is paused, a muted one while it is off. */}
           <span
             className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${

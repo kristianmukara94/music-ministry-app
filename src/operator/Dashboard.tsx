@@ -1,13 +1,16 @@
 import { ArrowRight, BookOpen, Eye, Film, ListOrdered, Megaphone, Monitor, MonitorPlay, Music, type LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { Frame } from '../../shared/live.js';
+import { frameKey } from '../../shared/stage-plan-row.js';
 import { dispatch, useLive } from '../live/store';
 import { useT, type StringKey } from '../i18n/strings';
 import { sundayCycle, weekdayCycle, liturgicalYear } from '../liturgy/lectionary';
 import { setUi, type ViewKey } from '../state/ui';
 import { BoothClock } from './BoothClock';
 import { KeyboardMap } from './KeyboardMap';
-import { Launchpad } from './Launchpad';
+import { PreServiceWidget } from './PreServiceWidget';
+import { SystemHealthPanel } from './SystemHealthPanel';
+import { massOnScreen, nextPlayable, stageNext, startMass, takeStaged, usePlanList } from './dashboardQueue';
 import { useNow } from './useNow';
 
 // ── Header ────────────────────────────────────────────────────────────────
@@ -119,9 +122,13 @@ function EmphasisLast({ text, tone }: { text: string; tone: BadgeTone }) {
  * An interactive status widget: a header band with the name and a state badge, what the output is doing, and one action that
  * changes it. With `inlineBadge` the badge sits beside the main text instead of in the header.
  */
-function StatusWidget({ icon: Icon, eyebrow, tone, badge, detail, emphasis = false, inlineBadge = false, action, onAction, primary = false }: {
+function StatusWidget({ icon: Icon, eyebrow, tone, badge, detail, emphasis = false, inlineBadge = false, action, onAction, primary = false, sub, footer }: {
   icon: LucideIcon; eyebrow: string; tone: BadgeTone; badge: string; detail: string; emphasis?: boolean; inlineBadge?: boolean;
-  action: string; onAction: () => void; primary?: boolean;
+  action?: string; onAction?: () => void; primary?: boolean;
+  /** A line under the main text, such as the slide on screen. */
+  sub?: ReactNode;
+  /** Replaces the single action button, for a card with more than one action. */
+  footer?: ReactNode;
 }) {
   return (
     <article className={`flex flex-col overflow-hidden rounded-[10px] border ${BADGE_TONE[tone].card}`}>
@@ -137,15 +144,18 @@ function StatusWidget({ icon: Icon, eyebrow, tone, badge, detail, emphasis = fal
           {emphasis ? <EmphasisLast text={detail} tone={tone} /> : detail}
         </div>
         {inlineBadge && <StatusBadge tone={tone} label={badge} />}
+        {sub && <div className="w-full min-w-0 truncate text-sm font-medium text-fg/70">{sub}</div>}
       </div>
       <div className="px-4 pb-4">
-        <button
-          type="button"
-          onClick={onAction}
-          className={`flex h-10 w-full items-center justify-center rounded-md text-sm font-bold transition ${CARD_BUTTON[primary ? 'primary' : 'ghost']}`}
-        >
-          {action}
-        </button>
+        {footer ?? (
+          <button
+            type="button"
+            onClick={onAction}
+            className={`flex h-10 w-full items-center justify-center rounded-md text-sm font-bold transition ${CARD_BUTTON[primary ? 'primary' : 'ghost']}`}
+          >
+            {action}
+          </button>
+        )}
       </div>
     </article>
   );
@@ -160,19 +170,108 @@ const FRAME_LABEL: Record<Exclude<Frame['kind'], 'deck' | 'image' | 'text' | 'ly
   announcements: 'frame.announcements',
 };
 
+/** What a frame shows, in a few words: a slide's title, the Rosary's section, or the name of a screen (Blackout, Welcome). */
+export function frameTitle(frame: Frame, t: (key: StringKey) => string): string {
+  return frame.kind === 'deck' || frame.kind === 'image' || frame.kind === 'text' || frame.kind === 'lyrics' || frame.kind === 'psalm'
+    ? frame.title
+    : frame.kind === 'rosary'
+      ? frame.section
+      : frame.kind === 'whiteboard'
+        ? frame.slide.title
+        : frame.kind === 'pw'
+          ? frame.segmentName
+          : t(FRAME_LABEL[frame.kind]);
+}
+
+/**
+ * The Holy Mass Queue card: how many items are loaded, the slide on screen (or staged) below that, and the Mass's own controls. Start Mass puts
+ * the first item on screen and Stage Next stages the item after the queue's place, which Take Staged then puts up.
+ */
+function QueueCard() {
+  const t = useT();
+  const live = useLive((s) => s.state);
+  const plans = usePlanList();
+  const [busy, setBusy] = useState(false);
+  // The item Stage Next staged, with the slide it staged. Take Staged is offered while that slide is still waiting under the live one.
+  const [staged, setStaged] = useState<{ index: number; key: string } | null>(null);
+  const { queue, queueCursor, projector } = live;
+  const playable = queue.filter((q) => !q.stale).length;
+  const onScreen = massOnScreen(live);
+  const stagedKey = frameKey(projector.staged);
+  const pending = staged !== null && staged.index === queueCursor && staged.key === stagedKey && stagedKey !== frameKey(projector.live);
+  const next = nextPlayable(live);
+  const planName = plans?.find((p) => p.id === live.queuePlanId)?.name ?? null;
+
+  const run = async (task: () => Promise<void>) => {
+    setBusy(true);
+    try {
+      await task();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onStart = () =>
+    run(async () => {
+      const state = useLive.getState().state;
+      if (massOnScreen(state)) {
+        if (!window.confirm(t('queue.confirmRestart'))) return;
+      } else if (state.outputs.projector && state.projector.live.kind !== 'idle' && state.projector.source !== 'MASS_QUEUE') {
+        if (!window.confirm(t('queue.confirmReplace'))) return;
+      }
+      setStaged(null);
+      await startMass(planName);
+    });
+  const onStageNext = () =>
+    run(async () => {
+      setStaged(await stageNext());
+    });
+  const onTake = () =>
+    run(async () => {
+      if (!staged) return;
+      await takeStaged(staged.index);
+      setStaged(null);
+    });
+
+  // The slide preview: the one on screen while the Mass has it, else the one staged, else where the queue stands.
+  const current = queue[queueCursor];
+  const sub = onScreen
+    ? `${t('queue.onScreen')}: ${frameTitle(projector.live, t) || current?.label || ''}`
+    : pending
+      ? `${t('queue.staged')}: ${frameTitle(projector.staged, t) || current?.label || ''}`
+      : queue.length > 0
+        ? `${t('queue.next')}: ${next >= 0 ? queue[next].label : t('queue.endOfQueue')}`
+        : t('queue.notStarted');
+
+  const tone: BadgeTone = queue.length > 0 ? 'live' : 'empty';
+  const btn = 'flex h-10 min-w-0 flex-1 items-center justify-center truncate rounded-md px-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-40';
+  return (
+    <StatusWidget icon={ListOrdered} eyebrow={t('card.queue')} tone={tone} badge={queue.length > 0 ? t('status.ready') : t('status.empty')}
+      detail={`${queue.length} ${t('card.items')}`}
+      sub={<span title={sub}>{sub}</span>}
+      footer={
+        // The primary action has the full width, so "Start Holy Mass" fits a narrow card. Stage Next and View Queue share the row below.
+        <div className="flex flex-col gap-2">
+          {pending ? (
+            <button type="button" className={`${btn} w-full flex-none ${CARD_BUTTON.primary}`} disabled={busy} onClick={() => void onTake()}>{t('queue.takeStaged')}</button>
+          ) : (
+            <button type="button" className={`${btn} w-full flex-none ${CARD_BUTTON.primary}`} disabled={busy || playable === 0} onClick={() => void onStart()}>{t('queue.startMass')}</button>
+          )}
+          <div className="flex gap-2">
+            <button type="button" className={`${btn} h-9 ${CARD_BUTTON.ghost}`} disabled={busy || next < 0} onClick={() => void onStageNext()}>{t('queue.stageNext')}</button>
+            <button type="button" className={`${btn} h-9 ${CARD_BUTTON.ghost}`} onClick={() => setUi({ view: 'goLive' })}>{t('card.action.viewQueue')}</button>
+          </div>
+        </div>
+      } />
+  );
+}
+
 function StatusCards() {
   const t = useT();
-  const { outputs, projector, lowerThird, queue } = useLive((s) => s.state);
-  const showing =
-    projector.live.kind === 'deck' || projector.live.kind === 'image' || projector.live.kind === 'text' || projector.live.kind === 'lyrics' || projector.live.kind === 'psalm'
-      ? projector.live.title
-      : projector.live.kind === 'rosary'
-        ? projector.live.section
-        : projector.live.kind === 'whiteboard'
-          ? projector.live.slide.title
-          : projector.live.kind === 'pw'
-            ? projector.live.segmentName
-            : t(FRAME_LABEL[projector.live.kind]);
+  const { outputs, projector, lowerThird } = useLive((s) => s.state);
+  const showing = frameTitle(projector.live, t);
 
   const projectorBadge: { tone: BadgeTone; label: string } = !outputs.projector
     ? { tone: 'off', label: t('status.off') }
@@ -189,9 +288,6 @@ function StatusCards() {
   const mirrorBadge: { tone: BadgeTone; label: string } = outputs.preview
     ? { tone: 'live', label: t('status.connected') }
     : { tone: 'warn', label: t('status.disconnected') };
-  const queueBadge: { tone: BadgeTone; label: string } = queue.length > 0
-    ? { tone: 'live', label: t('status.ready') }
-    : { tone: 'empty', label: t('status.empty') };
 
   return (
     <div className="grid shrink-0 grid-cols-2 gap-4 xl:grid-cols-4">
@@ -209,10 +305,7 @@ function StatusCards() {
         detail={t('card.preview')}
         action={outputs.preview ? t('card.action.mirrorClose') : t('card.action.mirrorOpen')}
         onAction={() => dispatch({ type: 'output/toggle', output: 'preview' })} />
-      <StatusWidget icon={ListOrdered} eyebrow={t('card.queue')} tone={queueBadge.tone} badge={queueBadge.label}
-        detail={`${queue.length} ${t('card.items')}`}
-        action={t('card.action.viewQueue')}
-        onAction={() => setUi({ queueOpen: true })} />
+      <QueueCard />
     </div>
   );
 }
@@ -259,6 +352,7 @@ export function Dashboard() {
   return (
     <div className="flex min-h-full flex-col gap-5 p-5 pb-6">
       <ConsoleHeader />
+      <PreServiceWidget />
       <section className="flex shrink-0 flex-col gap-3">
         <SectionHeading>{t('card.sectionTitle')}</SectionHeading>
         <StatusCards />
@@ -267,7 +361,7 @@ export function Dashboard() {
       <div className="grid min-h-[264px] shrink-0 grid-cols-1 gap-4 min-[1180px]:flex-1 min-[1180px]:grid-cols-3">
         <BoothClock />
         <KeyboardMap />
-        <Launchpad />
+        <SystemHealthPanel />
       </div>
     </div>
   );

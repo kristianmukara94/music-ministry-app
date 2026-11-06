@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from 'react';
 import {
-  Activity, ArrowDownUp, BookOpen, BookOpenText, ClipboardList, Flower2, Film, FolderOpen, HandHeart, Languages, LayoutGrid, Maximize, Megaphone,
+  Activity, ArrowDownUp, BookOpen, BookOpenText, ClipboardList, Flower2, Film, FolderOpen, HandHeart, Languages, LayoutGrid, Maximize,
   Menu, Music, NotebookPen, Presentation, Radio, Search, Settings, type LucideIcon,
 } from 'lucide-react';
 import { useLive } from '../live/store';
@@ -14,14 +14,14 @@ import { LibraryTransferDialog } from './LibraryTransfer';
 
 export const NAV: { key: ViewKey; icon: LucideIcon; label: StringKey }[] = [
   { key: 'dashboard', icon: LayoutGrid, label: 'nav.dashboard' },
-  { key: 'announcements', icon: Megaphone, label: 'nav.announcements' },
+  // One workspace for announcements and the Whiteboard. The 'whiteboard' view still opens it, on the Whiteboard's slides.
+  { key: 'announcements', icon: Presentation, label: 'nav.announcementsWhiteboard' },
   { key: 'lectionary', icon: BookOpen, label: 'nav.lectionary' },
   { key: 'bible', icon: BookOpenText, label: 'nav.bible' },
   { key: 'rosary', icon: Flower2, label: 'nav.rosary' },
   { key: 'media', icon: Film, label: 'nav.media' },
   { key: 'notes', icon: NotebookPen, label: 'nav.notes' },
   { key: 'lyrics', icon: Music, label: 'nav.lyrics' },
-  { key: 'whiteboard', icon: Presentation, label: 'nav.whiteboard' },
   { key: 'planner', icon: ClipboardList, label: 'nav.planner' },
   { key: 'goLive', icon: Radio, label: 'nav.goLive' },
   { key: 'praiseWorship', icon: HandHeart, label: 'nav.praiseWorship' },
@@ -35,7 +35,7 @@ export const NAV: { key: ViewKey; icon: LucideIcon; label: StringKey }[] = [
 const NAV_GROUPS: { key: StringKey; items: ViewKey[] }[] = [
   { key: 'nav.group.liturgy', items: ['lectionary', 'bible', 'rosary', 'notes'] },
   { key: 'nav.group.worship', items: ['goLive', 'praiseWorship', 'lyrics', 'media', 'announcements'] },
-  { key: 'nav.group.management', items: ['planner', 'whiteboard'] },
+  { key: 'nav.group.management', items: ['planner'] },
 ];
 
 /** Views that are listed in the navigation but not built yet. They are disabled until they are ready. */
@@ -142,7 +142,7 @@ export function Sidebar() {
             )}
             {group.items.map((key) => {
               const { icon: Icon, label } = NAV.find((n) => n.key === key)!;
-              const active = view === key;
+              const active = view === key || (key === 'announcements' && view === 'whiteboard');
               // Modules not yet built stay visible but cannot be opened, so an operator mid-service cannot land on a placeholder.
               const soon = NOT_YET_BUILT.includes(key);
               // Go Live carries a pulse while the congregation can see something.

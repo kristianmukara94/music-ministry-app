@@ -579,8 +579,25 @@
   to { transform: translateX(-100%); }
 }
 /*
+ * Auto-legibility (src/components/ContrastEngine.ts). The projector stage sets these custom properties from how bright and busy its
+ * background is; with none set, each falls back to the fixed look slides have always had. The shade's three properties are registered so a
+ * change of background eases from one darkness to the next instead of jumping.
+ */
+@property --apcc-scrim-top { syntax: '<number>'; inherits: false; initial-value: 0.4; }
+@property --apcc-scrim-center { syntax: '<number>'; inherits: false; initial-value: 0.4; }
+@property --apcc-scrim-lower { syntax: '<number>'; inherits: false; initial-value: 0.4; }
+.apcc-legible {
+  filter: drop-shadow(0 4px var(--apcc-legible-blur, 12px) rgb(0 0 0 / var(--apcc-legible-alpha, 0.95)));
+}
+.apcc-legible,
+.apcc-legible-stroke {
+  -webkit-text-stroke: var(--apcc-legible-stroke, 0 transparent);
+  paint-order: stroke fill;
+}
+/*
  * Advanced output: one shadow, outline and (when chosen) colour for every line of slide text on the projector, over each slide's own look.
  * The values are custom properties the projector view sets from the output settings.
+ * It is the manual override for auto-legibility: its shadow and outline replace the ones above.
  */
 .apcc-advanced-text * {
   text-shadow: var(--apcc-text-shadow) !important;

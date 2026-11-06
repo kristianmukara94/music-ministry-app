@@ -1,11 +1,14 @@
 // The song taxonomy as the pages use it: the primary scopes, the themes and Mass parts with their suggested scopes, and the filter's shape.
 // The rules live in shared/song-taxonomy.js, which the main process uses too, so the list and the database filter cannot disagree.
 import {
+  CATEGORY_TARGET_MODES,
   DEFAULT_PRIMARY,
+  DEFAULT_TARGET_MODE,
   MASS_PART_NAMES,
   PRIMARY_CATEGORIES,
   THEME_CATEGORIES,
   THEME_NAMES,
+  categoryModeLookup,
   groupCategories,
   homeScopeOfCategory,
   isPrimaryCategory,
@@ -13,12 +16,35 @@ import {
   scopesOfCategory,
   songShownIn,
   suggestedFor,
+  type CategoryModes,
 } from '../../shared/song-taxonomy.js';
 import type { LyKey } from '../../shared/lyrics-i18n.js';
-import type { PrimaryCategory } from './types';
+import type { CategoryTargetMode, PrimaryCategory } from './types';
 
-export type { PrimaryCategory };
-export { DEFAULT_PRIMARY, MASS_PART_NAMES, PRIMARY_CATEGORIES, THEME_CATEGORIES, THEME_NAMES, groupCategories, homeScopeOfCategory, isPrimaryCategory, normalizePrimary, scopesOfCategory, songShownIn, suggestedFor };
+export type { CategoryModes, CategoryTargetMode, PrimaryCategory };
+export {
+  CATEGORY_TARGET_MODES,
+  DEFAULT_PRIMARY,
+  DEFAULT_TARGET_MODE,
+  MASS_PART_NAMES,
+  PRIMARY_CATEGORIES,
+  THEME_CATEGORIES,
+  THEME_NAMES,
+  categoryModeLookup,
+  groupCategories,
+  homeScopeOfCategory,
+  isPrimaryCategory,
+  normalizePrimary,
+  scopesOfCategory,
+  songShownIn,
+  suggestedFor,
+};
+
+/** The target modes as segmented-control options, in the order the editor shows them, with the label key each is shown under. */
+export const TARGET_MODE_OPTIONS: { value: CategoryTargetMode; labelKey: LyKey }[] = CATEGORY_TARGET_MODES.map((value: CategoryTargetMode) => ({
+  value,
+  labelKey: `targetMode_${value}` as LyKey,
+}));
 
 /** What the category part of a filter holds: the scope, and one song category inside it ('' for every category). */
 export interface CategoryFilterState {

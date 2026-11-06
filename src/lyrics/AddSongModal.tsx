@@ -231,7 +231,7 @@ function SongComposer({
               onScope={(scope) => set('primaryCategory', scope)}
               songCategory={fields.songCategory}
               onSongCategory={(name) => set('songCategory', name)}
-              names={e.songCategories.map((c) => c.name)}
+              categories={e.songCategories}
               invalid={showProblem('songCategoryMissing')}
             />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

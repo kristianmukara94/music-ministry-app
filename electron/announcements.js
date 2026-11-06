@@ -5,6 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { ANN_LANGS, annT } from '../shared/announcements-i18n.js';
 import { parseTextStyle, sanitizeTextStyle } from '../shared/text-style.js';
+import { isSystemFolder } from '../shared/deck-items.js';
 import { createPdfConverter } from './pdf-converter.js';
 import os from 'node:os';
 import { DOCUMENT_EXTENSIONS, findSoffice, pptxToPdf, readDocumentPages, readPptxSlides, renderWithPowerPoint } from './documents.js';
@@ -12,20 +13,21 @@ import { renderWithBuiltIn } from './pptx-render.js';
 import { HYMN_DELETE_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } from './lyrics.js';
 import { LECTIONARY_ACCLAMATION_MIGRATIONS, LECTIONARY_MIGRATIONS, LECTIONARY_PRAYER_MIGRATIONS, LECTIONARY_STYLE_MIGRATIONS } from './lectionary.js';
 import { MEDIA_AUDIO_MIGRATIONS, MEDIA_MIGRATIONS } from './media.js';
-import { WHITEBOARD_FOLDER_MIGRATIONS, WHITEBOARD_MIGRATIONS, WHITEBOARD_POWERPOINT_MIGRATIONS, WHITEBOARD_RESTORE_MIGRATIONS, WHITEBOARD_LAYER_MIGRATIONS } from './whiteboard.js';
-import { MASS_PLAN_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_LANGUAGE_MIGRATIONS, PLAN_NOTES_MIGRATIONS } from './mass-plans.js';
+import { WHITEBOARD_FOLDER_MIGRATIONS, WHITEBOARD_MIGRATIONS, WHITEBOARD_POWERPOINT_MIGRATIONS, WHITEBOARD_RESTORE_MIGRATIONS, WHITEBOARD_LAYER_MIGRATIONS, WHITEBOARD_NOTES_MIGRATIONS, cleanNotes } from './whiteboard.js';
+import { MASS_PLAN_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_LANGUAGE_MIGRATIONS, PLAN_NOTES_MIGRATIONS, PLAN_SLOT_TITLE_MIGRATIONS } from './mass-plans.js';
 import { PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, setupNotes } from './notes.js';
 import { ROSARY_LITANY_MIGRATIONS } from './rosary.js';
 import { BIBLE_MIGRATIONS } from './bible-seed.js';
 import { ROSARY_MIGRATIONS } from './rosary.js';
 import { PW_MIGRATIONS } from './pw-sessions.js';
-import { SONG_CATEGORY_MIGRATIONS, SONG_SCOPE_MIGRATIONS } from './song-categories.js';
+import { SONG_CATEGORY_MIGRATIONS, SONG_CATEGORY_MODE_MIGRATIONS, SONG_SCOPE_MIGRATIONS } from './song-categories.js';
 import { TRANSFER_MIGRATIONS } from './transfer.js';
 import { PLAN_SYNC_MIGRATIONS } from './plan-sync-schema.js';
 import { SPONTANEOUS_LOG_MIGRATIONS } from './spontaneous-log.js';
 import { MASS_ORDER_CUSTOM_MIGRATIONS, MASS_ORDER_TEXT_MIGRATIONS } from './mass-order.js';
 import { MEDIA_SCHEME, installMediaProtocol, registerMediaRoute } from './protocol.js';
 import { assetRootFor, migrateAbsolutePaths, relPath, resolveAsset, setActiveAssetRoot } from './assets.js';
+import { ensureIncrementalAutoVacuum, preMigrationBackup } from './db-backup-manager.js';
 
 const SEED_FOLDERS = ['CBCP Oratio Imperata', 'Second Collections', 'Parish Bulletins', 'Mass Sponsors'];
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg']);
@@ -142,6 +144,9 @@ const ALL_MIGRATIONS = [
   ...MASS_ORDER_CUSTOM_MIGRATIONS,
   ...LECTIONARY_PRAYER_MIGRATIONS,
   ...PLAN_LANGUAGE_MIGRATIONS,
+  ...PLAN_SLOT_TITLE_MIGRATIONS,
+  ...SONG_CATEGORY_MODE_MIGRATIONS,
+  ...WHITEBOARD_NOTES_MIGRATIONS,
 ];
 
 const SLIDE_SELECT = `
@@ -153,34 +158,55 @@ const SLIDE_SELECT = `
 /** The newest schema this app knows. A backup from a newer version of the app has a higher number, and is refused. */
 export const SCHEMA_VERSION = ALL_MIGRATIONS.length;
 
-/** Opens (or creates) the database, runs pending migrations, and seeds the parish folders. */
-export function openDatabase(dbPath) {
+/**
+ * Opens (or creates) the database, runs pending migrations, and seeds the parish folders.
+ * With `backupsDir`, a database that holds data is copied there (read-only) before any pending migration runs, and the migrations are
+ * not run if that copy fails. The restore trial on a temporary copy passes no `backupsDir`, so it leaves no snapshots behind.
+ */
+export function openDatabase(dbPath, { backupsDir = null } = {}) {
   const db = new Database(dbPath);
-  // Rollback journal, not WAL: WAL needs shared memory on one machine and can corrupt a
-  // database on a network share. A busy timeout rides out brief lock contention instead of failing.
-  db.pragma('journal_mode = DELETE');
-  db.pragma('busy_timeout = 5000');
-  // Proves the file is a readable database before anything else is registered against it.
-  db.prepare('SELECT 1').get();
-  db.pragma('foreign_keys = ON');
+  try {
+    // Rollback journal, not WAL: WAL needs shared memory on one machine and can corrupt a
+    // database on a network share. A busy timeout rides out brief lock contention instead of failing.
+    db.pragma('journal_mode = DELETE');
+    db.pragma('busy_timeout = 5000');
+    // Proves the file is a readable database before anything else is registered against it.
+    db.prepare('SELECT 1').get();
+    db.pragma('foreign_keys = ON');
 
-  let applied = db.pragma('user_version', { simple: true });
-  // Databases from before migrations existed already have the v1 tables but no version number.
-  const hasV1Tables = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'announcement_folders'").get();
-  if (applied === 0 && hasV1Tables) {
-    db.pragma('user_version = 1');
-    applied = 1;
+    const hasTables = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' LIMIT 1").get());
+    // A brand-new file takes incremental auto-vacuum from the pragma alone, before its first table exists.
+    if (!hasTables) db.pragma('auto_vacuum = INCREMENTAL');
+
+    let applied = db.pragma('user_version', { simple: true });
+    // Databases from before migrations existed already have the v1 tables but no version number.
+    const hasV1Tables = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'announcement_folders'").get();
+    if (applied === 0 && hasV1Tables) {
+      db.pragma('user_version = 1');
+      applied = 1;
+    }
+    const pending = ALL_MIGRATIONS.slice(applied);
+    // A new, empty file has nothing to lose, so it gets no copy.
+    if (pending.length && hasTables && backupsDir) {
+      const copy = preMigrationBackup(db, { backupsDir, version: applied });
+      console.log(`[db-backup] Before upgrading the database from version ${applied} to ${ALL_MIGRATIONS.length}, it was copied to ${copy}`);
+    }
+    pending.forEach((sql, i) => {
+      db.transaction(() => {
+        db.exec(sql);
+        db.pragma(`user_version = ${applied + i + 1}`);
+      })();
+    });
+
+    const seed = db.prepare('INSERT OR IGNORE INTO announcement_folders (name) VALUES (?)');
+    db.transaction(() => SEED_FOLDERS.forEach((name) => seed.run(name)))();
+    // An existing database is converted once, with one full VACUUM. If the file is busy this is skipped and tried on the next start.
+    ensureIncrementalAutoVacuum(db);
+    return db;
+  } catch (err) {
+    db.close();
+    throw err;
   }
-  ALL_MIGRATIONS.slice(applied).forEach((sql, i) => {
-    db.transaction(() => {
-      db.exec(sql);
-      db.pragma(`user_version = ${applied + i + 1}`);
-    })();
-  });
-
-  const seed = db.prepare('INSERT OR IGNORE INTO announcement_folders (name) VALUES (?)');
-  db.transaction(() => SEED_FOLDERS.forEach((name) => seed.run(name)))();
-  return db;
 }
 
 const langOf = (lang) => (ANN_LANGS.includes(lang) ? lang : 'en');
@@ -237,6 +263,8 @@ export function createAnnouncementService(db, root, deps) {
     slideIdsIn: db.prepare('SELECT id FROM announcement_slides WHERE folder_id = ?'),
     setOrder: db.prepare('UPDATE announcement_slides SET display_order = ? WHERE id = ? AND folder_id = ?'),
     deleteSlide: db.prepare('DELETE FROM announcement_slides WHERE id = ?'),
+    moveSlide: db.prepare('UPDATE announcement_slides SET folder_id = ?, display_order = ? WHERE id = ?'),
+    setNotes: db.prepare('UPDATE announcement_slides SET notes = ? WHERE id = ?'),
     nextOrder: db.prepare('SELECT COALESCE(MAX(display_order), 0) + 1 AS n FROM announcement_slides WHERE folder_id = ?'),
     // slide_type is fixed to 'image' here: a PowerPoint or PDF page is always an image slide.
     insertImage: db.prepare(
@@ -564,6 +592,35 @@ export function createAnnouncementService(db, root, deps) {
       return wanted.length;
     },
 
+    /**
+     * Files slides into another folder in one transaction, after the slides already there, in the order given. Slides already in the
+     * folder, or gone, are skipped. The app's own PowerPoint folder neither takes nor gives slides: its pictures belong to Whiteboard
+     * cards. Resolves to how many moved.
+     */
+    moveSlides(ids, folderId) {
+      const target = requireFolder(folderId);
+      if (isSystemFolder(target.name)) throw new Error(`"${target.name}" is kept by the app for PowerPoint pictures. Choose another folder.`);
+      const wanted = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+      return db.transaction(() => {
+        let order = q.nextOrder.get(folderId).n;
+        let moved = 0;
+        for (const id of wanted) {
+          const row = q.slideRow.get(id);
+          if (!row || row.folderId === folderId) continue;
+          if (isSystemFolder(q.folder.get(row.folderId)?.name)) continue;
+          moved += q.moveSlide.run(folderId, order++, id).changes;
+        }
+        return moved;
+      })();
+    },
+
+    /** Saves a slide's speaker notes (operator only, never projected). Blank notes clear them. */
+    setNotes(id, raw) {
+      const notes = cleanNotes(raw);
+      if (q.setNotes.run(notes || null, id).changes === 0) throw new Error('That slide no longer exists.');
+      return true;
+    },
+
     deleteSlide(id) {
       const row = q.slideRow.get(id);
       if (!row) return false;
@@ -600,6 +657,8 @@ function registerIpc(service) {
   handle('importPaths', (_win, folderId, paths) => service.importPaths(Number(folderId), paths));
   handle('reorder', (_win, folderId, ids) => service.reorderSlides(Number(folderId), ids));
   handle('deleteSlide', (_win, id) => service.deleteSlide(Number(id)));
+  handle('moveSlides', (_win, ids, folderId) => service.moveSlides(ids, Number(folderId)));
+  handle('setNotes', (_win, id, notes) => service.setNotes(Number(id), notes));
   handle('pickBackground', (win, lang) => service.pickBackground(lang, win));
   handle('discardBackground', (_win, name) => service.discardBackground(name));
   handle('createTextSlides', (_win, folderId, pages, backgroundName, style) =>
@@ -618,8 +677,8 @@ function registerMediaProtocol(service) {
  * folder the asset root, converts any old absolute paths, then registers IPC. Everything that
  * can fail happens before registration, so a failed attempt can be retried with another path.
  */
-export function setupAnnouncements({ loadRoute, preload, dbPath }) {
-  const db = openDatabase(dbPath);
+export function setupAnnouncements({ loadRoute, preload, dbPath, backupsDir = null }) {
+  const db = openDatabase(dbPath, { backupsDir });
   const root = assetRootFor(dbPath);
   try {
     setActiveAssetRoot(root);

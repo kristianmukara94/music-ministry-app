@@ -43,6 +43,11 @@ interface PwState {
   libraryRevision: number;
   /** The lineup slot whose item is being dragged within the lineup, or null. */
   slotDrag: number | null;
+  /**
+   * Go Live focus: the live controls take the whole workspace while the Library and Lineup step aside. They stay mounted, so nothing
+   * typed or selected there is lost. Not persisted. Entering or leaving it never touches the projector.
+   */
+  isGoLiveFocused: boolean;
 }
 
 export const usePw = create<PwState>()(
@@ -65,6 +70,7 @@ export const usePw = create<PwState>()(
       libDrag: null,
       libraryRevision: 0,
       slotDrag: null,
+      isGoLiveFocused: false,
     }),
     { name: 'apccmma.pw', partialize: ({ tab, sessionId }) => ({ tab, sessionId }) },
   ),

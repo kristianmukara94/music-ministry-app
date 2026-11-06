@@ -66,6 +66,10 @@ export interface PlansApi {
   save(id: number, items: PlanItem[]): Promise<number>;
   /** Sets the plan's language. Its items are left as they are. */
   setLanguage(id: number, language: MassLanguage): Promise<MassLanguage>;
+  /** The plan's own choice for showing slot titles on its slides: true, false, or null to follow the projector setting. */
+  slotTitle(id: number): Promise<boolean | null>;
+  /** Saves the plan's slot-title choice. Null follows the projector setting. */
+  setSlotTitle(id: number, show: boolean | null): Promise<boolean | null>;
   listTemplates(): Promise<PlanTemplateSummary[]>;
   getTemplate(id: number): Promise<PlanTemplate>;
   /** Saves items as a template under a name. A name already used is refused. */

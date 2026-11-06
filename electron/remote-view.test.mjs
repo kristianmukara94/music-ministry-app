@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { createRemoteViewServer, deviceLabel, pickLocalAddress } from './remote-view-server.js';
+import { adapterFor, createRemoteViewServer, deviceLabel, networkInfo, parseAirportNetwork, parseNetshInterfaces, pickLocalAddress, wifiName } from './remote-view-server.js';
 import {
   REMOTE_VIEW_DEFAULTS,
   controlAction,
@@ -515,4 +515,104 @@ test('a phone is named from its browser', () => {
   assert.equal(deviceLabel('Mozilla/5.0 (Linux; Android 14; Pixel 8)'), 'Android');
   assert.equal(deviceLabel('Mozilla/5.0 (Windows NT 10.0; Win64; x64)'), 'Windows');
   assert.equal(deviceLabel(''), 'Browser');
+});
+
+test('the phone list shows each connected phone once, and a disconnected phone is dropped and refused until the page restarts', async () => {
+  const server = createRemoteViewServer({ distDir: makeDist() });
+  const port = await startOn(server);
+  try {
+    const first = await openStream(port);
+    const second = await openStream(port);
+    assert.equal(first.status, 200);
+    const clients = server.clients();
+    assert.equal(clients.length, 1, 'two tabs on one address are one phone');
+    assert.equal(clients[0].ip, '127.0.0.1');
+    assert.equal(clients[0].tabs, 2);
+    assert.equal(typeof clients[0].since, 'number');
+
+    const ended = new Promise((resolve) => first.res.once('end', resolve));
+    first.res.resume();
+    assert.equal(server.disconnect('127.0.0.1'), 2);
+    await ended;
+    assert.equal(server.devices(), 0);
+    assert.deepEqual(server.clients(), []);
+
+    const again = await openStream(port);
+    assert.equal(again.status, 403, 'the phone cannot reconnect');
+    again.req.destroy();
+    assert.equal((await request(port, { path: '/api/remote/status' })).status, 403);
+    second.req.destroy();
+  } finally {
+    await server.stop();
+  }
+  // A restart forgives the phone.
+  const restarted = await startOn(server);
+  try {
+    assert.equal((await request(restarted, { path: '/api/remote/status' })).status, 200);
+  } finally {
+    await server.stop();
+  }
+});
+
+test('a disconnected phone that had unlocked with the PIN is refused, even with its old session cookie', async () => {
+  const server = createRemoteViewServer({ distDir: makeDist() });
+  const port = await startOn(server, '4821');
+  try {
+    const right = await request(port, { method: 'POST', path: '/api/remote/unlock', body: { pin: '4821' } });
+    const cookie = right.headers['set-cookie'][0].split(';')[0];
+    assert.equal(server.disconnect(''), 0, 'an empty address does nothing');
+    assert.equal((await request(port, { path: '/api/remote/status', cookie })).status, 200);
+
+    assert.equal(server.disconnect('127.0.0.1'), 0, 'no page was open');
+    const refused = await openStream(port, cookie);
+    assert.equal(refused.status, 403);
+    refused.req.destroy();
+    assert.equal((await request(port, { method: 'POST', path: '/api/remote/unlock', body: { pin: '4821' } })).status, 403, 'it cannot unlock again');
+  } finally {
+    await server.stop();
+  }
+});
+
+const NETSH = `
+There is 1 interface on the system:
+
+    Name                   : Wi-Fi
+    Description            : Intel(R) Wi-Fi 6 AX201 160MHz
+    GUID                   : 0b2c4d1e-0000-0000-0000-000000000000
+    Physical address       : aa:bb:cc:dd:ee:ff
+    State                  : connected
+    SSID                   : Parish Guest: 5G
+    BSSID                  : 11:22:33:44:55:66
+    Network type           : Infrastructure
+`;
+
+test('the WiFi name is read from netsh and networksetup output', () => {
+  assert.deepEqual(parseNetshInterfaces(NETSH), [{ name: 'Wi-Fi', ssid: 'Parish Guest: 5G' }], 'BSSID is not the name, and a colon in the name is kept');
+  assert.deepEqual(parseNetshInterfaces('    Name : Wi-Fi\n    State : disconnected\n'), [{ name: 'Wi-Fi', ssid: null }]);
+  assert.deepEqual(parseNetshInterfaces(null), []);
+  assert.equal(parseAirportNetwork('Current Wi-Fi Network: Choir Loft\n'), 'Choir Loft');
+  assert.equal(parseAirportNetwork('You are not associated with an AirPort network.\n'), null);
+});
+
+test('the network line names the WiFi, the hotspot, or a plain local network', async () => {
+  const entries = [
+    { name: 'Wi-Fi', family: 'IPv4', address: '192.168.1.20', internal: false },
+    { name: 'Ethernet', family: 'IPv4', address: '10.0.0.5', internal: false },
+  ];
+  const calls = [];
+  const exec = async (command, args) => {
+    calls.push([command, ...args].join(' '));
+    return NETSH;
+  };
+  assert.equal(adapterFor(entries, '10.0.0.5'), 'Ethernet');
+  assert.deepEqual(await networkInfo('192.168.1.20', { entries, platform: 'win32', exec }), { kind: 'wifi', ssid: 'Parish Guest: 5G', ip: '192.168.1.20' });
+  assert.deepEqual(calls, ['netsh wlan show interfaces']);
+  assert.deepEqual(await networkInfo('10.0.0.5', { entries, platform: 'win32', exec }), { kind: 'wired', ssid: null, ip: '10.0.0.5' });
+  assert.equal(calls.length, 1, 'a cable adapter is not looked up');
+  assert.deepEqual(await networkInfo('192.168.137.1', { entries, platform: 'win32', exec }), { kind: 'hotspot', ssid: null, ip: '192.168.137.1' });
+  assert.deepEqual(await networkInfo(null), { kind: 'none', ssid: null, ip: null });
+  // A failed command (null output) leaves the network unnamed.
+  assert.equal(await wifiName('Wi-Fi', 'win32', async () => null), null);
+  assert.equal(await wifiName('en0', 'darwin', async () => 'Current Wi-Fi Network: Choir Loft'), 'Choir Loft');
+  assert.equal(await wifiName('wlan0', 'linux', async () => 'Choir Loft\n'), 'Choir Loft');
 });

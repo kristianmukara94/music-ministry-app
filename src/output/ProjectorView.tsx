@@ -1,6 +1,6 @@
 import { useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { Frame, MediaFrame, SlideLine } from '../../shared/live.js';
-import { presentedFrame } from '../../shared/live.js';
+import { presentedFrame, slotTitleShown } from '../../shared/live.js';
 import { OnAirLook, useOutput } from './outputState';
 import { dispatch } from '../live/store';
 import { pwT } from '../../shared/pw-i18n.js';
@@ -26,6 +26,7 @@ import { SlideBackgroundLayer } from './BackgroundMedia';
 import { useTextAutoFit } from './useTextAutoFit';
 import { useProjectorTextAutoFit } from './useProjectorTextAutoFit';
 import { lineCountOf, lineHeightFor } from '../../shared/text-fit.js';
+import { LegibilityContext, gradientShadeStyle, legibilityShadowVars, useBackgroundLegibility, type BackgroundAsset, type ShadeChoice, type ShadeTarget } from '../components/ContrastEngine';
 
 /** The slide font the operator chose, as CSS. Undefined keeps each slide's own face. */
 const useSlideFont = (): string | undefined => useOutput((s) => slideFontCss(s.settings.slideFont));
@@ -55,8 +56,23 @@ const LINE_STYLE: Record<SlideLine['role'], string> = {
   plain: 'text-white font-medium',
 };
 
-/** Dual-layer legibility: a dark shadow under every line so white type stays sharp over motion. */
-const LEGIBLE = 'drop-shadow-[0_4px_12px_rgba(0,0,0,0.95)]';
+/**
+ * The slot title banner above a slide's text ("FIRST READING", "CONGREGATION RESPONSE"): a quiet label, about 16px on a 1920 slide and never more
+ * than 18px, so the reading or response below it keeps the slide's type scale. Colour is added where it is used.
+ */
+const SLOT_TITLE = 'text-[length:min(0.85cqw,18px)] font-semibold tracking-[0.22em] uppercase';
+
+/**
+ * Dual-layer legibility: a dark shadow under every line so white type stays sharp over motion. Its blur, darkness and outline follow the
+ * background behind the text when auto-legibility is on (see ContrastEngine); otherwise it is the fixed 12px shadow at 95%.
+ */
+const LEGIBLE = 'apcc-legible';
+
+/** The two-layer text shadow of lyric and rosary slides, grown by auto-legibility like LEGIBLE. The fallback is its fixed form. */
+const LEGIBLE_TEXT_SHADOW = 'var(--apcc-legible-text-shadow, 0 2px 14px rgba(0,0,0,0.85), 0 0 3px rgba(0,0,0,0.6))';
+
+/** The shade the projector has always drawn over a Media Library background: the fallback until the picture is measured. */
+const LIBRARY_SHADE = 0.4;
 
 /**
  * A soft dark card behind the text. It is absolutely positioned, so it adds no size to the text
@@ -141,7 +157,7 @@ function HeadedText({ headline, body, style = null }: { headline: string; body: 
  * Reading lines. A chosen style sets the face, size, alignment and the colour of the text. Responses and citations keep
  * their own colours. With no style, the default classes apply.
  */
-function Slide({ lines, style = null, safe = false }: { lines: SlideLine[]; style?: TextStyle | null; safe?: boolean }) {
+function Slide({ lines, style = null, safe = false, header = true }: { lines: SlideLine[]; style?: TextStyle | null; safe?: boolean; header?: boolean }) {
   const slideFont = useSlideFont();
   const slideScale = useSlideScale();
   const sizes = customSizes(style);
@@ -167,22 +183,23 @@ function Slide({ lines, style = null, safe = false }: { lines: SlideLine[]; styl
       </div>
     </div>
   );
-  return safe ? <SafeFit naturalSize={naturalSize} deps={[JSON.stringify(lines), style, slideFont]} render={body} /> : body();
+  return safe ? <SafeFit header={header} naturalSize={naturalSize} deps={[JSON.stringify(lines), style, slideFont]} render={body} /> : body();
 }
 
 /**
  * The safe box a Holy Mass Order or text slide is drawn in: the whole slide less a margin at the top (clear of the title and slot name), at the
  * bottom (clear of the page count and the operator's badges) and at the sides. It fills its parent, so a lower third on air, which raises the
- * parent's bottom, shrinks it too. The text inside steps down in size until it fits (see useProjectorTextAutoFit).
+ * parent's bottom, shrinks it too. The text inside steps down in size until it fits (see useProjectorTextAutoFit). With `header` off (the slot
+ * title hidden) the top margin is smaller, so the text has more of the slide.
  */
-function SafeFit({ naturalSize, deps, render }: { naturalSize: string; deps: unknown[]; render: (textRef: RefObject<HTMLDivElement>) => ReactNode }) {
+function SafeFit({ naturalSize, deps, render, header = true }: { naturalSize: string; deps: unknown[]; render: (textRef: RefObject<HTMLDivElement>) => ReactNode; header?: boolean }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
-  const { overflow } = useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps });
+  const { overflow } = useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps: [...deps, header] });
   // True on the congregation's projector, false on the operator's mirror and previews. The warning is for the operator only.
   const audience = useContext(OnAirLook);
   return (
-    <div ref={boxRef} data-safe-fit className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden px-[6cqw] pt-[9cqh] pb-[9cqh]">
+    <div ref={boxRef} data-safe-fit className={`relative flex h-full w-full flex-col items-center justify-center overflow-hidden px-[6cqw] pb-[9cqh] ${header ? 'pt-[9cqh]' : 'pt-[6cqh]'}`}>
       {render(textRef)}
       {!audience && overflow && <TextFitBadge />}
     </div>
@@ -262,6 +279,8 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
   const ownBackground = welcomeBackground(useOutput((s) => s.welcome.slideBackground));
   // A face that has media draws no colour of its own; the shared layer below already has its shade, so the face adds none.
   const pwBackground = sharedBackground ? SEE_THROUGH : ownBackground;
+  // The small banner naming the slot or reading above the text. The operator can hide it, for every slide or for one Holy Mass plan.
+  const showSlotTitle = useOutput(slotTitleShown);
   switch (frame.kind) {
     case 'idle':
     case 'blackout':
@@ -289,8 +308,8 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
         <>
           {frame.style?.bgColor && <div className="absolute inset-0" style={{ backgroundColor: frame.style.bgColor }} />}
           <div className="absolute inset-x-0 top-0 flex flex-col items-center px-[6cqw] pt-[5cqh] text-center">
-            <div className="font-mono text-[1cqw] font-bold tracking-[0.25em] text-gold/80 uppercase">Congregation response</div>
-            <p className={`mt-[1.5cqh] max-w-[88cqw] font-serif text-[length:min(3.6cqw,76px)] leading-[1.2] font-bold text-gold ${LEGIBLE}`}>
+            {showSlotTitle && <div className={`${SLOT_TITLE} text-gold/70`}>Congregation response</div>}
+            <p className={`${showSlotTitle ? 'mt-[1.5cqh]' : ''} max-w-[88cqw] font-serif text-[length:min(3.6cqw,76px)] leading-[1.2] font-bold text-gold ${LEGIBLE}`}>
               <span className="mr-[0.4em]">℟</span>
               {slideLine(frame.response, charsPerLine(0.86, 3.6 * 19.2))}
             </p>
@@ -344,7 +363,8 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
       );
     case 'pw':
       // A Praise & Worship slide. It draws its own background, so it fills the stage.
-      return <PwSlideFace slide={frame.slide} segmentName={frame.segmentName} type={frame.type} index={frame.index} total={frame.total} slideFont={slideFont} slideScale={slideScale} footer={frame.footer} background={pwBackground} />;
+      // A Holy Mass song's title card names its slot ("Entrance Song") as the segment: the slot title, hidden with the others.
+      return <PwSlideFace slide={frame.slide} segmentName={frame.massSong && !showSlotTitle ? '' : frame.segmentName} type={frame.type} index={frame.index} total={frame.total} slideFont={slideFont} slideScale={slideScale} footer={frame.footer} background={pwBackground} />;
     case 'whiteboard':
       // Sized to the space the screen leaves, so the lower-third clearance on the parent shortens it too.
       return (
@@ -358,8 +378,8 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
       // It fills its parent rather than the screen, so the lower-third clearance on the parent shortens it too.
       return (
         <div
-          className="flex h-full w-full flex-col items-center px-[6cqw] pt-[5cqh] pb-[5cqh] text-center"
-          style={{ textShadow: '0 2px 14px rgba(0,0,0,0.85), 0 0 3px rgba(0,0,0,0.6)' }}
+          className="apcc-legible-stroke flex h-full w-full flex-col items-center px-[6cqw] pt-[5cqh] pb-[5cqh] text-center"
+          style={{ textShadow: LEGIBLE_TEXT_SHADOW }}
         >
           <div className="shrink-0">
             <div className="font-mono text-[1cqw] font-bold tracking-[0.25em] text-gold uppercase">
@@ -397,8 +417,8 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
       return (
         <>
           {frame.style?.bgColor && <div className="absolute inset-0" style={{ backgroundColor: frame.style.bgColor }} />}
-          <div className="absolute top-[4cqh] right-[12cqw] left-[4cqw] truncate text-[1.2cqw] font-bold tracking-[0.2em] text-white/50 uppercase">{frame.labels?.[frame.index] ?? frame.title}</div>
-          <Slide safe lines={lines} style={frame.style} />
+          {showSlotTitle && <div className={`absolute top-[4cqh] right-[12cqw] left-[4cqw] truncate ${SLOT_TITLE} text-white/45`}>{frame.labels?.[frame.index] ?? frame.title}</div>}
+          <Slide safe header={showSlotTitle} lines={lines} style={frame.style} />
           {frame.slides.length > 1 && (
             <div className="absolute right-[4cqw] bottom-[4cqh] font-mono text-[1cqw] text-white/40">
               {frame.index + 1} / {frame.slides.length}
@@ -486,9 +506,9 @@ function SongLyricsSlide({ label, text, style, slideFont, slideScale, song }: { 
       <div ref={labelRef} className="mb-[3cqh] shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase">{label}</div>
       <p
         ref={textRef}
-        className={`max-w-[88cqw] overflow-hidden font-bold whitespace-pre-line ${sizes ? '' : 'text-white'}`}
+        className={`apcc-legible-stroke max-w-[88cqw] overflow-hidden font-bold whitespace-pre-line ${sizes ? '' : 'text-white'}`}
         style={{
-          textShadow: '0 2px 14px rgba(0,0,0,0.85), 0 0 3px rgba(0,0,0,0.6)',
+          textShadow: LEGIBLE_TEXT_SHADOW,
           color: style?.textColor,
           fontFamily: fontCss(style) ?? slideFont,
           fontSize: naturalSize,
@@ -616,6 +636,45 @@ function advancedTextLook(settings: ProjectorSettings): { className: string; sty
   return { className: `apcc-advanced-text${settings.textColor ? ' apcc-text-color' : ''}`, style };
 }
 
+/**
+ * The background behind the text on screen now, for auto-legibility, and the surface that draws its shade. The Welcome screen draws its own
+ * picture over everything; a Live set slide draws the slide background unless the Media Library's is shown everywhere; any other slide sits
+ * on the Media Library's background when one is live. Null when the text is on a plain colour.
+ */
+function legibilitySource({
+  frame,
+  background,
+  slideMedia,
+  welcomeMedia,
+  sharedBackground,
+  ratio,
+}: {
+  frame: Frame;
+  background: MediaFrame | null;
+  slideMedia: { kind: 'image' | 'video'; src: string; fit: 'cover' | 'contain' } | null | undefined;
+  welcomeMedia: { kind: 'image' | 'video'; src: string; fit: 'cover' | 'contain' } | null | undefined;
+  sharedBackground: boolean;
+  ratio: number;
+}): { target: ShadeTarget; asset: BackgroundAsset } | null {
+  const own = (target: ShadeTarget, media: { kind: 'image' | 'video'; src: string; fit: 'cover' | 'contain' }) => {
+    const src = getSlideImageUrl(media.src);
+    return src ? { target, asset: { src, kind: media.kind, fit: media.fit, aspect: ratio } } : null;
+  };
+  if (frame.kind === 'welcome') return welcomeMedia ? own('welcome', welcomeMedia) : null;
+  if (frame.kind === 'pw' && slideMedia && !sharedBackground) return own('slide', slideMedia);
+  if (!background || !TEXT_ON_BACKGROUND.has(frame.kind)) return null;
+  const src = background.mediaType === 'video' ? background.src : getSlideImageUrl(background.src);
+  return src ? { target: 'library', asset: { src, kind: background.mediaType === 'video' ? 'video' : 'image', fit: 'cover', aspect: ratio } } : null;
+}
+
+/** The frames that draw text over the Media Library background. A picture slide covers it, and an empty screen has no text to protect. */
+const TEXT_ON_BACKGROUND = new Set<Frame['kind']>(['text', 'deck', 'lyrics', 'psalm', 'rosary', 'whiteboard', 'pw', 'announcements']);
+
+/** The text colour a slide chose, when it chose one. */
+function frameTextColor(frame: Frame): string | null {
+  return 'style' in frame && frame.style && typeof frame.style === 'object' && 'textColor' in frame.style ? (frame.style.textColor ?? null) : null;
+}
+
 /** What shows when nothing is live: black (nothing), the parish crest, or a static image from the Media Library. */
 function IdleScreen({ mode, media }: { mode: ProjectorSettings['idle']; media: string | null }) {
   if (mode === 'crest') {
@@ -735,6 +794,18 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
         : '';
 
   const ratio = aspectRatioOf(settings.aspect);
+
+  // Auto-legibility: the background actually behind the text is measured, and its shade and the text shadow follow it.
+  const welcomeMedia = welcomeBackground(useOutput((s) => s.welcome)).media;
+  const welcomeTextColor = useOutput((s) => s.welcome.textColor);
+  const legibilityTarget = legibilitySource({ frame: shownFrame, background, slideMedia, welcomeMedia, sharedBackground, ratio });
+  const textColor = (settings.advancedOutput && settings.textColor) || (shownFrame.kind === 'welcome' ? welcomeTextColor : frameTextColor(shownFrame));
+  const plan = useBackgroundLegibility(legibilityTarget?.asset ?? null, textColor, settings.autoLegibility);
+  const shadeChoice: ShadeChoice = settings.autoLegibility
+    ? { manual: null, measured: plan && legibilityTarget ? { target: legibilityTarget.target, scrim: plan.scrim } : null }
+    : { manual: settings.manualShade, measured: null };
+  const libraryShade = shadeChoice.manual !== null ? { top: shadeChoice.manual, center: shadeChoice.manual, lower: shadeChoice.manual } : shadeChoice.measured?.target === 'library' ? shadeChoice.measured.scrim : null;
+  const legibleVars = settings.autoLegibility ? legibilityShadowVars(plan) : {};
   // Contain: the largest box of the chosen ratio that fits the window, centred on black. Fill: the whole window.
   const stageStyle =
     embedded || settings.fit === 'fill'
@@ -748,7 +819,8 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
       } ${mirror ? 'bg-stone-950' : 'bg-black'} ${mirror || embedded ? '' : 'cursor-none'}`}
     >
     {/* Every size inside the stage is a share of the stage, so text keeps its proportions in any window. */}
-    <div className="relative isolate overflow-hidden [container-type:size]" style={stageStyle}>
+    <LegibilityContext.Provider value={shadeChoice}>
+    <div className="relative isolate overflow-hidden [container-type:size]" style={{ ...stageStyle, ...legibleVars }}>
       {background && <BackgroundLayer media={background} />}
       {slideMedia && <SlideBackgroundLayer media={slideMedia} visible={outputShowing && !blackedOut && shownFrame.kind === 'pw' && !sharedBackground} />}
       {/* A song's or prayer's background colour fills the screen only when no motion background is playing, so it never covers the media. */}
@@ -759,7 +831,7 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
       )}
 
       {/* The shade over a background sits outside the slides, so it holds still while they change. */}
-      {background && <div className="absolute inset-0 bg-black/40" />}
+      {background && <div aria-hidden className="absolute inset-0" style={gradientShadeStyle(libraryShade, LIBRARY_SHADE)} />}
 
       {/* The slide that is leaving, during a dissolve or a push. It is drawn under the new one and is gone when the transition ends. */}
       {leaving && outputShowing && (
@@ -822,6 +894,7 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
         </div>
       )}
     </div>
+    </LegibilityContext.Provider>
     </div>
   );
 }

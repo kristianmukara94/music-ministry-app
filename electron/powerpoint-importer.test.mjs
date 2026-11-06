@@ -7,7 +7,7 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { WHITEBOARD_FOLDER_MIGRATIONS, WHITEBOARD_RESTORE_MIGRATIONS, WHITEBOARD_LAYER_MIGRATIONS, WHITEBOARD_MIGRATIONS, WHITEBOARD_POWERPOINT_MIGRATIONS, createWhiteboardService } = await import('./whiteboard.js');
+const { WHITEBOARD_FOLDER_MIGRATIONS, WHITEBOARD_RESTORE_MIGRATIONS, WHITEBOARD_LAYER_MIGRATIONS, WHITEBOARD_NOTES_MIGRATIONS, WHITEBOARD_MIGRATIONS, WHITEBOARD_POWERPOINT_MIGRATIONS, createWhiteboardService } = await import('./whiteboard.js');
 const { createImportReporter, sendToWindow } = await import('./powerpoint-importer.js');
 
 test('the reporter sends the overall percentage and the slide counts', () => {
@@ -48,7 +48,7 @@ test('a window gets the message on the import channel', () => {
 function setup({ slidesPerFile = 3, failDeck = null, withLayers = true } = {}) {
   const db = new DatabaseSync(':memory:');
   db.exec('CREATE TABLE announcement_slides (id INTEGER PRIMARY KEY, notes TEXT)');
-  for (const sql of [...WHITEBOARD_MIGRATIONS, ...WHITEBOARD_POWERPOINT_MIGRATIONS, ...WHITEBOARD_FOLDER_MIGRATIONS, ...WHITEBOARD_RESTORE_MIGRATIONS, ...WHITEBOARD_LAYER_MIGRATIONS]) db.exec(sql);
+  for (const sql of [...WHITEBOARD_MIGRATIONS, ...WHITEBOARD_POWERPOINT_MIGRATIONS, ...WHITEBOARD_FOLDER_MIGRATIONS, ...WHITEBOARD_RESTORE_MIGRATIONS, ...WHITEBOARD_LAYER_MIGRATIONS, ...WHITEBOARD_NOTES_MIGRATIONS]) db.exec(sql);
   db.transaction = (fn) => () => fn();
   const sent = [];
   let nextId = 1;

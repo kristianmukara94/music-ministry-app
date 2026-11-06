@@ -70,6 +70,8 @@ export function outputLookOf(state: LiveState): OutputLook;
 
 /** The state with the on-air look in place of the working one. The same object when the two looks are the same. */
 export function applyLook(state: LiveState): LiveState;
+/** Whether slides show their slot title banner: the loaded plan's own choice when it has one, otherwise the projector setting. */
+export function slotTitleShown(state: LiveState): boolean;
 
 /** The picture slides one image belongs to, in order, and which of them is shown (0-based). */
 export interface ImageDeck {
@@ -103,7 +105,7 @@ export type Frame =
   /** `notes` are the presenter's cues. Only the operator's windows show them. The projector never renders them. */
   /** `headline` is the large title above the body. Absent for manual text slides, which show `text` alone. */
   | { kind: 'text'; title: string; headline?: string; text: string; bg: string | null; notes?: string; style?: TextStyle | null; page?: { index: number; total: number }; key?: string; top?: number; centred?: boolean }
-  | { kind: 'lyrics'; title: string; label: string; text: string; style?: TextStyle | null; key?: string; song?: { hymnId: number; position: number; count: number } }
+  | { kind: 'lyrics'; title: string; label: string; text: string; style?: TextStyle | null; key?: string; song?: { hymnId: number; position: number; count: number }; setlist?: { id: number; index: number; count: number } }
   /** Responsorial psalm: the congregation response stays pinned while the verses change. */
   | { kind: 'psalm'; title: string; response: string; pages: string[]; index: number; style?: TextStyle | null }
   /**
@@ -235,6 +237,8 @@ export interface LiveState {
   queue: QueueItem[];
   /** The Mass plan the queue was loaded from; persisted so the queue survives a restart. */
   queuePlanId: number | null;
+  /** The loaded plan's own choice for slot titles: true, false, or null to follow the projector setting. Absent in older saved states. */
+  queueSlotTitle?: boolean | null;
   /** Index of the item last opened from the queue, or -1 before the first. */
   queueCursor: number;
   pw: PwLive | null;
@@ -287,6 +291,8 @@ export type LiveAction =
   /** `cursor`: the on-air row's position after the change, for the same plan. Absent keeps the position as it was. */
   | { type: 'queue/set'; items: QueueItem[]; planId?: number | null; cursor?: number }
   | { type: 'queue/cursor'; index: number }
+  /** The loaded plan's slot-title choice (null follows the projector setting). Ignored unless `planId` is the loaded plan. */
+  | { type: 'queue/slotTitle'; planId: number; show: boolean | null }
   | { type: 'pw/load'; sessionId: number }
   | { type: 'pw/cursor'; segmentKey: string; slide: number; now: number }
   | { type: 'pw/end' }

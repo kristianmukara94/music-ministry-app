@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { Zap } from 'lucide-react';
+import { Contrast, Zap } from 'lucide-react';
 import { FADE_MAX_MS, FADE_MIN_MS, SLIDE_FONTS, SLIDE_FONT_SCALES, type ProjectorSettings as Settings } from '../../shared/projector-settings.js';
 import { TEXT_COLORS, TEXT_FONT_GROUPS, TEXT_FONTS, slideFontCss } from '../../shared/text-style.js';
 import { CARD, CardHeader, FOCUS, GoldSwitch, Row, SUB, Segmented } from './settingsControls';
@@ -169,6 +169,36 @@ export function OutputSettingsPanel({ settings, save, isDefault, resetTo }: Prop
         <p aria-label="Font preview" className="rounded-lg border border-line bg-panel px-4 py-3 text-2xl text-fg" style={{ fontFamily: slideFontCss(settings.slideFont), fontSize: `${1.5 * settings.slideFontScale}rem` }}>
           Lord, have mercy on us
         </p>
+      </section>
+
+      {/* Legibility: the shade over a background picture and the shadow under text, set from the picture or by hand. */}
+      <section className={`${CARD} lg:col-span-2`} aria-labelledby="legibility-heading">
+        <CardHeader
+          id="legibility-heading"
+          title="Text legibility"
+          detail="Keeps slide text readable over a background picture or video: the shade over the picture and the shadow under the words."
+          onReset={() => resetTo('autoLegibility', 'manualShade')}
+          resetDisabled={isDefault('autoLegibility', 'manualShade')}
+        />
+        <Row
+          title="Auto legibility"
+          detail={
+            settings.autoLegibility
+              ? 'On: each background is checked behind the title, the words and the lower third, and darkened only as much as the text needs (WCAG 4.5:1, APCA Lc 60). Bright or busy pictures also get a stronger shadow and a thin outline.'
+              : 'Off: every background gets the shade below, and text keeps its usual shadow.'
+          }
+        >
+          <div className="flex items-center gap-2">
+            <Contrast size={14} className={settings.autoLegibility ? 'text-accent' : 'text-fg/40'} aria-hidden />
+            <GoldSwitch label="Auto legibility" on={settings.autoLegibility} onChange={(autoLegibility) => void save({ autoLegibility })} />
+          </div>
+        </Row>
+        <div className={settings.autoLegibility ? 'opacity-40' : undefined}>
+          <Row title="Background shade" detail={settings.autoLegibility ? 'Turn Auto legibility off to set the shade by hand.' : 'How dark the shade over a background picture or video is. 0% has none.'}>
+            <UnitSlider label="Background shade" value={settings.manualShade} disabled={settings.autoLegibility} onSave={(manualShade) => void save({ manualShade })} />
+          </Row>
+        </div>
+        <p className={SUB}>Advanced mode's drop shadow and outline, when it is on, replace the automatic ones.</p>
       </section>
 
       {/* Advanced mode: one text colour, shadow and outline over every slide. */}

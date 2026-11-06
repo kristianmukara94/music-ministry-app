@@ -345,7 +345,7 @@ function ReviewStep({ b, t, lt }: { b: BatchImporter; t: BT; lt: ReturnType<type
               onScope={(scope) => b.setDefaults({ primaryCategory: scope })}
               songCategory={b.defaults.songCategory}
               onSongCategory={(name) => b.setDefaults({ songCategory: name })}
-              names={b.songCategories.map((c) => c.name)}
+              categories={b.songCategories}
               invalid={b.categoryMissing}
             />
           </div>

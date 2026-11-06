@@ -74,6 +74,8 @@ export interface QuickLiveApi {
 
 export interface ProjectorApi {
   save(patch: Partial<ProjectorSettings>): Promise<ProjectorSettings>;
+  /** Opens the confidence monitor (the operator mirror) in its own window, or brings it forward. True when the window is open. */
+  openConfidenceWindow(): Promise<boolean>;
 }
 
 /** The welcome screen's content and style. Saved in config.json. */
@@ -84,7 +86,8 @@ export interface WelcomeApi {
 /** The lower third's look and window target, and where the browser source is. */
 export interface LowerThirdApi {
   save(patch: Partial<LowerThirdStyle>): Promise<LowerThirdStyle>;
-  info(): Promise<{ port: number; local: string; lan: string | null }>;
+  /** `running` is false when the browser source server could not start (its port was in use). */
+  info(): Promise<{ port: number; local: string; lan: string | null; running?: boolean }>;
 }
 
 /** Remote view: the two phone viewers on the local network. A PIN is never sent back, only whether one is set. */
@@ -99,8 +102,31 @@ export interface RemoteRoleStatus {
   url: string | null;
   /** Phones with this viewer open, counted once per address. */
   devices: number;
+  /** Those phones, one row per address, oldest first. */
+  clients: RemoteClient[];
   /** Why the viewer is not running when it is turned on, for example "Port in use, pick another". Null otherwise. */
   error: string | null;
+}
+
+/** One phone with a viewer open. */
+export interface RemoteClient {
+  ip: string;
+  /** A short device name from the user agent: iPhone, Android, Windows… */
+  label: string;
+  userAgent: string;
+  /** When its first page connected, in milliseconds since 1970. */
+  since: number;
+  /** Pages it has open on this viewer. */
+  tabs: number;
+}
+
+/** The network a viewer is served on. `ssid` is set only for `wifi`. */
+export interface RemoteNetworkInfo {
+  kind: 'wifi' | 'wired' | 'hotspot' | 'none';
+  ssid: string | null;
+  ip: string | null;
+  /** The viewer's port while it runs, else null. */
+  port: number | null;
 }
 
 export interface RemoteActivity {
@@ -135,6 +161,30 @@ export interface RemoteViewPatch {
 export interface RemoteViewApi {
   get(): Promise<RemoteViewStatus>;
   save(patch: RemoteViewPatch): Promise<RemoteViewStatus>;
+  /** The WiFi name, address and port one viewer is served on. Reads the system, so call it on open, not on every poll. */
+  getNetworkInfo(role: RemoteRole): Promise<RemoteNetworkInfo>;
+  /** Drops the phone at `ip` from a viewer; it is refused until that viewer restarts. */
+  disconnect(role: RemoteRole, ip: string): Promise<RemoteViewStatus>;
+}
+
+/** One System Health reading (see electron/system-health.js). */
+export interface SystemHealth {
+  at: number;
+  /** The laptop's address on the local network, or null when it has none. */
+  address: string | null;
+  /** The laptop's CPU in use, 0–100. Null on the first reading, before there are two samples to compare. */
+  cpuPercent: number | null;
+  memory: { totalBytes: number; usedBytes: number };
+  /** The app's own share, summed over its processes. */
+  app: { cpuPercent: number; memoryBytes: number };
+  /** The crash-recovery database (userData/live-session.db). */
+  session: { enabled: boolean; journalMode: string | null; lastWriteMs: number | null; lastWriteAt: number | null; writes: number; error: string | null };
+  /** The newest automatic snapshot in userData/backups. */
+  latestBackup: { name: string; at: number; preMigration: boolean } | null;
+}
+
+export interface SystemApi {
+  health(): Promise<SystemHealth>;
 }
 
 interface ElectronApi {
@@ -165,6 +215,8 @@ interface ElectronApi {
   whiteboard: WhiteboardApi;
   config: ConfigApi;
   database: DatabaseApi;
+  /** The dashboard's System Health card. */
+  system: SystemApi;
   updates: UpdatesApi;
   /** Used only by the hidden `thumbnailer` window. */
   thumb: {
@@ -209,12 +261,19 @@ const offlineAnnouncements: AnnouncementApi = {
   importPaths: async () => offlineError(),
   reorder: async () => offlineError(),
   deleteSlide: async () => offlineError(),
+  moveSlides: async () => offlineError(),
+  setNotes: async () => offlineError(),
   pickBackground: async () => offlineError(),
   discardBackground: async () => true,
   createTextSlides: async () => offlineError(),
 };
 
 const offlinePdf = { onConvert: () => () => undefined, finish: () => undefined };
+
+/** Browser preview: no laptop to measure. The dashboard shows its health card as unavailable. */
+const offlineSystem: SystemApi = {
+  health: async () => offlineError(),
+};
 
 /** Browser preview: no database to back up or restore. */
 const offlineDatabase: DatabaseApi = {
@@ -273,6 +332,8 @@ const offlinePlans: PlansApi = {
   get: async () => offlineError(),
   save: async () => offlineError(),
   setLanguage: async () => offlineError(),
+  slotTitle: async () => null,
+  setSlotTitle: async () => offlineError(),
   listTemplates: async () => [],
   getTemplate: async () => offlineError(),
   saveTemplate: async () => offlineError(),
@@ -335,13 +396,16 @@ const offlineWhiteboard: WhiteboardApi = {
   editorFlushed: () => undefined,
   closeEditor: () => undefined,
   removeMany: async () => offlineError(),
+  clearUnfiled: async () => offlineError(),
   rename: async () => offlineError(),
+  setNotes: async () => offlineError(),
   reorder: async () => offlineError(),
   folders: async () => [],
   createFolder: async () => offlineError(),
   renameFolder: async () => offlineError(),
   deleteFolder: async () => offlineError(),
   move: async () => offlineError(),
+  moveSelectedToFolder: async () => offlineError(),
   importPowerPoint: async () => offlineError(),
   onImportProgress: () => () => {},
 };
@@ -351,7 +415,7 @@ const offlineLowerThird: LowerThirdApi = {
   info: async () => ({ port: 3002, local: 'http://127.0.0.1:3002/lower-third', lan: null }),
 };
 
-const offlineRole: RemoteRoleStatus = { enabled: false, port: 0, pinSet: false, running: false, url: null, devices: 0, error: 'Open the desktop app to share the live view.' };
+const offlineRole: RemoteRoleStatus = { enabled: false, port: 0, pinSet: false, running: false, url: null, devices: 0, clients: [], error: 'Open the desktop app to share the live view.' };
 /** Library export and import: the library lives in the desktop app's database, so the browser preview has none. */
 export type LibraryType = 'songs' | 'setlists' | 'plans' | 'praiseWorship' | 'massOrder';
 
@@ -506,10 +570,14 @@ const offlineCloud: CloudApi = {
 const offlineRemoteView: RemoteViewApi = {
   get: async () => ({ primary: offlineRole, secondary: offlineRole, devices: 0, deviceLimit: 20, hotspot: false, hotspotWarnAbove: 8, activity: [] }),
   save: async () => offlineError(),
+  getNetworkInfo: async () => ({ kind: 'none', ssid: null, ip: null, port: null }),
+  disconnect: async () => offlineError(),
 };
 
 const offlineProjector: ProjectorApi = {
   save: async () => offlineError(),
+  // A plain browser has no second window to open.
+  openConfidenceWindow: async () => false,
 };
 
 const offlineWelcome: WelcomeApi = {
@@ -664,6 +732,7 @@ function createBrowserBridge(): LiveBridge {
     whiteboard: offlineWhiteboard,
     config: offlineConfig,
     database: offlineDatabase,
+    system: offlineSystem,
     updates: offlineUpdates,
     thumb: { onJob: () => () => undefined, finish: () => undefined },
   };

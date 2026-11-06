@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, ListMusic, Pencil, Play, Plus, Search, Send, Trash2, Zap } from 'lucide-react';
 import { clearSlot, moveToSlot, placeInSlot, additionalIn, slotById } from '../../shared/mass-slots.js';
 import { withAllReadings } from '../../shared/daily-readings.js';
@@ -19,9 +19,10 @@ import { deckRow, decksOf } from '../../shared/flow-insert.js';
 import { formatRuns, formatSourceId, parsePassageInput, stripHits } from '../../shared/bible-ref.js';
 import type { Translation } from '../bible/types';
 import type { PrimaryCategory, SongCategory } from '../lyrics/types';
+import { categoryModeLookup, suggestedFor } from '../lyrics/songTaxonomy';
 import { GOSPEL_ACCLAMATION } from '../lectionary/types';
 import { blockRows, moveInto, queueFromPlan, type DragSource } from './logic';
-import { fillDailyReadings, rememberPlanLanguage, setPlanLanguage, syncQueueIfLoaded } from './plan-api';
+import { fillDailyReadings, planSlotTitle, rememberPlanLanguage, setPlanLanguage, setPlanSlotTitle, syncQueueIfLoaded } from './plan-api';
 import { fillDayFromBible, notifyLectionaryChanged, type BibleFillResult } from '../services/lectionaryService';
 import { openQueueItem } from './routing';
 import { HolyMassPlan } from './HolyMassPlanner';
@@ -232,6 +233,8 @@ export function MassPlanner() {
   const [plans, setPlans] = useState<PlanSummary[]>([]);
   const [planId, setPlanId] = useState<number | null>(null);
   const [items, setItems] = useState<PlanItem[]>([]);
+  // The plan's own choice for the slot title banner on its slides: true, false, or null to follow the projector setting.
+  const [slotTitle, setSlotTitle] = useState<boolean | null>(null);
   const currentPlan = plans.find((p) => p.id === planId) ?? null;
   // The language of the Mass itself: its Mass Order parts, typed responses and Bible readings. The planner's own words stay in the app language.
   const planLang: Lang = currentPlan ? uiLangOf(currentPlan.language) : lang;
@@ -253,6 +256,8 @@ export function MassPlanner() {
   const [songCategories, setSongCategories] = useState<SongCategory[]>([]);
   // The song type the song list shows: Holy Mass by default in the planner, or Praise & Worship, or all songs (General).
   const [songScope, setSongScope] = useState<PrimaryCategory>('MASS');
+  // Each category's target mode, so the category dropdown follows the scope tab.
+  const songCategoryModes = useMemo(() => categoryModeLookup(songCategories), [songCategories]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // The Holy Mass Order part whose words are being edited (`id: null` is a new parish item), and the parish's own words (so the library marks edited parts).
@@ -334,6 +339,30 @@ export function MassPlanner() {
       cancelled = true;
     };
   }, [lectionaryRevision]);
+
+  // The plan's own choice for slot titles on the projector, read with the plan.
+  useEffect(() => {
+    setSlotTitle(null);
+    if (planId == null) return;
+    let cancelled = false;
+    void planSlotTitle(planId).then((show) => {
+      if (!cancelled) setSlotTitle(show);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [planId]);
+
+  const changeSlotTitle = async (show: boolean | null) => {
+    if (planId == null) return;
+    setError(null);
+    try {
+      await setPlanSlotTitle(planId, show);
+      setSlotTitle(show);
+    } catch (err) {
+      fail(err);
+    }
+  };
 
   useEffect(() => {
     bridge.bible.getTranslations().then(setTranslations).catch(() => undefined);
@@ -620,7 +649,6 @@ export function MassPlanner() {
   /** Loads the plan into the Service Queue and records which plan is active, so a restart can restore it. */
   const loadToQueue = () => {
     dispatch({ type: 'queue/set', items: queueFromPlan(named(items)), planId });
-    setUi({ queueOpen: true });
     setNotice(t('loadedNotice', { n: items.length }));
   };
 
@@ -925,9 +953,12 @@ export function MassPlanner() {
                 className="h-8 min-w-0 flex-1 rounded-md border border-fg/15 bg-panel-2 px-2 text-sm outline-none focus:border-accent"
               >
                 <option value="">{t('songFilterAll')}</option>
-                {songCategories.map((c) => (
-                  <option key={c.id} value={c.name}>{c.name}</option>
-                ))}
+                {/* Only the categories for the scope tab chosen above (Holy Mass, Praise & Worship or All), plus the one in use. */}
+                {songCategories
+                  .filter((c) => c.name === songFilter || suggestedFor(songScope, c.name, songCategoryModes))
+                  .map((c) => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
               </select>
             </label>
           )}
@@ -1023,6 +1054,19 @@ export function MassPlanner() {
                   </button>
                 ))}
               </div>
+            )}
+            {currentPlan && (
+              <select
+                value={slotTitle === null ? 'follow' : slotTitle ? 'show' : 'hide'}
+                onChange={(e) => void changeSlotTitle(e.target.value === 'follow' ? null : e.target.value === 'show')}
+                aria-label={t('slotTitle')}
+                title={t('slotTitleTip')}
+                className="h-10 rounded-md border border-fg/15 bg-panel-2 px-2 text-xs font-semibold text-fg/85 outline-none focus:border-accent"
+              >
+                <option value="follow">{t('slotTitleFollow')}</option>
+                <option value="show">{t('slotTitleShow')}</option>
+                <option value="hide">{t('slotTitleHide')}</option>
+              </select>
             )}
             <button type="button" onClick={() => setCreating((open) => !open)} className="h-10 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs font-semibold tracking-wide uppercase text-fg/85 transition hover:bg-fg/10 hover:text-fg">
               {creating ? t('cancel') : t('newPlan')}

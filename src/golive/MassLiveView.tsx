@@ -25,6 +25,7 @@ import { endMassSession, frameAt, goLiveMassAt, goWithin, massShowing, playMassA
 import { LiveStageCanvas, type StageChipGroup } from '../components/LiveStageCanvas';
 import { useGoLiveT } from './strings';
 import { InFlowSlidePickerModal } from './InFlowSlidePickerModal';
+import { DetachMonitorButton } from '../components/DetachMonitorButton';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -330,7 +331,8 @@ export function MassLiveView({ planName }: { planName: string | null }) {
   // A song after this item opens on its title card, so that card is what comes next. Any other item is shown by its name.
   const nextItemFrame = nextItem?.module === 'lyrics' ? songTitleFrame({ id: Number(nextItem.sourceId), title: nextItem.label, stanzas: [] }, slotById(nextItem.slot)?.name) : null;
   const isSong = item?.module === 'lyrics' && hymn !== null;
-  const chips = (steps?.labels ?? []).map((label, i) => ({ index: i, label, name: isSong && i === 0 ? tp('titleChip') : label }));
+  // A song's title card takes no number key, so 1 is its first stanza.
+  const chips = (steps?.labels ?? []).map((label, i) => ({ index: i, label, name: isSong && i === 0 ? tp('titleChip') : label, hotkey: !(isSong && i === 0) }));
   // As in Praise & Worship: a song's title card chip on a row of its own, then its sections under the song's title. Any other item is one row.
   const chipGroups: StageChipGroup[] = isSong
     ? [
@@ -538,7 +540,10 @@ export function MassLiveView({ planName }: { planName: string | null }) {
 
         <div className="flex min-w-0 flex-col gap-5 @4xl/pw:col-span-2 @6xl/pw:col-span-1">
           <section aria-labelledby="mass-outputs" className={`${CARD} flex flex-col gap-3 p-4`}>
-            <h2 id="mass-outputs" className="text-lg font-bold">{tp('outputs')}</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 id="mass-outputs" className="text-lg font-bold">{tp('outputs')}</h2>
+              <DetachMonitorButton />
+            </div>
             <span className="text-sm text-muted">{tp('congregation')}</span>
             <div className="relative aspect-video overflow-hidden rounded-lg border border-line">
               <ProjectorView mirror embedded />

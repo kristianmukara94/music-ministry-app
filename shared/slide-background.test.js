@@ -34,7 +34,7 @@ test('a picture or a video covers the slide, under the text', () => {
   assert.equal(clip.media.kind, 'video');
   const source = face();
   // The picture or video itself is one layer for the whole sequence (see background-continuity.test.js); the slide draws only the shade.
-  assert.match(source, /const layers = background\?\.shade && background\.media \? <BackgroundShade area=\{textAreaStyle\(\)\} \/> : null;/, 'the slide draws the shade over the picture');
+  assert.match(source, /const layers = background\?\.shade && background\.media \? <BackgroundShade area=\{textAreaStyle\(\)\} target="slide" \/> : null;/, 'the slide draws the shade over the picture');
   // The media and the shade come before the text in the page, and the text is positioned, so it paints above them.
   assert.ok(source.indexOf('{layers}') < source.indexOf('font-serif text-[5cqw]'), 'the layers are drawn before the text');
   // A prayer or title in normal flow would paint under an absolute layer: each text block is positioned, or sits in a positioned wrapper.
@@ -48,8 +48,10 @@ test('the shade is behind the text area when it is on, and not when it is off', 
   const off = welcomeBackground(sanitizeWelcomeSettings({ backgroundType: 'VIDEO', backgroundUrl: 'apcc-media://media/2', textShade: false }));
   assert.equal(off.shade, false);
   const source = face();
-  assert.match(source, /background\?\.shade && background\.media \? <BackgroundShade area=\{textAreaStyle\(\)\} \/> : null/, 'the shade covers the text area, only when it is on');
-  assert.match(read('src/output/BackgroundMedia.tsx'), /rgb\(0 0 0 \/ \$\{TEXT_SHADE_OPACITY\}\)/, 'the shade is dark');
+  assert.match(source, /background\?\.shade && background\.media \? <BackgroundShade area=\{textAreaStyle\(\)\} target="slide" \/> : null/, 'the shade covers the text area, only when it is on');
+  // The shade is dark: its fixed darkness is the fallback, and auto-legibility on the projector may darken it further (see ContrastEngine).
+  assert.match(read('src/output/BackgroundMedia.tsx'), /boxShadeStyle\(shade, TEXT_SHADE_OPACITY\)/, 'the shade is dark');
+  assert.match(read('src/components/ContrastEngine.ts'), /backgroundColor: 'rgb\(0 0 0 \/ var\(--apcc-scrim-center\)\)'/, 'and black');
 });
 
 test('the Live preview, the Current and Next slides, and the projector all pass the same background', () => {

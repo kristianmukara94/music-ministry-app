@@ -3,12 +3,12 @@ import { setUi } from '../state/ui';
 import { flushSave, openSession, setPwState } from '../praise-worship/store';
 
 /**
- * Loads a saved Mass plan into the Mass Queue and opens the queue. Nothing goes live here: the take is the queue's own
- * Go Live button, which runs through playQueueAt.
+ * Loads a saved Mass plan into the Mass Queue and opens the Go Live console, which runs the Mass from that queue. Nothing
+ * goes live here: the take is the console's own Go Live, which runs through playQueueAt.
  */
 export async function loadMassPlanToQueue(planId: number): Promise<void> {
   await loadPlanToQueue(planId);
-  setUi({ queueOpen: true });
+  setUi({ view: 'goLive' });
 }
 
 /**

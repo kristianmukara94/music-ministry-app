@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { SONG_CATEGORY_MIGRATIONS, SONG_CATEGORY_MAX, createSongCategoryService, resolveSongCategory } from './song-categories.js';
+import { SONG_CATEGORY_MIGRATIONS, SONG_CATEGORY_MAX, SONG_CATEGORY_MODE_MIGRATIONS, SONG_SCOPE_MIGRATIONS, createSongCategoryService, resolveSongCategory } from './song-categories.js';
 import { SONG_CATEGORY_NAMES } from '../shared/mass-flow.js';
 
 // The service calls db.transaction(fn), which node:sqlite does not have. This adds it, as better-sqlite3 does.
@@ -34,7 +34,7 @@ function openDatabase() {
     );
     INSERT INTO hymns (title, category) VALUES ('Existing hymn', 'General');
   `);
-  for (const sql of SONG_CATEGORY_MIGRATIONS) db.exec(sql);
+  for (const sql of [...SONG_CATEGORY_MIGRATIONS, ...SONG_CATEGORY_MODE_MIGRATIONS]) db.exec(sql);
   return wrapped;
 }
 
@@ -124,6 +124,46 @@ test('a name is resolved to the list spelling, and an unlisted name is refused w
   assert.equal(resolveSongCategory(db, ''), '');
   assert.equal(resolveSongCategory(db, undefined), '');
   assert.throws(() => resolveSongCategory(db, 'Not a category'), /"Not a category" is not in the song categories/);
+});
+
+test('the target mode migration keeps shipped categories where they were and makes the operator\'s own All', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec("CREATE TABLE hymns (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, category TEXT NOT NULL)");
+  for (const sql of [...SONG_CATEGORY_MIGRATIONS, ...SONG_SCOPE_MIGRATIONS]) db.exec(sql);
+  // A category the operator added before target modes existed.
+  db.prepare("INSERT INTO song_categories (name, position) VALUES ('Youth Night', 999)").run();
+  for (const sql of SONG_CATEGORY_MODE_MIGRATIONS) db.exec(sql);
+  const mode = (name) => db.prepare('SELECT target_mode AS m FROM song_categories WHERE name = ?').get(name).m;
+  assert.equal(mode('Gloria'), 'HOLY_MASS');
+  assert.equal(mode('Marian Song'), 'HOLY_MASS');
+  assert.equal(mode('Joyful Song'), 'PRAISE_AND_WORSHIP');
+  assert.equal(mode('Repentance Song'), 'ALL', 'a theme for both scopes is All');
+  assert.equal(mode('Youth Night'), 'ALL');
+  assert.throws(() => db.prepare("UPDATE song_categories SET target_mode = 'MASS' WHERE name = 'Gloria'").run(), /CHECK/);
+});
+
+test('create stores the chosen target mode, defaults to All, and refuses an unknown one', () => {
+  const service = createSongCategoryService(openDatabase());
+  assert.equal(service.createSongCategory({ name: 'Youth Night', targetMode: 'PRAISE_AND_WORSHIP' }).targetMode, 'PRAISE_AND_WORSHIP');
+  assert.equal(service.createSongCategory({ name: 'Anything' }).targetMode, 'ALL');
+  assert.throws(() => service.createSongCategory({ name: 'Bad', targetMode: 'MASS' }), /Holy Mass, Praise & Worship or All/);
+  const list = service.listSongCategories();
+  assert.equal(list.find((c) => c.name === 'Youth Night').targetMode, 'PRAISE_AND_WORSHIP');
+  assert.ok(!list.some((c) => c.name === 'Bad'));
+});
+
+test('editing a category can change its target mode, and leaving it out keeps the one it has', () => {
+  const db = openDatabase();
+  const service = createSongCategoryService(db);
+  db.prepare("INSERT INTO hymns (title, category, song_category) VALUES ('Kyrie song', 'General', 'Kyrie')").run();
+  const kyrie = service.listSongCategories().find((c) => c.name === 'Kyrie');
+  assert.equal(kyrie.targetMode, 'HOLY_MASS');
+  assert.equal(service.renameSongCategory(kyrie.id, { name: 'Kyrie', targetMode: 'ALL' }).targetMode, 'ALL');
+  assert.equal(service.renameSongCategory(kyrie.id, { name: 'Lord, Have Mercy' }).targetMode, 'ALL');
+  assert.equal(hymnSongCategory(db, 'Kyrie song'), 'Lord, Have Mercy');
+  assert.equal(service.renameSongCategory(kyrie.id, { targetMode: 'PRAISE_AND_WORSHIP' }).name, 'Lord, Have Mercy', 'a mode-only change keeps the name');
+  assert.throws(() => service.renameSongCategory(kyrie.id, { name: 'Kyrie', targetMode: 'BOTH' }), /Holy Mass, Praise & Worship or All/);
+  assert.equal(service.listSongCategories().find((c) => c.id === kyrie.id).targetMode, 'PRAISE_AND_WORSHIP');
 });
 
 test('a hymn keeps its current category even when the list no longer has it', () => {

@@ -73,7 +73,8 @@ export function PraiseWorship() {
               key={id}
               type="button"
               aria-current={tab === id ? 'page' : undefined}
-              onClick={() => setPwState({ tab: id })}
+              // A new view starts in its normal layout; the focus view is for the Go Live that asked for it.
+              onClick={() => setPwState({ tab: id, isGoLiveFocused: false })}
               className={`h-10 rounded-md px-5 text-sm font-semibold uppercase tracking-wide transition ${tab === id ? 'bg-accent text-on-accent' : 'text-fg/70 hover:bg-fg/10 hover:text-fg'}`}
             >
               {t(`tab_${id}`)}
@@ -99,7 +100,8 @@ export function PraiseWorship() {
             disabled={!session}
             onClick={async () => {
               await flushSave();
-              setPwState({ tab: 'live' });
+              // The live console opens in its focus view: the stage takes the workspace until ✕ or Escape.
+              setPwState({ tab: 'live', isGoLiveFocused: true });
               goLive();
             }}
           >

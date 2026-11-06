@@ -50,6 +50,10 @@ export interface AnnouncementApi {
   /** Persists a new order for every slide in the folder. */
   reorder(folderId: number, slideIds: number[]): Promise<number>;
   deleteSlide(id: number): Promise<boolean>;
+  /** Files slides into another folder in one transaction. Resolves to how many moved. */
+  moveSlides(ids: number[], folderId: number): Promise<number>;
+  /** Saves a slide's speaker notes. Blank notes clear them. */
+  setNotes(id: number, notes: string): Promise<boolean>;
   /** Opens the background picker. Resolves to the stored file name, or null if cancelled. */
   pickBackground(lang: string): Promise<string | null>;
   discardBackground(name: string): Promise<boolean>;

@@ -12,6 +12,8 @@ import Database from 'better-sqlite3';
 import { SCHEMA_VERSION, openDatabase, setupAnnouncements } from './announcements.js';
 import { DB_FILTERS, backupFileName, exportBackup, importBackup } from './database-backup.js';
 import { databaseCounts } from './db-check.js';
+import { backupsDirFor, incrementalVacuum, listBackups, recoverDatabase, takeDailyBackup } from './db-backup-manager.js';
+import { createHealthReader, createWriteMeter } from './system-health.js';
 import { purgeDeletedHymns, setupLyrics } from './lyrics.js';
 import { setupSpontaneousLog } from './spontaneous-log.js';
 import { announceMassOrderChange, setupMassOrderTexts } from './mass-order.js';
@@ -26,6 +28,8 @@ import { seedBible } from './bible-seed.js';
 import { setupBible } from './bible.js';
 import { seedRosary, setupRosary } from './rosary.js';
 import { queueFromPlanItems, readQueueState, writeQueueState } from './queue-state.js';
+import { openSessionStore } from './session-store.js';
+import { createSessionWriter, restoreSession } from '../shared/session-recovery.js';
 import { defaultDatabasePath, PREVIEW_MIN, readConfig, resolveDatabasePath, writeConfig } from './config.js';
 import { resolveCloudAddress, saveCloudAddress } from './cloud-address.js';
 import { setupSettings } from './settings.js';
@@ -34,7 +38,7 @@ import { sanitizeProjectorSettings } from '../shared/projector-settings.js';
 import { sanitizeWelcomeSettings } from '../shared/welcome-settings.js';
 import { sanitizeLowerThirdStyle } from '../shared/lower-third-style.js';
 import { createLowerThirdServer, LOWER_THIRD_PORT, lanAddress } from './lower-third-server.js';
-import { createRemoteViewServer, localNetworkAddress } from './remote-view-server.js';
+import { createRemoteViewServer, localNetworkAddress, networkInfo } from './remote-view-server.js';
 import { mediaFileFor, slideFileFor } from './protocol.js';
 import {
   REMOTE_DEVICE_LIMIT,
@@ -255,8 +259,9 @@ function schedulePreviewBoundsSave(win) {
 }
 
 /**
- * The operator mirror. It is pinned above the operator console and never steals focus on open, so
- * clicking around the console leaves it where it is. It stays until the PREVIEW button closes it.
+ * The operator mirror, also the booth's confidence monitor (Detach Monitor on a live console's Outputs panel). It is pinned above the operator
+ * console and never steals focus on open, so clicking around the console leaves it where it is. It stays until the PREVIEW button, or its own
+ * close button, closes it. It has no frame: the page is the drag handle, and the window edges still resize it.
  */
 function openPreviewWindow() {
   const saved = savedPreviewBounds();
@@ -264,6 +269,9 @@ function openPreviewWindow() {
     ...(saved ?? { width: 640, height: 360 }),
     minWidth: PREVIEW_MIN.width,
     minHeight: PREVIEW_MIN.height,
+    frame: false,
+    resizable: true,
+    maximizable: false,
     show: false,
     backgroundColor: '#000000',
     title: 'APCCMMA — Operator Mirror',
@@ -301,11 +309,14 @@ function holdsContent(frame) {
 
 /**
  * Shows the chosen startup screen when the projector window opens. "Last content" keeps whatever was live. A live frame
- * with content is kept too, so turning the projector on shows what the operator chose, not the welcome screen.
+ * with content is kept too, so turning the projector on shows what the operator chose, not the welcome screen. After a crash, the
+ * recovered session's frame is kept whatever it is (Blackout or the welcome screen over a Mass slide included).
  */
 function applyStartupScreen() {
   const mode = state.settings.startupScreen;
-  if (holdsContent(state.projector.live)) {
+  const recovered = skipStartupScreen;
+  skipStartupScreen = false;
+  if (recovered || holdsContent(state.projector.live)) {
     // Staging the frame that is already staged changes nothing on screen. It still counts as the startup step, which the
     // startup helper in the renderer waits for before it takes a Mass Queue or Praise & Worship item.
     apply({ type: 'projector/stage', frame: state.projector.staged });
@@ -401,6 +412,8 @@ function reconcileWindows() {
 
 // The browser source's server, started once the app is ready.
 let lowerThirdServer = null;
+// Whether the browser source server is listening. A port already in use leaves it off, which the dashboard's readiness check reports.
+let lowerThirdServerUp = false;
 
 /**
  * Makes the lower-third window match the chosen display. A window already open moves to that display. Choosing
@@ -520,6 +533,7 @@ function remoteViewRoleStatus(role, wanted) {
     running,
     url: running ? `http://${view.address()}:${view.port()}` : null,
     devices: view.devices(),
+    clients: view.clients(),
     error: remoteViewErrors[role],
   };
 }
@@ -576,6 +590,7 @@ function apply(action) {
   if (next === state) return;
   state = next;
   if (prev.queuePlanId !== next.queuePlanId || prev.queueCursor !== next.queueCursor || prev.pw?.sessionId !== next.pw?.sessionId) saveQueueState();
+  sessionWriter?.push(state);
   reconcileWindows();
   broadcast();
 }
@@ -605,6 +620,162 @@ function restoreQueue(planService, pwService) {
   }
 }
 
+// Crash recovery: the live session is saved to its own WAL database after every change (see electron/session-store.js). A clean quit
+// clears it, so a row found at launch means the last run ended mid-service without quitting.
+let sessionStore = null;
+let sessionWriter = null;
+// Set when a recovered session turns the projector back on: its first startup screen is skipped, so it does not cover the restored slide.
+let skipStartupScreen = false;
+// Times each crash-recovery write, for the dashboard's System Health card.
+const sessionWrites = createWriteMeter();
+
+function startSessionRecovery() {
+  sessionStore = openSessionStore(app.getPath('userData'), (file) => new Database(file));
+  if (!sessionStore) return;
+  sessionWriter = createSessionWriter({
+    // The store is null once quitting has closed it. A window closing after that has nothing left to save.
+    save: (row) => sessionWrites.time(() => sessionStore?.save(row)),
+    clear: () => sessionStore?.clear(),
+    onError: (err) => console.error('[session] could not save the live session:', err),
+  });
+}
+
+/**
+ * Puts back the live session a crash interrupted: the plan's queue and its CURRENT row, the Praise & Worship position, the projector's
+ * frames (Blackout and pause included), the lower third and the Secondary display. Runs after restoreQueue and before any window loads.
+ * Returns true when a session was restored.
+ */
+function recoverSession(planService, pwService) {
+  if (!sessionStore) return false;
+  let saved = null;
+  try {
+    saved = sessionStore.load();
+  } catch (err) {
+    console.error('[session] could not read the saved live session:', err);
+  }
+  if (!saved) return false;
+  const snap = saved.snapshot;
+  let queue = null;
+  if (snap?.queuePlanId != null) {
+    if (snap.queuePlanId === state.queuePlanId) queue = state.queue;
+    else {
+      try {
+        queue = queueFromPlanItems(planService.getPlan(snap.queuePlanId).items);
+      } catch {
+        // Deleted since: the slide on screen comes back without its plan.
+      }
+    }
+  }
+  let pwExists = false;
+  if (snap?.pw?.sessionId != null) {
+    try {
+      pwService.getSession(snap.pw.sessionId);
+      pwExists = true;
+    } catch {
+      // Deleted since.
+    }
+  }
+  const next = restoreSession(state, snap, { queue, pwExists, now: Date.now() });
+  if (!next) {
+    // Too old, or from a format this version does not read: start as usual.
+    clearSavedSession();
+    return false;
+  }
+  state = next;
+  skipStartupScreen = state.outputs.projector;
+  saveQueueState();
+  console.info(`[session] restored the live session saved at ${saved.updated_at} UTC (plan ${saved.active_plan_id ?? 'none'}, row ${state.queueCursor})`);
+  return true;
+}
+
+/** A clean quit or a restart: the session ended on purpose, so the next launch starts fresh. */
+function clearSavedSession() {
+  sessionWriter?.reset();
+  try {
+    sessionStore?.clear();
+  } catch (err) {
+    console.error('[session] could not clear the saved live session:', err);
+  }
+}
+
+function closeSessionStore() {
+  clearSavedSession();
+  sessionWriter = null;
+  try {
+    sessionStore?.close();
+  } catch {
+    // Already closed.
+  }
+  sessionStore = null;
+}
+
+/** What the start-up integrity check found, for the notice shown once the operator window is up. */
+let dbRecovery = null;
+
+/** Opens an existing file read-write for the integrity check, so a journal left by a crash is rolled back rather than reported. */
+const openForIntegrityCheck = (file) => new Database(file, { fileMustExist: true, timeout: 5000 });
+
+/** The start-up integrity check. Never throws: a check that cannot run leaves the file to the normal open, which reports its own errors. */
+function guardDatabase(dbPath, backupsDir) {
+  try {
+    return recoverDatabase({
+      dbPath,
+      backupsDir,
+      open: openForIntegrityCheck,
+      openReadonly: openReadonlyDatabase,
+      schemaVersion: SCHEMA_VERSION,
+    });
+  } catch (err) {
+    console.error('[db-integrity] The integrity check could not run:', err.message);
+    return { status: 'unchecked', error: err.message };
+  }
+}
+
+/** Tells the operator when the start-up check found damage. A restored database may be missing changes made after its snapshot. */
+function reportDatabaseRecovery(win) {
+  const r = dbRecovery;
+  if (!r || !['restored', 'corrupt-no-backup', 'restore-failed'].includes(r.status)) return;
+  const restored = r.status === 'restored';
+  const detail = restored
+    ? `It was restored from the snapshot ${path.basename(r.restoredFrom)}. Changes made after that snapshot are not in it.\n\nThe damaged file was kept at:\n${r.quarantined}`
+    : r.status === 'corrupt-no-backup'
+      ? `No good snapshot was found in the backups folder, so the damaged file is still in use. Restore a backup from Settings as soon as you can.\n\n${r.path}`
+      : `It could not be replaced automatically (${r.error}). Restore a backup from Settings as soon as you can.\n\n${r.path}`;
+  void dialog.showMessageBox(win, {
+    type: restored ? 'info' : 'warning',
+    title: 'Database check',
+    message: restored ? 'The database was damaged and has been restored.' : 'The database is damaged.',
+    detail,
+  });
+}
+
+/** Today's snapshot, made in the background after the database opens. A failure is logged and tried again on the next start. */
+async function takeStartupSnapshot() {
+  try {
+    const result = await takeDailyBackup({
+      backup: (target) => announcements.db.backup(target),
+      backupsDir: backupsDirFor(app.getPath('userData')),
+      schemaVersion: SCHEMA_VERSION,
+      openReadonly: openReadonlyDatabase,
+    });
+    if (result.status === 'created') console.log('[db-backup] Daily snapshot:', result.file);
+    if (result.pruned.length) console.log('[db-backup] Removed old snapshots:', result.pruned.join(', '));
+  } catch (err) {
+    console.error('[db-backup] The daily snapshot failed:', err.message);
+  }
+}
+
+/** Gives free pages back to the disk a few hundred at a time, so a pass never holds the main thread for long. */
+function runDatabaseMaintenance() {
+  if (databaseClosed || !announcements?.db?.open) return;
+  try {
+    incrementalVacuum(announcements.db);
+  } catch (err) {
+    // Usually busy: another laptop on the share is writing. The next pass tries again.
+    console.warn('[db-maintenance] Incremental vacuum skipped:', err.message);
+  }
+}
+
 /**
  * Opens the database named in config.json and checks that it answers. If that fails (for
  * example, the network drive is unplugged), the app opens the local copy and reports it as
@@ -615,9 +786,15 @@ function openConfiguredDatabase() {
   const configured = resolveDatabasePath(userData, readConfig(userData));
   const local = defaultDatabasePath(userData);
 
-  // setupAnnouncements proves the file answers (SELECT 1) before it registers any IPC,
+  const backupsDir = backupsDirFor(userData);
+
+  // The integrity check runs before the database is opened for use, and a damaged file is replaced by the newest good snapshot.
+  // setupAnnouncements then proves the file answers (SELECT 1) before it registers any IPC,
   // so a failed attempt leaves nothing behind for the fallback to collide with.
-  const attempt = (dbPath) => setupAnnouncements({ loadRoute: load, preload: webPreferences.preload, dbPath });
+  const attempt = (dbPath) => {
+    dbRecovery = { path: dbPath, ...guardDatabase(dbPath, backupsDir) };
+    return setupAnnouncements({ loadRoute: load, preload: webPreferences.preload, dbPath, backupsDir });
+  };
 
   try {
     const handles = attempt(configured);
@@ -693,6 +870,7 @@ ipcMain.handle('lowerThird:save', (_event, patch) => {
 /** Where the browser source is: the local address, and the network address for other computers on the same network. */
 ipcMain.handle('lowerThird:info', () => ({
   port: LOWER_THIRD_PORT,
+  running: lowerThirdServerUp,
   local: `http://127.0.0.1:${LOWER_THIRD_PORT}/lower-third`,
   lan: lanAddress() ? `http://${lanAddress()}:${LOWER_THIRD_PORT}/lower-third` : null,
 }));
@@ -826,6 +1004,26 @@ ipcMain.handle('remoteView:save', async (_event, patch) => {
   return remoteViewStatus();
 });
 
+/**
+ * The network one viewer is served on: the laptop's address, the viewer's port, and the WiFi name when the laptop is on WiFi. The WiFi name
+ * is read from the system, so it is asked for when the drawer opens or the address changes, not on every status poll.
+ */
+ipcMain.handle('remoteView:getNetworkInfo', async (_event, role) => {
+  const view = remoteViews[REMOTE_ROLES.includes(role) ? role : 'primary'];
+  const address = view.address() ?? localNetworkAddress();
+  const info = await networkInfo(address);
+  return { ...info, port: view.port() };
+});
+
+/** Drops one phone from a viewer. It cannot reconnect to that viewer until the viewer restarts. */
+ipcMain.handle('remoteView:disconnect', async (_event, request) => {
+  const { role, ip } = request ?? {};
+  if (!REMOTE_ROLES.includes(role)) throw new Error('Choose the Primary or the Secondary viewer.');
+  if (typeof ip !== 'string' || !ip || ip.length > 64) throw new Error('That phone was not found.');
+  remoteViews[role].disconnect(ip);
+  return remoteViewStatus();
+});
+
 /** Every connected display, numbered as the identify overlay numbers them. Physical pixels, so 1920x1080 is 1920x1080. */
 function displayList() {
   const primaryId = screen.getPrimaryDisplay().id;
@@ -884,6 +1082,19 @@ ipcMain.handle('welcome:save', (_event, patch) => {
   return merged;
 });
 ipcMain.on('live:dispatch', (_event, action) => apply(action));
+// Detach Monitor: opens the confidence monitor (the operator mirror), or brings it forward when it is open already. Going through the
+// preview output keeps the PREVIEW button and the dashboard card in step with the window.
+ipcMain.handle('projector:openConfidenceWindow', () => {
+  const win = windows.preview;
+  if (win && !win.isDestroyed()) {
+    if (win.isMinimized()) win.restore();
+    win.showInactive();
+    win.moveTop();
+    return true;
+  }
+  apply({ type: 'output/set', output: 'preview', on: true });
+  return windows.preview != null;
+});
 
 // Database backup and restore, from Settings. The live database is never copied while it is open: the export uses SQLite's online backup,
 // and a restore closes the database before its file is replaced, then restarts the app so it opens the restored file.
@@ -921,6 +1132,7 @@ async function relaunchApp() {
   songSync.stop();
   planSync?.stop();
   closeDatabaseOnce();
+  closeSessionStore();
   if (app.isPackaged) {
     app.relaunch();
   } else {
@@ -981,6 +1193,29 @@ ipcMain.handle('db:import-backup', async (event) => {
   await relaunchApp();
   return { success: true, filePath: source };
 });
+/**
+ * The dashboard's System Health card: the LAN address, CPU and memory (the laptop's and the app's), the crash-recovery database's last
+ * write and journal mode, and the newest automatic snapshot. CPU is measured between two calls, so the card polls every few seconds.
+ */
+const readSystemHealth = createHealthReader({
+  cpus: () => os.cpus(),
+  totalmem: () => os.totalmem(),
+  freemem: () => os.freemem(),
+  appMetrics: () => app.getAppMetrics(),
+  address: () => localNetworkAddress(),
+  backups: () => listBackups(backupsDirFor(app.getPath('userData'))),
+  session: () => {
+    let journalMode = null;
+    try {
+      journalMode = sessionStore?.journalMode() ?? null;
+    } catch {
+      // Closed while quitting.
+    }
+    return { enabled: sessionStore !== null, journalMode, ...sessionWrites.status() };
+  },
+});
+ipcMain.handle('system:health', () => readSystemHealth());
+
 ipcMain.handle('launch:open', (_event, target) => {
   if (typeof target !== 'string' || !target) return;
   return /^https?:\/\//i.test(target) ? shell.openExternal(target) : shell.openPath(target);
@@ -998,6 +1233,14 @@ app.whenReady().then(() => {
   // Where the app opened its database, and what it holds: a restored file that shows zero songs here is not the one the app reads.
   console.log('[DB Path]:', dbStatus.path, dbStatus.fallback ? '(fallback: the configured database would not open)' : '');
   console.log('[DB Counts]:', databaseCounts(announcements.db));
+  void takeStartupSnapshot();
+  // A first pass a minute after start, then every 15 minutes.
+  const maintenanceStart = setTimeout(runDatabaseMaintenance, 60 * 1000);
+  const maintenanceTimer = setInterval(runDatabaseMaintenance, 15 * 60 * 1000);
+  app.on('before-quit', () => {
+    clearTimeout(maintenanceStart);
+    clearInterval(maintenanceTimer);
+  });
   // A hymn saved here asks the song sync for a send soon, instead of waiting for its next timer tick.
   setupLyrics(announcements.db, {
     onHymnChanged: () => songSync.notify(),
@@ -1063,7 +1306,9 @@ app.whenReady().then(() => {
   setupWhiteboard(announcements.db, announcements.service, { onChanged: announceWhiteboardChange, convertPdf: announcements.convertPdf });
   // The browser source: the lower third at http://127.0.0.1:3002/lower-third, updated live.
   lowerThirdServer = createLowerThirdServer({ distDir: path.join(__dirname, '../dist') });
-  void lowerThirdServer.start();
+  void lowerThirdServer.start().then((ok) => {
+    lowerThirdServerUp = ok;
+  });
   // Remote view starts only when the operator turned it on last time.
   void syncRemoteView();
   if (state.lowerStyle.target != null) placeLowerThirdWindow();
@@ -1094,11 +1339,20 @@ app.whenReady().then(() => {
   });
   // Restore before any window loads, so the first render already shows the resumed queue.
   restoreQueue(planService, pwService);
+  startSessionRecovery();
+  const recovered = recoverSession(planService, pwService);
   setupUpdater({ userData: app.getPath('userData') });
   createOperator();
+  windows.operator?.webContents.once('did-finish-load', () => reportDatabaseRecovery(windows.operator));
+  if (recovered) {
+    // Opens the outputs the session had on (the projector on its display), and sends the restored state to the phones.
+    reconcileWindows();
+    broadcast();
+  }
 });
 
 app.on('will-quit', () => {
+  closeSessionStore();
   void stopRemoteViews();
   media?.close();
   announcements?.close();

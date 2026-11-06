@@ -8,6 +8,7 @@ import type { LowerThird } from '../../shared/live.js';
 import { frameFor, liveDeck, lowerThirdFor } from './live';
 import { usePw } from './store';
 import { isTextEntry } from './textEntry';
+import { setGoLiveFocused } from './useGoLiveFocus';
 
 /** How long a first click stays armed, when another slide is on air and the click needs a second to confirm. */
 export const ARM_MS = 1500;
@@ -125,6 +126,8 @@ export function useQuickLiveController() {
         }
         dispatch({ type: 'projector/show', frame, source: 'DIRECT_DECK' });
         setCue(hymn);
+        // The song is on air: its cues take the whole workspace until the operator closes the focus view.
+        setGoLiveFocused(true);
         // The band naming the song is staged, not turned on: the operator shows it with the Lower third toggle when ready.
         bandRef.current = quickLiveBand(hymn);
         dispatch({ type: 'lowerThird/stage', value: bandRef.current });
@@ -213,7 +216,8 @@ export function useQuickLiveController() {
       const onButton = Boolean(target?.closest('button, a, [role="button"]'));
       let act: (() => void) | null = null;
       if (e.key === 'b' || e.key === 'B') act = () => dispatch({ type: 'projector/blackout' });
-      else if (e.key === 'Escape' && !e.shiftKey) act = () => dispatch({ type: 'projector/clear' });
+      // In the focus view Escape belongs to the view (it closes it, and the projector is left alone), so it is not claimed here.
+      else if (e.key === 'Escape' && !e.shiftKey && !usePw.getState().isGoLiveFocused) act = () => dispatch({ type: 'projector/clear' });
       else if (onAirStanza !== null) {
         if (e.key === 'ArrowDown' || e.key === 'ArrowRight' || (e.key === ' ' && !onButton)) act = nextStanza;
         else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') act = prevStanza;
@@ -291,6 +295,7 @@ export function useQuickLiveController() {
       if (takeDownBand(state) === 'on') dispatch({ type: 'lowerThird/clear' });
       tell(result === 'missing' ? 'Quick Live ended. The lineup slide that was on air is not there any more.' : 'Quick Live ended. The screen is clear.');
     }
+    setGoLiveFocused(false);
     setCue(null);
   }, [restoreLineup, tell]);
 
@@ -313,7 +318,10 @@ export function useQuickLiveController() {
     nextStanza,
     prevStanza,
     focusCue,
-    closeCue: () => setCue(null),
+    closeCue: () => {
+      setCue(null);
+      setGoLiveFocused(false);
+    },
     /** Takes a newer copy of the cue song (after a live edit), at once, so a stanza just added can be shown straight away. */
     adoptCue: (fresh: Hymn) => {
       if (cueRef.current?.id !== fresh.id) return;

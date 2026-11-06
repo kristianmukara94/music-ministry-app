@@ -3,6 +3,7 @@ import { TEXT_SHADE_OPACITY, type WelcomeBackground } from '../../shared/welcome
 import { getSlideImageUrl } from './slideImage';
 import { clearMediaFailed, reportMediaFailed } from './mediaStatus';
 import { describeMediaError } from '../../shared/media-error.js';
+import { boxShadeStyle, gradientShadeStyle, useShade, type ShadeTarget } from '../components/ContrastEngine';
 
 /**
  * The picture or video behind the text, covering its box. Shared by the Welcome screen and the Live slides, so every surface draws the
@@ -138,13 +139,14 @@ export function SlideBackgroundLayer({ media, visible }: { media: NonNullable<We
   );
 }
 
-/** The dark shade behind text when a picture or video is behind it. `area` is a CSS box (top and height) for the shade; the default is the whole box. */
-export function BackgroundShade({ area }: { area?: { top: string; height: string } }) {
-  return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute inset-x-0"
-      style={{ backgroundColor: `rgb(0 0 0 / ${TEXT_SHADE_OPACITY})`, ...(area ?? { top: 0, bottom: 0 }) }}
-    />
-  );
+/**
+ * The dark shade behind text when a picture or video is behind it. `area` is a CSS box (top and height) for the shade; the default is the
+ * whole box. On the projector, auto-legibility sets its darkness from the picture (`target` names whose picture this is): a whole-box shade
+ * becomes a gradient, darker where the picture is bright behind a text zone, and a text-box shade takes the centre zone's darkness. In an
+ * editor preview, or before the picture has been measured, it is the fixed shade.
+ */
+export function BackgroundShade({ area, target }: { area?: { top: string; height: string }; target: ShadeTarget }) {
+  const shade = useShade(target);
+  const look = area ? boxShadeStyle(shade, TEXT_SHADE_OPACITY) : gradientShadeStyle(shade, TEXT_SHADE_OPACITY);
+  return <div aria-hidden className="pointer-events-none absolute inset-x-0" style={{ ...look, ...(area ?? { top: 0, bottom: 0 }) }} />;
 }

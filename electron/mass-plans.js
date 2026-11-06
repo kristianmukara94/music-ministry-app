@@ -156,6 +156,12 @@ export const MASS_SLOT_MIGRATIONS = [
 /** The language each plan is celebrated in: EN, TL or CEB (see shared/mass-language.js). Plans made before it are English. */
 export const PLAN_LANGUAGE_MIGRATIONS = [`ALTER TABLE mass_plans ADD COLUMN language TEXT NOT NULL DEFAULT 'EN';`];
 
+/**
+ * Whether a plan's slides show their slot title banner: 1 shows it, 0 hides it, NULL follows the projector setting (showSlotTitle).
+ * Read and written by its own statements, prepared when first used, so a database built without this column still opens every other query.
+ */
+export const PLAN_SLOT_TITLE_MIGRATIONS = [`ALTER TABLE mass_plans ADD COLUMN show_slot_title INTEGER;`];
+
 const MAX_TEMPLATE_NAME = 80;
 const MAX_TEMPLATES = 100;
 
@@ -205,6 +211,14 @@ export function createMassPlanService(db) {
     if (!plan) throw new Error('That plan no longer exists.');
     return plan;
   };
+
+  // The slot-title statements, prepared on first use (see PLAN_SLOT_TITLE_MIGRATIONS).
+  let slotTitleQ = null;
+  const slotTitleStatements = () =>
+    (slotTitleQ ??= {
+      get: db.prepare('SELECT show_slot_title AS v FROM mass_plans WHERE id = ?'),
+      set: db.prepare('UPDATE mass_plans SET show_slot_title = ? WHERE id = ?'),
+    });
 
   /** Whether a plan item's source still exists. Mass Order parts are built in, so they always do. */
   const sourceExists = (module, sourceId) => {
@@ -295,6 +309,23 @@ export function createMassPlanService(db) {
       return language;
     },
 
+    /** The plan's own slot-title choice: true, false, or null to follow the projector setting. */
+    getSlotTitle(id) {
+      requirePlan(id);
+      const statements = slotTitleStatements();
+      const v = statements.get.get(id)?.v;
+      return v == null ? null : v === 1;
+    },
+
+    /** Sets the plan's slot-title choice: true shows the banner, false hides it, null follows the projector setting. */
+    setSlotTitle(id, show) {
+      requirePlan(id);
+      if (show !== null && typeof show !== 'boolean') throw new Error('Show slot title must be on, off, or follow the setting.');
+      const statements = slotTitleStatements();
+      statements.set.run(show === null ? null : show ? 1 : 0, id);
+      return show;
+    },
+
     deletePlan(id) {
       // The tombstone and the delete happen together, so a deleted plan is never pulled back on the next sync.
       return db.transaction(() => {
@@ -375,6 +406,8 @@ export function setupMassPlans(db) {
   handle('get', (id) => service.getPlan(Number(id)));
   handle('save', (id, items) => service.savePlan(Number(id), items));
   handle('setLanguage', (id, language) => service.setLanguage(Number(id), language));
+  handle('slotTitle', (id) => service.getSlotTitle(Number(id)));
+  handle('setSlotTitle', (id, show) => service.setSlotTitle(Number(id), show));
   handle('listTemplates', () => service.listTemplates());
   handle('getTemplate', (id) => service.getTemplate(Number(id)));
   handle('saveTemplate', (input) => service.saveTemplate(input));

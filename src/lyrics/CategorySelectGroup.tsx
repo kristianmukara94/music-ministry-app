@@ -1,10 +1,16 @@
+import { useMemo } from 'react';
 import { Tag } from 'lucide-react';
+import type { LyKey } from '../../shared/lyrics-i18n.js';
 import type { LyT } from './strings';
-import { PRIMARY_OPTIONS, SCOPE_HINT_KEY, groupCategories, homeScopeOfCategory, type PrimaryCategory } from './songTaxonomy';
+import { PRIMARY_OPTIONS, SCOPE_HINT_KEY, categoryModeLookup, groupCategories, homeScopeOfCategory, type PrimaryCategory } from './songTaxonomy';
+import type { SongCategory } from './types';
 
 const FIELD =
   'w-full rounded-lg border border-fg/15 bg-panel-2 px-3 text-fg outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40';
 const CAPTION = 'flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-fg/60 uppercase';
+
+/** The heading a category group gets in a filter: its scope's name, and All for the categories that suit every scope. */
+const GROUP_LABEL: Record<PrimaryCategory, LyKey> = { MASS: 'scope_MASS', PRAISE_AND_WORSHIP: 'scope_PRAISE_AND_WORSHIP', GENERAL: 'targetMode_ALL' };
 
 interface Props {
   t: LyT;
@@ -12,8 +18,8 @@ interface Props {
   onScope: (scope: PrimaryCategory) => void;
   songCategory: string;
   onSongCategory: (name: string) => void;
-  /** Every category name on the operator's list. */
-  names: string[];
+  /** The operator's category list, with each category's target mode (Holy Mass, Praise & Worship or All). */
+  categories: readonly Pick<SongCategory, 'name' | 'targetMode'>[];
   /** 'form' picks a song's own categories (a category is required). 'filter' narrows a list (an empty category means all). */
   mode: 'form' | 'filter';
   /** Form only: marks the category field as missing. */
@@ -29,22 +35,35 @@ interface Props {
 }
 
 /**
- * Two dropdowns for the two tiers of a song's category. The scope (General, Mass, Praise & Worship) comes first; the song category's
- * dropdown then lists the categories suggested for that scope in the first group and the rest in a second, so nothing is hidden and a
- * song can still carry a category from another scope. The chosen category shows as a badge, with a note when the scope does not suggest it.
+ * Two dropdowns for the two tiers of a song's category. The scope (General, Mass, Praise & Worship) comes first; the song category's dropdown
+ * then offers only the categories whose target mode fits that scope: a Holy Mass scope shows Holy Mass and All categories, Praise & Worship
+ * shows Praise & Worship and All, and General shows every category. The song's own category stays selectable even when it is for another
+ * scope (shown under "Other categories"), so editing the song's other details never drops it.
  */
-export function CategorySelectGroup({ t, scope, onScope, songCategory, onSongCategory, names, mode, invalid, required, idPrefix, scopeOnly, compact }: Props) {
-  // A category the song already has but the list no longer holds stays selectable, so editing the song's other details never drops it.
+export function CategorySelectGroup({ t, scope, onScope, songCategory, onSongCategory, categories, mode, invalid, required, idPrefix, scopeOnly, compact }: Props) {
+  const modes = useMemo(() => categoryModeLookup(categories), [categories]);
+  const names = useMemo(() => categories.map((c) => c.name), [categories]);
+  // A category the song already has but the list no longer holds stays selectable too.
   const all = songCategory && !names.includes(songCategory) ? [songCategory, ...names] : names;
-  const { suggested, other } = groupCategories(all, scope);
+  const { suggested } = groupCategories(all, scope, modes);
+  const outsideScope = Boolean(songCategory) && !suggested.includes(songCategory);
   const size = compact ? 'h-9 text-xs' : 'h-10 text-sm';
   const scopeLabel = t(PRIMARY_OPTIONS.find((o) => o.value === scope)!.labelKey);
   const scopeId = `${idPrefix}-scope`;
   const categoryId = `${idPrefix}-category`;
-  // A filter lists every category once, under the scope it belongs to, with that scope's name as the heading. A form lists the ones that suit
-  // the chosen scope first.
-  const byScope = PRIMARY_OPTIONS.map((o) => ({ ...o, names: all.filter((name) => homeScopeOfCategory(name) === o.value) })).filter((g) => g.names.length > 0);
-  const outsideScope = Boolean(songCategory) && scope !== 'GENERAL' && !suggested.includes(songCategory);
+  // A filter lists each offered category once, under the scope it belongs to: Holy Mass, Praise & Worship, then All (the chosen scope's own
+  // group first when one is chosen). A form lists the ones that suit the chosen scope in one group.
+  const ownFirst = (value: PrimaryCategory) => Number(scope !== 'GENERAL' && value === scope);
+  const byScope = [...PRIMARY_OPTIONS]
+    .sort((a, b) => ownFirst(b.value) - ownFirst(a.value) || Number(a.value === 'GENERAL') - Number(b.value === 'GENERAL'))
+    .map((o) => ({ value: o.value, labelKey: GROUP_LABEL[o.value], names: suggested.filter((name) => homeScopeOfCategory(name, modes) === o.value) }))
+    .filter((g) => g.names.length > 0);
+
+  const otherGroup = outsideScope && (
+    <optgroup label={t('otherCategories')}>
+      <option value={songCategory}>{songCategory}</option>
+    </optgroup>
+  );
 
   return (
     <div className={`grid gap-3 ${scopeOnly ? 'grid-cols-1' : compact ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2'}`}>
@@ -91,27 +110,17 @@ export function CategorySelectGroup({ t, scope, onScope, songCategory, onSongCat
                 </optgroup>
               ))
             ) : (
-              <>
-                {suggested.length > 0 && (
-                  <optgroup label={scope === 'GENERAL' ? t('songCategoryField') : t('suggestedFor', { scope: scopeLabel })}>
-                    {suggested.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {other.length > 0 && (
-                  <optgroup label={t('otherCategories')}>
-                    {other.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </>
+              suggested.length > 0 && (
+                <optgroup label={scope === 'GENERAL' ? t('songCategoryField') : t('suggestedFor', { scope: scopeLabel })}>
+                  {suggested.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </optgroup>
+              )
             )}
+            {otherGroup}
           </select>
           {!compact && songCategory && (
             <p className="flex flex-wrap items-center gap-1.5">

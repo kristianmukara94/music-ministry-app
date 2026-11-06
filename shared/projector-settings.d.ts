@@ -24,11 +24,14 @@ export interface ProjectorSettings {
   slideFont: string | null;
   defaultIntroSlideMode: 'title' | 'black';
   slideFontScale: number;
+  showSlotTitle: boolean;
   backgroundEverywhere: boolean;
   advancedOutput: boolean;
   textColor: string | null;
   textShadow: number;
   textOutline: number;
+  autoLegibility: boolean;
+  manualShade: number;
 }
 
 export const PROJECTOR_SETTINGS_DEFAULTS: ProjectorSettings;
