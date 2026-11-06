@@ -23,6 +23,10 @@
         <span style="font-weight: 800; font-size: 16px; letter-spacing: 0.04em">APCCMMA</span>
         <span style="font-size: 12px; color: #b48d99">Web Planner</span>
       </div>
+      <span class="sync-badge" title="Plans made here sync with the church laptop's desktop app, version 1.0.42 or newer">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg>
+        v1.0.42 Sync Ready
+      </span>
     </div>
 
     <div style="display: flex; flex-direction: column; gap: 12px; max-width: 440px">
@@ -36,13 +40,13 @@
         <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Username</span>
         <input type="text" name="username" required autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="Your username" style="height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 15px; outline: 0">
       </label>
-      <label style="display: flex; flex-direction: column; gap: 8px">
-        <span style="display: flex; justify-content: space-between; align-items: baseline">
-          <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Password</span>
-          <span style="font-size: 13px; color: #b48d99">Ask your admin to reset it</span>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <span style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+          <label for="password" style="font-size: 13px; font-weight: 600; color: #dbb3bf">Password</label>
+          <button type="button" id="forgot-open" class="link-button" aria-haspopup="dialog">Forgot password?</button>
         </span>
-        <input type="password" name="password" required autocomplete="current-password" placeholder="Your password" style="height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 15px; outline: 0">
-      </label>
+        <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Your password" style="height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 15px; outline: 0">
+      </div>
       <label style="display: flex; flex-direction: column; gap: 8px">
         <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Church code <span style="font-weight: 400; color: #b48d99">(asked the first time; then remembered on this laptop)</span></span>
         <input type="text" name="churchCode" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. K7QM-4XD2" style="height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 15px; outline: 0">
@@ -94,5 +98,22 @@
     </div>
   </aside>
 </div>
+
+<dialog id="forgot-dialog" class="modal" aria-labelledby="forgot-title">
+  <div class="dialog-body">
+    <h2 id="forgot-title">Forgot your password?</h2>
+    <p>The planner cannot send reset emails. Your church's admin resets passwords, so nothing about your account leaves the parish.</p>
+    <ol class="steps-list">
+      <li>Contact your church's admin: the music ministry lead, or whoever gave you your account.</li>
+      <li>Tell them your username. They reset it on the <strong>Users</strong> page and give you a temporary password in person or by message.</li>
+      <li>Sign in with the temporary password. The planner then asks you to choose a new one of at least 10 characters.</li>
+    </ol>
+    <p>Locked out after five wrong tries? Wait 15 minutes, or ask the admin to unlock your account.</p>
+    <p class="muted">An admin who forgets their own password asks another admin of the church to reset it.</p>
+    <div class="dialog-actions">
+      <button type="button" id="forgot-close" class="primary">Got it</button>
+    </div>
+  </div>
+</dialog>
 </body>
 </html>

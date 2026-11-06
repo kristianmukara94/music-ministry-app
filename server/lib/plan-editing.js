@@ -5,7 +5,7 @@
 import { ApiError } from './admin.js';
 import { sessionFrom } from './session.js';
 import { EDITING_ROLES } from './rules.js';
-import { checkItems, dateText, planOut } from './plan-sync.js';
+import { checkItems, checkPlanDetails, dateText, planOut } from './plan-sync.js';
 
 export { dateText };
 export const MIN_MINUTES = 1;
@@ -114,7 +114,9 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
       const songs = await tx`SELECT id FROM songs WHERE church_id = ${who.churchId}`;
       const items = checkItems(body.items, new Set(songs.map((s) => s.id)));
       const kind = row.body?.kind ?? null;
-      await tx`UPDATE plans SET body = ${JSON.stringify({ kind, items })}::jsonb, updated_at = ${at} WHERE id = ${planId}`;
+      // A Holy Mass plan's language and Mass time. A Praise & Worship plan has neither, so a request for one is ignored.
+      const details = kind === 'pw' ? {} : checkPlanDetails(body, row.body);
+      await tx`UPDATE plans SET body = ${JSON.stringify({ kind, ...details, items })}::jsonb, updated_at = ${at} WHERE id = ${planId}`;
       await tx`INSERT INTO audit_log (church_id, actor_user_id, action, target_plan_id) VALUES (${who.churchId}, ${who.userId}, 'plan.saved', ${planId})`;
       return { savedAt: at };
     });

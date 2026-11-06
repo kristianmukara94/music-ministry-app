@@ -223,9 +223,15 @@ export function withOrders(items) {
   return items.map((item, index) => ({ ...item, order: index + 1 }));
 }
 
-/** The body the plan-save route takes: the plan's id, the version the editor loaded, and the items. */
-export function savePayload(plan, items) {
-  return { id: plan.id, baseUpdatedAt: plan.updatedAt, items };
+/**
+ * The body the plan-save route takes: the plan's id, the version the editor loaded, and the items. A Holy Mass plan also sends its details:
+ * `language` (EN, TL or CEB) and `massTime` ("HH:MM", or null for none). Details left out are not sent, and the server keeps what it has.
+ */
+export function savePayload(plan, items, details = {}) {
+  const payload = { id: plan.id, baseUpdatedAt: plan.updatedAt, items };
+  if (details.language !== undefined) payload.language = details.language;
+  if (details.massTime !== undefined) payload.massTime = details.massTime || null;
+  return payload;
 }
 
 /** The songs the editor can show: the picker's songs, plus any song the plan refers to that has since been removed. */

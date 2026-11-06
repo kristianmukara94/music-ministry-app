@@ -4,6 +4,8 @@
 // takes a song from the church's list or a typed note; a reading takes a reference; a rite takes an optional note for the operator.
 import { LANGUAGE_CODE, MASS_PLAN } from './sample-data.js';
 import { SLOT_COUNT } from './mass-slots.js';
+import { MASS_LANGUAGES, languageName, massLanguageOf, sectionName, slotName } from './mass-language.js';
+import { isMassTime, massTimesFor, timeLabel } from './mass-schedule.js';
 import { esc, mountSidebar } from './shell.js';
 import { guard } from './auth.js';
 import { getPlan, listSongs, savePlan } from './plan-api.js';
@@ -65,6 +67,10 @@ function fresh(saved) {
     notes: saved?.notes ?? {},
     extra: saved?.extra ?? [],
     meta: saved?.meta ?? {},
+    // The plan's language (EN, TL, CEB) and its Mass time ("HH:MM", or '' for none). `otherTime` shows the time box for a time not on the schedule.
+    language: massLanguageOf(saved?.language),
+    massTime: isMassTime(saved?.massTime) ? saved.massTime : '',
+    otherTime: false,
     dirty: false,
     noteSaved: false,
     saving: false,
@@ -78,6 +84,9 @@ function stepOf(id) {
   const seg = state.segments[id] ?? {};
   return {
     ...base,
+    // The slot's name in the plan's language; `english` is its English name, shown beneath when the two differ.
+    name: slotName(base, state.language),
+    english: base.name,
     value: seg.songId ? titleOf(songs, seg.songId) : (seg.text ?? ''),
     src: seg.songId ? 'list' : seg.text ? 'text' : '',
   };
@@ -85,8 +94,12 @@ function stepOf(id) {
 
 const subOf = (r) => {
   const kind = r.kind === 'song' ? 'Song · ' + r.category : r.kind === 'reading' ? 'Reading' : r.kind === 'slot-text' ? 'Text' : 'Rite';
-  return r.hint ? kind + ' · ' + r.hint : kind;
+  const withHint = r.hint ? kind + ' · ' + r.hint : kind;
+  return r.english && r.english !== r.name ? r.english + ' · ' + withHint : withHint;
 };
+
+/** The HTML lang of the plan's language, so a screen reader reads the Tagalog and Cebuano names in their own voice. */
+const HTML_LANG = { EN: 'en', TL: 'tl', CEB: 'ceb' };
 
 const BTN_PRIMARY = 'border:0;background:#ecc98a;color:#1c070d';
 const BTN_QUIET = 'border:1px solid #6e2a3e;background:#2a0c18;color:#f7eef0';
@@ -98,7 +111,8 @@ function renderHeader() {
   const steps = ROWS.map((r) => stepOf(r.id));
   const songSteps = steps.filter((s) => s.kind === 'song');
   const readings = steps.filter((s) => s.kind === 'reading');
-  document.getElementById('eyebrow').textContent = plan ? `HOLY MASS PLAN · ${dateLabel(plan.date)}` : 'HOLY MASS PLAN';
+  const when = plan ? [dateLabel(plan.date), state.massTime ? timeLabel(state.massTime) : ''].filter(Boolean).join(' · ') : '';
+  document.getElementById('eyebrow').textContent = plan ? `HOLY MASS PLAN · ${when} · ${languageName(state.language).toUpperCase()}` : 'HOLY MASS PLAN';
   document.getElementById('title').textContent = plan ? plan.name : 'No plan open';
   document.title = `${plan ? plan.name : 'Holy Mass plan'} · APCCMMA Web Planner`;
   document.getElementById('status').textContent = plan ? statusText({ dirty: state.dirty, error: state.error }) : state.error || 'Not loaded';
@@ -114,6 +128,46 @@ function renderHeader() {
   const note = document.getElementById('view-only');
   note.textContent = VIEW_ONLY;
   note.hidden = !plan || canEdit;
+  renderDetails();
+}
+
+/** The plan's details card: the language switch and the Mass time from the parish schedule (or another time). */
+function renderDetails() {
+  const locked = !plan || !canEdit;
+  document.getElementById('language').innerHTML = MASS_LANGUAGES.map((l) => {
+    const on = l.code === state.language;
+    return `<button type="button" role="radio" data-lang="${l.code}" aria-checked="${on}" tabindex="${on ? 0 : -1}" ${locked ? 'disabled' : ''} style="flex:1;min-width:0;height:40px;padding:0 10px;border-radius:9px;font-size:14px;cursor:pointer;${on ? 'border:1px solid #ecc98a;background:#2a0c18;color:#ecc98a;font-weight:700' : 'border:1px solid transparent;background:transparent;color:#dbb3bf;font-weight:600'}">${esc(l.name)}</button>`;
+  }).join('');
+
+  const select = document.getElementById('mass-time');
+  const offered = plan ? massTimesFor(plan.date) : [];
+  const listed = offered.some((t) => t.time === state.massTime);
+  const options = [
+    `<option value="">No Holy Mass time set</option>`,
+    ...offered.map((t) => `<option value="${t.time}">${esc(t.label)}</option>`),
+    ...(state.massTime && !listed ? [`<option value="${state.massTime}">${esc(timeLabel(state.massTime))} · not on the schedule</option>`] : []),
+    `<option value="other">Other time…</option>`,
+  ];
+  select.innerHTML = options.join('');
+  select.value = state.otherTime ? 'other' : state.massTime;
+  select.disabled = locked;
+  const other = document.getElementById('mass-time-other');
+  other.hidden = !state.otherTime;
+  other.disabled = locked;
+  if (state.otherTime && !other.value) other.value = state.massTime;
+
+  document.getElementById('details-note').textContent = plan
+    ? `Slot names are shown in ${languageName(state.language)}${state.language === 'EN' ? '' : ', with the English name beneath'}. Song titles and typed text are not translated.`
+    : '';
+  document.getElementById('steps').setAttribute('lang', HTML_LANG[state.language]);
+  document.getElementById('drawer').setAttribute('lang', HTML_LANG[state.language]);
+}
+
+/** Changes a plan detail in this session. Nothing is saved until Save plan. */
+function setDetail(patch) {
+  Object.assign(state, patch);
+  state.dirty = true;
+  state.error = '';
 }
 
 /** One row: its number (a slot's number, 1 to 17, or a dot for another step), its name, what is chosen, and the button that opens the drawer. */
@@ -139,7 +193,7 @@ function rowHtml(r) {
   const btnLabel = r.kind === 'rite' ? 'Add note' : r.value ? 'Change' : isText ? 'Type text' : 'Choose';
   const number = r.slot ? String(r.slot).padStart(2, '0') : '•';
   return `
-              <div data-row="${esc(r.id)}" ${r.slot ? `data-slot="${r.slot}"` : ''} style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:12px 18px;border-bottom:1px solid #2b1019;${selected ? 'background:#2a0c18;box-shadow:inset 0 0 0 1px #ecc98a' : 'background:transparent'}">
+              <div class="plan-row" data-row="${esc(r.id)}" ${r.slot ? `data-slot="${r.slot}"` : ''} style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:12px 18px;border-bottom:1px solid #2b1019;${selected ? 'background:#2a0c18;box-shadow:inset 0 0 0 1px #ecc98a' : 'background:transparent'}">
                 <span style="flex: none; width: 28px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: ${r.slot ? '#ecc98a' : '#b48d99'}"><span class="sr-only">${r.slot ? 'Slot ' : 'Step '}</span>${number}</span>
                 <span style="flex: 1 1 190px; min-width: 0; display: flex; flex-direction: column; gap: 3px">
                   <span style="font-size: 15px; font-weight: 700">${esc(r.name)}</span>
@@ -172,7 +226,7 @@ function renderSteps() {
               <button type="button" data-toggle="${section.group}" aria-expanded="${open}" aria-controls="section-${section.group}" style="display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border: 0; background: transparent; cursor: pointer; text-align: left">
                 <span style="display: inline-flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 800; letter-spacing: 0.12em; color: #ecc98a">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform: rotate(${open ? 90 : 0}deg)"><path d="m9 6 6 6-6 6"/></svg>
-                  ${section.number} · ${esc(section.title.toUpperCase())}
+                  ${section.number} · ${esc(sectionName(section, state.language).toUpperCase())}
                 </span>
                 <span style="font-size: 12px; font-weight: 600; color: #b48d99">${filled} of ${slotRows.length} slots${otherRows.length ? ' · ' + otherRows.length + ' other' : ''}</span>
               </button>
@@ -330,7 +384,7 @@ async function load() {
     plan = saved.plan;
     canEdit = saved.canEdit;
     songs = songsForEditor(list.songs, saved.songs);
-    state = fresh(massFromItems(plan.items, ROWS));
+    state = fresh({ ...massFromItems(plan.items, ROWS), language: plan.language, massTime: plan.massTime });
   } catch (err) {
     if (plan) state.error = err.message;
     else state = { ...fresh(null), error: err.message };
@@ -344,7 +398,9 @@ async function save() {
   state.error = '';
   renderHeader();
   try {
-    const response = await savePlan(savePayload(plan, massToItems(state, ROWS)));
+    const details = { language: state.language, massTime: state.massTime || null };
+    const response = await savePlan(savePayload(plan, massToItems(state, ROWS), details));
+    Object.assign(plan, details);
     plan.updatedAt = response.savedAt;
     state.dirty = false;
   } catch (err) {
@@ -366,6 +422,11 @@ document.querySelector('main').addEventListener('click', (event) => {
     renderDrawer();
     // On a phone the drawer sits below the steps, so bring it into view.
     if (window.matchMedia('(max-width: 820px)').matches) document.getElementById('drawer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else if (target.dataset.lang) {
+    if (target.dataset.lang === state.language) return;
+    setDetail({ language: target.dataset.lang });
+    render();
+    document.querySelector(`[data-lang="${target.dataset.lang}"]`)?.focus();
   } else if (target.dataset.toggle) {
     collapsed = collapsed.includes(target.dataset.toggle) ? collapsed.filter((g) => g !== target.dataset.toggle) : [...collapsed, target.dataset.toggle];
     writeCollapsed(collapsed);
@@ -399,6 +460,40 @@ document.querySelector('main').addEventListener('click', (event) => {
   } else if (target.id === 'save') {
     void save();
   }
+});
+
+// The Mass time: a time from the schedule, none, or "Other time…", which shows a time box for a time not on the schedule.
+document.getElementById('mass-time').addEventListener('change', (event) => {
+  const value = event.target.value;
+  if (value === 'other') {
+    state.otherTime = true;
+    renderDetails();
+    document.getElementById('mass-time-other').focus();
+    return;
+  }
+  setDetail({ massTime: value, otherTime: false });
+  document.getElementById('mass-time-other').value = '';
+  renderHeader();
+});
+
+document.getElementById('mass-time-other').addEventListener('change', (event) => {
+  const value = event.target.value;
+  if (!isMassTime(value)) return;
+  setDetail({ massTime: value, otherTime: false });
+  event.target.value = '';
+  renderHeader();
+});
+
+// Arrow keys move between the languages, as in any radio group.
+document.getElementById('language').addEventListener('keydown', (event) => {
+  const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+  if (!step || !plan || !canEdit) return;
+  event.preventDefault();
+  const codes = MASS_LANGUAGES.map((l) => l.code);
+  const next = codes[(codes.indexOf(state.language) + step + codes.length) % codes.length];
+  setDetail({ language: next });
+  render();
+  document.querySelector(`[data-lang="${next}"]`)?.focus();
 });
 
 document.getElementById('drawer').addEventListener('input', (event) => {

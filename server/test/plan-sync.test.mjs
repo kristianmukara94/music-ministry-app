@@ -502,3 +502,14 @@ test('a push that carries no note for an item keeps the note the server already 
   assert.equal(JSON.parse(pushed.body).results[0].status, 'accepted');
   assert.equal((await serverRow(id)).body.items[0].note, 'Pray for the parish');
 });
+
+test('a laptop push keeps the language and Mass time set on the web, which the laptop does not send', async () => {
+  const id = await plantPlan(CHURCH_A, { kind: 'mass', items: [] });
+  await pg.query(`UPDATE plans SET body = body || '{"language":"CEB","massTime":"08:00"}'::jsonb WHERE id = $1`, [id]);
+  const stored = await serverRow(id);
+  const pushed = await sync().pushPlans(pushReq(laptopA, [body({ id, kind: 'mass', baseUpdatedAt: new Date(stored.updated_at).toISOString(), items: [] })]));
+  assert.equal(JSON.parse(pushed.body).results[0].status, 'accepted');
+  const after = (await serverRow(id)).body;
+  assert.equal(after.language, 'CEB');
+  assert.equal(after.massTime, '08:00');
+});

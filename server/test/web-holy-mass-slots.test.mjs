@@ -155,7 +155,7 @@ test('the editor draws the five sections as collapsible, slots first, and rememb
   assert.match(page, /const slotRows = section\.rows\.filter\(\(r\) => r\.slot\);/);
   assert.match(page, /OTHER STEPS/);
   assert.match(page, /localStorage\.setItem\(COLLAPSED_KEY/);
-  assert.match(page, /state = fresh\(massFromItems\(plan\.items, ROWS\)\);/);
+  assert.match(page, /state = fresh\(\{ \.\.\.massFromItems\(plan\.items, ROWS\), language: plan\.language, massTime: plan\.massTime \}\);/);
   assert.match(page, /massToItems\(state, ROWS\)/);
 });
 
@@ -166,7 +166,8 @@ test('every label on the web portal says Holy Mass: the list tab, the plan rows,
   assert.match(readWeb('js/plans.js'), /'Holy Mass plan'/);
   assert.match(readWeb('plan/new.html'), /<option value="mass">Holy Mass<\/option>/, 'the stored value is still mass');
   assert.match(readWeb('plan/mass.html'), /<title>Holy Mass plan · APCCMMA Web Planner<\/title>/);
-  assert.match(readWeb('js/mass.js'), /HOLY MASS PLAN · \$\{dateLabel\(plan\.date\)\}/);
+  assert.match(readWeb('js/mass.js'), /\[dateLabel\(plan\.date\), state\.massTime/);
+  assert.match(readWeb('js/mass.js'), /`HOLY MASS PLAN · \$\{when\}/);
   assert.match(readWeb('login.html'), /Plan the Holy Mass from anywhere/);
   assert.equal(model.checkNewPlan({ name: 'Plan', date: '2026-11-01', kind: 'choir' }), 'Choose Holy Mass or Praise & Worship.');
 });

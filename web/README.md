@@ -28,6 +28,11 @@ in, and the planner needs an account from your church's admin. The desktop app i
 `js/sample-data.js` holds only the fixed templates (the Mass steps, the Praise & Worship lineup, song categories and
 languages). Everything else comes from the API.
 
+A Holy Mass plan also saves its language (`EN`, `TL` or `CEB`) and its Holy Mass time (`HH:MM` on the plan's date) in the plan
+body. The slot and section names in Tagalog and Cebuano are in `js/mass-language.js`, a copy of the laptop's
+`shared/mass-language.js` that a test keeps equal. The times offered come from `PARISH_MASS_SCHEDULE` in `js/mass-schedule.js`:
+edit that list to match the parish bulletin. A planner can always choose another time.
+
 ## Run it locally
 
 The pages use JavaScript modules, which browsers do not load from `file://`. Serve the folder over HTTP instead, from the

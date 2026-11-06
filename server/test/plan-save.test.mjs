@@ -159,3 +159,58 @@ test('a signed-out save is refused', async () => {
   const res = await editing().savePlan({ httpMethod: 'POST', headers: {}, body: JSON.stringify({ id: PLAN_A, baseUpdatedAt: AT, items: [] }) });
   assert.equal(res.statusCode, 401);
 });
+
+// ---- A Holy Mass plan's language and Mass time ----
+
+test('a save keeps the plan\'s language and Mass time, and the plan reads back with them', async () => {
+  const cookie = await cookieFor('planner', 'K7QM-4XD2');
+  const res = await save(cookie, { language: 'TL', massTime: '08:00' });
+  assert.equal(res.statusCode, 200);
+  const row = await storedPlan();
+  assert.equal(row.body.language, 'TL');
+  assert.equal(row.body.massTime, '08:00');
+  const read = await editing().getPlan({ httpMethod: 'GET', headers: { cookie }, queryStringParameters: { id: PLAN_A } });
+  const { plan } = JSON.parse(read.body);
+  assert.equal(plan.language, 'TL');
+  assert.equal(plan.massTime, '08:00');
+});
+
+test('a save that leaves the details out keeps the stored ones; massTime null clears the time', async () => {
+  const cookie = await cookieFor('planner', 'K7QM-4XD2');
+  const first = await save(cookie, { language: 'CEB', massTime: '17:30' });
+  const savedAt = JSON.parse(first.body).savedAt;
+  await save(cookie, { baseUpdatedAt: savedAt });
+  assert.deepEqual([(await storedPlan()).body.language, (await storedPlan()).body.massTime], ['CEB', '17:30'], 'an older editor that sends no details changes neither');
+  const cleared = (await storedPlan()).updated_at.toISOString();
+  await save(cookie, { baseUpdatedAt: cleared, massTime: null });
+  assert.equal((await storedPlan()).body.massTime, undefined);
+  assert.equal((await storedPlan()).body.language, 'CEB');
+});
+
+test('a plan saved before languages reads with neither detail, so it opens in English', async () => {
+  const cookie = await cookieFor('planner', 'K7QM-4XD2');
+  const read = await editing().getPlan({ httpMethod: 'GET', headers: { cookie }, queryStringParameters: { id: PLAN_A } });
+  const { plan } = JSON.parse(read.body);
+  assert.equal('language' in plan, false);
+  assert.equal('massTime' in plan, false);
+});
+
+test('an unknown language or a malformed Mass time is refused, and nothing is written', async () => {
+  const cookie = await cookieFor('planner', 'K7QM-4XD2');
+  for (const bad of [{ language: 'FR' }, { language: 'tl' }, { massTime: '8:00' }, { massTime: '24:00' }, { massTime: 800 }]) {
+    const res = await save(cookie, bad);
+    assert.equal(res.statusCode, 400, JSON.stringify(bad));
+  }
+  const row = await storedPlan();
+  assert.equal(row.body.language, undefined);
+  assert.equal(row.updated_at.toISOString(), AT);
+});
+
+test('a Praise & Worship plan takes no language or Mass time', async () => {
+  const cookie = await cookieFor('planner', 'K7QM-4XD2');
+  await pg.query(`UPDATE plans SET body = '{"kind":"pw","items":[]}' WHERE id = $1`, [PLAN_A]);
+  const res = await save(cookie, { language: 'TL', massTime: '08:00' });
+  assert.equal(res.statusCode, 200);
+  const row = await storedPlan();
+  assert.deepEqual(Object.keys(row.body).sort(), ['items', 'kind']);
+});

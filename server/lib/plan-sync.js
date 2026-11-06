@@ -50,7 +50,40 @@ export function dateText(value) {
   return String(value).slice(0, 10);
 }
 
-/** A plan as the API returns it: its fields and its ordered items. The stored body holds the kind and the items. */
+/** The languages a Holy Mass plan can be celebrated in (shared/mass-language.js): English, Tagalog, Cebuano. */
+export const PLAN_LANGUAGES = ['EN', 'TL', 'CEB'];
+const MASS_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * A plan's details beyond its items, from the stored body: the language (EN, TL or CEB) and the parish Mass time it is for ("HH:MM" on
+ * the plan's date). Each is left out when it is not set, so a plan saved before them reads as it did.
+ */
+export function planDetails(body) {
+  const out = {};
+  if (PLAN_LANGUAGES.includes(body?.language)) out.language = body.language;
+  if (typeof body?.massTime === 'string' && MASS_TIME.test(body.massTime)) out.massTime = body.massTime;
+  return out;
+}
+
+/**
+ * The details a web save sets, on top of the ones the plan has. A field the request leaves out keeps its stored value; `massTime: null`
+ * clears the time. Throws a plain ApiError for a value that is not allowed.
+ */
+export function checkPlanDetails(input, current = {}) {
+  const out = planDetails(current);
+  if (input.language !== undefined) {
+    if (!PLAN_LANGUAGES.includes(input.language)) throw refuse('The Holy Mass language must be English, Tagalog or Cebuano. Nothing was saved.');
+    out.language = input.language;
+  }
+  if (input.massTime !== undefined) {
+    if (input.massTime === null) delete out.massTime;
+    else if (typeof input.massTime === 'string' && MASS_TIME.test(input.massTime)) out.massTime = input.massTime;
+    else throw refuse('Choose a Mass time from the schedule, or a time such as 08:00. Nothing was saved.');
+  }
+  return out;
+}
+
+/** A plan as the API returns it: its fields, its language and Mass time when set, and its ordered items. */
 export function planOut(row) {
   const body = row.body ?? {};
   // A deleted plan keeps its row, marked deleted and with no items, so every laptop learns of the delete on its next pull.
@@ -59,6 +92,7 @@ export function planOut(row) {
     name: row.name,
     date: dateText(row.liturgical_date),
     kind: body.kind ?? null,
+    ...(body.deleted ? {} : planDetails(body)),
     items: body.deleted ? [] : Array.isArray(body.items) ? body.items : [],
     updatedAt: new Date(row.updated_at).toISOString(),
     ...(body.deleted ? { deleted: true } : {}),
@@ -211,9 +245,10 @@ export async function pushOnePlan({ sql, transaction, churchId, userId, input, s
       // the server already has for that item. Otherwise a note typed on the web would be lost on the next laptop push.
       const notes = new Map((Array.isArray(row.body?.items) ? row.body.items : []).filter((i) => i.note).map((i) => [i.key, i.note]));
       const kept = items.map((i) => (i.note === undefined && notes.has(i.key) ? { ...i, note: notes.get(i.key) } : i));
+      // The language and Mass time are set on the web; a laptop push keeps them.
       await tx`
         UPDATE plans SET name = ${fields.name}, liturgical_date = ${fields.date},
-          body = ${JSON.stringify({ kind: fields.kind, items: kept })}::jsonb, updated_at = ${at}
+          body = ${JSON.stringify({ kind: fields.kind, ...planDetails(row.body), items: kept })}::jsonb, updated_at = ${at}
         WHERE id = ${id} AND church_id = ${churchId}`;
       return { id, status: 'accepted', updatedAt: at };
     });
