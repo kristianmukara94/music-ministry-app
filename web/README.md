@@ -33,6 +33,14 @@ body. The slot and section names in Tagalog and Cebuano are in `js/mass-language
 `shared/mass-language.js` that a test keeps equal. The times offered come from `PARISH_MASS_SCHEDULE` in `js/mass-schedule.js`:
 edit that list to match the parish bulletin. A planner can always choose another time.
 
+## Logo and icons
+
+`img/logo.png` (256×256), `favicon.ico` (16, 32 and 48 px), `favicon.svg` and `apple-touch-icon.png` (180×180, on a cream
+background) are all made from the parish logo, `build/Logo.png`, the same file the desktop app uses. `favicon.svg` only wraps
+a 64 px copy of that PNG: the logo has no vector original. If the logo changes, make these files again from the new
+`build/Logo.png`. The sign-in page and the sidebar show the logo in a light `.brand-mark` tile (`css/planner.css`), because its
+black lettering does not show on the dark pages.
+
 ## Run it locally
 
 The pages use JavaScript modules, which browsers do not load from `file://`. Serve the folder over HTTP instead, from the

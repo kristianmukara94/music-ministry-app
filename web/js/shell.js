@@ -49,12 +49,10 @@ export function mountSidebar() {
   slot.outerHTML = `
   <aside class="side" style="flex: 1 1 248px; padding: 24px 16px; border-right: 1px solid #3a1523; background: #150610; display: flex; flex-direction: column; gap: 28px">
     <div style="display: flex; align-items: center; gap: 12px">
-      <div style="width: 40px; height: 40px; border-radius: 12px; background: #ecc98a; display: grid; place-items: center">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1c070d" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>
-      </div>
-      <div style="display: flex; flex-direction: column; line-height: 1.15">
-        <span style="font-weight: 800; font-size: 15px; letter-spacing: 0.04em">APCCMMA</span>
-        <span style="font-size: 12px; color: #b48d99">Web Planner</span>
+      <img src="${root}img/logo.png" alt="" width="40" height="40" class="brand-mark small">
+      <div style="display: flex; flex-direction: column; gap: 2px; line-height: 1.25; min-width: 0">
+        <span style="font-weight: 700; font-size: 15px">APCCMMA Web Planner</span>
+        <span style="font-size: 12px; color: #b48d99">Assumption Parish Church · Music Ministry</span>
       </div>
     </div>
     <nav class="nav" aria-label="Main" style="display: flex; flex-direction: column; gap: 4px">${links}</nav>
