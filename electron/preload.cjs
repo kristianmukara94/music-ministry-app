@@ -217,6 +217,15 @@ contextBridge.exposeInMainWorld('apcc', {
     info: () => ipcRenderer.invoke('lowerThird:info'),
   },
 
+  vault: {
+    status: () => ipcRenderer.invoke('vault:status'),
+    setup: (passphrase) => ipcRenderer.invoke('vault:setup', { passphrase: String(passphrase ?? '') }),
+    unlock: (passphrase) => ipcRenderer.invoke('vault:unlock', { passphrase: String(passphrase ?? '') }),
+    lock: () => ipcRenderer.invoke('vault:lock'),
+    changePassphrase: (current, next) => ipcRenderer.invoke('vault:change-passphrase', { current: String(current ?? ''), next: String(next ?? '') }),
+    disable: (passphrase) => ipcRenderer.invoke('vault:disable', { passphrase: String(passphrase ?? '') }),
+  },
+
   cloud: {
     status: () => ipcRenderer.invoke('cloud:status'),
     link: (code, label) => ipcRenderer.invoke('cloud:link', { code, label }),

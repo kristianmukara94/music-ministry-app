@@ -15,6 +15,11 @@ export interface Note {
   split: PrayerSplit | null;
   /** The Holy Mass slot the note was made for in Go Live (a slot id), or null. It labels the note; the plan's row is what plays it. */
   slot: string | null;
+  /**
+   * Set when the body is a sealed Mass intention this laptop cannot show: `locked` (no parish passphrase entered here) or `damaged` (it
+   * failed its integrity check). The body is then empty and the note cannot be saved until it is unlocked.
+   */
+  sealed?: 'locked' | 'damaged' | null;
 }
 
 export interface NoteInput {

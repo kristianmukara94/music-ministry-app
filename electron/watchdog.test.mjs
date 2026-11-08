@@ -599,8 +599,9 @@ test('the failover mode is saved in config.json and defaults to the parish emble
 
 test('main.js and the preload wire the watchdog in', () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const main = fs.readFileSync(path.join(here, 'main.js'), 'utf8');
-  const preload = fs.readFileSync(path.join(here, 'preload.cjs'), 'utf8');
+  // Git may check the files out with CRLF line ends on Windows; the checks below are written with \n.
+  const main = fs.readFileSync(path.join(here, 'main.js'), 'utf8').replace(/\r\n/g, '\n');
+  const preload = fs.readFileSync(path.join(here, 'preload.cjs'), 'utf8').replace(/\r\n/g, '\n');
   assert.ok(main.includes('watchdog.attachProjector(win, { displayId: target?.id ?? null, fullscreen: parked ? state.settings.fullscreen : fullscreen, parked });'));
   assert.match(main, /watchdog\.attachLowerThird\(win\)/);
   assert.match(main, /app\.on\('child-process-gone', \(_event, details\) => watchdog\.childProcessGone\(details\)\)/);

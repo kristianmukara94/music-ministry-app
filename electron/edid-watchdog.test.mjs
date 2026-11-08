@@ -494,7 +494,8 @@ test('locks are saved in config.json, and a damaged one is dropped', () => {
 
 test('main.js reads the hardware on every topology event, hooks WM_DISPLAYCHANGE, and packages the addon unpacked', () => {
   const root = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')).replace(/%20/g, ' '), '..');
-  const main = fs.readFileSync(path.join(root, 'electron', 'main.js'), 'utf8');
+  // Git may check the file out with CRLF line ends on Windows; the checks below are written with \n.
+  const main = fs.readFileSync(path.join(root, 'electron', 'main.js'), 'utf8').replace(/\r\n/g, '\n');
   assert.ok(main.includes("edid?.topologyChanged(event);\n      watchdog.displaysChanged();"));
   assert.ok(main.includes("win.hookWindowMessage(WM_DISPLAYCHANGE, () => edid?.topologyChanged('WM_DISPLAYCHANGE'))"));
   assert.ok(main.includes("lockedTarget: () => edid?.target('projector') ?? { locked: false }"));

@@ -290,6 +290,7 @@ interface ElectronApi {
   welcome: WelcomeApi;
   lowerThird: LowerThirdApi;
   cloud: CloudApi;
+  vault: VaultApi;
   remoteView: RemoteViewApi;
   library: LibraryApi;
   whiteboard: WhiteboardApi;
@@ -664,6 +665,35 @@ export interface PlansSyncState {
   counts?: { sent: number; received: number; deleted: number; failed: number; held?: number } | null;
 }
 
+/** Mass intention privacy on this database and this laptop. */
+export interface VaultStatus {
+  /** The database has a parish passphrase. */
+  configured: boolean;
+  /** This laptop holds the key, so sealed Mass intentions can be read and saved here. */
+  unlocked: boolean;
+  /** An unlocked laptop keeps the key between starts (Windows can protect it). */
+  remembers: boolean;
+}
+
+export interface VaultApi {
+  status(): Promise<VaultStatus>;
+  setup(passphrase: string): Promise<VaultStatus>;
+  unlock(passphrase: string): Promise<VaultStatus>;
+  lock(): Promise<VaultStatus>;
+  /** `damaged` counts sealed notes that failed their integrity check and were left as they were. */
+  changePassphrase(current: string, next: string): Promise<VaultStatus & { damaged: number }>;
+  disable(passphrase: string): Promise<VaultStatus>;
+}
+
+const offlineVault: VaultApi = {
+  status: async () => ({ configured: false, unlocked: false, remembers: false }),
+  setup: async () => offlineError(),
+  unlock: async () => offlineError(),
+  lock: async () => offlineError(),
+  changePassphrase: async () => offlineError(),
+  disable: async () => offlineError(),
+};
+
 export interface CloudApi {
   songsStatus(): Promise<SongsSyncState>;
   plansStatus(): Promise<PlansSyncState>;
@@ -863,6 +893,7 @@ function createBrowserBridge(): LiveBridge {
     welcome: offlineWelcome,
     lowerThird: offlineLowerThird,
     cloud: offlineCloud,
+    vault: offlineVault,
     remoteView: offlineRemoteView,
     library: offlineLibrary,
     whiteboard: offlineWhiteboard,

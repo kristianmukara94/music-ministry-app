@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, DatabaseBackup, FolderOpen, Globe2, Loader2, Palette, Search, ShieldAlert } from 'lucide-react';
 import { DatabaseSettings } from './DatabaseSettings';
+import { IntentionPrivacySettings } from './IntentionPrivacySettings';
 import { bridge } from '../live/bridge';
 import { setUi } from '../state/ui';
 import { RosarySettings } from './RosarySettings';
@@ -303,6 +304,7 @@ export function Settings() {
               </p>
             </Card>
             <DatabaseSettings />
+            <IntentionPrivacySettings />
           </div>
         );
 

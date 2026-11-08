@@ -2,6 +2,8 @@ import { ipcMain } from 'electron';
 import { cleanNote } from '../shared/notes.js';
 import { parseTextStyle } from '../shared/text-style.js';
 import { normalizeSplit } from '../shared/prayer-screen.js';
+import { DecryptionError, isSealed } from './db-crypto.js';
+import { immediateTransaction } from './db-vault.js';
 
 /**
  * Notes and prayers. One table holds both: `display` decides whether a note is private (`operator`) or
@@ -33,6 +35,14 @@ export const NOTES_SLOT_MIGRATIONS = ['ALTER TABLE notes ADD COLUMN slot TEXT'];
 
 const SELECT = 'SELECT id, title, category, body, display, style, split, slot FROM notes';
 
+/**
+ * The category whose body is sealed when the parish turns Mass intention privacy on (electron/db-vault.js). Only the body: the title is
+ * copied into plan item labels, which sync to the web planner, so sealing it here would protect nothing.
+ */
+export const SEALED_NOTE_CATEGORY = 'Mass Intention';
+const BODY_AAD = 'notes.body';
+export const NOTE_SEALED_FIELDS = [{ table: 'notes', column: 'body', aad: BODY_AAD, plainWhere: `category = '${SEALED_NOTE_CATEGORY}'` }];
+
 function parseSplit(json, body) {
   try {
     return normalizeSplit(JSON.parse(json), body);
@@ -41,21 +51,46 @@ function parseSplit(json, body) {
   }
 }
 
-function toNote(row) {
+/**
+ * A row as the screen sees it. A sealed body is opened with `cipher`. Without the key the note comes back with no text and `sealed:
+ * 'locked'`. A body that fails its integrity check comes back the same way with `sealed: 'damaged'`, and its text is never shown.
+ */
+function toNote(row, cipher) {
+  let body = row.body;
+  let sealed = null;
+  if (isSealed(body)) {
+    if (!cipher) {
+      body = '';
+      sealed = 'locked';
+    } else {
+      try {
+        body = cipher.open(row.body, BODY_AAD);
+      } catch (err) {
+        if (!(err instanceof DecryptionError)) throw err;
+        console.error(`[notes] Note ${row.id}: its sealed text failed the integrity check and is not shown.`);
+        body = '';
+        sealed = 'damaged';
+      }
+    }
+  }
   return {
     id: row.id,
     title: row.title,
     category: row.category,
-    body: row.body,
+    body,
     display: row.display,
     style: parseTextStyle(row.style),
-    split: parseSplit(row.split, row.body),
+    split: sealed ? null : parseSplit(row.split, body),
     slot: row.slot ?? null,
+    sealed,
   };
 }
 
-/** Notes data access. Pure: takes a database handle, so it can be tested without Electron. */
-export function createNotesService(db) {
+/**
+ * Notes data access. Pure: takes a database handle, so it can be tested without Electron. With `vault` (electron/db-vault.js) and privacy
+ * turned on, the body of a Mass Intention note is sealed before it is written and opened when it is read.
+ */
+export function createNotesService(db, { vault = null } = {}) {
   const list = db.prepare(`${SELECT} ORDER BY title COLLATE NOCASE`);
   const get = db.prepare(`${SELECT} WHERE id = ?`);
   const insert = db.prepare(`
@@ -67,35 +102,59 @@ export function createNotesService(db) {
       style = @style, split = @split, slot = CASE WHEN @keepSlot = 1 THEN slot ELSE @slot END, updated_at = datetime('now')
     WHERE id = @id`);
   const remove = db.prepare('DELETE FROM notes WHERE id = ?');
+  const storedBody = db.prepare('SELECT body FROM notes WHERE id = ?');
 
   /** The style and split are stored as JSON text, or NULL when there is none. */
-  const bind = (note) => ({
+  const bind = (note, cipher) => ({
     title: note.title,
     category: note.category,
-    body: note.body,
+    body: cipher && note.category === SEALED_NOTE_CATEGORY ? cipher.seal(note.body, BODY_AAD) : note.body,
     display: note.display,
     style: note.style ? JSON.stringify(note.style) : null,
     split: note.split ? JSON.stringify(note.split) : null,
     slot: note.slot ?? null,
   });
 
+  /** The cipher for a read: null when privacy is off or this laptop is locked. */
+  const readCipher = () => vault?.readCipher() ?? null;
+
+  /**
+   * The cipher for a write. Throws VaultLockedError when this laptop is locked and the save would write a Mass intention or replace one it
+   * cannot read, so a locked laptop never writes intention text in the clear and never overwrites a sealed note with an empty body.
+   */
+  const writeCipher = (note, id) => {
+    if (!vault?.configured()) return null;
+    const stored = id == null ? null : storedBody.get(id);
+    const needsKey = note.category === SEALED_NOTE_CATEGORY || isSealed(stored?.body);
+    return needsKey ? vault.cipher() : vault.readCipher();
+  };
+
   return {
-    list: () => list.all().map(toNote),
+    list: () => {
+      const cipher = readCipher();
+      return list.all().map((row) => toNote(row, cipher));
+    },
 
     get: (id) => {
       const row = get.get(Number(id));
-      return row ? toNote(row) : null;
+      return row ? toNote(row, readCipher()) : null;
     },
 
     save(input = {}) {
       const note = cleanNote(input);
-      if (input.id == null) {
-        const { lastInsertRowid } = insert.run(bind(note));
-        return toNote(get.get(Number(lastInsertRowid)));
-      }
-      const id = Number(input.id);
-      if (update.run({ ...bind(note), keepSlot: note.slot === undefined ? 1 : 0, id }).changes === 0) throw new Error('That note no longer exists.');
-      return toNote(get.get(id));
+      // One immediate transaction: the key is checked and the row written while this laptop holds the write lock, so a passphrase changed
+      // on another laptop in between cannot leave a body sealed with the old key.
+      return immediateTransaction(db, () => {
+        if (input.id == null) {
+          const cipher = writeCipher(note, null);
+          const { lastInsertRowid } = insert.run(bind(note, cipher));
+          return toNote(get.get(Number(lastInsertRowid)), cipher ?? readCipher());
+        }
+        const id = Number(input.id);
+        const cipher = writeCipher(note, id);
+        if (update.run({ ...bind(note, cipher), keepSlot: note.slot === undefined ? 1 : 0, id }).changes === 0) throw new Error('That note no longer exists.');
+        return toNote(get.get(id), cipher ?? readCipher());
+      });
     },
 
     remove: (id) => remove.run(Number(id)).changes > 0,
@@ -106,8 +165,8 @@ export function createNotesService(db) {
  * Registers the `notes:*` IPC channels. Called once from the main process. `onChanged({ id, removed })` runs after every save and delete, so
  * the main process can tell every window (Notes & Prayers, Go Live's Order of Holy Mass) to read the notes again.
  */
-export function setupNotes(db, { onChanged = () => {} } = {}) {
-  const service = createNotesService(db);
+export function setupNotes(db, { vault = null, onChanged = () => {} } = {}) {
+  const service = createNotesService(db, { vault });
   const changed = (id, removed) => {
     try {
       onChanged({ id: Number(id), removed });

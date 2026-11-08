@@ -83,6 +83,14 @@ const KBD = 'rounded border border-current/30 px-1 py-px font-mono text-[9px] fo
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** The fields a quick save (style, split, default display) sends back unchanged. The slot is left out, so the note keeps it. */
+/** The text to show for a note. A sealed Holy Mass intention this laptop cannot read says why, instead of looking empty. */
+const bodyText = (note: Note) =>
+  note.sealed === 'locked'
+    ? 'Locked. Enter the parish passphrase in Settings, Backup & restore, to read this Holy Mass intention.'
+    : note.sealed === 'damaged'
+      ? 'This Holy Mass intention failed its integrity check and cannot be shown. Rewrite it or delete it.'
+      : note.body || 'No text yet.';
+
 const inputOf = (note: Note): NoteInput => ({ id: note.id, title: note.title, category: note.category, body: note.body, display: note.display, style: note.style, split: note.split });
 
 /**
@@ -374,7 +382,7 @@ export function NotesPrayersView() {
                     {noteCategoryLabel(n.category)}
                     {slotTag(n) && <span className="text-accent/80"> · {slotTag(n)}</span>}
                   </span>
-                  {n.body && <span className="line-clamp-2 text-xs text-fg/60">{n.body}</span>}
+                  {(n.body || n.sealed) && <span className="line-clamp-2 text-xs text-fg/60">{bodyText(n)}</span>}
                 </button>
               </li>
             );
@@ -419,7 +427,7 @@ export function NotesPrayersView() {
                 <p className="flex items-center gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-fg/80 uppercase">
                   <Lock size={13} aria-hidden /> Operator booth cue. Never sent to the projector.
                 </p>
-                <p className="rounded-lg border border-line bg-panel-2 p-4 text-base leading-relaxed whitespace-pre-line text-fg/90">{current.body || 'No text yet.'}</p>
+                <p className="rounded-lg border border-line bg-panel-2 p-4 text-base leading-relaxed whitespace-pre-line text-fg/90">{bodyText(current)}</p>
               </div>
             ) : (
               <>
@@ -428,7 +436,7 @@ export function NotesPrayersView() {
                   <div className="flex min-w-0 flex-col gap-3">
                     <span className={LABEL}>Content</span>
                     <div className="max-h-64 overflow-y-auto rounded-lg border border-line bg-panel-2 p-4 text-sm leading-relaxed whitespace-pre-line text-fg/90">
-                      {current.body || 'No text yet.'}
+                      {bodyText(current)}
                     </div>
 
                     <details className="group rounded-lg border border-line bg-fg/[0.03]">
