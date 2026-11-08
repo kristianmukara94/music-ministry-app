@@ -76,7 +76,7 @@ export function createApi({ sql, secret, now = () => new Date() }) {
 
     const rows = await sql`
       SELECT u.id, u.church_id, u.display_name, u.role, u.password_hash, u.must_change_password, u.disabled,
-             u.failed_attempts, u.locked_until, c.display_code
+             u.failed_attempts, u.locked_until, c.display_code, c.name AS church_name
       FROM users u JOIN churches c ON c.id = u.church_id
       WHERE lower(u.username) = lower(${username})
         AND (${churchCode}::text IS NULL OR c.display_code = ${churchCode}::text)`;
@@ -116,12 +116,15 @@ export function createApi({ sql, secret, now = () => new Date() }) {
     await sql`
       INSERT INTO sessions (token_hash, user_id, church_id, expires_at, created_at)
       VALUES (${hashToken(token, secret)}, ${user.id}, ${user.church_id}, ${expires.toISOString()}, ${at.toISOString()})`;
-    // The church's display code is returned so the browser can remember it for next time. It is not a secret.
+    // The church's display code and name are returned so the browser can remember them for next time: the sign-in page then
+    // shows "✓ <church name>" when that code is typed again. Neither is a secret, and both are sent only after a correct password,
+    // so nobody can use this to find out which codes exist.
     return json(
       200,
       {
         user: { displayName: user.display_name, role: user.role, mustChangePassword: user.must_change_password },
         churchCode: user.display_code,
+        churchName: user.church_name,
       },
       { 'Set-Cookie': sessionCookie(token) },
     );

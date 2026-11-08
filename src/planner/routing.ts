@@ -18,6 +18,7 @@ import { announcementFrame } from '../announcements/frames';
 import { frameForWhiteboardSlide } from '../whiteboard/projectSlide';
 import { uiLangOf } from '../../shared/mass-language.js';
 import { planLanguage } from './plan-api';
+import { noteSource } from '../../shared/notes.js';
 
 /** How a queue item is played. `inPlace` shows songs, announcements and media where the operator is (the Go Live console), without switching panels. */
 export interface PlayOptions {
@@ -126,8 +127,9 @@ export async function openQueueItem(item: QueueItem, index: number, opts: PlayOp
 
     case 'notes': {
       // A prayer is staged the way its note is shown. Operator-only notes are never staged for the projector.
-      const note = await bridge.notes.get(Number(item.sourceId));
-      if (note) stagePrayer(note);
+      const source = noteSource(item.sourceId);
+      const note = source ? await bridge.notes.get(source.id) : null;
+      if (note) stagePrayer(note, 0, source?.slides);
       return false;
     }
 
@@ -158,10 +160,11 @@ export async function openQueueItem(item: QueueItem, index: number, opts: PlayOp
  */
 export async function takeQueueItem(item: QueueItem, index: number, opts: PlayOptions = {}): Promise<void> {
   if (item.module === 'notes') {
-    const note = await bridge.notes.get(Number(item.sourceId));
+    const source = noteSource(item.sourceId);
+    const note = source ? await bridge.notes.get(source.id) : null;
     if (note?.display === 'full') {
       dispatch({ type: 'queue/cursor', index });
-      takePrayer(note, 'MASS_QUEUE');
+      takePrayer(note, 'MASS_QUEUE', 0, source?.slides);
     } else if (note) {
       // A lower-third note goes to the lower third, not the projector, so it does not move the CURRENT selection.
       takePrayer(note);

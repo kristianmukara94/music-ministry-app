@@ -536,7 +536,7 @@ export function BibleDeck() {
     }
   };
 
-  /** Alt+click: saves the verse as a private operator note, ready to edit in Notes & Prayers. */
+  /** Alt+click: saves the verse as a private operator note, ready to edit in the Liturgical Content Hub. */
   const noteVerse = async (v: Verse) => {
     if (chapter === null) return;
     setError(null);
@@ -548,7 +548,7 @@ export function BibleDeck() {
         display: 'operator',
         style: null,
       });
-      setNotice('Saved as a private note. Open Notes & Prayers to edit it.');
+      setNotice('Saved as a private note. Open the Liturgical Content Hub to edit it.');
     } catch (err) {
       setError(errorText(err));
     }

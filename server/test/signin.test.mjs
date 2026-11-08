@@ -107,6 +107,7 @@ test('the correct password signs in, and sets an HttpOnly, Secure, SameSite=Stri
   const res = await build().login(event({ body: { username: 'planner', password: GOOD } }));
   assert.equal(res.statusCode, 200);
   assert.deepEqual(JSON.parse(res.body).user, { displayName: 'planner', role: 'planner', mustChangePassword: false });
+  assert.equal(JSON.parse(res.body).churchName, 'St Mary', 'the church name comes back, so the sign-in page can show it next time');
   const setCookie = res.headers['Set-Cookie'];
   assert.match(setCookie, /HttpOnly/);
   assert.match(setCookie, /Secure/);

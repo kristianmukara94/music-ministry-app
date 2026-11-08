@@ -91,7 +91,10 @@ test('a note category shows as Holy Mass Intention, and is still stored as it al
   assert.ok(NOTE_CATEGORIES.includes('Mass Intention'), 'the stored name is unchanged, so saved notes still validate');
   assert.match(read('src/notes/present.ts'), /note\.category === 'Mass Intention'/, 'the lower third layout still follows the stored name');
   const view = read('src/notes/NotesPrayersView.tsx');
-  assert.equal([...view.matchAll(/noteCategoryLabel\(/g)].length, 5, 'the filter, the form, the cards, the open note and the search use the label');
+  assert.equal([...view.matchAll(/noteCategoryLabel\(/g)].length, 4, 'the filter, the cards, the open note and the search use the label');
+  // The add and edit form is the Hub's creation engine, shared with Go Live.
+  const form = read('src/golive/AddSlotNotePrayerModal.tsx');
+  assert.ok([...form.matchAll(/noteCategoryLabel\(/g)].length >= 1, 'the creation form uses the label');
 });
 
 // ---- What did not change ----

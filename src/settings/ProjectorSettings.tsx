@@ -6,6 +6,7 @@ import { bridge, type DisplayInfo } from '../live/bridge';
 import type { MediaAsset } from '../media/types';
 import { CARD, CardHeader, FOCUS, GoldSwitch, HEADING, Row, SUB, Segmented } from './settingsControls';
 import { OutputSettingsPanel } from './OutputSettingsPanel';
+import { EdidLockPanel, useEdidStatus } from '../golive/EdidLockBadge';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -45,6 +46,7 @@ export function ProjectorSettingsPanel() {
   const projectorOn = useLive((s) => s.state.outputs.projector);
   const [displays, setDisplays] = useState<DisplayInfo[]>([]);
   const [media, setMedia] = useState<MediaAsset[]>([]);
+  const edidStatus = useEdidStatus();
   // The display picked in the cards but not yet applied. Applying saves it as the projector's display.
   const [pending, setPending] = useState<number | null>(settings.displayId);
   const [error, setError] = useState<string | null>(null);
@@ -292,6 +294,18 @@ export function ProjectorSettingsPanel() {
           <Row title="Fullscreen on the active projector" detail="Off opens a windowed preview of the output instead.">
             <GoldSwitch label="Fullscreen on the active projector" on={settings.fullscreen} onChange={(on) => void save({ fullscreen: on })} />
           </Row>
+          {/* The hardware lock: once pinned, it overrides the display chosen above, and follows the physical monitor instead. */}
+          {bridge.isElectron && (
+            <div className="flex flex-col gap-2 border-t border-line pt-4">
+              <div>
+                <div className="text-sm font-semibold text-fg">Hardware lock (EDID)</div>
+                <p className={SUB}>
+                  Pins the projector to the physical sanctuary monitor and the graphics port it is plugged into. Once pinned, it overrides the choice above.
+                </p>
+              </div>
+              <EdidLockPanel status={edidStatus} />
+            </div>
+          )}
         </section>
 
         {/* Startup: what the projector shows when its window first opens. */}

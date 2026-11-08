@@ -51,6 +51,11 @@ import {
   validateRemoteViewPatch,
 } from '../shared/remote-view.js';
 import { setupUpdater } from './updater.js';
+import { ALERT_TOGGLE_CHANNEL, attachAppHotkeys, attachFailoverHotkey } from './hotkeys.js';
+import { createSanctuaryWatchdog, PONG_CHANNEL, sanitizeFailoverMode, STATUS_CHANNEL } from './watchdog.js';
+import { createFailoverSurface, FAILOVER_PAINTED_CHANNEL } from './windows.js';
+import { createEdidWatchdog, loadDisplayMatrix, WM_DISPLAYCHANGE } from './edid-watchdog.js';
+import { createAlertExpiry } from './sanctuary-alert.js';
 import { applyImport, checkExportOptions, collectLibrary, decodeTransfer, defaultExportName, encodeTransfer, previewImport, TRANSFER_EXTENSION } from './transfer.js';
 import os from 'node:os';
 
@@ -196,8 +201,17 @@ function load(win, route) {
   else win.loadFile(path.join(__dirname, '../dist/index.html'), { hash: `/${route}` });
 }
 
-/** The display the projector opens on: the one chosen in Settings if still connected, else the first external one, else the primary. */
+/**
+ * The display the projector opens on. Pinned to a physical monitor (the EDID lock): that monitor's display, or null when it is not connected
+ * or has become the operator's screen, and then the projector opens hidden. Otherwise: the one chosen in Settings if still connected, else
+ * the first external one, else the primary.
+ */
 function targetDisplay() {
+  const locked = edid?.target('projector');
+  if (locked?.locked && !locked.pending) {
+    if (!locked.display) console.warn(`[projector] its pinned monitor is ${locked.reason === 'primary' ? 'the operator screen' : 'not connected'}; it opens hidden.`);
+    return locked.display;
+  }
   const chosen = screen.getAllDisplays().find((d) => d.id === state.settings.displayId);
   if (state.settings.displayId != null && !chosen) {
     console.warn(`[projector] display ${state.settings.displayId} is not connected. Using the default display instead.`);
@@ -329,32 +343,59 @@ function applyStartupScreen() {
   }
 }
 
+// The sanctuary display watchdog (electron/watchdog.js). The failover surface is a hidden window kept over the projector; a crashed, frozen or
+// hung projector page is covered by it at once and restarted behind it. Every window hears its status, for the Go Live badge.
+const failoverSurface = createFailoverSurface({ BrowserWindow, webPreferences, load, icon: APP_ICON });
+// The EDID lock (electron/edid-watchdog.js). Created once the app is ready, as it reads the screens.
+let edid = null;
+const watchdog = createSanctuaryWatchdog({
+  failover: failoverSurface,
+  screen,
+  preferredDisplayId: () => state.settings.displayId,
+  lockedTarget: () => edid?.target('projector') ?? { locked: false },
+  onReanchor: (displayId) => edid?.reanchored(displayId),
+  onStatus: (status) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(STATUS_CHANNEL, status);
+    }
+  },
+});
+
 const createOutput = {
   // Congregation screen. It opens on the display chosen in Settings (or the first external one). It is
   // fullscreen only on an external projector, and only when the setting asks for it; otherwise a windowed preview.
   projector: () => {
     const target = targetDisplay();
-    const b = target.bounds;
-    const fullscreen = state.settings.fullscreen && target.id !== screen.getPrimaryDisplay().id;
+    // Pinned, and its monitor is not connected: the window opens hidden, with the slides running, and appears when the monitor returns.
+    // It never falls back to the operator's screen.
+    const parked = !target;
+    const host = target ?? screen.getPrimaryDisplay();
+    const b = host.bounds;
+    const fullscreen = !parked && state.settings.fullscreen && host.id !== screen.getPrimaryDisplay().id;
     const win = new BrowserWindow({
       x: b.x + (fullscreen ? 0 : 80),
       y: b.y + (fullscreen ? 0 : 80),
       width: fullscreen ? b.width : 1280,
       height: fullscreen ? b.height : 720,
       fullscreen,
+      show: !parked,
       frame: false,
       backgroundColor: '#000000',
       title: 'APCCMMA — Projector',
       icon: APP_ICON,
       webPreferences,
     });
-    // A projector window must be seen the moment it opens: show it, bring it forward, and keep it above other windows.
+    // A projector window must be seen the moment it opens: show it, bring it forward, and keep it above other windows. Unless its monitor
+    // went away while it loaded.
     win.once('ready-to-show', () => {
+      if (watchdog.status().parked) return;
       win.show();
       win.focus();
     });
     win.setAlwaysOnTop(true, 'screen-saver');
-    console.log(`[projector] opened on display ${target.id}, ${fullscreen ? 'fullscreen' : 'windowed'}`);
+    // A parked window comes back fullscreen if Settings asks for it.
+    watchdog.attachProjector(win, { displayId: target?.id ?? null, fullscreen: parked ? state.settings.fullscreen : fullscreen, parked });
+    console.log(parked ? '[projector] opened hidden: its pinned monitor is not available' : `[projector] opened on display ${target.id}, ${fullscreen ? 'fullscreen' : 'windowed'}`);
     // Set once the window is registered, so the window step does not open a second one.
     setImmediate(applyStartupScreen);
     return win;
@@ -379,6 +420,7 @@ const createOutput = {
       webPreferences,
     });
     win.setIgnoreMouseEvents(true);
+    watchdog.attachLowerThird(win);
     return win;
   },
   // Confidence monitor for the booth / stage.
@@ -584,11 +626,17 @@ function saveQueueState() {
   }
 }
 
+// A timed Sanctuary Alert comes down on its own. The id keeps a late timer from taking down a newer alert.
+const alertExpiry = createAlertExpiry({ clear: (id) => apply({ type: 'sanctuaryAlert/clear', id }) });
+
 function apply(action) {
+  // A Sanctuary Alert's clock starts when the main process takes it, the same clock its expiry timer runs on.
+  if (action?.type === 'sanctuaryAlert/show') action = { ...action, now: Date.now() };
   const prev = state;
   const next = liveReducer(state, action);
   if (next === state) return;
   state = next;
+  alertExpiry.watch(prev, next);
   if (prev.queuePlanId !== next.queuePlanId || prev.queueCursor !== next.queueCursor || prev.pw?.sessionId !== next.pw?.sessionId) saveQueueState();
   sessionWriter?.push(state);
   reconcileWindows();
@@ -837,6 +885,9 @@ function createOperator() {
     webPreferences,
   });
   windows.operator = win;
+  // Windows' own display-change message: a graphics driver restart sends it even when Electron reports no screen change. Electron's display
+  // list may not be updated yet when it arrives, so it only re-reads the hardware and schedules the settle checks, which re-anchor the projector.
+  if (process.platform === 'win32') win.hookWindowMessage(WM_DISPLAYCHANGE, () => edid?.topologyChanged('WM_DISPLAYCHANGE'));
   // Closing mid-copy could leave a new database location half-written, so the window stays open until the move ends.
   win.on('close', (event) => {
     if (!settings?.isMoving()) return;
@@ -1082,6 +1133,64 @@ ipcMain.handle('welcome:save', (_event, patch) => {
   return merged;
 });
 ipcMain.on('live:dispatch', (_event, action) => apply(action));
+
+/**
+ * Ctrl+Shift+A from any window: brings the operator console forward and opens the Sanctuary Alert. Pressed in the console while it is
+ * already in front, it toggles the dialog; from another window (the projector, the mirror), it always opens it.
+ */
+function openSanctuaryAlert(from) {
+  const win = windows.operator;
+  if (!win || win.isDestroyed()) return;
+  const wasInFront = from === win && win.isFocused();
+  if (win.isMinimized()) win.restore();
+  if (!wasInFront) {
+    win.show();
+    win.focus();
+  }
+  win.webContents.send(ALERT_TOGGLE_CHANNEL, { toggle: wasInFront });
+}
+
+// ---- Sanctuary display watchdog ----
+// The projector page's preload answers each heartbeat ping. Only the projector's own answers count (checked in the watchdog).
+ipcMain.on(PONG_CHANNEL, (event, seq) => watchdog.pong(event.sender, seq));
+// The failover page says which mode it has drawn, so a show waits for the right one.
+ipcMain.on(FAILOVER_PAINTED_CHANNEL, (event, mode) => {
+  if (event.sender === failoverSurface.window()?.webContents) failoverSurface.painted(sanitizeFailoverMode(mode));
+});
+ipcMain.handle('watchdog:get', () => watchdog.status());
+ipcMain.handle('watchdog:failoverMode', () => failoverSurface.wantedMode());
+// Force Failover (Blackout) from the Go Live badge, and Ctrl+Shift+B from any window: on when off, off when on.
+ipcMain.handle('watchdog:force', (_event, on) => watchdog.force(on === true));
+ipcMain.handle('watchdog:setMode', (_event, mode) => {
+  const next = sanitizeFailoverMode(mode);
+  try {
+    writeConfig(app.getPath('userData'), { failover_mode: next });
+  } catch (err) {
+    console.error('Could not save the failover mode:', err);
+  }
+  return watchdog.setMode(next);
+});
+
+// ---- EDID lock ----
+const EDID_UNAVAILABLE = { available: false, error: 'The app is still starting.', queryMs: null, shiftAt: null, shiftReason: null, roles: {}, monitors: [] };
+ipcMain.handle('edid:get', () => edid?.status() ?? EDID_UNAVAILABLE);
+/**
+ * Pin Active Sanctuary Projector: binds the projector to the physical monitor it is on now. With the projector off, the display it would open
+ * on is used. The projector then follows that monitor through re-indexing, driver restarts and port changes.
+ */
+ipcMain.handle('edid:pin', () => {
+  if (!edid) throw new Error('The app is still starting.');
+  const win = windows.projector;
+  const open = win && !win.isDestroyed() && win.isVisible();
+  const displayId = open ? screen.getDisplayMatching(win.getBounds()).id : targetDisplay()?.id;
+  const status = edid.pin('projector', displayId ?? null);
+  watchdog.displaysChanged();
+  return status;
+});
+ipcMain.handle('edid:unpin', () => {
+  if (!edid) throw new Error('The app is still starting.');
+  return edid.unpin('projector');
+});
 // Detach Monitor: opens the confidence monitor (the operator mirror), or brings it forward when it is open already. Going through the
 // preview output keeps the PREVIEW button and the dashboard card in step with the window.
 ipcMain.handle('projector:openConfidenceWindow', () => {
@@ -1225,6 +1334,31 @@ ipcMain.handle('launch:open', (_event, target) => {
 app.whenReady().then(() => {
   // No default menu: it would steal F11 (fullscreen) and Ctrl+R from our hotkeys.
   Menu.setApplicationMenu(null);
+  // The app-wide hotkeys (Ctrl+Shift+A for the Sanctuary Alert) work from every window the app opens, including ones opened later.
+  app.on('browser-window-created', (_event, win) => attachAppHotkeys(win, { onAlert: openSanctuaryAlert }));
+  // Ctrl+Shift+B from any window forces the sanctuary failover (pure black), or releases it.
+  app.on('browser-window-created', (_event, win) => attachFailoverHotkey(win, { onFailover: () => watchdog.force(!watchdog.status().manual) }));
+  // A GPU process crash can leave the projector black or frozen: the watchdog covers it and restarts the projector page.
+  app.on('child-process-gone', (_event, details) => watchdog.childProcessGone(details));
+  watchdog.setMode(readConfig(app.getPath('userData')).failover_mode);
+  // The EDID lock reads the physical displays through the display-matrix addon. Without it (not built, not Windows) it reports itself
+  // unavailable and the projector follows the display chosen in Settings, as before.
+  edid = createEdidWatchdog({
+    native: loadDisplayMatrix(),
+    screen,
+    getLock: (role) => readConfig(app.getPath('userData')).display_locks[role] ?? null,
+    saveLock: (role, lock) => {
+      const locks = readConfig(app.getPath('userData')).display_locks;
+      writeConfig(app.getPath('userData'), { display_locks: { ...locks, [role]: lock } });
+    },
+    // Windows keeps re-arranging for a moment after a topology change: the projector is re-anchored after each settle check too.
+    onSettled: () => watchdog.displaysChanged(),
+    onStatus: (status) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send('edid:status', status);
+      }
+    },
+  });
   // The saved projector settings apply before any window opens, so the first projector window already uses them.
   state = liveReducer(state, { type: 'settings/projector', value: readConfig(app.getPath('userData')).projector });
   state = liveReducer(state, { type: 'settings/welcome', value: readConfig(app.getPath('userData')).welcome });
@@ -1298,7 +1432,14 @@ app.whenReady().then(() => {
   setupBible(announcements.db);
   seedRosary(announcements.db);
   setupRosary(announcements.db);
-  setupNotes(announcements.db);
+  // Every window reads the notes again after a save or a delete, so Notes & Prayers and Go Live's Order of Holy Mass stay in step.
+  setupNotes(announcements.db, {
+    onChanged: (change) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send('notes:changed', change);
+      }
+    },
+  });
   // The parish's own words for the Holy Mass Order parts.
   setupMassOrderTexts(announcements.db);
   // The projector is open when its window exists, whatever its title. Quick Live asks this before it shows a song.
@@ -1316,6 +1457,11 @@ app.whenReady().then(() => {
   // back in opens it again.
   for (const event of ['display-added', 'display-removed', 'display-metrics-changed']) {
     screen.on(event, () => {
+      // The projector first, so an unplugged projector is hidden before anything else runs: it is on the operator's screen by now.
+      // It is hidden (or moved to another external screen), and comes back where it was when its display returns. Pinned, it follows its
+      // physical monitor: the hardware is read again first, so it is placed by what is connected now.
+      edid?.topologyChanged(event);
+      watchdog.displaysChanged();
       if (state.lowerStyle.target != null) placeLowerThirdWindow();
     });
   }

@@ -104,7 +104,8 @@ test('the full-screen view, the lineup and the projector show the same split for
   assert.match(read('src/praise-worship/CurrentNextPreview.tsx'), /PwSlideFace/, 'the live preview draws the lineup slide');
   assert.match(read('src/output/ProjectorView.tsx'), /PwSlideFace/, 'the projector draws the lineup slide');
   assert.match(read('src/notes/present.ts'), /screenPagesOf\(note\)/, 'the projector frame for a note uses the shared split');
-  assert.match(read('src/notes/NotesPrayersView.tsx'), /screenPagesOf\(current\)/, 'the Notes & Prayers preview uses the shared split');
+  // `outgoing` is the open entry as it will be sent: the same note, with the output target chosen on the fly.
+  assert.match(read('src/notes/NotesPrayersView.tsx'), /screenPagesOf\(outgoing\)/, 'the Content Hub preview uses the shared split');
 });
 
 test('the lyrics are not part of this split: lyric slides keep their own rule', () => {

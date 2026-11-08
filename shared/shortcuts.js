@@ -9,8 +9,11 @@ export const ACTION_IDS = [
   'goLive', 'openLectionary', 'openHymns', 'openMedia',
 ];
 
-/** Combinations the app itself uses. They cannot be assigned to a shortcut. */
-export const RESERVED_COMBOS = ['Ctrl+K', 'Ctrl+Shift+F', 'Ctrl+ArrowUp', 'Ctrl+ArrowDown'];
+/**
+ * Combinations the app itself uses. They cannot be assigned to a shortcut. Ctrl+Shift+A (Cmd+Shift+A on a Mac, written Shift+Meta+A)
+ * opens the Sanctuary Alert from any window, and Ctrl+Shift+B (Shift+Meta+B) forces the sanctuary failover; see electron/hotkeys.js.
+ */
+export const RESERVED_COMBOS = ['Ctrl+K', 'Ctrl+Shift+F', 'Ctrl+ArrowUp', 'Ctrl+ArrowDown', 'Ctrl+Shift+A', 'Shift+Meta+A', 'Ctrl+Shift+B', 'Shift+Meta+B'];
 
 /** Keys that only modify another key. Pressing one alone does not complete a capture. */
 const MODIFIER_ONLY = new Set(['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'CapsLock', 'NumLock', 'ScrollLock', 'Fn', 'Dead', 'Unidentified', 'OS']);

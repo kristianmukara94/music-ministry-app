@@ -5,6 +5,8 @@ import { LOWER_THIRD_DEFAULTS, sanitizeLowerThirdStyle } from '../shared/lower-t
 import { WELCOME_DEFAULTS, sanitizeWelcomeSettings } from '../shared/welcome-settings.js';
 import { REMOTE_VIEW_DEFAULTS, sanitizeRemoteView } from '../shared/remote-view.js';
 import { checkCloudAddress } from './cloud-address.js';
+import { DEFAULT_FAILOVER_MODE, sanitizeFailoverMode } from './watchdog.js';
+import { sanitizeDisplayLocks } from './edid-watchdog.js';
 
 // Preferences that must be known before the database opens, so they live in a plain file
 // in userData rather than in the database itself.
@@ -25,6 +27,10 @@ const DEFAULTS = {
   lower_third: LOWER_THIRD_DEFAULTS,
   welcome: WELCOME_DEFAULTS,
   remote_view: REMOTE_VIEW_DEFAULTS,
+  // What the sanctuary failover surface draws: 'emblem' or 'blackout' (electron/watchdog.js).
+  failover_mode: DEFAULT_FAILOVER_MODE,
+  // Outputs pinned to a physical monitor on a physical GPU port (electron/edid-watchdog.js). Null: not pinned.
+  display_locks: { projector: null },
   update_channel: 'stable',
   skipped_version: null,
   remind_after: null,
@@ -76,6 +82,8 @@ function sanitize(raw) {
     lower_third: sanitizeLowerThirdStyle(raw.lower_third),
     welcome: sanitizeWelcomeSettings(raw.welcome),
     remote_view: sanitizeRemoteView(raw.remote_view),
+    failover_mode: sanitizeFailoverMode(raw.failover_mode),
+    display_locks: sanitizeDisplayLocks(raw.display_locks),
     update_channel: UPDATE_CHANNELS.includes(raw.update_channel) ? raw.update_channel : DEFAULTS.update_channel,
     skipped_version: typeof raw.skipped_version === 'string' && raw.skipped_version.trim() ? raw.skipped_version.trim() : null,
     remind_after: Number.isFinite(raw.remind_after) ? raw.remind_after : null,

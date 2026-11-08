@@ -28,6 +28,7 @@ import { watchRemoteSteps, watchSlideScale } from '../praise-worship/live';
 import { stepLive } from '../praise-worship/live';
 import { massShowing, stepMass } from '../golive/massLive';
 import { CommandPalette } from './CommandPalette';
+import { SanctuaryAlertModal, useSanctuaryAlertHotkey } from './SanctuaryAlertModal';
 import { ProjectorPrompt } from './ProjectorPrompt';
 import { SplitStanzaDialog } from '../praise-worship/SplitStanzaDialog';
 import { BoothLighting } from './BoothLighting';
@@ -160,6 +161,7 @@ export function OperatorApp() {
   const previewOpen = useUi((s) => s.previewOpen);
   const lang = useUi((s) => s.lang);
   useGlobalHotkeys();
+  useSanctuaryAlertHotkey();
   // The saved default language applies at launch. The sidebar switch then overrides it for this session.
   useEffect(() => {
     bridge.config
@@ -223,6 +225,8 @@ export function OperatorApp() {
       {/* The floating preview sits above whatever module is open. The top bar's Preview button toggles it. */}
       {previewOpen && <PreviewPanel />}
       <CommandPalette />
+      {/* Ctrl+Shift+A from any window. Above the palette; the EULA gate still covers it. */}
+      <SanctuaryAlertModal />
       <ProjectorPrompt />
       <SplitStanzaDialog />
       {/* Above everything else. Shown until the operator accepts the license, then it renders nothing. */}

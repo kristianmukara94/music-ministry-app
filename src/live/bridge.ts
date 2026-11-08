@@ -187,12 +187,92 @@ export interface SystemApi {
   health(): Promise<SystemHealth>;
 }
 
+/** What the sanctuary failover surface draws (electron/watchdog.js). */
+export type FailoverMode = 'emblem' | 'blackout';
+export type WatchdogFault = 'crash' | 'freeze' | 'unresponsive' | 'gpu';
+
+/** The sanctuary display watchdog's state, for the Go Live badge. */
+export interface WatchdogStatus {
+  /** A projector window is open, so there is something to watch. */
+  projectorOpen: boolean;
+  /** The projector page has answered the heartbeat since it last loaded. */
+  armed: boolean;
+  /** The failover surface covers the projector. */
+  engaged: boolean;
+  /** The operator forced the failover (pure black); it stays until they release it. */
+  manual: boolean;
+  /** The fault being recovered from, or null. */
+  fault: WatchdogFault | null;
+  faultSince: number | null;
+  lastFault: { reason: WatchdogFault; at: number; coverMs: number; details: string | null } | null;
+  /** The projector's display was unplugged and no other external display is connected: the projector is hidden. */
+  parked: boolean;
+  displayId: number | null;
+  mode: FailoverMode;
+  reviveAttempts: number;
+  recoveries: number;
+}
+
+/**
+ * The EDID lock's state for one output (electron/edid-watchdog.js).
+ * unavailable: the hardware reader is not loaded. unpinned: no lock. matched: on its pinned monitor. port: another monitor is on the pinned GPU
+ * output (re-pin). shifted: Windows re-indexed the displays, or the window was re-anchored, a moment ago. missing: the pinned monitor is not
+ * connected. booth: the pinned monitor is now the operator's screen (duplicate mode, or made primary), so the projector is hidden.
+ */
+export type EdidLockState = 'unavailable' | 'unpinned' | 'matched' | 'port' | 'shifted' | 'missing' | 'booth';
+
+export interface EdidRoleStatus {
+  state: EdidLockState;
+  lock: { name: string; manufacturer: string; serial: string; portLabel: string; pinnedAt: string | null } | null;
+  connected: { name: string; serial: string; portLabel: string; gdiDeviceName: string } | null;
+  match?: 'exact' | 'monitor' | 'port' | null;
+}
+
+export interface EdidStatus {
+  available: boolean;
+  error: string | null;
+  queryMs: number | null;
+  shiftAt: number | null;
+  shiftReason: 'reindex' | 'reanchor' | null;
+  roles: { projector?: EdidRoleStatus };
+  monitors: { name: string; serial: string; portLabel: string; gdiDeviceName: string; primary: boolean }[];
+}
+
+export interface EdidApi {
+  status(): Promise<EdidStatus>;
+  onStatus(callback: (status: EdidStatus) => void): () => void;
+  /** Pin Active Sanctuary Projector: binds the projector to the physical monitor it is on now. */
+  pin(): Promise<EdidStatus>;
+  unpin(): Promise<EdidStatus>;
+}
+
+export interface WatchdogApi {
+  status(): Promise<WatchdogStatus>;
+  onStatus(callback: (status: WatchdogStatus) => void): () => void;
+  /** Force Failover (Blackout) on or off. */
+  force(on: boolean): Promise<WatchdogStatus>;
+  setMode(mode: FailoverMode): Promise<WatchdogStatus>;
+  /** Used only by the failover surface's own page. */
+  failoverMode(): Promise<FailoverMode>;
+  onFailoverMode(callback: (mode: FailoverMode) => void): () => void;
+  painted(mode: FailoverMode): void;
+}
+
 interface ElectronApi {
   /** Native path of a file dropped on the window. The browser never exposes it, so drops only work in the desktop app. */
   files: { pathFor(file: File): string };
   getState(): Promise<LiveState>;
   dispatch(action: LiveAction): void;
   onState(callback: (state: LiveState) => void): () => void;
+  /**
+   * Ctrl+Shift+A (Cmd+Shift+A on a Mac) was pressed in any app window. `toggle` is true when it was pressed in the operator console itself,
+   * so a second press closes the Sanctuary Alert; from another window it only opens it. Returns the unsubscribe.
+   */
+  onSanctuaryAlertHotkey(callback: (payload: { toggle: boolean }) => void): () => void;
+  /** The sanctuary display watchdog and failover surface. */
+  watchdog: WatchdogApi;
+  /** The EDID lock: the projector pinned to a physical monitor. */
+  edid: EdidApi;
   open(target: string): Promise<unknown>;
   announcements: AnnouncementApi;
   lyrics: LyricsApi;
@@ -269,6 +349,48 @@ const offlineAnnouncements: AnnouncementApi = {
 };
 
 const offlinePdf = { onConvert: () => () => undefined, finish: () => undefined };
+
+/** Browser preview: no projector window to watch, so the badge stays on standby and Force Failover does nothing. */
+const offlineWatchdogStatus: WatchdogStatus = {
+  projectorOpen: false,
+  armed: false,
+  engaged: false,
+  manual: false,
+  fault: null,
+  faultSince: null,
+  lastFault: null,
+  parked: false,
+  displayId: null,
+  mode: 'emblem',
+  reviveAttempts: 0,
+  recoveries: 0,
+};
+const offlineWatchdog: WatchdogApi = {
+  status: async () => offlineWatchdogStatus,
+  onStatus: () => () => undefined,
+  force: async () => offlineWatchdogStatus,
+  setMode: async () => offlineWatchdogStatus,
+  failoverMode: async () => 'emblem',
+  onFailoverMode: () => () => undefined,
+  painted: () => undefined,
+};
+
+/** Browser preview: no hardware to read. */
+const offlineEdidStatus: EdidStatus = {
+  available: false,
+  error: 'Open the desktop app to pin the sanctuary projector.',
+  queryMs: null,
+  shiftAt: null,
+  shiftReason: null,
+  roles: {},
+  monitors: [],
+};
+const offlineEdid: EdidApi = {
+  status: async () => offlineEdidStatus,
+  onStatus: () => () => undefined,
+  pin: async () => offlineEdidStatus,
+  unpin: async () => offlineEdidStatus,
+};
 
 /** Browser preview: no laptop to measure. The dashboard shows its health card as unavailable. */
 const offlineSystem: SystemApi = {
@@ -359,6 +481,7 @@ const offlineNotes: NotesApi = {
   get: async () => null,
   save: async () => offlineError(),
   remove: async () => offlineError(),
+  onChanged: () => () => {},
 };
 
 // No database in the browser preview: the standard Missal text is shown, and edits cannot be kept.
@@ -708,7 +831,20 @@ function createBrowserBridge(): LiveBridge {
       listeners.add(callback);
       return () => listeners.delete(callback);
     },
+    // No main process in the browser: the console page catches the hotkey itself.
+    onSanctuaryAlertHotkey(callback) {
+      const onKey = (e: KeyboardEvent) => {
+        const primary = e.ctrlKey || e.metaKey;
+        if (!primary || !e.shiftKey || e.altKey || e.repeat || e.key.toLowerCase() !== 'a') return;
+        e.preventDefault();
+        callback({ toggle: true });
+      };
+      window.addEventListener('keydown', onKey);
+      return () => window.removeEventListener('keydown', onKey);
+    },
     open: async (target) => window.open(target, '_blank', 'noopener'),
+    watchdog: offlineWatchdog,
+    edid: offlineEdid,
     announcements: offlineAnnouncements,
     files: { pathFor: offlineError },
     pdf: offlinePdf,

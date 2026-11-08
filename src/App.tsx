@@ -5,6 +5,7 @@ import { MirrorWindow } from './output/MirrorWindow';
 import { PdfConverter } from './announcements/PdfConverter';
 import { VideoThumbnailer } from './media/VideoThumbnailer';
 import { EditorWindow } from './golive/EditorWindow';
+import { FailoverOverlay } from './output/FailoverOverlay';
 
 // Each Electron window loads the same bundle; the hash picks its role.
 // The browser source is served at /lower-third, with no hash, so the path picks that role.
@@ -20,6 +21,9 @@ export function App() {
       return <ProjectorView />;
     case 'preview':
       return <MirrorWindow />;
+    // The sanctuary failover surface: a hidden window kept over the projector by the watchdog (electron/watchdog.js).
+    case 'failover':
+      return <FailoverOverlay />;
     case 'lower-third':
       return <LowerThirdView />;
     case 'pdf-converter':

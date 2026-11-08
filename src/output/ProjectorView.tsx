@@ -23,6 +23,7 @@ import { lyricBottomOf } from '../../shared/lyric-area.js';
 import { textAreaShare } from '../../shared/text-area.js';
 import { welcomeBackground } from '../../shared/welcome-settings.js';
 import { SlideBackgroundLayer } from './BackgroundMedia';
+import { SanctuaryAlertOverlay } from './SanctuaryAlertOverlay';
 import { useTextAutoFit } from './useTextAutoFit';
 import { useProjectorTextAutoFit } from './useProjectorTextAutoFit';
 import { lineCountOf, lineHeightFor } from '../../shared/text-fit.js';
@@ -751,6 +752,7 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
   const calibration = useOutput((s) => s.calibration);
   const counter = useOutput((s) => s.counter);
   const noteOverlay = useOutput((s) => s.noteOverlay);
+  const sanctuaryAlert = useOutput((s) => s.sanctuaryAlert ?? null);
   // Transitions off means changes switch at once, so the fade and the entrance both take no time.
   const transitionMs = settings.transitionsOn ? settings.fadeMs : 0;
   // While the projector is paused, the operator's mirror shows the staged frame, so it follows every change. The projector
@@ -782,9 +784,12 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
   // A note overlay is drawn over the picture while it is sent. Text clears it the same way it clears a lower third.
   const noteLive = outputShowing && !blackedOut ? noteOverlay : null;
   const noteFaded = useFadedNote(noteLive, settings.fadeMs);
+  // The Sanctuary Alert is drawn whenever the output is showing, over Blackout too: the operator sent it on purpose, and it is urgent.
+  const alertLive = outputShowing ? sanctuaryAlert : null;
   // While a lower third is on, text moves clear of it. Other text centres in the space above it. A scripture
-  // passage moves up by 18% of the screen height, so the verses sit clear of the nameplate.
-  const raised = Boolean(lowerThirdValue || noteLive);
+  // passage moves up by 18% of the screen height, so the verses sit clear of the nameplate. The alert banner moves it the same way, so the
+  // last lyric line is never hidden under the banner; the slide itself, and the operator's place in it, do not change.
+  const raised = Boolean(lowerThirdValue || noteLive || alertLive);
   const clearance = !raised
     ? ''
     : shownFrame.kind === 'deck' && shownFrame.passage
@@ -862,11 +867,14 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
       {noteFaded.shown && (
         <div
           className={`pointer-events-none absolute inset-x-0 z-[45] flex justify-center transition-opacity ease-in-out ${noteFaded.visible ? 'opacity-100' : 'opacity-0'}`}
-          style={{ bottom: lowerThirdValue ? '24cqh' : '5cqh', transitionDuration: `${settings.fadeMs}ms` }}
+          style={{ bottom: lowerThirdValue ? '24cqh' : alertLive ? '13cqh' : '5cqh', transitionDuration: `${settings.fadeMs}ms` }}
         >
           <NoteCallout value={noteFaded.shown} />
         </div>
       )}
+
+      {/* The Sanctuary Alert: the top layer of the stage. It never changes the slides under it. */}
+      <SanctuaryAlertOverlay value={alertLive} />
 
       {counter?.show && counter.index > 0 && (shownFrame.kind === 'text' || shownFrame.kind === 'image') && (
         <div className="pointer-events-none absolute right-[3cqw] bottom-[3cqh] z-[40] rounded-full border border-white/15 bg-black/50 px-[1.2cqw] py-[0.6cqh] font-mono text-[1.1cqw] font-semibold tracking-wide text-white/80">

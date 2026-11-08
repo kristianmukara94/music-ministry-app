@@ -10,7 +10,7 @@ export interface PictureDeck {
 }
 
 export interface FlowRow {
-  module: 'announcements';
+  module: 'announcements' | 'notes';
   sourceId: string;
   label: string;
 }

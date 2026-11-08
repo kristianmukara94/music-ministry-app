@@ -9,3 +9,7 @@ out/
 .cer
 .vercel/
 /tools/setup-key-generator
+
+# The display-matrix addon is built from src/native by tools/build-native.mjs, never committed.
+electron/display-matrix.node
+src/native/build/

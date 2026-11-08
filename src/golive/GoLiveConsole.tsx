@@ -16,6 +16,8 @@ import { MassLiveView } from './MassLiveView';
 import { goLiveMassAt, whenLive } from './massLive';
 import { onAirLabel, projectorState } from './onAir';
 import { useGoLiveT } from './strings';
+import { EdidLockBadge } from './EdidLockBadge';
+import { WatchdogBadge } from './WatchdogBadge';
 import { WhiteboardCard } from './WhiteboardCard';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -192,6 +194,12 @@ export function GoLiveConsole() {
             <span aria-hidden className={`size-2 rounded-full ${projector === 'on' ? 'bg-ok' : projector === 'black' ? 'bg-warn' : 'bg-fg/40'}`} />
             {pillWord}
           </span>
+
+          {/* The projector's hardware lock to its physical monitor (EDID). */}
+          <EdidLockBadge />
+
+          {/* The sanctuary display watchdog, and the booth's emergency Force Failover (Ctrl+Shift+B). */}
+          <WatchdogBadge />
 
           {tab !== 'prepare' && (
           <div className="flex min-w-0 flex-wrap items-center gap-2">

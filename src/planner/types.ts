@@ -56,6 +56,8 @@ export interface LibraryItem {
   sourceId: string;
   label: string;
   sub: string;
+  /** A Content Hub row: a prayer, a Holy Mass flow text or a notice the congregation sees, or a private operator note. */
+  kind?: NoteKind;
 }
 
 export interface PlansApi {
@@ -87,3 +89,6 @@ export const BLOCKS: { id: LiturgicalBlock; titleKey: string; hintKey: string }[
 ];
 
 export const BLOCK_RANK: Record<LiturgicalBlock, number> = { introductory: 0, word: 1, eucharist: 2, communion: 3, concluding: 4 };
+
+/** What a Liturgical Content Hub entry is, for its tag in the planner: a prayer, a Holy Mass flow text, a public notice, or a private note. */
+export type NoteKind = 'prayer' | 'flow' | 'notice' | 'note';

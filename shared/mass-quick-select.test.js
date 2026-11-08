@@ -14,7 +14,7 @@ test('a slot card has no type tag: the slot name is its heading and the item sta
   assert.doesNotMatch(plan, /moduleLabel|TONE\b|const TAG\b/, 'no module label or tag colours on the cards');
   assert.doesNotMatch(plan, /kindSong|kindNote|t\('module_/);
   // The placeholder rows of an older plan keep no "Song" or "Text" tag either.
-  assert.match(read('src/planner/MassPlanner.tsx'), /\{!step && <span className=\{`\$\{TAG\} \$\{toneOf\(row\.module\)\}`\}>/);
+  assert.match(read('src/planner/MassPlanner.tsx'), /\{!step && <span className=\{`\$\{TAG\} \$\{tag\.tone\}`\}>/);
   assert.doesNotMatch(read('src/planner/MassPlanner.tsx'), /KIND_KEY/);
 });
 

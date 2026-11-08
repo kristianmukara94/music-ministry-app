@@ -8,6 +8,8 @@ import { hasResponse } from '../../shared/daily-readings.js';
 import { loadPassage, scriptureSlides } from '../bible/projection';
 import { massPartFrame } from '../liturgy/massOrder';
 import type { SourceModule } from '../planner/types';
+import { noteSource, pickSlides } from '../../shared/notes.js';
+import { screenPagesOf } from '../../shared/prayer-screen.js';
 
 /** The text of each slide of one source, and the style the projector applies to it. */
 export interface PreviewSlides {
@@ -55,9 +57,12 @@ export async function previewFor(module: SourceModule, sourceId: string, lang: L
     }
 
     case 'notes': {
-      const note = await bridge.notes.get(Number(sourceId));
+      const source = noteSource(sourceId);
+      const note = source ? await bridge.notes.get(source.id) : null;
       if (!note) return null;
-      return { pages: [note.body], style: note.style ?? null };
+      // A full-screen prayer previews the slides its row plays; a banner or a private note is one card.
+      const pages = note.display === 'full' ? pickSlides(screenPagesOf(note), source!.slides).map((p) => p.text) : [note.body];
+      return { pages, style: note.style ?? null };
     }
 
     default:

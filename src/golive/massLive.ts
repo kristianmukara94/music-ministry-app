@@ -4,7 +4,8 @@ import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
 import { stanzaFrame } from '../lyrics/frames';
 import type { Hymn } from '../lyrics/types';
-import { slideFramesOf, takePrayer } from '../notes/present';
+import { prayerOfKey, slideFramesOf, takePrayer } from '../notes/present';
+import { noteSource } from '../../shared/notes.js';
 import type { Note } from '../notes/types';
 import { openQueueItem, playQueueAt, stepQueue } from '../planner/routing';
 import { useUi } from '../state/ui';
@@ -45,10 +46,10 @@ export interface ItemSteps {
 const numbered = (count: number) => Array.from({ length: count }, (_, i) => String(i + 1));
 
 /** The prayer (a Notes & Prayers note) a frame shows one slide of. Undefined for anything else. */
-export const prayerIdOf = (frame: Frame): number | undefined => {
-  const id = frame.kind === 'text' && frame.key?.startsWith('prayer:') ? Number(frame.key.slice('prayer:'.length)) : NaN;
-  return Number.isInteger(id) ? id : undefined;
-};
+export const prayerIdOf = (frame: Frame): number | undefined => (frame.kind === 'text' ? prayerOfKey(frame.key)?.id : undefined);
+
+/** The slides of its prayer a prayer's frame plays (0-based), or null for every slide. */
+export const prayerSlidesOf = (frame: Frame): number[] | null => (frame.kind === 'text' ? (prayerOfKey(frame.key)?.slides ?? null) : null);
 
 /** The song a frame shows: a stanza of it, or its title card. Undefined for anything else. */
 export const songIdOf = (frame: Frame): number | undefined =>
@@ -76,7 +77,7 @@ export function stepsOf(frame: Frame, hymn: Hymn | null): ItemSteps | null {
  */
 export function frameAt(frame: Frame, target: number, hymn: Hymn | null, slotName?: string | null, note?: Note | null): Frame | null {
   if (target < 0) return null;
-  if (note && prayerIdOf(frame) === note.id) return slideFramesOf(note)[target] ?? null;
+  if (note && prayerIdOf(frame) === note.id) return slideFramesOf(note, prayerSlidesOf(frame))[target] ?? null;
   if (frame.kind === 'deck') return target < frame.slides.length ? { ...frame, index: target } : null;
   if (frame.kind === 'psalm') return target < frame.pages.length ? { ...frame, index: target } : null;
   if (frame.kind === 'image' && frame.deck) {
@@ -109,13 +110,15 @@ async function noteOf(frame: Frame): Promise<Note | null> {
 }
 
 /**
- * Loads the prayer behind the slide on screen, so the console can show its next slide. Null for anything else. Notes & Prayers sends no
- * change event, so it is read again whenever the slide changes: a prayer re-split there is re-staged with new text or a new count.
+ * Loads the prayer behind the slide on screen, so the console can show its next slide. Null for anything else. It is read again whenever the
+ * slide changes, and whenever that prayer is saved anywhere (the notes change event), so a prayer re-split in Notes & Prayers shows here at once.
  */
 export function useNoteOf(frame: Frame): Note | null {
   const id = prayerIdOf(frame);
   const shown = frame.kind === 'text' ? `${frame.page?.total ?? 1}|${frame.text}` : '';
   const [note, setNote] = useState<Note | null>(null);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => (id == null ? undefined : bridge.notes.onChanged((change) => change.id === id && setRevision((n) => n + 1))), [id]);
   useEffect(() => {
     if (id == null) {
       setNote(null);
@@ -129,7 +132,7 @@ export function useNoteOf(frame: Frame): Note | null {
     return () => {
       alive = false;
     };
-  }, [id, shown]);
+  }, [id, shown, revision]);
   return note && note.id === id ? note : null;
 }
 
@@ -302,13 +305,14 @@ async function playMassFromEnd(index: number): Promise<void> {
     return;
   }
   if (item.module === 'notes') {
-    const note = item.stale ? null : await bridge.notes.get(Number(item.sourceId)).catch(() => null);
+    const source = noteSource(item.sourceId);
+    const note = item.stale || !source ? null : await bridge.notes.get(source.id).catch(() => null);
     if (note?.display !== 'full') {
       await playMassAt(index);
       return;
     }
     dispatch({ type: 'queue/cursor', index });
-    takePrayer(note, 'MASS_QUEUE', Math.max(0, slideFramesOf(note).length - 1));
+    takePrayer(note, 'MASS_QUEUE', Math.max(0, slideFramesOf(note, source?.slides).length - 1), source?.slides);
     return;
   }
   const before = frameKey(state.projector.staged);

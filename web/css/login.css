@@ -1,0 +1,777 @@
+/*
+ * APCCMMA Web Planner: the sign-in page (login.html). Loaded after planner.css. Deep obsidian ground, dark glass cards edged in
+ * gold, a warm gold call to action. Every colour is a token below, so the palette changes in one place.
+ */
+.login {
+  --ground: #0b070e;
+  --ground-raised: #120b16;
+  --glass: rgba(24, 16, 28, 0.75);
+  --glass-strong: rgba(30, 20, 36, 0.86);
+  --edge: rgba(236, 201, 138, 0.2);
+  --edge-strong: rgba(236, 201, 138, 0.42);
+  --gold: #ecc98a;
+  --gold-hover: #f3d9a8;
+  --on-gold: #1a0f06;
+  --text: #f4eef6;
+  --text-soft: #cbbccf;
+  --text-muted: #9a8a9f;
+  --field: rgba(11, 7, 14, 0.72);
+  --field-edge: rgba(236, 201, 138, 0.16);
+  --emerald: #34d399;
+  --emerald-soft: #8ff0c4;
+  --emerald-ground: rgba(16, 64, 44, 0.55);
+  --warn: #f5b971;
+  --danger: #ff9a9a;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  background: var(--ground);
+  color: var(--text);
+  font-family: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+}
+
+.login-shell {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  min-height: 100vh;
+  background:
+    radial-gradient(900px 600px at 12% -10%, rgba(236, 201, 138, 0.09), transparent 60%),
+    radial-gradient(800px 700px at 105% 110%, rgba(120, 60, 140, 0.16), transparent 60%),
+    var(--ground);
+  overflow: hidden;
+}
+
+/* ---- Left column: brand, intro and the form ---- */
+/*
+ * The spacing follows the viewport height, so on a 1366 x 768 laptop (about 650 px of page once the browser's own bars are drawn)
+ * the Sign in button stays close to the fold, and a 1920 x 1080 screen keeps the roomier layout.
+ */
+.login-main {
+  flex: 1 1 480px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(14px, 2.6vh, 28px);
+  padding: clamp(24px, 5vh, 56px) 72px;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 480px;
+}
+
+.login-brand-name {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.login-brand-title {
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+}
+
+.login-brand-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Which desktop app version the planner is built for, with a pulsing "connected" dot. */
+.sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0 12px 0 10px;
+  border-radius: 99px;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: var(--emerald-ground);
+  color: var(--emerald-soft);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.sync-dot {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--emerald);
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.8);
+}
+
+.sync-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--emerald);
+  animation: sync-pulse 2s var(--ease) infinite;
+}
+
+@keyframes sync-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  80%,
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+.login-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 480px;
+}
+
+.login-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--gold);
+}
+
+.login h1 {
+  margin: 0;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-weight: 700;
+  font-size: clamp(40px, 5.6vh, 56px);
+  line-height: 1.02;
+  text-wrap: balance;
+}
+
+.login-intro p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-soft);
+}
+
+/* The sign-in form: a dark glass card with a thin gold edge. */
+.login-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 480px;
+  padding: 24px 28px;
+  border-radius: 18px;
+  border: 1px solid var(--edge);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 24px 60px -16px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+/* Ministry Planner / Booth Operator Sync: a radio pair drawn as tabs. Arrow keys move between them, as radios do. */
+.role-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--field-edge);
+  border-radius: 12px;
+  background: var(--field);
+}
+
+.role-tab {
+  position: relative;
+  display: block;
+}
+
+.role-tab input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.role-tab span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 9px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  transition: background-color 0.2s var(--ease), color 0.2s var(--ease), box-shadow 0.2s var(--ease), transform 0.2s var(--ease);
+  pointer-events: none;
+}
+
+.role-tab:hover span {
+  color: var(--text);
+}
+
+.role-tab input:checked + span {
+  background: rgba(236, 201, 138, 0.14);
+  color: var(--gold);
+  box-shadow: inset 0 0 0 1px var(--edge-strong);
+}
+
+.role-tab input:focus-visible + span {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+
+.role-note {
+  margin: -8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.login-label-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.login-label-split {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.login-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.login-input {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--field-edge);
+  background: var(--field);
+  color: var(--text);
+  font-size: 15px;
+  outline: 0;
+  transition: border-color 0.2s var(--ease), box-shadow 0.25s var(--ease), background-color 0.2s var(--ease);
+}
+
+.login-input:hover {
+  border-color: var(--edge-strong);
+}
+
+.login-input::placeholder {
+  color: #6f6274;
+}
+
+/* Focus: the gold border from planner.css, plus a soft outer glow. */
+.login .login-input:focus {
+  background: rgba(11, 7, 14, 0.9);
+  box-shadow: 0 0 0 3px rgba(236, 201, 138, 0.22), 0 0 22px -2px rgba(236, 201, 138, 0.35);
+}
+
+/* "Forgot password?": a text button that still has a full-size tap area. */
+.link-button {
+  min-height: 44px;
+  margin: -12px -8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+/* Password: the eye button sits inside the field, on the right. */
+.password-wrap {
+  position: relative;
+}
+
+.password-wrap .login-input {
+  padding-right: 52px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s var(--ease), background-color 0.15s var(--ease);
+}
+
+.password-toggle:hover {
+  color: var(--gold);
+  background: rgba(236, 201, 138, 0.08);
+}
+
+.password-toggle .eye-closed,
+.password-toggle[aria-pressed='true'] .eye-open {
+  display: none;
+}
+
+.password-toggle[aria-pressed='true'] .eye-closed {
+  display: block;
+}
+
+/* Church code: typed as XXXX-XXXX in a monospace face, with a status line under it. */
+.code-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.code-input {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.code-input::placeholder {
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+
+.code-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  min-height: 24px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-muted);
+  transition: color 0.2s var(--ease), background-color 0.2s var(--ease), padding 0.2s var(--ease);
+}
+
+.code-status[data-state='invalid'] {
+  color: var(--warn);
+}
+
+.code-status[data-state='format'] {
+  color: var(--gold);
+}
+
+.code-status[data-state='known'] {
+  padding: 2px 10px;
+  border-radius: 99px;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: var(--emerald-ground);
+  color: var(--emerald-soft);
+  font-weight: 700;
+  animation: badge-in 0.3s var(--ease);
+}
+
+@keyframes badge-in {
+  from {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+}
+
+.code-input[data-state='known'] {
+  border-color: rgba(52, 211, 153, 0.5);
+}
+
+.code-input[data-state='invalid'] {
+  border-color: rgba(245, 185, 113, 0.55);
+}
+
+.sign-in-error {
+  margin: -6px 0;
+  min-height: 1.4em;
+  font-size: 14px;
+  color: var(--danger);
+}
+
+.login-submit {
+  height: 48px;
+  border-radius: 11px;
+  border: 0;
+  background: var(--gold);
+  color: var(--on-gold);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 24px -8px rgba(236, 201, 138, 0.55);
+  transition: transform 0.18s var(--ease), background-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+}
+
+.login-submit:hover:not(:disabled) {
+  background: var(--gold-hover);
+  transform: translateY(-1px) scale(1.01);
+  box-shadow: 0 12px 30px -8px rgba(236, 201, 138, 0.7);
+}
+
+.login-submit:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.login-submit:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.login-fineprint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* The "i" badge beside Church code, whose tooltip shows on hover and on keyboard focus. */
+.info-tip {
+  position: relative;
+  display: inline-flex;
+}
+
+.info-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(236, 201, 138, 0.55);
+  background: rgba(236, 201, 138, 0.12);
+  color: var(--gold);
+  font: italic 700 11px/1 Georgia, serif;
+  cursor: help;
+}
+
+/* planner.css gives every button a 44 px minimum on touch screens; this dot keeps its shape and gets the tap area below instead. */
+.login .info-badge {
+  min-height: 18px;
+}
+
+/* A bigger invisible tap area than the 18 px dot. */
+.info-badge::after {
+  content: '';
+  position: absolute;
+  inset: -13px;
+}
+
+.info-tip-text {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  z-index: 20;
+  width: max-content;
+  max-width: 240px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--edge);
+  background: #1d1422;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 4px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+}
+
+.info-tip-text::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border: 5px solid transparent;
+  border-top-color: #1d1422;
+}
+
+.info-tip:hover .info-tip-text,
+.info-badge:focus-visible + .info-tip-text {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+.login a:hover {
+  color: var(--gold);
+}
+
+/* ---- Right column: how it works, and what v1.0.59 brings to the church laptop ---- */
+.login-aside {
+  flex: 1 1 480px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 24px;
+  padding: 56px 72px;
+  border-left: 1px solid var(--edge);
+  background: linear-gradient(180deg, rgba(18, 11, 22, 0.85), rgba(11, 7, 14, 0.6));
+}
+
+.aside-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.login-aside h2 {
+  margin: 0;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-weight: 700;
+  font-size: 36px;
+  line-height: 1.1;
+}
+
+.flow-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flow-step {
+  flex: 1 1 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: var(--glass);
+  transition: transform 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.flow-step:hover {
+  transform: translateY(-2px) scale(1.015);
+  border-color: var(--edge);
+}
+
+.flow-step.is-current {
+  border-color: var(--edge-strong);
+  background: linear-gradient(160deg, rgba(236, 201, 138, 0.1), var(--glass));
+}
+
+.flow-step-num {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+.flow-step.is-current .flow-step-num {
+  color: var(--gold);
+}
+
+.flow-step-text {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.feature-panel {
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid var(--edge);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.feature-panel-title {
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+}
+
+.feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feature {
+  display: flex;
+  gap: 14px;
+  padding: 10px;
+  margin: 0 -10px;
+  border-radius: 12px;
+  transition: background-color 0.2s var(--ease), transform 0.2s var(--ease);
+}
+
+.feature:hover {
+  background: rgba(236, 201, 138, 0.06);
+  transform: translateX(2px);
+}
+
+.feature-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--edge);
+  background: rgba(236, 201, 138, 0.08);
+  color: var(--gold);
+}
+
+.feature-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.feature-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.feature-desc {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.sync-split {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+}
+
+.sync-col {
+  flex: 1 1 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sync-col ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-soft);
+}
+
+.sync-col-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sync-col-title.is-web {
+  color: var(--emerald-soft);
+}
+
+.sync-col-title.is-laptop {
+  color: var(--gold);
+}
+
+/* The Forgot password dialog, in the page's palette. */
+.login .modal {
+  border-color: var(--edge);
+  background: #150e19;
+}
+
+@media (max-width: 960px) {
+  .login-aside {
+    border-left: 0;
+    border-top: 1px solid var(--edge);
+  }
+}
+
+@media (max-width: 560px) {
+  .login h1 {
+    font-size: 40px;
+  }
+  .login-aside h2 {
+    font-size: 30px;
+  }
+  .login-brand {
+    flex-wrap: wrap;
+  }
+  .sync-badge {
+    margin-left: 0;
+  }
+  .login-card {
+    padding: 20px 16px;
+  }
+  .role-tab span {
+    font-size: 12px;
+    gap: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-dot::after,
+  .code-status[data-state='known'] {
+    animation: none;
+  }
+  .login-input,
+  .info-tip-text,
+  .role-tab span,
+  .login-submit,
+  .flow-step,
+  .feature,
+  .password-toggle,
+  .code-status {
+    transition: none;
+  }
+  .login-submit:hover:not(:disabled),
+  .flow-step:hover,
+  .feature:hover {
+    transform: none;
+  }
+}

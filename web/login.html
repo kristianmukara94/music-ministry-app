@@ -3,45 +3,67 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b070e">
 <link rel="icon" href="favicon.ico" sizes="32x32">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Sign in · APCCMMA Web Planner</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/planner.css">
+<link rel="stylesheet" href="css/login.css">
 <script type="module" src="js/login.js"></script>
 </head>
 <body class="login">
-<div class="shell" style="display: flex; flex-wrap: wrap; background: #0f0407; color: #f7eef0; font-family: 'Archivo','Segoe UI',system-ui,sans-serif">
+<div class="login-shell">
 
-  <main class="pad login-main" style="flex: 1 1 480px; min-width: 0; display: flex; flex-direction: column; justify-content: center">
-    <div style="display: flex; align-items: center; gap: 12px">
+  <main class="pad login-main">
+    <header class="login-brand">
       <img src="img/logo.png" alt="" width="44" height="44" class="brand-mark">
-      <div style="display: flex; flex-direction: column; line-height: 1.15">
-        <span style="font-weight: 800; font-size: 16px; letter-spacing: 0.04em">APCCMMA</span>
-        <span style="font-size: 12px; color: #b48d99">Web Planner</span>
+      <div class="login-brand-name">
+        <span class="login-brand-title">APCCMMA</span>
+        <span class="login-brand-sub">Web Planner</span>
       </div>
-      <span class="sync-badge" title="Plans made here sync with the church laptop's desktop app, version 1.0.42 or newer">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></svg>
-        v1.0.42 Sync Ready
+      <span class="sync-badge" title="Built for the v1.0.59 desktop app. Church laptops on v1.0.42 or newer still sync.">
+        <span class="sync-dot" aria-hidden="true"></span>
+        v1.0.59 Sync Ready
       </span>
-    </div>
+    </header>
 
-    <div class="login-intro" style="display: flex; flex-direction: column; max-width: 480px">
-      <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #ecc98a">ASSUMPTION PARISH · MUSIC MINISTRY</span>
-      <h1 style="margin: 0; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; line-height: 1.02">Plan the Holy Mass from anywhere</h1>
-      <p style="margin: 0; font-size: 16px; line-height: 1.55; color: #dbb3bf">Sign in to build Holy Mass plans and Praise &amp; Worship nights. They appear in the app on the church laptop the next time it syncs.</p>
+    <div class="login-intro">
+      <span class="login-eyebrow">ASSUMPTION PARISH · MUSIC MINISTRY</span>
+      <h1>Plan the Holy Mass from anywhere</h1>
+      <p id="intro-text" data-planner="Sign in to build Holy Mass plans and Praise &amp; Worship nights. They appear in the app on the church laptop the next time it syncs." data-booth="Sign in to check that the booth laptop is linked and syncing, and to see when it last pulled your plans.">Sign in to build Holy Mass plans and Praise &amp; Worship nights. They appear in the app on the church laptop the next time it syncs.</p>
     </div>
 
     <form id="sign-in" class="login-card">
+      <fieldset class="role-tabs">
+        <legend class="sr-only">Where to go after you sign in</legend>
+        <label class="role-tab">
+          <input type="radio" name="destination" value="planner" checked>
+          <span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            Ministry Planner
+          </span>
+        </label>
+        <label class="role-tab">
+          <input type="radio" name="destination" value="booth">
+          <span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            Booth Operator Sync
+          </span>
+        </label>
+      </fieldset>
+      <p id="role-note" class="role-note" data-planner="Opens your Holy Mass and Praise &amp; Worship plans." data-booth="Opens Devices &amp; sync. Linking or unlinking a laptop needs an admin account.">Opens your Holy Mass and Praise &amp; Worship plans.</p>
+
       <label class="login-field">
         <span class="login-label">Username</span>
         <input type="text" name="username" required autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="Your username" class="login-input">
       </label>
+
       <div class="login-field">
-        <span style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+        <span class="login-label-row login-label-split">
           <label for="password" class="login-label">Password</label>
           <button type="button" id="forgot-open" class="link-button" aria-haspopup="dialog">Forgot password?</button>
         </span>
@@ -53,6 +75,7 @@
           </button>
         </div>
       </div>
+
       <div class="login-field">
         <span class="login-label-row">
           <label for="church-code" class="login-label">Church code</label>
@@ -62,50 +85,87 @@
           </span>
           <span class="login-hint">(asked once, then remembered on this laptop)</span>
         </span>
-        <input type="text" id="church-code" name="churchCode" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. K7QM-4XD2" class="login-input">
+        <div class="code-wrap">
+          <input type="text" id="church-code" name="churchCode" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" maxlength="9" placeholder="e.g. PTGS-X2D9" class="login-input code-input" aria-describedby="code-status">
+          <span id="code-status" class="code-status" data-state="empty" aria-live="polite">Leave blank if your username is only used at one parish</span>
+        </div>
       </div>
-      <p id="sign-in-error" role="alert" aria-live="assertive" style="margin: -6px 0; min-height: 1.4em; font-size: 14px; color: #ff9a9a"></p>
-      <button type="submit" class="login-submit">Sign in</button>
-      <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #b48d99">Only parish ministry members can sign in. Ask the music ministry lead for an invite.</p>
+
+      <p id="sign-in-error" class="sign-in-error" role="alert" aria-live="assertive"></p>
+      <button type="submit" class="login-submit" data-planner="Sign in to plan" data-booth="Sign in to booth sync">Sign in to plan</button>
+      <p class="login-fineprint">Only parish ministry members can sign in. Ask the music ministry lead for an invite.</p>
     </form>
   </main>
 
-  <aside class="pad" style="flex: 1 1 480px; min-width: 0; padding: 56px 72px; background: #1a0a12; border-left: 1px solid #3a1523; display: flex; flex-direction: column; justify-content: center; gap: 28px">
-    <div style="display: flex; flex-direction: column; gap: 8px">
-      <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #ecc98a">HOW IT WORKS</span>
-      <h2 style="margin: 0; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 36px; line-height: 1.1">Plan on the web, present from the app</h2>
+  <aside class="pad login-aside">
+    <div class="aside-head">
+      <span class="login-eyebrow">HOW IT WORKS</span>
+      <h2>Plan on the web, present from the app</h2>
     </div>
 
-    <div style="display: flex; flex-wrap: wrap; align-items: stretch; gap: 12px">
-      <div style="flex: 1 1 140px; padding: 18px; border-radius: 14px; border: 1px solid #55202f; background: #22101a; display: flex; flex-direction: column; gap: 6px">
-        <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: #b48d99">1 · WEB PLANNER</span>
-        <span style="font-size: 15px; font-weight: 600; line-height: 1.35">Build the Holy Mass flow and the song steps</span>
-      </div>
-      <div style="flex: 1 1 140px; padding: 18px; border-radius: 14px; border: 1px solid #55202f; background: #22101a; display: flex; flex-direction: column; gap: 6px">
-        <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: #b48d99">2 · SYNC</span>
-        <span style="font-size: 15px; font-weight: 600; line-height: 1.35">Saved securely, with a version check</span>
-      </div>
-      <div style="flex: 1 1 140px; padding: 18px; border-radius: 14px; border: 1px solid #ecc98a; background: #2a0c18; display: flex; flex-direction: column; gap: 6px">
-        <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: #ecc98a">3 · CHURCH LAPTOP</span>
-        <span style="font-size: 15px; font-weight: 600; line-height: 1.35">The app pulls the plan and runs the service</span>
-      </div>
-    </div>
+    <ol class="flow-steps">
+      <li class="flow-step">
+        <span class="flow-step-num">1 · WEB PLANNER</span>
+        <span class="flow-step-text">Build the Holy Mass flow and the song steps</span>
+      </li>
+      <li class="flow-step">
+        <span class="flow-step-num">2 · SYNC</span>
+        <span class="flow-step-text">Saved securely, with a version check</span>
+      </li>
+      <li class="flow-step is-current">
+        <span class="flow-step-num">3 · CHURCH LAPTOP</span>
+        <span class="flow-step-text">The app pulls the plan and runs the service</span>
+      </li>
+    </ol>
 
-    <div style="display: flex; flex-wrap: wrap; gap: 28px">
-      <div style="flex: 1 1 200px; display: flex; flex-direction: column; gap: 10px">
-        <span style="font-size: 13px; font-weight: 700; color: #8fd9ae">Syncs to the web</span>
-        <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #dbb3bf; line-height: 1.4">
+    <section class="feature-panel" aria-labelledby="features-title">
+      <h3 id="features-title" class="feature-panel-title">Waiting on the church laptop in v1.0.59</h3>
+      <ul class="feature-list">
+        <li class="feature">
+          <span class="feature-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M12 6v6M9 9h6"/></svg>
+          </span>
+          <span class="feature-body">
+            <span class="feature-name">Liturgical Content Hub</span>
+            <span class="feature-desc">Prayers, Holy Mass Flow notes and announcements in one library. The operator adds them to any slot of your synced plan.</span>
+          </span>
+        </li>
+        <li class="feature">
+          <span class="feature-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </span>
+          <span class="feature-body">
+            <span class="feature-name">Transposed lead sheets</span>
+            <span class="feature-desc">Move a song up or down by semitones for one setlist. The key saved in the song library stays as it is.</span>
+          </span>
+        </li>
+        <li class="feature">
+          <span class="feature-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+          </span>
+          <span class="feature-body">
+            <span class="feature-name">Sanctuary Alert presets</span>
+            <span class="feature-desc">One-tap banners for a car blocking the driveway, a nursery tag or an urgent booth notice, shown over the slides.</span>
+          </span>
+        </li>
+      </ul>
+    </section>
+
+    <div class="sync-split">
+      <div class="sync-col">
+        <span class="sync-col-title is-web">Syncs to the web</span>
+        <ul>
           <li>Holy Mass plans</li>
           <li>Praise &amp; Worship sessions</li>
           <li>Song titles and categories</li>
         </ul>
       </div>
-      <div style="flex: 1 1 200px; display: flex; flex-direction: column; gap: 10px">
-        <span style="font-size: 13px; font-weight: 700; color: #ecc98a">Stays on the laptop</span>
-        <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #dbb3bf; line-height: 1.4">
-          <li>Lyrics</li>
-          <li>Bible text</li>
-          <li>Announcements and media</li>
+      <div class="sync-col">
+        <span class="sync-col-title is-laptop">Stays on the laptop</span>
+        <ul>
+          <li>Lyrics and Bible text</li>
+          <li>Content Hub entries and song keys</li>
+          <li>Announcements, alerts and media</li>
         </ul>
       </div>
     </div>

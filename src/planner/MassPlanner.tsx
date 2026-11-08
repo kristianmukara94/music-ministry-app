@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, ListMusic, Pencil, Play, Plus, Search, Send, Trash2, Zap } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, ArrowDown, ArrowUp, Info, ListMusic, Play, Plus, Search, Send, Trash2, Zap } from 'lucide-react';
 import { clearSlot, moveToSlot, placeInSlot, additionalIn, slotById } from '../../shared/mass-slots.js';
 import { withAllReadings } from '../../shared/daily-readings.js';
 import { MASS_LANGUAGES, bibleOf, massLanguageOf, otherBibles, slotLabel, uiLangOf } from '../../shared/mass-language.js';
@@ -11,9 +11,11 @@ import { setUi, useUi } from '../state/ui';
 import { formatIsoDay } from '../state/region';
 import { useRegion } from '../state/useRegion';
 import { MASS_ORDER, allMassParts, findMassPart, massPartName } from '../liturgy/massOrder';
-import { HolyMassOrderEditor } from '../liturgy/HolyMassOrderEditor';
 import { useMassOrderTexts } from '../liturgy/massOrderStore';
-import { isCustomId, isCustomized, withPartNames } from '../../shared/mass-order-text.js';
+import { withPartNames } from '../../shared/mass-order-text.js';
+import { noteCategoryLabel, noteSource, sectionOfCategory } from '../../shared/notes.js';
+import { useNotesById, useNotesChanged } from '../notes/useNotes';
+import type { Note } from '../notes/types';
 import { sundayCycle } from '../liturgy/lectionary';
 import { deckRow, decksOf } from '../../shared/flow-insert.js';
 import { formatRuns, formatSourceId, parsePassageInput, stripHits } from '../../shared/bible-ref.js';
@@ -34,7 +36,7 @@ import { builtInItems, type NewPlanTemplate } from './templates';
 import { NewPlanForm } from './NewPlanForm';
 import { songCategoryOf, stepFor, type MassStep } from '../../shared/mass-flow.js';
 import { overlayLyricsItems } from '../../shared/hymn-cache.js';
-import { BLOCKS, type LibraryItem, type LiturgicalBlock, type MassLanguage, type PlanItem, type PlanSummary, type SourceModule } from './types';
+import { type LibraryItem, type LiturgicalBlock, type MassLanguage, type NoteKind, type PlanItem, type PlanSummary, type SourceModule } from './types';
 
 const api = bridge.plans;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -45,8 +47,9 @@ const TABS: { id: SourceModule; key: string }[] = [
   { id: 'announcements', key: 'tab_announcements' },
   { id: 'media', key: 'tab_media' },
   { id: 'bible', key: 'tab_bible' },
-  { id: 'mass_order', key: 'tab_mass_order' },
-  { id: 'custom', key: 'tab_custom' },
+  // One tab for every saved prayer, intention and private operator note, read from Notes & Prayers. It took the place of the Holy Mass
+  // Order tab and of the typed-notes tab: Mass Order parts are still picked from each slot's own list.
+  { id: 'notes', key: 'tab_notes' },
 ];
 
 
@@ -71,8 +74,22 @@ const MODULE_TONE: Record<string, string> = {
   media: 'border-ok/40 bg-ok/10 text-ok',
   mass_order: 'border-fg/30 bg-fg/10 text-fg/80',
   custom: 'border-fg/25 bg-fg/[0.08] text-fg/80',
+  // Amber and cyan, as the prayer and operator-note choices in the Add a note or prayer window. Amber is the theme's warn colour, so it reads
+  // on light themes too; the cyan tag keeps the theme's text colour for the same reason.
+  prayer: 'border-warn/50 bg-warn/15 text-warn',
+  note: 'border-cyan-500/60 bg-cyan-500/15 text-fg',
+  // Violet for a Holy Mass flow text and sky for a notice, as the types in the Hub's Add new entry window.
+  flow: 'border-violet-500/60 bg-violet-500/15 text-fg',
+  notice: 'border-sky-500/60 bg-sky-500/15 text-fg',
 };
 const toneOf = (module: string) => MODULE_TONE[module] ?? MODULE_TONE.custom;
+
+/** A saved entry's kind: a private operator note, or what the congregation sees, by its Content Hub section (prayer, Holy Mass flow, notice). */
+const KIND_OF_SECTION: Record<string, NoteKind> = { prayers: 'prayer', massFlow: 'flow', announcements: 'notice' };
+const noteKind = (note: Pick<Note, 'display' | 'category'>): NoteKind => (note.display === 'operator' ? 'note' : KIND_OF_SECTION[sectionOfCategory(note.category)]);
+const NOTE_TAG_KEY: Record<NoteKind, string> = { prayer: 'module_notes', flow: 'tag_flow', notice: 'tag_notice', note: 'module_custom' };
+/** A Content Hub row's tag: PRAYER in amber, ORDINARY in violet, NOTICE in sky, or NOTE in cyan for a private operator note. */
+const noteTag = (kind: NoteKind, t: PlannerT) => ({ text: t(NOTE_TAG_KEY[kind]), tone: toneOf(kind) });
 
 /** The song type toggle over the song list. General shows every song; the other two show their own songs and the General ones. */
 const SONG_SCOPES: { id: PrimaryCategory; key: PlannerKey }[] = [
@@ -208,12 +225,22 @@ export async function loadLibrary(
           label: massPartName(p, lang),
           sub: t(p.custom ? 'moParishItem' : 'sub_mass_order'),
         }));
-    // Notes are typed into the panel, not picked from a library.
+    // Typed text has no library.
     case 'custom':
       return [];
-    // Prayers are pushed from the Notes & Prayers module, not picked from this library.
-    case 'notes':
-      return [];
+    case 'notes': {
+      // Everything saved in Notes & Prayers, wherever it was written: prayers and intentions, and private operator notes.
+      const notes = await bridge.notes.list();
+      return notes
+        .filter((n) => match(`${n.title} ${n.category} ${noteCategoryLabel(n.category)} ${n.body}`))
+        .map((n): LibraryItem => ({
+          module: 'notes',
+          sourceId: String(n.id),
+          label: n.title,
+          sub: noteCategoryLabel(n.category),
+          kind: noteKind(n),
+        }));
+    }
   }
 }
 
@@ -244,8 +271,17 @@ export function MassPlanner() {
   const [hymnNow, setHymnNow] = useState<Record<number, { title?: string; deleted: boolean }>>({});
   const [creating, setCreating] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [noteText, setNoteText] = useState('');
-  const [noteBlock, setNoteBlock] = useState<LiturgicalBlock>('introductory');
+  // Bumped when a note is saved or deleted in any window, so the Notes & Prayers tab is read again without a reload.
+  const [notesRevision, setNotesRevision] = useState(0);
+  useNotesChanged((change) => {
+    setNotesRevision((n) => n + 1);
+    // A note deleted while it is in this plan: the plan is read again, so its row is marked as gone.
+    if (change.removed && planId != null && items.some((it) => it.module === 'notes' && noteSource(it.sourceId)?.id === change.id)) {
+      api.get(planId).then((plan) => setItems(plan.items)).catch(fail);
+    }
+  });
+  // Every saved note, so a plan row from Notes & Prayers is tagged PRAYER or NOTE by what it is now.
+  const notesById = useNotesById();
 
   const [drop, setDrop] = useState<{ block: LiturgicalBlock; slot: number } | null>(null);
   // The step row being filled from the library or by typed text, and the text typed for it.
@@ -260,9 +296,7 @@ export function MassPlanner() {
   const songCategoryModes = useMemo(() => categoryModeLookup(songCategories), [songCategories]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // The Holy Mass Order part whose words are being edited (`id: null` is a new parish item), and the parish's own words (so the library marks edited parts).
-  const [editingPart, setEditingPart] = useState<{ id: string | null } | null>(null);
-  const massOrderTexts = useMassOrderTexts((s) => s.overrides);
+  // Bumped when the parish's own Mass Order words change, so plan rows show each part under its title now.
   const massOrderRevision = useMassOrderTexts((s) => s.revision);
   /** Plan rows with each Holy Mass Order part under its title now; a deleted parish item is marked missing. */
   const named = (list: PlanItem[]) => withPartNames(list, (id) => {
@@ -375,7 +409,7 @@ export function MassPlanner() {
       loadLibrary(tab, query, readingDate, lang, t, bibleTranslation, songFilter || undefined, songScope).then(setLibrary).catch(fail);
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [tab, query, readingDate, lang, bibleTranslation, songFilter, songScope, lyricsRevision, massOrderRevision, lectionaryRevision]);
+  }, [tab, query, readingDate, lang, bibleTranslation, songFilter, songScope, lyricsRevision, massOrderRevision, lectionaryRevision, notesRevision]);
 
   useEffect(() => bridge.lyrics.onChanged(() => setLyricsRevision((n) => n + 1)), []);
 
@@ -598,20 +632,6 @@ export function MassPlanner() {
     void persist(next);
   };
 
-  /** Adds an operator-only note at the end of its block. Notes are never sent to the projector. */
-  const addNote = (e: FormEvent) => {
-    e.preventDefault();
-    const text = noteText.trim();
-    if (!text) return;
-    if (planId == null) {
-      setError(t('createPlanFirst'));
-      return;
-    }
-    setNoteText('');
-    const slot = blockRows(items, noteBlock).length;
-    void persist(moveInto(items, { kind: 'library', item: { module: 'custom', sourceId: text, label: text } }, noteBlock, slot));
-  };
-
   /** After a row is staged: opens the floating preview panel, which shows the staged slide. No output is switched on, so no window opens. */
   const showStaged = () => setUi(SHOW_STAGED_UI);
 
@@ -688,6 +708,9 @@ export function MassPlanner() {
     const slot = blockRows(shown, blockId).indexOf(row);
     const marked = drop?.block === blockId && drop.slot === slot;
     const step = row.module === 'custom' ? stepFor(row.sourceId) : null;
+    // A Notes & Prayers row is tagged by what the note is now: PRAYER, or NOTE for a private operator note.
+    const note = row.module === 'notes' ? notesById.get(noteSource(row.sourceId)?.id ?? NaN) : undefined;
+    const tag = note ? noteTag(noteKind(note), t) : { text: t(MODULE_KEY[row.module]), tone: toneOf(row.module) };
     return (
                         <Fragment key={`${index}:${row.module}:${row.sourceId}`}>
                         <li
@@ -715,7 +738,7 @@ export function MassPlanner() {
                           {row.stale && <AlertTriangle size={15} className="shrink-0 text-danger" aria-label={t('stale')} />}
                           <span className="w-5 shrink-0 text-center font-mono text-[11px] text-fg/40 tabular-nums">{extra + 1}</span>
                           {/* A placeholder step says what it is in its own name, so it has no type tag. */}
-                          {!step && <span className={`${TAG} ${toneOf(row.module)}`}>{t(MODULE_KEY[row.module])}</span>}
+                          {!step && <span className={`${TAG} ${tag.tone}`}>{tag.text}</span>}
                           <span className="min-w-0 flex-1">
                             <span className={`block truncate text-sm font-semibold ${row.stale ? 'text-fg/50 line-through' : 'text-fg'}`}>{row.label}</span>
                             {row.stale && <span className="block text-[11px] text-danger">{row.deleted ? t('deletedHymnStatus') : t('stale')}</span>}
@@ -855,18 +878,16 @@ export function MassPlanner() {
                 </button>
               ))}
             </div>
-            {tab !== 'custom' && (
-              <label className="relative">
-                <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" aria-hidden />
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder={t('search')}
-                  className="h-10 w-full rounded-md border border-fg/15 bg-panel-2 pr-3 pl-9 text-sm outline-none focus:border-accent"
-                />
-              </label>
-            )}
+            <label className="relative">
+              <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" aria-hidden />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('search')}
+                className="h-10 w-full rounded-md border border-fg/15 bg-panel-2 pr-3 pl-9 text-sm outline-none focus:border-accent"
+              />
+            </label>
             {tab === 'lyrics' && (
               <div role="radiogroup" aria-label={t('songScopeLabel')} className="grid grid-cols-3 gap-1 rounded-md border border-fg/15 bg-panel-2 p-1">
                 {SONG_SCOPES.map((s) => (
@@ -915,35 +936,6 @@ export function MassPlanner() {
             )}
           </div>
 
-          {tab === 'custom' && (
-            <form onSubmit={addNote} className="flex flex-col gap-3 p-4">
-              <p className="text-xs text-muted">{t('customHint')}</p>
-              <input
-                maxLength={300}
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                placeholder={t('customPlaceholder')}
-                aria-label={t('addNote')}
-                className="h-10 rounded-md border border-fg/15 bg-panel-2 px-3 text-sm outline-none focus:border-accent"
-              />
-              <label className="flex items-center gap-2 text-xs text-muted">
-                <span className="eyebrow">{t('customBlock')}</span>
-                <select
-                  value={noteBlock}
-                  onChange={(e) => setNoteBlock(e.target.value as LiturgicalBlock)}
-                  className="h-9 min-w-0 flex-1 rounded-md border border-fg/15 bg-panel-2 px-2 text-sm text-fg outline-none focus:border-accent"
-                >
-                  {BLOCKS.map((b) => (
-                    <option key={b.id} value={b.id}>{t(b.titleKey)}</option>
-                  ))}
-                </select>
-              </label>
-              <button type="submit" disabled={!noteText.trim()} className="h-10 rounded-md bg-accent px-4 text-xs font-extrabold uppercase text-on-accent disabled:opacity-40">
-                {t('addNote')}
-              </button>
-            </form>
-          )}
-
           {choosing != null && tab === 'lyrics' && (
             <label className="flex items-center gap-2 border-t border-line px-3 py-2">
               <span className="eyebrow shrink-0">{t('songFilterLabel')}</span>
@@ -962,18 +954,20 @@ export function MassPlanner() {
               </select>
             </label>
           )}
-          {tab === 'mass_order' && (
-            <div className="border-b border-line p-2">
-              <button
-                type="button"
-                onClick={() => setEditingPart({ id: null })}
-                className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-accent/50 text-xs font-bold tracking-wide text-accent uppercase transition hover:bg-accent/10"
-              >
-                <Plus size={14} aria-hidden /> {t('moNew')}
-              </button>
-            </div>
+          {tab === 'notes' && (
+            // Read-only: every prayer, Mass flow text and announcement is written in the Liturgical Content Hub. This list reads the same notes
+            // table and is read again on notes:changed, so an entry saved in any window shows here without a reload.
+            <p role="note" className="flex items-start gap-2 border-b border-line px-3 py-2.5 text-[11px] leading-snug text-fg/65">
+              <Info size={13} aria-hidden className="mt-px shrink-0 text-accent" />
+              <span>
+                {t('notesPopulate')}{' '}
+                <button type="button" onClick={() => setUi({ view: 'notes' })} className="font-semibold text-accent underline-offset-2 hover:underline">
+                  {t('notesOpenHub')}
+                </button>
+              </span>
+            </p>
           )}
-          {tab !== 'custom' && <ul className="min-h-0 flex-1 overflow-y-auto p-2">
+          <ul className="min-h-0 flex-1 overflow-y-auto p-2">
             {library.length === 0 && <li className="p-4 text-sm text-fg/60">{t('nothingHere')}</li>}
             {library.map((item) => (
               <li
@@ -989,36 +983,22 @@ export function MassPlanner() {
                 onClick={() => pickFromLibrary(item)}
                 className="group flex cursor-grab items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-fg/[0.06]"
               >
-                <span className={`${TAG} ${toneOf(item.module)}`}>{t(MODULE_KEY[item.module])}</span>
+                {item.kind ? (
+                  <span className={`${TAG} ${noteTag(item.kind, t).tone}`}>{noteTag(item.kind, t).text}</span>
+                ) : (
+                  <span className={`${TAG} ${toneOf(item.module)}`}>{t(MODULE_KEY[item.module])}</span>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-fg">{item.label}</div>
-                  <div className="truncate text-[11px] text-fg/60">
-                    {item.sub}
-                    {item.module === 'mass_order' && !isCustomId(item.sourceId) && isCustomized(item.sourceId, lang, massOrderTexts) && <span className="ml-1.5 rounded bg-accent/15 px-1 text-[10px] font-semibold text-accent">{t('moCustomized')}</span>}
-                  </div>
+                  <div className="truncate text-[11px] text-fg/60">{item.sub}</div>
                 </div>
-                {item.module === 'mass_order' && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      // Editing never adds the part to the plan.
-                      e.stopPropagation();
-                      setEditingPart({ id: item.sourceId });
-                    }}
-                    aria-label={t('moEdit', { part: item.label })}
-                    title={t('moEdit', { part: item.label })}
-                    className="grid size-7 shrink-0 place-items-center rounded-md border border-fg/15 text-fg/60 opacity-60 transition hover:border-accent hover:text-accent group-hover:opacity-100 focus-visible:opacity-100"
-                  >
-                    <Pencil size={13} aria-hidden />
-                  </button>
-                )}
                 <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-md border border-fg/15 text-fg/60 opacity-60 transition group-hover:border-accent group-hover:text-accent group-hover:opacity-100">
                   <Plus size={14} />
                 </span>
               </li>
             ))}
-          </ul>}
-          {tab !== 'custom' && <p className="border-t border-line p-3 text-[11px] text-fg/60">{t('dragHintLeft')}</p>}
+          </ul>
+          <p className="border-t border-line p-3 text-[11px] text-fg/60">{t('dragHintLeft')}</p>
         </section>
 
         {/* ── Right: the plan ── */}
@@ -1114,7 +1094,6 @@ export function MassPlanner() {
             <p className="px-1 text-xs text-fg/60">{t('planLine', { name: currentPlan.name, cycle, n: items.length })}</p>
           )}
 
-          {editingPart && <HolyMassOrderEditor key={editingPart.id ?? 'new'} partId={editingPart.id} lang={lang} t={t} onClose={() => setEditingPart(null)} onNotice={setNotice} />}
           {creating && <NewPlanForm t={t} initialDate={upcomingSunday()} onCreate={createPlan} />}
 
           {planId == null ? (

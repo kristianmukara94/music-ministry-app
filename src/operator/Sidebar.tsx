@@ -12,7 +12,8 @@ import { LOGO_SRC } from '../brand/logo';
 import { FOOTER_TEXT } from '../legal/license';
 import { LibraryTransferDialog } from './LibraryTransfer';
 
-export const NAV: { key: ViewKey; icon: LucideIcon; label: StringKey }[] = [
+/** `short`: the name shown instead of `label` on compact viewports (below the xl breakpoint). */
+export const NAV: { key: ViewKey; icon: LucideIcon; label: StringKey; short?: StringKey }[] = [
   { key: 'dashboard', icon: LayoutGrid, label: 'nav.dashboard' },
   // One workspace for announcements and the Whiteboard. The 'whiteboard' view still opens it, on the Whiteboard's slides.
   { key: 'announcements', icon: Presentation, label: 'nav.announcementsWhiteboard' },
@@ -20,7 +21,7 @@ export const NAV: { key: ViewKey; icon: LucideIcon; label: StringKey }[] = [
   { key: 'bible', icon: BookOpenText, label: 'nav.bible' },
   { key: 'rosary', icon: Flower2, label: 'nav.rosary' },
   { key: 'media', icon: Film, label: 'nav.media' },
-  { key: 'notes', icon: NotebookPen, label: 'nav.notes' },
+  { key: 'notes', icon: NotebookPen, label: 'nav.notes', short: 'nav.notesShort' },
   { key: 'lyrics', icon: Music, label: 'nav.lyrics' },
   { key: 'planner', icon: ClipboardList, label: 'nav.planner' },
   { key: 'goLive', icon: Radio, label: 'nav.goLive' },
@@ -141,7 +142,7 @@ export function Sidebar() {
               <SectionLabel>{t(group.key)}</SectionLabel>
             )}
             {group.items.map((key) => {
-              const { icon: Icon, label } = NAV.find((n) => n.key === key)!;
+              const { icon: Icon, label, short } = NAV.find((n) => n.key === key)!;
               const active = view === key || (key === 'announcements' && view === 'whiteboard');
               // Modules not yet built stay visible but cannot be opened, so an operator mid-service cannot land on a placeholder.
               const soon = NOT_YET_BUILT.includes(key);
@@ -160,7 +161,8 @@ export function Sidebar() {
                         : 'border-transparent font-medium text-fg/85 hover:bg-fg/[0.06] hover:text-fg'
                   }`}>
                   <Icon size={20} strokeWidth={1.6} aria-hidden className="shrink-0" />
-                  {!collapsed && <span className="flex-1 truncate text-left">{t(label)}</span>}
+                  {!collapsed && !short && <span className="flex-1 truncate text-left">{t(label)}</span>}
+                  {!collapsed && short && <span className="flex-1 truncate text-left"><span className="hidden xl:inline">{t(label)}</span><span className="xl:hidden">{t(short)}</span></span>}
                   {!collapsed && onAir && <Activity size={18} aria-hidden className="shrink-0 animate-pulse text-ok" />}
                   {/* Coming-soon items are muted: plain small text, no pill, so they never compete with working tools. */}
                   {!collapsed && soon && <span className="text-[10px] font-medium tracking-wide text-fg/40 uppercase">{t('nav.comingSoon')}</span>}

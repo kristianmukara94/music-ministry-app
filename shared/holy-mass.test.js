@@ -213,11 +213,12 @@ test('a prayer split into slides steps slide by slide in the Holy Mass, with a n
   const live = read('src/golive/massLive.ts');
   // The steps come from the place every prayer slide carries, and the slide to show from the prayer read fresh from Notes & Prayers.
   assert.match(live, /if \(frame\.kind === 'text' && prayerIdOf\(frame\) !== undefined && frame\.page && frame\.page\.total > 1\) \{\s+return \{ index: frame\.page\.index, count: frame\.page\.total, labels: numbered\(frame\.page\.total\) \};/);
-  assert.match(live, /if \(note && prayerIdOf\(frame\) === note\.id\) return slideFramesOf\(note\)\[target\] \?\? null;/);
+  // A row that plays only some of the prayer's slides steps through those: the frame's key names them.
+  assert.match(live, /if \(note && prayerIdOf\(frame\) === note\.id\) return slideFramesOf\(note, prayerSlidesOf\(frame\)\)\[target\] \?\? null;/);
   assert.match(live, /frameAt\(frame, target, await hymnOf\(frame\), slotNameAt\(state\), await noteOf\(frame\)\)/, 'a chip jumps within the prayer');
   assert.match(live, /frameAt\(frame, target, hymn, slotNameAt\(state\), await noteOf\(frame\)\)/, 'Next and Back step within the prayer');
-  // Back from the item after a prayer puts the prayer up at its last slide.
-  assert.match(live, /takePrayer\(note, 'MASS_QUEUE', Math\.max\(0, slideFramesOf\(note\)\.length - 1\)\);/);
+  // Back from the item after a prayer puts the prayer up at its last slide (the last of the slides its row plays).
+  assert.match(live, /takePrayer\(note, 'MASS_QUEUE', Math\.max\(0, slideFramesOf\(note, source\?\.slides\)\.length - 1\), source\?\.slides\);/);
   const view = read('src/golive/MassLiveView.tsx');
   assert.match(view, /const note = useNoteOf\(frame\);/);
   assert.match(view, /frameAt\(frame, steps\.index \+ 1, hymn, slotNameAt\(live\), note\)/, 'the next-slide preview shows the prayer\'s next slide');

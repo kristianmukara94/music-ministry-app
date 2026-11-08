@@ -1,6 +1,7 @@
 import { sanitizeProjectorSettings, PROJECTOR_SETTINGS_DEFAULTS, INTRO_SLIDE_MODES } from './projector-settings.js';
 import { WELCOME_DEFAULTS, sanitizeWelcomeSettings } from './welcome-settings.js';
 import { sanitizeLowerThirdStyle, LOWER_THIRD_DEFAULTS } from './lower-third-style.js';
+import { sanitizeAlert } from './sanctuary-alert.js';
 // Single source of truth for what the congregation sees.
 // Plain JS so the Electron main process (authoritative copy) and the
 // renderer (browser fallback + optimistic UI) run the exact same reducer.
@@ -94,6 +95,8 @@ export function initialLiveState() {
     introSlideMode: 'title',
     counter: null,
     noteOverlay: null,
+    // The Sanctuary Alert banner over the projector (a car blocking the driveway, a nursery tag), or null. Its own layer: nothing else changes with it.
+    sanctuaryAlert: null,
     lowerStyle: LOWER_THIRD_DEFAULTS,
     projector: { live: IDLE, staged: IDLE, paused: false, beforeBlackout: null, background: NO_BACKGROUND, source: null },
     // `choice` is the operator's last On or Off (null until the operator presses the toggle). Only the operator changes it.
@@ -344,6 +347,17 @@ function reduce(s, a) {
 
     case 'noteOverlay/clear':
       return { ...s, noteOverlay: null };
+
+    // The Sanctuary Alert. Showing one replaces any alert already up. The slides, the queue and the lower third are left as they are.
+    case 'sanctuaryAlert/show': {
+      const alert = sanitizeAlert(a.value, a.now);
+      return alert ? { ...s, sanctuaryAlert: alert } : s;
+    }
+
+    // Clears the alert. With an `id`, only that alert: a timer that runs out after a newer alert went up leaves the newer one.
+    case 'sanctuaryAlert/clear':
+      if (!s.sanctuaryAlert || (a.id != null && a.id !== s.sanctuaryAlert.id)) return s;
+      return { ...s, sanctuaryAlert: null };
 
     // The Announcements deck's counter: which slide it is on, out of how many, and whether to project it.
     case 'counter/set':

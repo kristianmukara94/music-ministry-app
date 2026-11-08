@@ -13,6 +13,8 @@ export interface Note {
   style: TextStyle | null;
   /** Where a full-screen prayer is split into slides. Null shows the whole prayer as one slide. */
   split: PrayerSplit | null;
+  /** The Holy Mass slot the note was made for in Go Live (a slot id), or null. It labels the note; the plan's row is what plays it. */
+  slot: string | null;
 }
 
 export interface NoteInput {
@@ -24,6 +26,14 @@ export interface NoteInput {
   style: TextStyle | null;
   /** Omitted or null: the prayer is one slide. */
   split?: PrayerSplit | null;
+  /** Omitted: the note keeps the slot it has. Null unlinks it. */
+  slot?: string | null;
+}
+
+/** A note was saved or deleted, in this window or another. */
+export interface NoteChange {
+  id: number;
+  removed: boolean;
 }
 
 export interface NotesApi {
@@ -31,4 +41,6 @@ export interface NotesApi {
   get(id: number): Promise<Note | null>;
   save(input: NoteInput): Promise<Note>;
   remove(id: number): Promise<boolean>;
+  /** Calls back after every save and delete, in every window. Returns the unsubscribe. */
+  onChanged(callback: (change: NoteChange) => void): () => void;
 }

@@ -1,5 +1,9 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
+// The sanctuary watchdog's heartbeat (electron/watchdog.js). The preload answers, not the page: it runs on the page's own thread, so a page
+// stuck in a loop cannot answer, while one still loading already can. The main process only pings the projector.
+ipcRenderer.on('watchdog:ping', (_event, seq) => ipcRenderer.send('watchdog:pong', seq));
+
 contextBridge.exposeInMainWorld('apcc', {
   getState: () => ipcRenderer.invoke('live:get'),
   dispatch: (action) => ipcRenderer.send('live:dispatch', action),
@@ -9,6 +13,43 @@ contextBridge.exposeInMainWorld('apcc', {
     return () => ipcRenderer.removeListener('live:state', handler);
   },
   open: (target) => ipcRenderer.invoke('launch:open', target),
+  /** Runs `callback({ toggle })` when Ctrl+Shift+A is pressed in any window (see electron/hotkeys.js). Returns the unsubscribe. */
+  onSanctuaryAlertHotkey: (callback) => {
+    const handler = (_event, payload) => callback(payload ?? { toggle: false });
+    ipcRenderer.on('sanctuary-alert:toggle-modal', handler);
+    return () => ipcRenderer.removeListener('sanctuary-alert:toggle-modal', handler);
+  },
+
+  /** The sanctuary display watchdog: its status for the Go Live badge, Force Failover, and the failover page's own channel. */
+  watchdog: {
+    status: () => ipcRenderer.invoke('watchdog:get'),
+    onStatus: (callback) => {
+      const handler = (_event, status) => callback(status);
+      ipcRenderer.on('watchdog:status', handler);
+      return () => ipcRenderer.removeListener('watchdog:status', handler);
+    },
+    force: (on) => ipcRenderer.invoke('watchdog:force', on),
+    setMode: (mode) => ipcRenderer.invoke('watchdog:setMode', mode),
+    failoverMode: () => ipcRenderer.invoke('watchdog:failoverMode'),
+    onFailoverMode: (callback) => {
+      const handler = (_event, mode) => callback(mode);
+      ipcRenderer.on('watchdog:failover-mode', handler);
+      return () => ipcRenderer.removeListener('watchdog:failover-mode', handler);
+    },
+    painted: (mode) => ipcRenderer.send('watchdog:failover-painted', mode),
+  },
+
+  /** The EDID lock: the projector pinned to a physical monitor on a physical GPU port (electron/edid-watchdog.js). */
+  edid: {
+    status: () => ipcRenderer.invoke('edid:get'),
+    onStatus: (callback) => {
+      const handler = (_event, status) => callback(status);
+      ipcRenderer.on('edid:status', handler);
+      return () => ipcRenderer.removeListener('edid:status', handler);
+    },
+    pin: () => ipcRenderer.invoke('edid:pin'),
+    unpin: () => ipcRenderer.invoke('edid:unpin'),
+  },
 
   announcements: {
     folders: () => ipcRenderer.invoke('announcements:folders'),
@@ -128,6 +169,12 @@ contextBridge.exposeInMainWorld('apcc', {
     get: (id) => ipcRenderer.invoke('notes:get', id),
     save: (input) => ipcRenderer.invoke('notes:save', input),
     remove: (id) => ipcRenderer.invoke('notes:delete', id),
+    /** Runs `callback({ id, removed })` whenever a note is saved or deleted, in any window. Returns the unsubscribe. */
+    onChanged: (callback) => {
+      const handler = (_event, change) => callback(change);
+      ipcRenderer.on('notes:changed', handler);
+      return () => ipcRenderer.removeListener('notes:changed', handler);
+    },
   },
   /** The parish's own words for the Holy Mass Order parts. A part with none shows the standard Missal text. */
   massOrder: {

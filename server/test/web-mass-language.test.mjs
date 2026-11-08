@@ -101,7 +101,13 @@ test('the sign-in page has the forgot-password dialog and the sync badge, and it
   const html = readWeb('login.html');
   assert.match(html, /<button type="button" id="forgot-open"[^>]*aria-haspopup="dialog"/);
   assert.match(html, /<dialog id="forgot-dialog"[^>]*aria-labelledby="forgot-title"/);
-  assert.match(html, /v1\.0\.42 Sync Ready/);
+  assert.match(html, /v1\.0\.59 Sync Ready/);
+  assert.match(html, /name="destination" value="planner" checked/, 'Ministry Planner is the default tab');
+  assert.match(html, /name="destination" value="booth"/);
+  assert.match(html, /id="code-status"[^>]*aria-live="polite"/, 'the church code status is announced');
+  const js = readWeb('js/login.js');
+  assert.match(js, /booth: 'devices\.html'/, 'Booth Operator Sync lands on Devices & sync');
+  assert.match(js, /remember\(reply\.churchCode, reply\.churchName\)/, 'the parish name is remembered only from a successful sign-in');
   assert.doesNotMatch(html, /<script(?![^>]*src=)/, 'the CSP allows no inline script');
   assert.doesNotMatch(html, /@[a-z0-9-]+\.[a-z]{2,}/i, 'no made-up email address');
   assert.match(readWeb('js/login.js'), /forgot\.showModal\(\)/);

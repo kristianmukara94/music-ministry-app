@@ -10,13 +10,13 @@
   "scripts": {
     "dev": "concurrently -k -n vite,electron \"vite\" \"wait-on http://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "dev:web": "vite",
-    "build": "tsc --noEmit && vite build && electron-builder",
-    "release": "tsc --noEmit && vite build && electron-builder --publish always",
+    "build": "tsc --noEmit && vite build && node tools/build-native.mjs && electron-builder",
+    "release": "tsc --noEmit && vite build && node tools/build-native.mjs && electron-builder --publish always",
     "start": "electron .",
-    "postinstall": "electron-builder install-app-deps",
-    "rebuild:native": "electron-builder install-app-deps",
-    "pack": "tsc --noEmit && vite build && electron-builder --win --dir",
-    "dist": "tsc --noEmit && vite build && electron-builder --win"
+    "postinstall": "electron-builder install-app-deps && node tools/build-native.mjs --optional",
+    "rebuild:native": "electron-builder install-app-deps && node tools/build-native.mjs",
+    "pack": "tsc --noEmit && vite build && node tools/build-native.mjs && electron-builder --win --dir",
+    "dist": "tsc --noEmit && vite build && node tools/build-native.mjs && electron-builder --win"
   },
   "build": {
     "appId": "com.apccmma.churchapp",
@@ -43,7 +43,8 @@
     ],
     "asar": true,
     "asarUnpack": [
-      "node_modules/better-sqlite3/**/*"
+      "node_modules/better-sqlite3/**/*",
+      "electron/display-matrix.node"
     ],
     "extraResources": [
       {

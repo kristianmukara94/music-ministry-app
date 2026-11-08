@@ -2,6 +2,7 @@ import type { TextStyle } from './text-style';
 import type { ProjectorSettings } from './projector-settings';
 import type { WelcomeSettings } from './welcome-settings';
 import type { LowerThirdStyle } from './lower-third-style';
+import type { SanctuaryAlert, SanctuaryAlertInput } from './sanctuary-alert';
 import type { WhiteboardDesign } from './whiteboard';
 import type { PwSlide, PwType } from './pw';
 export type Lang = 'en' | 'tl' | 'ceb';
@@ -218,6 +219,8 @@ export interface LiveState {
   counter: SlideCounter | null;
   /** A note overlay sent from the Bible module, or null. */
   noteOverlay: NoteOverlay | null;
+  /** The Sanctuary Alert banner over the projector, or null. Absent in states saved before it existed. */
+  sanctuaryAlert?: SanctuaryAlert | null;
   /** The lower third's look. */
   lowerStyle: LowerThirdStyle;
   outputs: Record<OutputKey, boolean>;
@@ -285,6 +288,10 @@ export type LiveAction =
   | { type: 'counter/set'; counter: SlideCounter | null }
   | { type: 'noteOverlay/show'; value: NoteOverlay }
   | { type: 'noteOverlay/clear' }
+  /** `now` is when it goes live (ms); the alert's expiry is counted from it. */
+  | { type: 'sanctuaryAlert/show'; value: SanctuaryAlertInput; now: number }
+  /** With `id`, clears only that alert. */
+  | { type: 'sanctuaryAlert/clear'; id?: string | null }
   | { type: 'lowerStyle/set'; value: Partial<LowerThirdStyle> }
   | { type: 'lowerThird/pause'; paused?: boolean }
   | { type: 'stop' }

@@ -1,5 +1,16 @@
-import { useEffect, useState } from 'react';
-import { AlertTriangle, Check, ClipboardList, Play, Plus, RotateCcw, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Check, ChevronDown, ChevronRight, ClipboardList, Lock, Play, Plus, RotateCcw, X } from 'lucide-react';
+import { SlidePreview } from '../announcements/TextSlideModal';
+import { lowerThirdOf, stagePrayer } from '../notes/present';
+import type { Note } from '../notes/types';
+import { useNotesById } from '../notes/useNotes';
+import { screenPagesOf } from '../../shared/prayer-screen.js';
+import { sanitizeTextStyle } from '../../shared/text-style.js';
+import type { MassSlot } from '../../shared/mass-slots.js';
+import { AddSlotNotePrayerModal } from './AddSlotNotePrayerModal';
+import { HubSlideSelectionModal } from './HubSlideSelectionModal';
+import { noteSource, pickSlides, sectionOfCategory, type NoteSection } from '../../shared/notes.js';
+import type { GoLiveKey } from '../../shared/golive-i18n.js';
 import { dispatch, useLive } from '../live/store';
 import { BackgroundPanel } from '../operator/BackgroundPanel';
 import { FramePreview, ProjectorView } from '../output/ProjectorView';
@@ -57,10 +68,236 @@ const MODULE_TAG: Record<QueueItem['module'], string> = {
   custom: 'Note',
 };
 
+/** The badge on a row that plays a Notes & Prayers note: amber for a prayer the congregation sees, cyan for a private operator cue. */
+function NoteBadge({ note, t }: { note: Note; t: ReturnType<typeof useGoLiveT> }) {
+  const prayer = note.display !== 'operator';
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px text-[9px] font-extrabold tracking-wider text-fg uppercase ${
+        prayer ? 'border-amber-500/70 bg-amber-500/20' : 'border-cyan-500/70 bg-cyan-500/20'
+      }`}
+    >
+      <span aria-hidden>{prayer ? '🙏' : '📝'}</span>
+      {t(prayer ? 'badgePrayer' : 'badgeNote')}
+    </span>
+  );
+}
+
+/**
+ * Under a note's row, once it is picked: the prayer as the screen will show it, with Stage and Take live, or a private note's text, which has
+ * neither, so it can never reach the projector from here.
+ */
+function NoteDrawer({
+  note,
+  slides = null,
+  onStage,
+  onTake,
+  busy,
+  t,
+}: {
+  note: Note | undefined;
+  /** The slides of the prayer the row plays (0-based), or null for every slide. */
+  slides?: number[] | null;
+  onStage: (n: Note, slides: number[] | null) => void; onTake: () => void; busy: boolean; t: ReturnType<typeof useGoLiveT> }) {
+  if (!note) return <p className="mx-1 mt-1 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{t('noteGone')}</p>;
+  if (note.display === 'operator') {
+    return (
+      <div className="mx-1 mt-1 flex flex-col gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/[0.07] p-3">
+        <span className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-fg/70 uppercase">
+          <Lock size={11} aria-hidden /> {t('notePrivate')}
+        </span>
+        <p className="max-h-48 overflow-y-auto text-sm leading-relaxed whitespace-pre-line text-fg/90">{note.body || t('noteEmptyText')}</p>
+      </div>
+    );
+  }
+  const pages = note.display === 'full' ? pickSlides(screenPagesOf(note), slides) : [];
+  return (
+    <div className="mx-1 mt-1 flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/[0.07] p-2.5">
+      {note.display === 'full' ? (
+        <div className="relative">
+          <SlidePreview
+            text={pages[0]?.text ?? note.body}
+            headline={note.title}
+            top={pages[0]?.top ?? null}
+            bgSrc={null}
+            style={{ ...sanitizeTextStyle(note.style), fontSize: pages[0]?.fontPx }}
+            className="aspect-video w-full rounded-md border border-fg/15"
+          />
+          {pages.length > 1 && (
+            <span className="absolute right-1.5 bottom-1.5 rounded-full bg-black/75 px-2 py-px font-mono text-[10px] font-bold text-white">1 / {pages.length}</span>
+          )}
+        </div>
+      ) : (
+        <div data-theme="default" className="relative aspect-video overflow-hidden rounded-md border border-line bg-canvas [container-type:size]">
+          <LowerThirdStage value={lowerThirdOf(note)} />
+        </div>
+      )}
+      <div className="flex gap-1.5">
+        <button type="button" disabled={busy} onClick={() => onStage(note, slides)} className={`${ROW_BTN} flex-1`}>
+          {t('noteStage')}
+        </button>
+        <button type="button" disabled={busy} onClick={onTake} className={`${ROW_NEXT} flex-1 !bg-ok !text-canvas`}>
+          <Play size={12} aria-hidden fill="currentColor" /> {t('noteTakeLive')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The Liturgical Content Hub's sections, as the Add slides menu lists them. */
+const HUB_SECTIONS: { id: NoteSection; icon: string; label: GoLiveKey }[] = [
+  { id: 'prayers', icon: '🙏', label: 'addMenuSectionPrayers' },
+  { id: 'massFlow', icon: '✝️', label: 'addMenuSectionMassFlow' },
+  { id: 'announcements', icon: '📢', label: 'addMenuSectionAnnouncements' },
+];
+
+/** The Hub's entries by section, each sorted by title. A section follows from the entry's category, as it does in the Hub. */
+export function hubMenuSections(notes: Iterable<Note>): Record<NoteSection, Note[]> {
+  const out: Record<NoteSection, Note[]> = { prayers: [], massFlow: [], announcements: [] };
+  for (const note of notes) out[sectionOfCategory(note.category)].push(note);
+  for (const list of Object.values(out)) list.sort((a, b) => a.title.localeCompare(b.title));
+  return out;
+}
+
+/**
+ * "+ Add slides" as a menu: Create New Note / Prayer at the top, then the Liturgical Content Hub's entries in its three sections (each a
+ * submenu that opens in place, so the menu never runs off the narrow sidebar), and Text or PowerPoint slides at the bottom. The entries are
+ * the live notes table (read again on every notes:changed), so an entry written in the Hub shows here while the menu is open. Picking one
+ * opens the slide picker. Escape or a click outside closes the menu.
+ */
+function AddMenu({
+  busy,
+  notes,
+  onSlides,
+  onNote,
+  onHubItem,
+}: {
+  busy: boolean;
+  notes: Map<number, Note>;
+  onSlides: () => void;
+  onNote: () => void;
+  onHubItem: (note: Note) => void;
+}) {
+  const t = useGoLiveT();
+  const [open, setOpen] = useState(false);
+  const [section, setSection] = useState<NoteSection | null>(null);
+  const sections = useMemo(() => hubMenuSections(notes.values()), [notes]);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    const onDown = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onDown);
+    };
+  }, [open]);
+  const pick = (run: () => void) => {
+    setOpen(false);
+    setSection(null);
+    run();
+  };
+  const ITEM = 'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-semibold text-fg/90 transition hover:bg-fg/10 focus-visible:bg-fg/10 focus-visible:outline-none';
+  const ENTRY = 'flex w-full min-w-0 items-center gap-2 rounded-md py-1.5 pr-2 pl-8 text-left text-[13px] text-fg/85 transition hover:bg-fg/10 focus-visible:bg-fg/10 focus-visible:outline-none';
+  return (
+    <div ref={box} className="relative flex-1">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        disabled={busy}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-accent/50 px-3 text-xs font-bold tracking-wide text-accent uppercase transition hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Plus size={13} aria-hidden /> {t('inflowOpen')} <ChevronDown size={12} aria-hidden className={`transition ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute top-full right-0 left-0 z-20 mt-1 flex max-h-[70vh] flex-col gap-0.5 overflow-y-auto rounded-lg border border-fg/20 bg-panel p-1 shadow-2xl backdrop-blur"
+        >
+          <button type="button" role="menuitem" autoFocus className={`${ITEM} text-accent`} onClick={() => pick(onNote)}>
+            <Plus size={14} aria-hidden /> {t('addMenuCreate')}
+          </button>
+          <div role="separator" className="my-0.5 border-t border-line" />
+          {HUB_SECTIONS.map((s) => {
+            const list = sections[s.id];
+            const expanded = section === s.id;
+            return (
+              <div key={s.id} role="group" aria-label={t(s.label)} className="flex flex-col">
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-haspopup="menu"
+                  aria-expanded={expanded}
+                  className={ITEM}
+                  onClick={() => setSection(expanded ? null : s.id)}
+                >
+                  <span aria-hidden>📁</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    <span aria-hidden>{s.icon} </span>
+                    {t(s.label)}
+                  </span>
+                  <span className="shrink-0 rounded-full bg-fg/10 px-1.5 font-mono text-[10px] text-fg/60">{list.length}</span>
+                  <ChevronRight size={13} aria-hidden className={`shrink-0 text-fg/50 transition ${expanded ? 'rotate-90' : ''}`} />
+                </button>
+                {expanded && (
+                  <div role="menu" aria-label={t(s.label)} className="flex flex-col gap-px pb-1">
+                    {list.length === 0 ? (
+                      <span className="py-1.5 pr-2 pl-8 text-xs text-fg/50">{t('addMenuSectionEmpty')}</span>
+                    ) : (
+                      list.map((n) => {
+                        const count = n.display === 'full' && n.body.trim() ? screenPagesOf(n).length : 0;
+                        return (
+                          <button key={n.id} type="button" role="menuitem" className={ENTRY} title={n.title} onClick={() => pick(() => onHubItem(n))}>
+                            <span aria-hidden className="shrink-0">{n.display === 'operator' ? '📝' : n.display === 'lower' ? '▭' : '▣'}</span>
+                            <span className="min-w-0 flex-1 truncate">{n.title}</span>
+                            {count > 1 && <span className="shrink-0 font-mono text-[10px] text-fg/50">{t('addMenuSlideCount', { n: count })}</span>}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <div role="separator" className="my-0.5 border-t border-line" />
+          <button type="button" role="menuitem" className={ITEM} onClick={() => pick(onSlides)}>
+            <span aria-hidden>📄</span> {t('addMenuSlides')}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The + on a slot's row (on hover or keyboard focus): writes a note or prayer for that slot. */
+function SlotAddButton({ slot, busy, onAdd, className }: { slot: MassSlot; busy: boolean; onAdd: (slot: string) => void; className: string }) {
+  const t = useGoLiveT();
+  const label = t('noteAddToSlot', { slot: `${slot.position}. ${slot.name}` });
+  return (
+    <button
+      type="button"
+      onClick={() => onAdd(slot.id)}
+      disabled={busy}
+      aria-label={label}
+      title={label}
+      className={`absolute top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-md text-fg/50 opacity-0 transition group-hover:opacity-100 hover:bg-accent/15 hover:text-accent focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:hidden ${className}`}
+    >
+      <Plus size={14} aria-hidden />
+    </button>
+  );
+}
+
 /**
  * The Mass's order of service: the queue, grouped by its liturgical block, with what is done, what is on, and what is missing. Every one of the
- * 17 Holy Mass slots is shown, an empty one in its place, so slides put in never hide the order of Mass. Each row has a ✕ (on hover or
- * keyboard focus) that takes it out: a slot's item leaves the slot empty, any other row is gone.
+ * Holy Mass slots is shown, an empty one in its place, so slides put in never hide the order of Mass. Each row has a ✕ (on hover or
+ * keyboard focus) that takes it out: a slot's item leaves the slot empty, any other row is gone. Each slot has a + that writes a note or prayer
+ * for it. A row that plays a note carries its badge, and opens under itself (instead of playing at once) so a private note can be read and a
+ * prayer staged or taken live.
  */
 function MassLineup({
   items,
@@ -68,7 +305,11 @@ function MassLineup({
   onPick,
   onRemove,
   onAdd,
+  onAddNote,
+  onStageNote,
+  onHubItem,
   onReset,
+  notes,
   busy,
 }: {
   items: QueueItem[];
@@ -76,11 +317,19 @@ function MassLineup({
   onPick: (i: number) => void;
   onRemove: (i: number) => void;
   onAdd: () => void;
+  onAddNote: (slot: string | null) => void;
+  onStageNote: (note: Note, slides: number[] | null) => void;
+  onHubItem: (note: Note) => void;
+  /** Every Liturgical Content Hub entry by id, read again on every notes:changed. */
+  notes: Map<number, Note>;
   onReset: () => void;
   busy: boolean;
 }) {
   const t = useGoLiveT();
   const tPlan = usePlannerT();
+  // The note row opened under itself, by the note it plays (a note is in the Mass once), so rows put in above it do not move it.
+  const [openRow, setOpenRow] = useState<string | null>(null);
+  const noteOf = (item: QueueItem) => (item.module === 'notes' ? notes.get(noteSource(item.sourceId)?.id ?? NaN) : undefined);
   const blockTitle = (block: string) => {
     const def = BLOCKS.find((b) => b.id === block);
     return def ? tPlan(def.titleKey as Parameters<typeof tPlan>[0]) : '';
@@ -99,14 +348,7 @@ function MassLineup({
         <span className="font-mono text-xs text-muted">{t('massDoneOf', { done, total: items.length })}</span>
       </div>
       <div className="mb-3 flex gap-2">
-        <button
-          type="button"
-          onClick={onAdd}
-          disabled={busy}
-          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-dashed border-accent/50 px-3 text-xs font-bold tracking-wide text-accent uppercase transition hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Plus size={13} aria-hidden /> {t('inflowOpen')}
-        </button>
+        <AddMenu busy={busy} notes={notes} onSlides={onAdd} onNote={() => onAddNote(null)} onHubItem={onHubItem} />
         <button
           type="button"
           onClick={onReset}
@@ -124,12 +366,15 @@ function MassLineup({
             return (
               <li key={`slot-${slot.id}`} className="flex flex-col">
                 {sectionHeader(slot.block)}
-                <div className="flex min-h-12 w-full items-center gap-3 rounded-lg border border-dashed border-fg/15 px-3 py-2 text-left opacity-60">
-                  <span className="grid size-8 shrink-0 place-items-center rounded-full border border-dashed border-fg/25 font-mono text-[11px] text-muted">{slot.position}</span>
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-[15px] leading-tight text-fg/70">{slot.name}</span>
-                    <span className="text-[10px] font-semibold tracking-wider text-fg/45 uppercase">{t('massEmptySlot')}</span>
-                  </span>
+                <div className="group relative">
+                  <div className="flex min-h-12 w-full items-center gap-3 rounded-lg border border-dashed border-fg/15 py-2 pr-9 pl-3 text-left opacity-60 group-hover:opacity-80">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-full border border-dashed border-fg/25 font-mono text-[11px] text-muted">{slot.position}</span>
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-[15px] leading-tight text-fg/70">{slot.name}</span>
+                      <span className="text-[10px] font-semibold tracking-wider text-fg/45 uppercase">{t('massEmptySlot')}</span>
+                    </span>
+                  </div>
+                  <SlotAddButton slot={slot} busy={busy} onAdd={onAddNote} className="right-1.5" />
                 </div>
               </li>
             );
@@ -140,17 +385,24 @@ function MassLineup({
           const slot = slotById(item.slot);
           const isDone = i < cursor;
           const current = i === cursor;
+          const isNote = item.module === 'notes';
+          const note = noteOf(item);
+          const opened = isNote && openRow === item.sourceId;
+          // A note put in after a slot has no slot of its own on its row; the slot it was written for still names it.
+          const labelSlot = slot ?? (note ? slotById(note.slot) : null);
           return (
             <li key={`${item.module}-${item.sourceId}-${i}`} className="flex flex-col">
               {header}
               <div className="group relative">
                 <button
                   type="button"
-                  onClick={() => onPick(i)}
+                  // A note's row opens under itself: a private note is read there, a prayer is staged or taken live there.
+                  onClick={() => (isNote ? setOpenRow(opened ? null : item.sourceId) : onPick(i))}
                   disabled={busy || item.stale}
                   aria-current={current ? 'step' : undefined}
-                  title={item.stale ? t('massMissingHint') : undefined}
-                  className={`flex min-h-12 w-full items-center gap-3 rounded-lg border py-2 pr-9 pl-3 text-left transition disabled:cursor-not-allowed ${
+                  aria-expanded={isNote ? opened : undefined}
+                  title={item.stale ? t('massMissingHint') : isNote ? t('noteOpenRow', { item: item.label }) : undefined}
+                  className={`flex min-h-12 w-full items-center gap-3 rounded-lg border py-2 ${slot ? 'pr-16' : 'pr-9'} pl-3 text-left transition disabled:cursor-not-allowed ${
                     current ? 'border-accent bg-gradient-to-r from-accent/20 to-accent/5' : 'border-transparent hover:bg-fg/[0.06]'
                   } ${item.stale ? 'opacity-50' : ''}`}
                 >
@@ -166,13 +418,17 @@ function MassLineup({
                   )}
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className={`truncate text-[15px] leading-tight ${isDone ? 'text-muted' : 'font-semibold'} ${item.stale ? 'line-through' : ''}`}>{item.label}</span>
-                    <span className="truncate text-[10px] font-semibold tracking-wider text-fg/45 uppercase">
-                      {slot ? `${slot.position}. ${slot.name} · ` : ''}
-                      {MODULE_TAG[item.module]}
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {note && <NoteBadge note={note} t={t} />}
+                      <span className="truncate text-[10px] font-semibold tracking-wider text-fg/45 uppercase">
+                        {labelSlot ? `${slot ? '' : '↳ '}${labelSlot.position}. ${labelSlot.name}${note ? '' : ' · '}` : ''}
+                        {note ? '' : MODULE_TAG[item.module]}
+                      </span>
                     </span>
                   </span>
                   {item.stale && <span className="shrink-0 text-[10px] font-extrabold tracking-wide text-danger uppercase">{t('massMissing')}</span>}
                 </button>
+                {slot && <SlotAddButton slot={slot} busy={busy} onAdd={onAddNote} className="right-9" />}
                 <button
                   type="button"
                   onClick={() => onRemove(i)}
@@ -184,6 +440,19 @@ function MassLineup({
                   <X size={14} aria-hidden />
                 </button>
               </div>
+              {opened && !item.stale && (
+                <NoteDrawer
+                  note={note}
+                  slides={noteSource(item.sourceId)?.slides ?? null}
+                  busy={busy}
+                  t={t}
+                  onStage={onStageNote}
+                  onTake={() => {
+                    setOpenRow(null);
+                    onPick(i);
+                  }}
+                />
+              )}
             </li>
           );
         })}
@@ -236,6 +505,12 @@ export function MassLiveView({ planName }: { planName: string | null }) {
   const [notice, setNotice] = useState<string | null>(null);
   // The Add slides picker, while it is open.
   const [adding, setAdding] = useState(false);
+  // The Add Note / Prayer dialog, while it is open, with the slot it was opened from (null: the slot of the row on air).
+  const [noteFor, setNoteFor] = useState<{ slot: string | null } | null>(null);
+  // The Liturgical Content Hub entry whose slides are being picked, by id, so the picker shows the entry as it is now.
+  const [pickingNote, setPickingNote] = useState<number | null>(null);
+  // Every Hub entry, read again on every notes:changed, for the Add slides menu, the lineup's badges and the slide picker.
+  const notes = useNotesById();
   // The Reset order confirmation, while it is open.
   const [confirmingReset, setConfirmingReset] = useState(false);
   // A step whose stanza the operator double-clicked to edit, handed to the live editor.
@@ -419,10 +694,52 @@ export function MassLiveView({ planName }: { planName: string | null }) {
           }}
         />
       )}
+      {noteFor && (
+        <AddSlotNotePrayerModal
+          queue={queue}
+          cursor={cursor}
+          slot={noteFor.slot}
+          t={t}
+          onClose={() => setNoteFor(null)}
+          onDone={(message) => {
+            setNoteFor(null);
+            setNotice(message);
+          }}
+        />
+      )}
+      {pickingNote != null && (
+        <HubSlideSelectionModal
+          note={notes.get(pickingNote)}
+          queue={queue}
+          cursor={cursor}
+          t={t}
+          onClose={() => setPickingNote(null)}
+          onDone={(message) => {
+            setPickingNote(null);
+            setNotice(message);
+          }}
+        />
+      )}
       {confirmingReset && <ConfirmResetModal onConfirm={resetOrder} onClose={() => setConfirmingReset(false)} />}
 
       <div className="grid grid-cols-1 items-start gap-5 @4xl/pw:grid-cols-[minmax(240px,300px)_minmax(0,1fr)] @6xl/pw:grid-cols-[minmax(240px,300px)_minmax(0,1fr)_minmax(260px,320px)]">
-        <MassLineup items={queue} cursor={cursor} busy={busy} onPick={(i) => void run(() => playMassAt(i))} onRemove={removeRow} onAdd={() => setAdding(true)} onReset={() => setConfirmingReset(true)} />
+        <MassLineup
+          items={queue}
+          cursor={cursor}
+          busy={busy}
+          onPick={(i) => void run(() => playMassAt(i))}
+          onRemove={removeRow}
+          onAdd={() => setAdding(true)}
+          onAddNote={(slot) => setNoteFor({ slot })}
+          // Staged only: the projector's next frame, which Take live (or the console's take) puts up. A private note has no Stage.
+          notes={notes}
+          onHubItem={(n) => setPickingNote(n.id)}
+          onStageNote={(n, slides) => {
+            stagePrayer(n, 0, slides);
+            setNotice(t('noteStaged', { title: n.title }));
+          }}
+          onReset={() => setConfirmingReset(true)}
+        />
 
         <section aria-labelledby="mass-live-title" className={`${CARD} flex min-w-0 flex-col gap-4 p-5`}>
           {item ? (

@@ -3,6 +3,7 @@ import { parseSourceId } from '../shared/bible-ref.js';
 import { GOSPEL_ACCLAMATION } from './lectionary.js';
 import { recordTombstone } from './plan-sync-schema.js';
 import { isSlotId } from '../shared/mass-slots.js';
+import { noteSource } from '../shared/notes.js';
 import { announcementSource } from '../shared/flow-insert.js';
 import { DEFAULT_MASS_LANGUAGE, isMassLanguage, massLanguageOf } from '../shared/mass-language.js';
 
@@ -233,10 +234,11 @@ export function createMassPlanService(db) {
       return Boolean(q.reading.get(date, readingType));
     }
     if (module === 'custom') return true;
-    // Operator-only notes are private, so they are never valid queue sources.
+    // An operator-only note may sit in a plan as a private cue: Go Live shows it to the operator, and the projector never shows it
+    // (src/notes/present.ts stages and takes only `full` and `lower` notes).
     if (module === 'notes') {
-      const row = q.note.get(Number(sourceId));
-      return Boolean(row) && row.display !== 'operator';
+      const source = noteSource(sourceId);
+      return Boolean(source && q.note.get(source.id));
     }
     if (module === 'bible') {
       const ref = parseSourceId(sourceId);
@@ -267,9 +269,6 @@ export function createMassPlanService(db) {
       const maxLength = item.module === 'custom' ? MAX_CUSTOM : 120;
       if (!sourceId || sourceId.length > maxLength) throw new Error('Item is missing its source.');
       if (item.module === 'mass_order' && !MASS_PART.test(sourceId)) throw new Error('Unknown Holy Mass part.');
-      if (item.module === 'notes' && q.note.get(Number(sourceId))?.display === 'operator') {
-        throw new Error('Operator-only notes cannot go to the Service Queue.');
-      }
       if (item.module === 'lectionary' && sourceId.split('|')[1] === GOSPEL_ACCLAMATION) {
         throw new Error('The Gospel Acclamation is for Praise & Worship. It cannot be added to a Holy Mass plan.');
       }
