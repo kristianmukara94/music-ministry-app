@@ -397,6 +397,9 @@ test("an invalid kind or date is refused when a plan is created", async () => {
   assert.equal(JSON.parse(kind.body).error, "A plan must be a Mass plan or a Praise & Worship plan. Nothing was saved.");
   const date = await sync().createPlan({ httpMethod: "POST", headers: { cookie }, body: JSON.stringify(body({ date: "2026-13-40" })) });
   assert.equal(date.statusCode, 400);
+  // JavaScript reads the 31st of February as a day in March, and Postgres refuses it: it must be a plain refusal, not a 500.
+  const rolled = await sync().createPlan({ httpMethod: "POST", headers: { cookie }, body: JSON.stringify(body({ date: "2026-02-31" })) });
+  assert.equal(rolled.statusCode, 400);
   assert.equal(await counted("plans"), 0);
 });
 

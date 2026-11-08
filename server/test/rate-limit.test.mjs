@@ -42,6 +42,21 @@ test('allows up to the limit in a window, then refuses the next attempt with a r
   assert.equal(refused.retryAfterSeconds, 50, 'the window opened at 0 seconds and is 60 long, so 50 seconds are left at 10 seconds');
 });
 
+test('old buckets are cleared now and then, and recent ones are kept', async () => {
+  await hit(sql, 'old:bucket', 3, 60, at(-2 * 24 * 3600));
+  await hit(sql, 'recent:bucket', 3, 60, at(-3600));
+  await hit(sql, 'trigger:a', 3, 60, clock, { random: () => 0.5 });
+  assert.equal((await pg.query('SELECT COUNT(*)::int AS n FROM rate_limits')).rows[0].n, 3, 'most calls do not purge');
+  await hit(sql, 'trigger:b', 3, 60, clock, { random: () => 0 });
+  const left = (await pg.query('SELECT bucket_key FROM rate_limits ORDER BY bucket_key')).rows.map((r) => r.bucket_key);
+  assert.deepEqual(left, ['recent:bucket', 'trigger:a', 'trigger:b']);
+});
+
+test('a purge that fails does not fail the attempt', async () => {
+  const failing = (strings, ...values) => (strings[0].includes('DELETE') ? Promise.reject(new Error('busy')) : sql(strings, ...values));
+  assert.equal((await hit(failing, 'purge:fails', 3, 60, clock, { random: () => 0 })).allowed, true);
+});
+
 test('the window resets after it has passed, and the count starts again', async () => {
   for (let i = 0; i < 2; i += 1) await hit(sql, 'login:b', 2, 60, clock);
   assert.equal((await hit(sql, 'login:b', 2, 60, at(30))).allowed, false);

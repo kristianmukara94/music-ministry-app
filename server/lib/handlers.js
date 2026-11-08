@@ -7,9 +7,10 @@ import { clientAddress } from './client-address.js';
 import { dateText } from './plan-editing.js';
 import { hit } from './rate-limit.js';
 import {
+  CHANGE_PASSWORD_LIMIT,
   LOCK_MINUTES,
   LOGIN_LIMIT,
-  afterFailedAttempt,
+  MAX_FAILED_ATTEMPTS,
   checkNewPassword,
   isLocked,
   lockMinutesLeft,
@@ -101,11 +102,28 @@ export function createApi({ sql, secret, now = () => new Date() }) {
       return json(423, { error: lockMessage(lockMinutesLeft(user.locked_until, at)), minutesLeft: lockMinutesLeft(user.locked_until, at) });
     }
 
+    // Each guess is counted before its password is checked, in one statement, so parallel guesses cannot all read the same count and
+    // slip past the limit. The guess that reaches the limit sets the lock at once; a guess made after that gets no row back here.
+    const lockEnd = new Date(at.getTime() + LOCK_MINUTES * 60 * 1000).toISOString();
+    const claimed = await sql`
+      UPDATE users SET
+        failed_attempts = failed_attempts + 1,
+        locked_until = CASE WHEN failed_attempts + 1 >= ${MAX_FAILED_ATTEMPTS} THEN ${lockEnd}::timestamptz ELSE NULL END
+      WHERE id = ${user.id} AND (locked_until IS NULL OR locked_until <= ${at.toISOString()}::timestamptz)
+      RETURNING failed_attempts`;
+    if (!claimed.length) {
+      const [current] = await sql`SELECT locked_until FROM users WHERE id = ${user.id}`;
+      const minutes = current?.locked_until && new Date(current.locked_until) > at ? lockMinutesLeft(current.locked_until, at) : LOCK_MINUTES;
+      await burnTime(password);
+      return json(423, { error: lockMessage(minutes), minutesLeft: minutes });
+    }
+
     if (!(await verifyPassword(password, user.password_hash))) {
-      const next = afterFailedAttempt(user, at);
-      await sql`UPDATE users SET failed_attempts = ${next.failed_attempts}, locked_until = ${next.locked_until?.toISOString() ?? null} WHERE id = ${user.id}`;
-      // The attempt that starts the lock says so; the wrong-password message is for every other failure.
-      if (next.locked_until) return json(423, { error: lockMessage(LOCK_MINUTES), minutesLeft: LOCK_MINUTES });
+      // The guess that reached the limit says so, and the count starts again for after the lock. Every other failure gets the wrong-password message.
+      if (Number(claimed[0].failed_attempts) >= MAX_FAILED_ATTEMPTS) {
+        await sql`UPDATE users SET failed_attempts = 0 WHERE id = ${user.id}`;
+        return json(423, { error: lockMessage(LOCK_MINUTES), minutesLeft: LOCK_MINUTES });
+      }
       return json(401, { error: GENERIC_LOGIN_ERROR });
     }
 
@@ -148,6 +166,11 @@ export function createApi({ sql, secret, now = () => new Date() }) {
     if (event.httpMethod !== 'POST') return json(405, { error: 'Use POST.' }, { Allow: 'POST' });
     const session = await sessionFrom(event);
     if (!session) return json(401, { error: 'Sign in first.' });
+    // Limited per account, so a browser left signed in cannot be used to guess the password behind it.
+    const gate = await hit(sql, `password:${session.userId}`, CHANGE_PASSWORD_LIMIT.requests, CHANGE_PASSWORD_LIMIT.windowMs / 1000, now());
+    if (!gate.allowed) {
+      return json(429, { error: 'Too many attempts. Wait a few minutes and try again.' }, { 'Retry-After': String(gate.retryAfterSeconds) });
+    }
     const body = parseJson(event);
     const current = typeof body?.currentPassword === 'string' ? body.currentPassword : '';
     const next = typeof body?.newPassword === 'string' ? body.newPassword : '';
@@ -159,6 +182,8 @@ export function createApi({ sql, secret, now = () => new Date() }) {
     if (!rows[0] || !(await verifyPassword(current, rows[0].password_hash))) {
       return json(401, { error: 'Your current password is not correct.' });
     }
+    // A temporary password is known to the admin who made it, so "changing" it to itself would leave the account with a shared password.
+    if (next === current) return json(400, { error: 'Choose a new password that is different from your current one.' });
     const token = readCookie(lowerHeaders(event.headers).cookie);
     await sql`UPDATE users SET password_hash = ${await hashPassword(next)}, must_change_password = false WHERE id = ${session.userId}`;
     // The other sessions of this user end, so a password change signs out any other browser. This one stays signed in.

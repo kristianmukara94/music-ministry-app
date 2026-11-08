@@ -183,6 +183,10 @@ test("an admin on the website can unlink a laptop of their own church by its dev
   assert.equal(otherChurch.statusCode, 404, "church B's admin cannot unlink church A's laptop");
   assert.equal((await linking().status(event({ method: 'GET', bearer: token }))).statusCode, 200, 'still linked');
 
+  // Thirty-six dashes passed the old check and made the database throw. It is a plain refusal.
+  const notAnId = await linking().unlink(event({ cookie: await sessionCookie('boss'), body: { deviceId: '-'.repeat(36) } }));
+  assert.equal(notAnId.statusCode, 400);
+
   const own = await linking().unlink(event({ cookie: await sessionCookie('boss'), body: { deviceId } }));
   assert.equal(own.statusCode, 200);
   assert.equal((await linking().status(event({ method: 'GET', bearer: token }))).statusCode, 401);

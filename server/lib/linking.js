@@ -12,6 +12,7 @@ import { hit } from './rate-limit.js';
 export const LINK_CODE_MINUTES = 10;
 export const REDEEM_LIMIT = { requests: 10, windowMs: 60 * 1000 };
 const LABEL_MAX = 80;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The audit actions the Devices page shows as sync activity, newest first, up to ACTIVITY_LIMIT. */
 const ACTIVITY_ACTIONS = ['device.linked', 'device.unlinked', 'songs.synced', 'plan.synced', 'plan.created'];
 const ACTIVITY_LIMIT = 15;
@@ -168,7 +169,7 @@ export function createLinkingApi({ sql, transaction, secret, now = () => new Dat
     if (!ADMIN_ROLES.includes(who.role)) return json(403, { error: 'Only a church admin can unlink a laptop.' });
     const body = parseJson(event);
     const deviceId = typeof body?.deviceId === 'string' ? body.deviceId : '';
-    if (!/^[0-9a-f-]{36}$/i.test(deviceId)) return json(400, { error: 'Choose a laptop to unlink.' });
+    if (!UUID.test(deviceId)) return json(400, { error: 'Choose a laptop to unlink.' });
     await transaction(async (tx) => {
       const revoked = await tx`
         UPDATE device_tokens SET revoked_at = ${now().toISOString()}

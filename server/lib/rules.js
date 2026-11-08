@@ -4,20 +4,12 @@ export const MAX_FAILED_ATTEMPTS = 5;
 export const LOCK_MINUTES = 15;
 export const MIN_PASSWORD_LENGTH = 10;
 export const LOGIN_LIMIT = { requests: 10, windowMs: 60 * 1000 };
+export const CHANGE_PASSWORD_LIMIT = { requests: 10, windowMs: 15 * 60 * 1000 };
 export const ROLES = ['admin', 'planner', 'viewer'];
 /** Roles that may change a church's plans. Viewers read only. */
 export const EDITING_ROLES = ['admin', 'planner'];
 
 export const isLocked = (user, now) => Boolean(user.locked_until) && new Date(user.locked_until) > now;
-
-/** What a failed sign-in does to the account: the count goes up, and at the limit the account locks for 15 minutes. */
-export function afterFailedAttempt(user, now) {
-  const failed = Number(user.failed_attempts ?? 0) + 1;
-  if (failed >= MAX_FAILED_ATTEMPTS) {
-    return { failed_attempts: 0, locked_until: new Date(now.getTime() + LOCK_MINUTES * 60 * 1000) };
-  }
-  return { failed_attempts: failed, locked_until: null };
-}
 
 /** A new password must be at least 10 characters. Nothing else is required, so a passphrase is allowed. */
 export function checkNewPassword(password) {
