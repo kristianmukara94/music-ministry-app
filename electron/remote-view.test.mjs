@@ -185,6 +185,112 @@ async function startOn(server, pin = null) {
   return result.port;
 }
 
+/** A request with its own Host header, as a browser sends one for the address it was given. */
+function requestAs(port, hostHeader, target = '/api/remote/status') {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port, path: target, headers: { Host: hostHeader } }, (res) => {
+      res.resume();
+      res.on('end', () => resolve(res.statusCode));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+test('a web site that points its own domain at this laptop gets nothing', async () => {
+  const server = createRemoteViewServer({ distDir: makeDist() });
+  const port = await startOn(server);
+  try {
+    for (const target of ['/', '/api/remote/status', '/api/remote/stream', '/api/remote/control']) {
+      assert.equal(await requestAs(port, 'evil.example', target), 403, target);
+    }
+    assert.equal(await requestAs(port, `127.0.0.1:${port}`), 200, 'by address');
+    assert.equal(await requestAs(port, `192.168.1.5:${port}`), 200, 'by the address on the WiFi');
+    assert.equal(await requestAs(port, `${os.hostname()}:${port}`), 200, "by the laptop's name");
+  } finally {
+    await server.stop();
+  }
+});
+
+test('one phone cannot hold open any number of live pages', async () => {
+  const server = createRemoteViewServer({ distDir: makeDist() });
+  const port = await startOn(server);
+  const open = [];
+  try {
+    for (let i = 0; i < 8; i += 1) {
+      const stream = await openStream(port);
+      assert.equal(stream.status, 200, `page ${i + 1}`);
+      open.push(stream);
+    }
+    const refused = await openStream(port);
+    assert.equal(refused.status, 503);
+  } finally {
+    for (const { req } of open) req.destroy();
+    await server.stop();
+  }
+});
+
+test('a phone that goes away mid-file does not leave the file open', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'remote-view-leak-'));
+  const file = path.join(dir, 'large.mp4');
+  fs.writeFileSync(file, Buffer.alloc(32 * 1024 * 1024));
+  const server = createRemoteViewServer({ distDir: makeDist(), role: 'secondary', mediaFile: () => file });
+  const port = await startOn(server);
+  const opened = [];
+  const real = fs.createReadStream;
+  fs.createReadStream = (...args) => {
+    const stream = real(...args);
+    opened.push(stream);
+    return stream;
+  };
+  try {
+    for (const headers of [{}, { Range: 'bytes=0-' }]) {
+      await new Promise((resolve, reject) => {
+        const req = http.get({ host: '127.0.0.1', port, path: '/api/remote/media/7', headers, agent: false }, (res) => {
+          res.once('data', () => {
+            req.destroy();
+            resolve();
+          });
+        });
+        req.on('error', (err) => (err.code === 'ECONNRESET' ? resolve() : reject(err)));
+      });
+    }
+    await pause(150);
+    assert.equal(opened.length, 2);
+    assert.deepEqual(opened.map((s) => s.destroyed), [true, true], 'both reads are closed');
+  } finally {
+    fs.createReadStream = real;
+    await server.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a file that cannot be read ends that one request, and the server carries on', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'remote-view-readfail-'));
+  const file = path.join(dir, 'clip.mp4');
+  fs.writeFileSync(file, 'abc');
+  const server = createRemoteViewServer({ distDir: makeDist(), role: 'secondary', mediaFile: () => file });
+  const port = await startOn(server);
+  const real = fs.createReadStream;
+  fs.createReadStream = () => real(path.join(dir, 'gone-before-it-was-read.mp4'));
+  try {
+    await new Promise((resolve) => {
+      const req = http.get({ host: '127.0.0.1', port, path: '/api/remote/media/7', agent: false }, (res) => {
+        res.resume();
+        res.on('close', resolve);
+        res.on('error', resolve);
+      });
+      req.on('error', resolve);
+    });
+    fs.createReadStream = real;
+    assert.equal((await request(port, { path: '/api/remote/status' })).status, 200, 'the server still answers');
+  } finally {
+    fs.createReadStream = real;
+    await server.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('the page and live screen are served on the local network with no outside links', async () => {
   const server = createRemoteViewServer({ distDir: makeDist() });
   const port = await startOn(server);

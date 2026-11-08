@@ -98,6 +98,35 @@ test('a table is drawn with its cell text and widths', async () => {
   assert.match(html, />Key</);
 });
 
+const tableWith = (cell) => `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="5" name="Tbl"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="914400" y="1371600"/><a:ext cx="4572000" cy="914400"/></p:xfrm><a:graphic><a:graphicData uri="x"><a:tbl><a:tblPr/><a:tblGrid><a:gridCol w="2286000"/></a:tblGrid><a:tr h="457200">${cell}</a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+
+test('a table cell cannot carry markup through its span', async () => {
+  const hostile = 'x&quot;&gt;&lt;img src=x onerror=alert(1)&gt;';
+  const cell = `<a:tc gridSpan="${hostile}" rowSpan="${hostile}"><a:txBody><a:bodyPr/><a:p><a:r><a:t>Name</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc>`;
+  const { html } = await build(await deck([slideXml(tableWith(cell))]));
+  assert.ok(!html.includes('alert(1)') && !html.includes('<img'), 'nothing of the attribute reaches the page');
+  assert.ok(!html.includes('colspan'), 'a span that is not a number is left out');
+});
+
+test('a real span is kept, as a whole number', async () => {
+  const cell = '<a:tc gridSpan="2" rowSpan="3"><a:txBody><a:bodyPr/><a:p><a:r><a:t>Name</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc>';
+  const { html } = await build(await deck([slideXml(tableWith(cell))]));
+  assert.match(html, /<td colspan="2" rowspan="3"/);
+});
+
+test('only the page\'s own script may run, and it can reach nothing but its pictures', async () => {
+  const first = (await build(await deck([slideXml('')]))).html;
+  const second = (await build(await deck([slideXml('')]))).html;
+  const policy = /<meta http-equiv="Content-Security-Policy" content="([^"]+)">/.exec(first)?.[1];
+  assert.ok(policy, 'the page carries a policy');
+  assert.match(policy, /default-src 'none'/);
+  assert.match(policy, /img-src file: data:/);
+  assert.doesNotMatch(policy, /script-src[^;]*'unsafe-inline'/, 'an injected script would not run');
+  const nonceOf = (html) => /script-src 'nonce-([^']+)'/.exec(html)?.[1];
+  assert.ok(first.includes(`<script nonce="${nonceOf(first)}">`), "the page's own script has the nonce");
+  assert.notEqual(nonceOf(first), nonceOf(second), 'a new nonce for every page, so a file cannot name it');
+});
+
 test('the XML reader keeps attributes and decodes entities', () => {
   const root = parseXml('<a:x k="1 &amp; 2"><a:y/><a:z>t&lt;</a:z></a:x>');
   assert.equal(root.name, 'x');

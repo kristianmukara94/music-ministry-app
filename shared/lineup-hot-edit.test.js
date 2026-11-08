@@ -100,7 +100,9 @@ test('the colour picker shows each step at once and saves through the debounced 
   assert.match(panel, /const pickColour = \(textColor: string \| null\) => \{\s+colour\.cancel\(\);\s+void save\(\{ textColor \}\);/);
   // The live state path writes nothing to disk; only projector:save does.
   const main = read('electron/main.js');
-  assert.match(main, /ipcMain\.on\('live:dispatch', \(_event, action\) => apply\(action\)\);/);
+  const dispatch = /ipcMain\.on\('live:dispatch', \(_event, action\) => \{[\s\S]*?\n\}\);/.exec(main.replace(/\r\n/g, '\n'))?.[0] ?? '';
+  assert.match(dispatch, /apply\(action\);/);
+  assert.doesNotMatch(dispatch, /writeConfig/);
   assert.match(main, /ipcMain\.handle\('projector:save', \(_event, patch\) => \{\s+const merged = sanitizeProjectorSettings\(\{ \.\.\.state\.settings, \.\.\.\(patch \?\? \{\}\) \}\);\s+writeConfig/);
 });
 

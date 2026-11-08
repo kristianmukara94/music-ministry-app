@@ -242,6 +242,8 @@ const POWERPOINT_EXPORT = [
   '  # and the export still works without them, so a refusal is ignored.',
   '  try { $app.Visible = 0 } catch { }',
   '  try { $app.DisplayAlerts = 1 } catch { }',
+  '  # Macros are off for this file. Office turns them on by default for a file opened by a program, and a deck can come from anyone. 3 is msoAutomationSecurityForceDisable.',
+  '  try { $app.AutomationSecurity = 3 } catch { }',
   '  $pres = $app.Presentations.Open($source, -1, 0, 0)',
   '  try {',
   '    $exported = 0',

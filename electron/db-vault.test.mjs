@@ -70,7 +70,7 @@ test('turning privacy on seals the existing Mass intentions only, and the file n
   assert.equal(notes.list().find((n) => n.id === a.id).body, intention().body);
   // The key row holds a salt, a count and a verifier: never the passphrase or the key.
   const row = db.prepare('SELECT * FROM db_crypto').get();
-  assert.equal(row.iterations, 100_000);
+  assert.equal(row.iterations, 600_000);
   assert.equal(row.kdf, 'pbkdf2-sha256');
   assert.ok(!JSON.stringify(row).includes(PASS));
 });

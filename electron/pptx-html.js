@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import JSZip from 'jszip';
 
@@ -52,6 +53,11 @@ const num = (v, d = 0) => (v === undefined || v === '' || Number.isNaN(Number(v)
 const path_ = (n, ...names) => names.reduce((cur, name) => kid(cur, name), n);
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const r2 = (n) => Math.round(n * 100) / 100;
+/** A table cell's span as an attribute. Only a whole number from the file is written, so nothing in the file can break out of the attribute. */
+const spanAttr = (name, value) => {
+  const span = Math.trunc(num(value));
+  return span >= 1 ? ` ${name}="${Math.min(span, 1000)}"` : '';
+};
 
 // ---------------------------------------------------------------- colour
 
@@ -689,7 +695,9 @@ export async function buildDeckHtml(source, { media }) {
     slides.push(`<div class="slide" id="s${visibleNo}" style="width:${SLIDE_WIDTH_PX}px;height:${pageH}px;background:${bg}">${out.join('')}</div>`);
   }
 
-  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+  // The page is built from a file someone else may have made. Its own script is the only one allowed to run, and it reaches nothing but its pictures.
+  const nonce = randomBytes(16).toString('base64');
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src file: data:; base-uri 'none'; form-action 'none'"><style>
 html,body{margin:0;padding:0;background:#fff;overflow:hidden}
 @page{size:${SLIDE_WIDTH_PX}px ${pageH}px;margin:0}
 .slide{position:relative;overflow:hidden;display:block;break-after:page;page-break-after:always;text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -698,7 +706,7 @@ html,body{margin:0;padding:0;background:#fff;overflow:hidden}
 .el{position:absolute}
 .tx{position:absolute;display:flex;flex-direction:column;overflow:visible}
 .txi{width:100%}
-</style></head><body>${slides.join('')}<script>
+</style></head><body>${slides.join('')}<script nonce="${nonce}">
 function loadImages(){var urls={};document.querySelectorAll('[style*="url("]').forEach(function(e){(e.getAttribute('style').match(/url[(]'[^']+'[)]/g)||[]).forEach(function(x){urls[x.slice(5,-2)]=1})});document.querySelectorAll('image').forEach(function(e){var h=e.getAttribute('href');if(h)urls[h]=1});return Promise.all(Object.keys(urls).map(function(u){return new Promise(function(r){var i=new Image();i.onload=i.onerror=function(){r()};i.src=u})}))}
 function fitAll(){document.querySelectorAll('.slide').forEach(fitText);return true;}
 function fitText(root){root.querySelectorAll('[data-fit]').forEach(function(box){var inner=box.firstElementChild;if(!inner)return;var avail=box.clientHeight-parseFloat(box.dataset.pad||0);var k=parseFloat(box.dataset.k||1);box.style.setProperty('--k',k);if(box.dataset.fit==='fixed')return;for(var n=0;n<24&&inner.offsetHeight>avail+1&&k>0.3;n++){k*=0.94;box.style.setProperty('--k',k);}});}
@@ -1021,7 +1029,7 @@ ${LAYER_SCRIPT}
         }).join('');
         const defaultColor = part.color ?? dk;
         const paras = renderParagraphs(kid(tc, 'txBody'), env, { chain: [kid(kid(tc, 'txBody'), 'lstStyle'), defaultTextStyle].filter(Boolean), baseRpr: part.bold ? [{ b: '1' }] : [], defaultColor });
-        const span = `${at(tc, 'gridSpan') ? ` colspan="${at(tc, 'gridSpan')}"` : ''}${at(tc, 'rowSpan') ? ` rowspan="${at(tc, 'rowSpan')}"` : ''}`;
+        const span = `${spanAttr('colspan', at(tc, 'gridSpan'))}${spanAttr('rowspan', at(tc, 'rowSpan'))}`;
         html += `<td${span} style="padding:${pad};vertical-align:${anchor};background:${await fillCss(fill, env)};${borders || 'border:1px solid rgba(255,255,255,0.8);'}overflow:hidden">${paras}</td>`;
         void rowSpans;
       }

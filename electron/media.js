@@ -261,6 +261,19 @@ async function waitForFileRelease(file) {
 }
 
 /**
+ * Deletes a library item. A file on the projector is cleared first, so the screen lets go of it, and the delete then waits for the file to
+ * be free. The database holds a path relative to the asset folder; the wait needs the real file.
+ */
+export async function deleteMediaWhenFree(service, root, id, { releaseBackground, waitForRelease = waitForFileRelease } = {}) {
+  if (releaseBackground?.(`${MEDIA_SCHEME}://media/${id}`)) {
+    const rel = service.filePath(id);
+    const file = rel ? resolveAsset(root, rel) : null;
+    if (file) await waitForRelease(file);
+  }
+  return service.deleteMedia(id);
+}
+
+/**
  * Registers `media:*` IPC. `releaseBackground(url)` is supplied by the main process: it clears the background layer when it
  * shows the file at `url`, and returns true when it did.
  */
@@ -292,15 +305,7 @@ export function setupMedia(db, { loadRoute, preload, releaseBackground }) {
     ipcMain.handle(`media:${channel}`, (event, ...args) => fn(BrowserWindow.fromWebContents(event.sender), ...args));
   handle('list', () => service.list());
   handle('import', (win) => service.importMedia(win));
-  handle('delete', async (_win, id) => {
-    const mediaId = Number(id);
-    // A file on the projector is cleared first, so the screen lets go of it. Then the delete waits for the file to be free.
-    if (releaseBackground?.(`apcc-media://media/${mediaId}`)) {
-      const file = service.filePath(mediaId);
-      if (file) await waitForFileRelease(file);
-    }
-    return service.deleteMedia(mediaId);
-  });
+  handle('delete', (_win, id) => deleteMediaWhenFree(service, root, Number(id), { releaseBackground }));
   handle('rename', (_win, id, name) => service.renameMedia(Number(id), name));
   handle('reveal', (_win, id) => service.revealMedia(Number(id)));
 

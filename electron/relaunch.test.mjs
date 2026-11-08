@@ -55,6 +55,6 @@ test('a dev window whose server is not up yet is tried again, for a limited time
   assert.match(MAIN, /if \(!win\.isDestroyed\(\)\) win\.loadURL\(target\);/);
 });
 
-test('in development the dev URL falls back to Vite\'s port when there is no built copy to load', () => {
-  assert.match(MAIN, /process\.env\.VITE_DEV_SERVER_URL \|\|\s*\(!app\.isPackaged && !fs\.existsSync\(path\.join\(__dirname, '\.\.\/dist\/index\.html'\)\) \? 'http:\/\/localhost:5173' : null\)/);
+test('in development the dev URL falls back to Vite\'s port when there is no built copy to load, and the installed app never reads it', () => {
+  assert.match(MAIN, /const DEV_URL = app\.isPackaged\s*\?\s*null\s*:\s*process\.env\.VITE_DEV_SERVER_URL \|\| \(!fs\.existsSync\(path\.join\(__dirname, '\.\.\/dist\/index\.html'\)\) \? 'http:\/\/localhost:5173' : null\);/);
 });
