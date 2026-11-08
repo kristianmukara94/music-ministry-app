@@ -13,6 +13,7 @@
     "build": "tsc --noEmit && vite build && node tools/build-native.mjs && electron-builder",
     "release": "tsc --noEmit && vite build && node tools/build-native.mjs && electron-builder --publish always",
     "start": "electron .",
+    "test": "node --test \"electron/*.test.mjs\" \"shared/*.test.js\"",
     "postinstall": "electron-builder install-app-deps && node tools/build-native.mjs --optional",
     "rebuild:native": "electron-builder install-app-deps && node tools/build-native.mjs",
     "pack": "tsc --noEmit && vite build && node tools/build-native.mjs && electron-builder --win --dir",

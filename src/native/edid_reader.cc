@@ -9,6 +9,8 @@
 //
 // Adapter LUIDs are reported but must not be used as identity: Windows hands out new ones at every boot and driver restart.
 //
+// It also exports getHardwareIdentity() for the sanctuary hardware lock (electron/hardware-id.js): the raw SMBIOS table and the TPM family.
+//
 // Plain Node-API (C), version 8, so one build loads in Node (the tests) and in Electron alike. Windows only.
 
 #ifndef NAPI_VERSION
@@ -272,11 +274,77 @@ napi_value GetHardwareDisplayTopology(napi_env env, napi_callback_info) {
   return result;
 }
 
+// ---- Hardware identity, for the sanctuary hardware lock (electron/hardware-id.js). ----
+
+// Tbsi_GetDeviceInfo from tbs.dll, looked up at run time: no tbs.h / tbs.lib version juggling, and a PC without the TPM Base Services
+// (very old or stripped Windows) still loads the addon. Values from tbs.h.
+typedef UINT32(WINAPI* TbsiGetDeviceInfoFn)(UINT32 size, PVOID info);
+struct TpmDeviceInfo {
+  UINT32 structVersion;
+  UINT32 tpmVersion;  // 1 = TPM 1.2, 2 = TPM 2.0
+  UINT32 tpmInterfaceType;
+  UINT32 tpmImpRevision;
+};
+const UINT32 kTbsSuccess = 0;
+const UINT32 kTbsTpmNotFound = 0x8028400F;
+
+/**
+ * getHardwareIdentity() -> { smbios: Buffer | null, tpm: { status: 'present' | 'absent' | 'error', version: number, code: number } }
+ * - smbios: the raw SMBIOS table exactly as GetSystemFirmwareTable('RSMB') returns it (8-byte RawSMBIOSData header, then the
+ *   structures). The motherboard UUID (type 1) and the processor id (type 4) are parsed from it in JavaScript, where it can be tested.
+ * - tpm: whether the TPM Base Services see a TPM, and its family. Both calls work without administrator rights; Get-Tpm and the
+ *   Win32_Tpm WMI class do not.
+ * Never throws: whatever cannot be read is null / 'error', and the caller decides.
+ */
+napi_value GetHardwareIdentity(napi_env env, napi_callback_info) {
+  napi_value result = nullptr;
+  napi_create_object(env, &result);
+
+  napi_value smbios = Null(env);
+  const DWORD rsmb = 'RSMB';
+  UINT size = GetSystemFirmwareTable(rsmb, 0, nullptr, 0);
+  if (size > 0) {
+    std::vector<BYTE> table(size);
+    UINT got = GetSystemFirmwareTable(rsmb, 0, table.data(), size);
+    if (got > 0 && got <= size) {
+      void* copy = nullptr;
+      napi_create_buffer_copy(env, got, table.data(), &copy, &smbios);
+    }
+  }
+  Set(env, result, "smbios", smbios);
+
+  napi_value tpm = nullptr;
+  napi_create_object(env, &tpm);
+  const char* status = "error";
+  UINT32 version = 0;
+  UINT32 code = 0;
+  static HMODULE tbs = LoadLibraryExW(L"tbs.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+  auto getInfo = tbs ? reinterpret_cast<TbsiGetDeviceInfoFn>(reinterpret_cast<void*>(GetProcAddress(tbs, "Tbsi_GetDeviceInfo"))) : nullptr;
+  if (getInfo) {
+    TpmDeviceInfo info = {};
+    code = getInfo(static_cast<UINT32>(sizeof info), &info);
+    if (code == kTbsSuccess) {
+      status = "present";
+      version = info.tpmVersion;
+    } else if (code == kTbsTpmNotFound) {
+      status = "absent";
+    }
+  }
+  Set(env, tpm, "status", Str(env, status));
+  Set(env, tpm, "version", Num(env, version));
+  Set(env, tpm, "code", Num(env, code));
+  Set(env, result, "tpm", tpm);
+  return result;
+}
+
 }  // namespace
 
 NAPI_MODULE_INIT() {
   napi_value fn = nullptr;
   napi_create_function(env, "getHardwareDisplayTopology", NAPI_AUTO_LENGTH, GetHardwareDisplayTopology, nullptr, &fn);
   napi_set_named_property(env, exports, "getHardwareDisplayTopology", fn);
+  napi_value identity = nullptr;
+  napi_create_function(env, "getHardwareIdentity", NAPI_AUTO_LENGTH, GetHardwareIdentity, nullptr, &identity);
+  napi_set_named_property(env, exports, "getHardwareIdentity", identity);
   return exports;
 }

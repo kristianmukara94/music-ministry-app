@@ -1,4 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen, shell } from 'electron';
+// First of the app's own modules: in the packaged app it refuses debugging flags before anything else is loaded (see anti-tamper.js).
+import './anti-tamper.js';
 import { createCloudDevice } from './cloud-device.js';
 import { createSongSync, SONG_ROWS_SQL } from './song-sync.js';
 import { createPlanSync } from './plan-sync.js';
@@ -18,7 +20,8 @@ import { purgeDeletedHymns, setupLyrics } from './lyrics.js';
 import { setupSpontaneousLog } from './spontaneous-log.js';
 import { announceMassOrderChange, setupMassOrderTexts } from './mass-order.js';
 import { registerLyricsImport } from './lyrics-import.js';
-import { setupNotes } from './notes.js';
+import { NOTE_SEALED_FIELDS, setupNotes } from './notes.js';
+import { createDbVault } from './db-vault.js';
 import { setupWhiteboard } from './whiteboard.js';
 import { setupLectionary } from './lectionary.js';
 import { setupMedia } from './media.js';
@@ -55,9 +58,14 @@ import { ALERT_TOGGLE_CHANNEL, attachAppHotkeys, attachFailoverHotkey } from './
 import { createSanctuaryWatchdog, PONG_CHANNEL, sanitizeFailoverMode, STATUS_CHANNEL } from './watchdog.js';
 import { createFailoverSurface, FAILOVER_PAINTED_CHANNEL } from './windows.js';
 import { createEdidWatchdog, loadDisplayMatrix, WM_DISPLAYCHANGE } from './edid-watchdog.js';
+import { enforceHardwareLock } from './hardware-id.js';
 import { createAlertExpiry } from './sanctuary-alert.js';
 import { applyImport, checkExportOptions, collectLibrary, decodeTransfer, defaultExportName, encodeTransfer, previewImport, TRANSFER_EXTENSION } from './transfer.js';
 import os from 'node:os';
+
+// Sanctuary hardware lock, before anything else runs: the packaged app's userData must be on the PC it was activated on. A copied folder
+// shows "Unapproved Sanctuary Hardware" and exits with code 1 before the database is opened (see hardware-id.js).
+enforceHardwareLock();
 
 // Windows needs this to show notifications under the app's name. It must match build.appId in package.json.
 app.setAppUserModelId('com.apccmma.churchapp');
@@ -973,6 +981,66 @@ ipcMain.handle('library:cancel', () => {
   pendingLibraryImport = null;
 });
 
+// ---- Mass intention privacy: the remembered key, and the Settings channels. ----
+// Keys this laptop has unlocked, by key id, in one file encrypted with safeStorage: only this Windows user on this computer can read it.
+// Keyed by id, so moving between two databases keeps both. Without safeStorage the key stays in memory and is asked for at each start.
+const vaultKeyFile = () => path.join(app.getPath('userData'), 'db-keys.bin');
+function vaultKeyCache() {
+  if (!safeStorage.isEncryptionAvailable()) return null;
+  const readAll = () => {
+    if (!fs.existsSync(vaultKeyFile())) return {};
+    try {
+      const parsed = JSON.parse(safeStorage.decryptString(fs.readFileSync(vaultKeyFile())));
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+  const writeAll = (all) => {
+    if (Object.keys(all).length === 0) fs.rmSync(vaultKeyFile(), { force: true });
+    else fs.writeFileSync(vaultKeyFile(), safeStorage.encryptString(JSON.stringify(all)));
+  };
+  return {
+    get: (keyId) => (typeof readAll()[keyId] === 'string' ? Buffer.from(readAll()[keyId], 'base64') : null),
+    set: (keyId, key) => writeAll({ ...readAll(), [keyId]: key.toString('base64') }),
+    delete: (keyId) => {
+      const all = readAll();
+      delete all[keyId];
+      writeAll(all);
+    },
+  };
+}
+
+/** Registers the `vault:*` channels. Each change tells every window which notes to read again; the passphrase is never sent back. */
+function setupVaultIpc(vault, announceNoteChange) {
+  const announce = (ids) => {
+    for (const id of ids?.notes ?? []) announceNoteChange({ id, removed: false });
+  };
+  const passphrase = (input, key = 'passphrase') => String(input?.[key] ?? '');
+  ipcMain.handle('vault:status', () => vault.status());
+  ipcMain.handle('vault:setup', (_event, input) => {
+    announce(vault.setup(passphrase(input)));
+    return vault.status();
+  });
+  ipcMain.handle('vault:unlock', (_event, input) => {
+    announce(vault.unlock(passphrase(input)));
+    return vault.status();
+  });
+  ipcMain.handle('vault:lock', () => {
+    announce(vault.lock());
+    return vault.status();
+  });
+  ipcMain.handle('vault:change-passphrase', (_event, input) => {
+    const { ids, damaged } = vault.changePassphrase(passphrase(input, 'current'), passphrase(input, 'next'));
+    announce(ids);
+    return { ...vault.status(), damaged };
+  });
+  ipcMain.handle('vault:disable', (_event, input) => {
+    announce(vault.disable(passphrase(input)));
+    return vault.status();
+  });
+}
+
 // ---- Cloud sync: linking this laptop with a one-time code. The token stays encrypted on this computer. ----
 const cloudFile = () => path.join(app.getPath('userData'), 'cloud-device.bin');
 // The cloud address: the environment variable if valid, then the address the operator saved, then the default (see cloud-address.js).
@@ -1433,13 +1501,15 @@ app.whenReady().then(() => {
   seedRosary(announcements.db);
   setupRosary(announcements.db);
   // Every window reads the notes again after a save or a delete, so Notes & Prayers and Go Live's Order of Holy Mass stay in step.
-  setupNotes(announcements.db, {
-    onChanged: (change) => {
-      for (const win of BrowserWindow.getAllWindows()) {
-        if (!win.isDestroyed()) win.webContents.send('notes:changed', change);
-      }
-    },
-  });
+  const announceNoteChange = (change) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('notes:changed', change);
+    }
+  };
+  // Mass intention privacy: the body of a Mass Intention note is sealed with a key made from the parish passphrase (see db-vault.js).
+  const vault = createDbVault(announcements.db, { fields: NOTE_SEALED_FIELDS, keyCache: vaultKeyCache() });
+  setupNotes(announcements.db, { vault, onChanged: announceNoteChange });
+  setupVaultIpc(vault, announceNoteChange);
   // The parish's own words for the Holy Mass Order parts.
   setupMassOrderTexts(announcements.db);
   // The projector is open when its window exists, whatever its title. Quick Live asks this before it shows a song.
