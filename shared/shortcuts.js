@@ -112,6 +112,30 @@ export function sanitizeShortcuts(list, validActionIds) {
   return out;
 }
 
+const MAX_LAUNCH_ITEMS = 200;
+const MAX_LAUNCH_LABEL = 200;
+const MAX_LAUNCH_TARGET = 2048;
+
+/**
+ * The Launchpad shortcuts from a settings file, keeping only well-formed ones. The list is saved and drawn at every start, so one bad entry
+ * (a label that is not text, say) would otherwise break the console each time it opens.
+ */
+export function sanitizeLaunchItems(items) {
+  if (!Array.isArray(items)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const item of items.slice(0, MAX_LAUNCH_ITEMS)) {
+    if (!item || typeof item !== 'object') continue;
+    const { id, label, kind, target } = item;
+    if (typeof id !== 'string' || !id || seen.has(id)) continue;
+    if (kind !== 'open' && kind !== 'massPart') continue;
+    if (typeof label !== 'string' || typeof target !== 'string' || !target.trim() || target.length > MAX_LAUNCH_TARGET) continue;
+    seen.add(id);
+    out.push({ id, label: label.slice(0, MAX_LAUNCH_LABEL), kind, target });
+  }
+  return out;
+}
+
 /** The other shortcut that already uses this key, if any. */
 export function findConflict(shortcuts, combo, exceptId) {
   if (!combo) return undefined;

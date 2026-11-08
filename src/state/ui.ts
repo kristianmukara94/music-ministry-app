@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Lang } from '../../shared/live.js';
-import { ACTION_IDS, DEFAULT_SHORTCUTS, sanitizeShortcuts, shortcutsFromKeymap, type Shortcut } from '../../shared/shortcuts.js';
+import { ACTION_IDS, DEFAULT_SHORTCUTS, sanitizeShortcuts, shortcutsFromKeymap, type Shortcut, sanitizeLaunchItems } from '../../shared/shortcuts.js';
 import { DEFAULT_DISPLAY_NAMES } from './shortcut-labels';
 import { DEFAULT_REGION_SETTINGS, type RegionSettings } from './region';
 import { sanitizeMassTimes, type MassTime } from '../../shared/service-schedule.js';
@@ -212,6 +212,6 @@ export async function importSettings(file: File) {
       : data.keymap
         ? shortcutsFromKeymap(data.keymap, DEFAULT_DISPLAY_NAMES)
         : useUi.getState().shortcuts,
-    launchpad: Array.isArray(data.launchpad) ? data.launchpad : [],
+    launchpad: sanitizeLaunchItems(data.launchpad),
   });
 }
