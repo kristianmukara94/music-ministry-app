@@ -42,6 +42,8 @@ export const COMPONENTS = ['board', 'cpu', 'tpm'];
 const LICENSE_PREFIX = 'APCCMMA-LIC1:';
 const LICENSE_VERSION = 1;
 const LICENSE_AAD = Buffer.from('apccmma-sanctuary-license-v1');
+/** Reading the license failed for a moment, not because of what the file is. */
+const TEMPORARY_READ_ERRORS = new Set(['EBUSY', 'EPERM', 'EACCES', 'EMFILE', 'ENFILE', 'EAGAIN']);
 
 export const LOCKDOWN_TITLE = 'Unapproved Sanctuary Hardware';
 export const LOCKDOWN_MESSAGE =
@@ -290,7 +292,8 @@ export function writeLicense(userData, text) {
  *   - 'skipped':    not the packaged app, or not Windows. Nothing is read or written.
  *   - 'activated':  no license yet; one is written for this PC.
  *   - 'verified':   the license matches this PC.
- *   - 'unverified': none of the hardware could be read. The app starts (logged): a Sunday Mass is not stopped by a driver fault.
+ *   - 'unverified': none of the hardware could be read, or the license file is held open for a moment. The app starts (logged): a Sunday
+ *                   Mass is not stopped by a driver fault or a virus scan.
  *   - 'locked':     the license is from another PC, or was changed. The dialog is shown and the app exits with code 1.
  * `ms` is the time from the start of the check to its decision.
  */
@@ -328,6 +331,11 @@ export function enforceHardwareLock({
   try {
     text = fs.readFileSync(file, 'utf8');
   } catch (err) {
+    // A virus scan or a sync tool holding the file says nothing about this PC, and must not lock a parish out on a Sunday morning.
+    if (TEMPORARY_READ_ERRORS.has(err?.code)) {
+      logTo('license-read-failed', { error: err.code });
+      return { status: 'unverified', ms: clock() - started };
+    }
     if (err?.code !== 'ENOENT') text = '';
   }
 

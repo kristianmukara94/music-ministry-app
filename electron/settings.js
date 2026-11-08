@@ -72,8 +72,10 @@ export function createSettingsService({ userData, getDb, getStatus, appVersion, 
 
     get() {
       const config = readConfig(userData);
+      // The Remote view PINs stay in the main process. The settings page is only told whether one is set (remoteView:get).
+      const { remote_view: _remoteView, ...shown } = config;
       return {
-        config,
+        config: shown,
         databasePath: resolveDatabasePath(userData, config),
         defaultDatabasePath: defaultDatabasePath(userData),
         status: getStatus(),

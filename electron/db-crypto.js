@@ -12,7 +12,8 @@
 import crypto from 'node:crypto';
 
 export const KDF = 'pbkdf2-sha256';
-export const PBKDF2_ITERATIONS = 100_000;
+// OWASP's figure for PBKDF2-HMAC-SHA256. The count is stored with each key (db_crypto.iterations), so a passphrase set at an older count still opens.
+export const PBKDF2_ITERATIONS = 600_000;
 export const KEY_BYTES = 32;
 export const SALT_BYTES = 16;
 export const IV_BYTES = 12;

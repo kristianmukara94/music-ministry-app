@@ -25,13 +25,13 @@ const TEXT = 'For the eternal repose of the soul of Lola Remedios, requested by 
 const packedOf = (sealed) => Buffer.from(sealed.slice(SEALED_PREFIX.length), 'base64url');
 const encode = (bytes) => SEALED_PREFIX + bytes.toString('base64url');
 
-test('the master key is PBKDF2-HMAC-SHA256, 100,000 rounds, 256 bits, from a 16-byte salt', () => {
-  assert.equal(PBKDF2_ITERATIONS, 100_000);
+test('the master key is PBKDF2-HMAC-SHA256, 600,000 rounds, 256 bits, from a 16-byte salt', () => {
+  assert.equal(PBKDF2_ITERATIONS, 600_000);
   const salt = randomSalt();
   assert.equal(salt.length, 16);
   const derived = deriveMasterKey('Assumption parish 1952', salt);
   assert.equal(derived.length, 32);
-  assert.deepEqual(derived, crypto.pbkdf2Sync('Assumption parish 1952', salt, 100_000, 32, 'sha256'));
+  assert.deepEqual(derived, crypto.pbkdf2Sync('Assumption parish 1952', salt, 600_000, 32, 'sha256'));
   // Same passphrase and salt: same key, on any laptop. Another salt or passphrase: another key.
   assert.deepEqual(deriveMasterKey('Assumption parish 1952', salt), derived);
   assert.notDeepEqual(deriveMasterKey('Assumption parish 1952', randomSalt()), derived);

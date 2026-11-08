@@ -1,5 +1,5 @@
 // Passwords, session tokens and cookies. Uses only Node's built-in crypto, so there is no native module to build on Vercel.
-import { randomBytes, scrypt, createHmac, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomInt, scrypt, createHmac, timingSafeEqual } from 'node:crypto';
 
 // scrypt cost settings. Stored with each hash, so they can be raised later without breaking existing passwords.
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
@@ -59,27 +59,29 @@ export const clearedCookie = () => `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; S
 /** Header names in lower case, so a request's cookie is found whatever case the platform used. */
 export const lowerHeaders = (headers = {}) => Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
 
+/** `count` characters from `alphabet`, each equally likely: randomInt has no modulo bias, whatever the alphabet's length. */
+const randomChars = (alphabet, count) => Array.from({ length: count }, () => alphabet[randomInt(alphabet.length)]).join('');
+
 const TEMP_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 /**
  * A temporary password for a new or reset account, shown once to the admin. Twelve characters with no look-alikes (0, O, 1,
- * l, i), grouped for reading aloud. The alphabet has 32 characters, so every byte maps evenly: no bias.
+ * l, i), grouped for reading aloud.
  */
 export function temporaryPassword() {
-  const chars = [...randomBytes(12)].map((b) => TEMP_ALPHABET[b % TEMP_ALPHABET.length]).join('');
+  const chars = randomChars(TEMP_ALPHABET, 12);
   return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
 }
 
 const LINK_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-/** A one-time link code in the display-code form, for example K7QM-4XD2. No 0, O, 1 or I. The alphabet has 32 characters,
- *  so every byte maps evenly. */
+/** A one-time link code in the display-code form, for example K7QM-4XD2. No 0, O, 1 or I. */
 export function linkCode() {
-  const chars = [...randomBytes(8)].map((b) => LINK_ALPHABET[b % LINK_ALPHABET.length]).join('');
+  const chars = randomChars(LINK_ALPHABET, 8);
   return `${chars.slice(0, 4)}-${chars.slice(4)}`;
 }
 
 /** A church's display code, for example K7QM-4XD2. Made the same way as a link code. */
 export function displayCode() {
-  const chars = [...randomBytes(8)].map((b) => LINK_ALPHABET[b % LINK_ALPHABET.length]).join('');
+  const chars = randomChars(LINK_ALPHABET, 8);
   return `${chars.slice(0, 4)}-${chars.slice(4)}`;
 }
 
@@ -88,7 +90,7 @@ export function displayCode() {
  * gives it out once. Twelve characters in three groups of four, for example ABCD-EFGH-JKLM. No 0, O, 1 or I.
  */
 export function setupKey() {
-  const chars = [...randomBytes(12)].map((b) => LINK_ALPHABET[b % LINK_ALPHABET.length]).join('');
+  const chars = randomChars(LINK_ALPHABET, 12);
   return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
 }
 

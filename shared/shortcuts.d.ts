@@ -28,5 +28,6 @@ export function comboOf(e: KeyEventLike): string | null;
 export function isReserved(combo: string): boolean;
 export function displayCombo(combo: string): string;
 export function shortcutsFromKeymap(keymap: unknown, labels?: Record<string, string>): Shortcut[];
+export function sanitizeLaunchItems(items: unknown): { id: string; label: string; kind: 'open' | 'massPart'; target: string }[];
 export function sanitizeShortcuts(list: unknown, validActionIds: string[]): Shortcut[];
 export function findConflict(shortcuts: Shortcut[], combo: string, exceptId?: string): Shortcut | undefined;

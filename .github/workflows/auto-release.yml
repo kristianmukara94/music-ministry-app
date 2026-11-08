@@ -30,7 +30,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # windows-latest ships only Visual Studio 2026; node-gyp needs npm 11 (Node 24) to find it for the display-matrix addon.
+          node-version: 24
           cache: 'npm'
 
       - name: Install dependencies

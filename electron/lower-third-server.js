@@ -2,9 +2,12 @@ import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { hostAllowed, isPrivateAddress, sendStream } from './lan-guard.js';
 
 /** The port the browser source uses. OBS, or any other stream software, points at http://127.0.0.1:3002/lower-third. */
 export const LOWER_THIRD_PORT = 3002;
+/** Browser sources connected at once. Far more than any booth has, and enough to stop a flood of connections. */
+const MAX_CLIENTS = 32;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -34,13 +37,19 @@ export function lanAddress() {
 /**
  * Serves the lower third to a browser source. `/lower-third` is the page. `/api/lower-third/stream` sends the lower
  * third and its style each time they change. Only the built app folder is readable, and the only state sent out is
- * the lower third and its look, so nothing else in the app is exposed.
+ * the lower third and its look, so nothing else in the app is exposed. It listens on every network so that a streaming
+ * computer on the same network can use it, and answers only that local network.
  */
 export function createLowerThirdServer({ distDir, port = LOWER_THIRD_PORT, host = '0.0.0.0' }) {
   const clients = new Set();
   let latest = { lowerThird: null, lowerStyle: null };
 
-  const server = http.createServer((req, res) => {
+  /** One request. A failure ends that request only: an uncaught error here would put an error box in front of the operator. */
+  const handle = (req, res) => {
+    if (!isPrivateAddress(req.socket.remoteAddress) || !hostAllowed(req.headers.host)) {
+      res.writeHead(403).end();
+      return;
+    }
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.writeHead(405, { Allow: 'GET, HEAD' }).end();
       return;
@@ -54,6 +63,10 @@ export function createLowerThirdServer({ distDir, port = LOWER_THIRD_PORT, host 
     }
 
     if (pathname === '/api/lower-third/stream') {
+      if (clients.size >= MAX_CLIENTS) {
+        res.writeHead(503).end();
+        return;
+      }
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
       res.write(`data: ${JSON.stringify(latest)}\n\n`);
       clients.add(res);
@@ -84,7 +97,17 @@ export function createLowerThirdServer({ distDir, port = LOWER_THIRD_PORT, host 
     }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-cache' });
     if (req.method === 'HEAD') res.end();
-    else fs.createReadStream(file).pipe(res);
+    else sendStream(fs.createReadStream(file), res, 'lower third');
+  };
+
+  const server = http.createServer((req, res) => {
+    try {
+      handle(req, res);
+    } catch (err) {
+      console.warn(`[lower third] A request failed: ${err.message}`);
+      if (res.headersSent) res.destroy();
+      else res.writeHead(500).end();
+    }
   });
 
   return {

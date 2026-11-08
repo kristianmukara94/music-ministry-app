@@ -1,7 +1,26 @@
 // Tests for the shortcut helpers. Run with: node --test shared/shortcuts.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { comboOf, displayCombo, findConflict, isReserved, sanitizeShortcuts, shortcutsFromKeymap, DEFAULT_SHORTCUTS } from './shortcuts.js';
+import { comboOf, displayCombo, findConflict, isReserved, sanitizeLaunchItems, sanitizeShortcuts, shortcutsFromKeymap, DEFAULT_SHORTCUTS } from './shortcuts.js';
+
+test('a settings file keeps only well-formed Launchpad shortcuts', () => {
+  const good = { id: 'a', label: 'Readings', kind: 'open', target: 'https://example.com' };
+  const part = { id: 'b', label: 'Kyrie', kind: 'massPart', target: 'kyrie' };
+  assert.deepEqual(sanitizeLaunchItems([good, part]), [good, part]);
+  assert.deepEqual(sanitizeLaunchItems('nope'), []);
+  assert.deepEqual(sanitizeLaunchItems(undefined), []);
+  const bad = [
+    null, 7, 'text', [],
+    { ...good, id: 7 }, { ...good, id: '' },
+    { ...good, id: 'c', label: { toString: 'x' } }, { ...good, id: 'd', label: 5 },
+    { ...good, id: 'e', kind: 'run' }, { ...good, id: 'f', target: 9 }, { ...good, id: 'g', target: '   ' },
+    { ...good, id: 'h', target: 'x'.repeat(3000) },
+  ];
+  assert.deepEqual(sanitizeLaunchItems(bad), []);
+  assert.deepEqual(sanitizeLaunchItems([good, { ...good, label: 'Again' }]).map((i) => i.label), ['Readings'], 'one entry per id');
+  assert.equal(sanitizeLaunchItems([{ ...good, label: 'x'.repeat(500) }])[0].label.length, 200);
+  assert.equal(sanitizeLaunchItems(Array.from({ length: 300 }, (_, i) => ({ ...good, id: `n${i}` }))).length, 200);
+});
 
 test('a function key is its own name', () => {
   assert.equal(comboOf({ key: 'F9' }), 'F9');

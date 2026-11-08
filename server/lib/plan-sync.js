@@ -168,7 +168,9 @@ export function checkItems(items, songIds) {
 export function checkPlanFields({ name, date, kind }) {
   const cleanName = typeof name === 'string' ? name.trim() : '';
   if (cleanName === '' || cleanName.length > 120) throw refuse('A plan name must be 1 to 120 characters. Nothing was saved.');
-  if (typeof date !== 'string' || !DATE.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
+  // Compared back to the text, because JavaScript rolls 2026-02-31 over to March where the database refuses it.
+  const parsedDate = typeof date === 'string' && DATE.test(date) ? new Date(`${date}T00:00:00Z`) : null;
+  if (!parsedDate || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) {
     throw refuse('A plan date must be a date, such as 2026-11-01. Nothing was saved.');
   }
   if (!PLAN_KINDS.includes(kind)) throw refuse('A plan must be a Mass plan or a Praise & Worship plan. Nothing was saved.');

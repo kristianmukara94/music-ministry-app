@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen, session, shell } from 'electron';
 // First of the app's own modules: in the packaged app it refuses debugging flags before anything else is loaded (see anti-tamper.js).
 import './anti-tamper.js';
 import { createCloudDevice } from './cloud-device.js';
@@ -61,6 +61,8 @@ import { createEdidWatchdog, loadDisplayMatrix, WM_DISPLAYCHANGE } from './edid-
 import { enforceHardwareLock } from './hardware-id.js';
 import { createAlertExpiry } from './sanctuary-alert.js';
 import { applyImport, checkExportOptions, collectLibrary, decodeTransfer, defaultExportName, encodeTransfer, previewImport, TRANSFER_EXTENSION } from './transfer.js';
+import { isOwnPage, lockDownContents, restrictPermissions } from './web-lockdown.js';
+import { checkLaunchTarget, LAUNCH_REFUSED_DETAIL } from './launch-target.js';
 import os from 'node:os';
 
 // Sanctuary hardware lock, before anything else runs: the packaged app's userData must be on the PC it was activated on. A copied folder
@@ -72,10 +74,16 @@ app.setAppUserModelId('com.apccmma.churchapp');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // In development the windows load the Vite dev server. The URL comes from the environment the dev script sets, and falls back to Vite's default
-// port when the app is unpackaged and there is no built copy to load, so a relaunch still finds the server.
-const DEV_URL =
-  process.env.VITE_DEV_SERVER_URL ||
-  (!app.isPackaged && !fs.existsSync(path.join(__dirname, '../dist/index.html')) ? 'http://localhost:5173' : null);
+// port when the app is unpackaged and there is no built copy to load, so a relaunch still finds the server. The installed app never looks at
+// this: an environment variable must not be able to point its windows, with their full bridge to the main process, at another page.
+const DEV_URL = app.isPackaged
+  ? null
+  : process.env.VITE_DEV_SERVER_URL || (!fs.existsSync(path.join(__dirname, '../dist/index.html')) ? 'http://localhost:5173' : null);
+
+// Every page the app creates, from now on, stays on the app's own page and opens no other windows (see web-lockdown.js).
+app.on('web-contents-created', (_event, contents) => {
+  lockDownContents(contents, { isAllowed: (url) => isOwnPage(url, { devUrl: DEV_URL, entryFile: path.join(__dirname, '../dist/index.html') }) });
+});
 
 // Failures that mean the page is not reachable yet (the dev server still starting, a network not up). A missing file is not retried.
 const RETRY_ERRORS = new Set([-102, -105, -106, -109]); // connection refused, name not resolved, internet disconnected, address unreachable
@@ -1200,7 +1208,15 @@ ipcMain.handle('welcome:save', (_event, patch) => {
   apply({ type: 'settings/welcome', value: merged });
   return merged;
 });
-ipcMain.on('live:dispatch', (_event, action) => apply(action));
+// A bad action is logged and dropped. An uncaught error here would put a modal error box in front of the operator in the middle of a service.
+ipcMain.on('live:dispatch', (_event, action) => {
+  if (!action || typeof action !== 'object' || typeof action.type !== 'string') return;
+  try {
+    apply(action);
+  } catch (err) {
+    console.error(`[live] The action ${action.type} could not be applied: ${err.message}`);
+  }
+});
 
 /**
  * Ctrl+Shift+A from any window: brings the operator console forward and opens the Sanctuary Alert. Pressed in the console while it is
@@ -1393,13 +1409,38 @@ const readSystemHealth = createHealthReader({
 });
 ipcMain.handle('system:health', () => readSystemHealth());
 
-ipcMain.handle('launch:open', (_event, target) => {
-  if (typeof target !== 'string' || !target) return;
-  return /^https?:\/\//i.test(target) ? shell.openExternal(target) : shell.openPath(target);
+// Programs and network files the operator has agreed to open since the app started, so a shortcut used all morning asks only once.
+const approvedLaunches = new Set();
+
+/** Opens a Launchpad shortcut. The check is here in the main process: what a page sends is not trusted to be what the operator typed. */
+ipcMain.handle('launch:open', async (event, target) => {
+  const launch = checkLaunchTarget(target);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (launch.kind === 'refused') {
+    await dialog.showMessageBox(win, { type: 'warning', title: 'APCCMMA', message: 'This shortcut cannot be opened.', detail: LAUNCH_REFUSED_DETAIL });
+    return false;
+  }
+  if (launch.kind === 'url') return shell.openExternal(launch.url);
+  if (launch.confirm && !approvedLaunches.has(launch.path)) {
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'warning',
+      title: 'APCCMMA',
+      buttons: ['Cancel', 'Open'],
+      defaultId: 0,
+      cancelId: 0,
+      message: launch.remote ? 'This shortcut opens a file on another computer.' : 'This shortcut starts a program.',
+      detail: `${launch.path}\n\nOpen it only if you recognise it.`,
+    });
+    if (response !== 1) return false;
+    approvedLaunches.add(launch.path);
+  }
+  return shell.openPath(launch.path);
 });
 
 
 app.whenReady().then(() => {
+  // No page gets the camera, the microphone, location and the like: nothing in the app uses them. The mirror has a session of its own.
+  for (const target of [session.defaultSession, session.fromPartition(MIRROR_PARTITION)]) restrictPermissions(target);
   // No default menu: it would steal F11 (fullscreen) and Ctrl+R from our hotkeys.
   Menu.setApplicationMenu(null);
   // The app-wide hotkeys (Ctrl+Shift+A for the Sanctuary Alert) work from every window the app opens, including ones opened later.

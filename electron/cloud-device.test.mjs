@@ -536,6 +536,24 @@ test('a 401 page that is not JSON gives the address line, and not the status', a
   await assert.rejects(setupWith(htmlReply(401)), (err) => err.message === 'The cloud address did not respond as expected. Check the address shown above.');
 });
 
+test('a login page that answers 401 does not unlink the laptop', async () => {
+  const storage = realisticStorage();
+  const file = memoryFile();
+  const linker = createCloudDevice({ storage, file, fetchFn: fakeServer().fetchFn, baseUrl: BASE });
+  await linker.link('K7QM-4XD2', 'Laptop');
+  const saved = file.read();
+  assert.ok(saved, 'linked');
+
+  const onGuestWifi = createCloudDevice({ storage, file, fetchFn: async () => htmlReply(401), baseUrl: BASE });
+  const status = await onGuestWifi.status();
+  assert.equal(status.linked, true);
+  assert.equal(status.offline, true);
+  assert.deepEqual(file.read(), saved, 'the saved link is still there');
+  await assert.rejects(onGuestWifi.pushSongs([]), (err) => !err.revoked);
+  await assert.rejects(onGuestWifi.createWebUser({ username: 'anna', displayName: 'Anna', role: 'viewer' }), (err) => err.message === MESSAGES.offline);
+  assert.deepEqual(file.read(), saved, 'and is still there after trying to sync');
+});
+
 test('a 403 page that is not JSON gives the address line, on the link screen too', async () => {
   const device = createCloudDevice({ storage: realisticStorage(), file: memoryFile(), fetchFn: async () => htmlReply(403), baseUrl: BASE });
   await assert.rejects(device.link('K7QM-4XD2', 'Laptop'), (err) => err.message === 'The cloud address did not respond as expected. Check the address shown above.');

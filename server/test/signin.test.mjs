@@ -11,7 +11,7 @@ import { createApi } from '../lib/handlers.js';
 import { createAdminApi } from '../lib/admin.js';
 import { tagFromQuery } from '../lib/db.js';
 import { LOGIN_LIMIT } from '../lib/rules.js';
-import { hashPassword, hashToken } from '../lib/auth.js';
+import { hashPassword, hashToken, linkCode, temporaryPassword } from '../lib/auth.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA = fs.readFileSync(path.join(here, '..', 'db', 'schema.sql'), 'utf8');
@@ -171,6 +171,43 @@ test('five wrong passwords lock the account for 15 minutes, with the lock messag
   assert.equal((await build().login(event({ body: { username: 'viewer', password: GOOD }, ip: '198.51.100.97' }))).statusCode, 200, 'open again after 15 minutes');
 });
 
+test('guesses sent at the same moment cannot get past the limit', async () => {
+  const guesses = Array.from({ length: 12 }, (_, i) => build().login(event({ body: { username: 'viewer', password: 'wrong guess' }, ip: `198.51.100.${i + 130}` })));
+  const statuses = (await Promise.all(guesses)).map((res) => res.statusCode);
+  assert.equal(statuses.filter((s) => s === 401).length, 4, 'only four guesses are told they were wrong');
+  assert.equal(statuses.filter((s) => s === 423).length, 8, 'the fifth locks the account, and the rest are refused without a password check');
+  const [row] = (await pg.query(`SELECT failed_attempts, locked_until FROM users WHERE username = 'viewer'`)).rows;
+  assert.ok(row.locked_until, 'the account is locked');
+  assert.equal(row.failed_attempts, 0, 'the count starts again for after the lock');
+  assert.equal((await build().login(event({ body: { username: 'viewer', password: GOOD }, ip: '198.51.100.200' }))).statusCode, 423, 'the right password waits too');
+});
+
+test('the right password on the fifth attempt is not locked out', async () => {
+  for (let i = 0; i < 4; i += 1) await build().login(event({ body: { username: 'viewer', password: 'wrong' }, ip: `198.51.100.${i + 150}` }));
+  assert.equal((await build().login(event({ body: { username: 'viewer', password: GOOD }, ip: '198.51.100.160' }))).statusCode, 200);
+  const [row] = (await pg.query(`SELECT failed_attempts, locked_until FROM users WHERE username = 'viewer'`)).rows;
+  assert.deepEqual([row.failed_attempts, row.locked_until], [0, null]);
+});
+
+test('every letter of a temporary password and a link code is equally likely', () => {
+  // With a modulo over random bytes the first eight letters come up about 12% more often. 310,000 letters show that plainly; unbiased letters stay close.
+  const spread = (make, strip) => {
+    const seen = new Map();
+    for (let total = 0; total < 310_000;) {
+      const letters = strip(make());
+      for (const c of letters) seen.set(c, (seen.get(c) ?? 0) + 1);
+      total += letters.length;
+    }
+    return { kinds: seen.size, gap: Math.max(...seen.values()) - Math.min(...seen.values()) };
+  };
+  const passwords = spread(temporaryPassword, (s) => s.replace(/-/g, ''));
+  const codes = spread(linkCode, (s) => s.replace(/-/g, ''));
+  assert.equal(passwords.kinds, 31);
+  assert.equal(codes.kinds, 31);
+  assert.ok(passwords.gap < 800, `temporary password letters differ by ${passwords.gap}`);
+  assert.ok(codes.gap < 800, `link code letters differ by ${codes.gap}`);
+});
+
 test('a wrong password and an unknown user never get the lock message', async () => {
   for (let i = 0; i < 6; i += 1) {
     const res = await build().login(event({ body: { username: 'nobody', password: 'x' }, ip: `198.51.100.${i + 60}` }));
@@ -250,6 +287,26 @@ test('a user who must change the password is refused the planner until they do',
   assert.equal((await build().plans(event({ method: 'GET', cookie }))).statusCode, 200, 'the planner opens after the change');
   assert.equal((await build().login(event({ body: { username: 'fresh', password: GOOD } }))).statusCode, 401, 'the old password no longer works');
   assert.equal((await build().login(event({ body: { username: 'fresh', password: 'a new long passphrase' } }))).statusCode, 200);
+});
+
+test('a temporary password cannot be "changed" to itself', async () => {
+  const cookie = await signIn('fresh');
+  const same = await build().changePassword(event({ cookie, body: { currentPassword: GOOD, newPassword: GOOD } }));
+  assert.equal(same.statusCode, 400);
+  const me = JSON.parse((await build().me(event({ method: 'GET', cookie }))).body);
+  assert.equal(me.user.mustChangePassword, true, 'the account still has to choose its own password');
+});
+
+test('guessing through the change-password form is limited per account', async () => {
+  const cookie = await signIn('planner');
+  for (let i = 0; i < 10; i += 1) {
+    assert.equal((await build().changePassword(event({ cookie, body: { currentPassword: `guess number ${i}`, newPassword: 'a long new password' } }))).statusCode, 401);
+  }
+  const blocked = await build().changePassword(event({ cookie, body: { currentPassword: GOOD, newPassword: 'a long new password' } }));
+  assert.equal(blocked.statusCode, 429);
+  assert.ok(Number(blocked.headers['Retry-After']) > 0);
+  clock = new Date(clock.getTime() + 16 * 60 * 1000);
+  assert.equal((await build().changePassword(event({ cookie, body: { currentPassword: GOOD, newPassword: 'a long new password' } }))).statusCode, 200, 'open again after the window');
 });
 
 test('changing the password signs out the other browsers, and keeps this one', async () => {

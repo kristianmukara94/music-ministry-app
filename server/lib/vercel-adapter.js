@@ -62,12 +62,31 @@ function send(res, statusCode, headers, body) {
   res.end(body ?? '');
 }
 
+/**
+ * True for a POST sent by a browser from another site. Vercel turns a form post into the same fields a JSON body gives, so without this a
+ * form on another site could sign a visitor in to the attacker's account (or sign them out). The planner's own pages are same-origin, and
+ * the desktop app is not a browser and sends neither header, so neither is affected.
+ */
+export function isCrossSitePost(req) {
+  if (req.method !== 'POST') return false;
+  const headers = Object.fromEntries(Object.entries(req.headers ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
+  const site = headers['sec-fetch-site'];
+  if (typeof site === 'string') return site !== 'same-origin' && site !== 'none';
+  if (typeof headers.origin !== 'string') return false;
+  try {
+    return new URL(headers.origin).host !== (headers['x-forwarded-host'] ?? headers.host);
+  } catch {
+    return true;
+  }
+}
+
 /** The Vercel handler for api/[name].js. `loaders` maps each served name to a function that loads its module. */
 export function createVercelHandler(loaders) {
   return async function vercelHandler(req, res) {
     const name = req.query?.name;
     const load = typeof name === 'string' && Object.hasOwn(loaders, name) ? loaders[name] : null;
     if (!load) return send(res, 404, JSON_HEADERS, '{"error":"Not found."}');
+    if (isCrossSitePost(req)) return send(res, 403, JSON_HEADERS, '{"error":"This request came from another site, so it was refused."}');
     let result;
     try {
       const mod = await load();

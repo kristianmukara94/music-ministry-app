@@ -7,7 +7,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { REMOTE_VIEW_PORTS, snapshotForRole } from '../shared/remote-view.js';
 import { MIME_BY_EXT, rangeResponse } from './media-range.js';
+import { hostAllowed, isPrivateAddress, sendStream } from './lan-guard.js';
 
+/** Live pages one address may hold open. The device limit counts addresses, so without this one phone could open any number of connections. */
+const MAX_PAGES_PER_DEVICE = 8;
 /** Wrong PIN entries allowed before the unlock pauses. A PIN has few digits, so this stops guessing. */
 const PIN_TRIES = 5;
 const PIN_PAUSE_MS = 60_000;
@@ -219,11 +222,13 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
       if (body.length > MAX_BODY) req.destroy();
     });
     req.on('end', () => {
+      let parsed = null;
       try {
-        done(JSON.parse(body));
+        parsed = JSON.parse(body);
       } catch {
-        done(null);
+        // Not JSON: `done` is told so with null.
       }
+      done(parsed);
     });
   }
 
@@ -255,6 +260,8 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
     if (req.method !== 'GET') return sendJson(res, 405, { ok: false }, { Allow: 'GET' });
     if (!unlocked(req)) return sendJson(res, 401, { ok: false, error: 'Enter the PIN first.' });
     if (!canConnect()) return sendJson(res, 503, { ok: false, error: 'This page is full. Close some phones and try again.' });
+    const openHere = [...streams].filter((s) => s.ip === clientIp(req)).length;
+    if (openHere >= MAX_PAGES_PER_DEVICE) return sendJson(res, 503, { ok: false, error: 'This phone has too many pages open. Close some and try again.' });
     res.writeHead(200, {
       ...SECURITY_HEADERS,
       'Content-Type': 'text/event-stream; charset=utf-8',
@@ -318,12 +325,12 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
       part.headers.delete('Access-Control-Allow-Origin');
       res.writeHead(part.status, { ...headers, ...Object.fromEntries(part.headers) });
       if (!part.body || req.method === 'HEAD') return res.end();
-      return Readable.fromWeb(part.body).pipe(res);
+      return sendStream(Readable.fromWeb(part.body), res, 'remote view');
     }
     const size = fs.statSync(file).size;
     res.writeHead(200, { ...headers, 'Content-Length': String(size) });
     if (req.method === 'HEAD') return res.end();
-    fs.createReadStream(file).pipe(res);
+    sendStream(fs.createReadStream(file), res, 'remote view');
   }
 
   /**
@@ -353,7 +360,7 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
     const type = TV_TYPE_BY_EXT[path.extname(resolved).toLowerCase()] ?? 'application/octet-stream';
     res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': type, 'Cache-Control': 'no-cache' });
     if (req.method === 'HEAD') res.end();
-    else fs.createReadStream(resolved).pipe(res);
+    else sendStream(fs.createReadStream(resolved), res, 'remote view');
   }
 
   function servePage(req, res, pathname) {
@@ -386,7 +393,7 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
     const type = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' }[path.extname(file)];
     res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': type ?? 'application/octet-stream', 'Cache-Control': 'no-cache' });
     if (req.method === 'HEAD') res.end();
-    else fs.createReadStream(file).pipe(res);
+    else sendStream(fs.createReadStream(file), res, 'remote view');
   }
 
   /**
@@ -403,7 +410,22 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
     res.end(req.method === 'HEAD' ? undefined : guidancePage(url, port));
   }
 
+  /** One request. A failure ends that request only: an uncaught error here would put an error box in front of the operator. */
   function handle(req, res) {
+    try {
+      route(req, res);
+    } catch (err) {
+      console.warn(`[remote view] A request failed: ${err.message}`);
+      if (res.headersSent) res.destroy();
+      else sendJson(res, 500, { ok: false, error: 'The request could not be completed.' });
+    }
+  }
+
+  function route(req, res) {
+    // Only the local network, and only by this laptop's own address or name: a web site that points its domain here is refused.
+    if (!isPrivateAddress(req.socket.remoteAddress) || !hostAllowed(req.headers.host)) {
+      return sendJson(res, 403, { ok: false, error: "Open this page with the laptop's address." });
+    }
     let pathname;
     try {
       pathname = new URL(req.url ?? '/', 'http://localhost').pathname;

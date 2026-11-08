@@ -90,6 +90,34 @@ test('the query string reaches the handler without the function name', () => {
   assert.equal(toEvent(fakeReq({ name: 'me' })).queryStringParameters, null);
 });
 
+test('a form or script on another site cannot post to the API', async () => {
+  let reached = 0;
+  const handler = createVercelHandler({
+    login: async () => ({
+      handler: async () => {
+        reached += 1;
+        return { statusCode: 200, headers: {}, body: 'in' };
+      },
+    }),
+  });
+  const send = async (headers, method = 'POST') => {
+    const res = fakeRes();
+    await handler(fakeReq({ method, name: 'login', headers, body: { username: 'a' } }), res);
+    return res.statusCode;
+  };
+  const host = { Host: 'music-ministry-app.vercel.app' };
+  assert.equal(await send({ ...host, 'Sec-Fetch-Site': 'cross-site' }), 403, 'a form on another site');
+  assert.equal(await send({ ...host, 'Sec-Fetch-Site': 'same-site' }), 403, 'a sibling subdomain');
+  assert.equal(await send({ ...host, Origin: 'https://evil.example' }), 403, 'an older browser, known by its Origin');
+  assert.equal(await send({ ...host, Origin: 'null' }), 403, 'a sandboxed page');
+  assert.equal(reached, 0, 'none of those reached the handler');
+
+  assert.equal(await send({ ...host, 'Sec-Fetch-Site': 'same-origin' }), 200, "the planner's own pages");
+  assert.equal(await send({ ...host, Origin: 'https://music-ministry-app.vercel.app' }), 200, 'its own origin');
+  assert.equal(await send({ ...host }), 200, 'the desktop app sends neither header');
+  assert.equal(await send({ ...host, 'Sec-Fetch-Site': 'cross-site' }, 'GET'), 200, 'only a POST is refused');
+});
+
 test('a handler that fails gives a plain 500 and no detail', async () => {
   const handler = createVercelHandler({
     login: async () => ({
