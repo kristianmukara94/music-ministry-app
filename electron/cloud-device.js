@@ -20,6 +20,12 @@ export const MESSAGES = {
   revokedOnWeb: 'This laptop was unlinked from the website. Link it again.',
 };
 
+/**
+ * A 401 from the cloud API means this laptop's link was revoked, so the saved link is removed. Only the API's own JSON reply counts: a guest
+ * WiFi login page or a proxy can answer 401 too, and that must not unlink the laptop.
+ */
+const isRevoked = (res) => res.status === 401 && !res.notJson;
+
 /** The message the server sent, when it sent a plain one. Otherwise a neutral line that names no cause. */
 // The server's own plain message when it sent one. Otherwise a refusal (4xx) names its status, so a page that is not from the
 // planner (a site password page, for example) is not hidden behind the generic line. Server errors and anything else stay generic.
@@ -132,7 +138,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
     if (!baseUrl) return view(record, { offline: true, error: MESSAGES.noCloudAddress });
     try {
       const res = await call('device-status', { token: record.token });
-      if (res.status === 401) {
+      if (isRevoked(res)) {
         file.remove();
         return { linked: false, error: MESSAGES.revokedOnWeb };
       }
@@ -195,7 +201,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
     if (record === null) throw new Error(MESSAGES.notLinked);
     if (record === 'unreadable') throw new Error(MESSAGES.unreadable);
     const res = await call('device-users-create', { method: 'POST', body: clean, token: record.token });
-    if (res.status === 401) {
+    if (isRevoked(res)) {
       file.remove();
       throw new Error(MESSAGES.revokedOnWeb);
     }
@@ -262,7 +268,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
     } catch {
       throw Object.assign(new Error(MESSAGES.offline), { offline: true });
     }
-    if (res.status === 401) {
+    if (isRevoked(res)) {
       file.remove();
       throw Object.assign(new Error(MESSAGES.revokedOnWeb), { revoked: true });
     }
@@ -284,7 +290,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
     } catch {
       throw Object.assign(new Error(MESSAGES.offline), { offline: true });
     }
-    if (res.status === 401) {
+    if (isRevoked(res)) {
       file.remove();
       throw Object.assign(new Error(MESSAGES.revokedOnWeb), { revoked: true });
     }
