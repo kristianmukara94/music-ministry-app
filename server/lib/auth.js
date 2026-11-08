@@ -1,5 +1,6 @@
 // Passwords, session tokens and cookies. Uses only Node's built-in crypto, so there is no native module to build on Vercel.
 import { randomBytes, randomInt, scrypt, createHmac, timingSafeEqual } from 'node:crypto';
+import { generateChurchCode, generateSetupKey } from '../../shared/church-key-generator.js';
 
 // scrypt cost settings. Stored with each hash, so they can be raised later without breaking existing passwords.
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
@@ -79,20 +80,14 @@ export function linkCode() {
   return `${chars.slice(0, 4)}-${chars.slice(4)}`;
 }
 
-/** A church's display code, for example K7QM-4XD2. Made the same way as a link code. */
-export function displayCode() {
-  const chars = randomChars(LINK_ALPHABET, 8);
-  return `${chars.slice(0, 4)}-${chars.slice(4)}`;
-}
+/** A church's display code, for example K7QM-4XD2. Its last character is a check character. */
+export const displayCode = () => generateChurchCode();
 
 /**
  * A setup key for creating a church's first admin from a laptop. The developer makes it with scripts/create-setup-key.mjs and
- * gives it out once. Twelve characters in three groups of four, for example ABCD-EFGH-JKLM. No 0, O, 1 or I.
+ * gives it out once. Twelve characters in three groups of four, the last a check character. No 0, O, 1, I or L.
  */
-export function setupKey() {
-  const chars = randomChars(LINK_ALPHABET, 12);
-  return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
-}
+export const setupKey = () => generateSetupKey();
 
 /** A typed setup key, tidied: case, spaces and dashes are ignored. Null when it cannot be a setup key. */
 export function normaliseSetupKey(input) {

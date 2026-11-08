@@ -4,6 +4,7 @@
 //
 // The dependencies are passed in (safeStorage, the file, fetch) so the logic can be tested without Electron.
 import { checkChurchSetup, checkWebUser } from '../shared/cloud-device.js';
+import { validateSetupKey } from '../shared/church-key-generator.js';
 
 /** How long one request to the cloud may take before it is given up as unreachable. */
 export const REQUEST_TIMEOUT_MS = 20_000;
@@ -13,6 +14,7 @@ export const MESSAGES = {
   alreadyLinked: 'This laptop is already linked to a church. Unlink it first to set up a new church.',
   noSafeStorage: 'This computer cannot protect the link key, so this laptop cannot be linked. Check that Windows is signed in to a user account, then try again.',
   noCloudAddress: 'The cloud address is not set on this computer. Ask your technical helper to set it.',
+  setupKeyTypo: 'That setup key has a typing mistake. Check each character and try again.',
   // Used when the cloud cannot be reached, and when it answers with something that is not JSON. The address is shown on the screen.
   offline: 'The cloud address did not respond as expected. Check the address shown above.',
   notFound: 'This cloud address does not have the sync service. Check the address shown above.',
@@ -224,6 +226,8 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
     };
     const problem = checkChurchSetup(clean);
     if (problem) throw new Error(problem);
+    // A mistyped key stops here, so it neither reaches the cloud nor counts against the setup rate limit.
+    if (!validateSetupKey(clean.setupKey)) throw new Error(MESSAGES.setupKeyTypo);
     if (!baseUrl) throw new Error(MESSAGES.noCloudAddress);
     // A damaged link file is removed by readRecord, so it no longer counts as a link.
     const existing = readRecord();

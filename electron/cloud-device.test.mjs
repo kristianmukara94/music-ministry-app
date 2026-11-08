@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCloudDevice, MESSAGES } from './cloud-device.js';
+import { generateSetupKey } from '../shared/church-key-generator.js';
 import {
   checkChurchSetup,
   checkWebUser,
@@ -389,8 +390,9 @@ test('the form and the password are cleared when the result closes and when the 
 
 // ---- Creating a church and its first admin from this laptop ----
 
-const SETUP = { setupKey: 'ABCD-EFGH-JKLM', churchName: 'St Mary Parish', username: 'parishadmin', displayName: 'Parish Admin', deviceLabel: 'Office laptop' };
-const SETUP_KEY_PLAIN = 'ABCDEFGHJKLM';
+const SETUP_KEY = generateSetupKey();
+const SETUP = { setupKey: SETUP_KEY, churchName: 'St Mary Parish', username: 'parishadmin', displayName: 'Parish Admin', deviceLabel: 'Office laptop' };
+const SETUP_KEY_PLAIN = SETUP_KEY.replace(/-/g, '');
 const PASSWORD = 'abcd-efgh-jkmn';
 
 test('the Create church admin form is written inside the unlinked branch, so it is hidden when the laptop is linked', () => {
@@ -494,6 +496,14 @@ test('invalid input is refused in the main process, and nothing is sent', async 
   for (const input of bad) {
     await assert.rejects(device.createChurchAdmin(input), (err) => typeof err.message === 'string' && err.message.length > 0);
   }
+  assert.equal(server.calls.length, 0, 'no request left the laptop');
+});
+
+test('a setup key with a wrong check character is refused on the laptop, and nothing is sent', async () => {
+  const server = fakeServer();
+  const device = createCloudDevice({ storage: realisticStorage(), file: memoryFile(), fetchFn: server.fetchFn, baseUrl: BASE });
+  const wrong = SETUP_KEY.slice(0, -1) + (SETUP_KEY.endsWith('A') ? 'B' : 'A');
+  await assert.rejects(device.createChurchAdmin({ ...SETUP, setupKey: wrong }), (err) => err.message === MESSAGES.setupKeyTypo);
   assert.equal(server.calls.length, 0, 'no request left the laptop');
 });
 

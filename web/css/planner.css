@@ -78,78 +78,307 @@ button:focus-visible {
 
 /* The temporary-password screen, shown before anything else for an account that must change its password. */
 .change-password {
+  --cp-page: #0d1118;
+  --cp-card: #141923;
+  --cp-line: #222938;
+  --cp-gold: #a37834;
+  --cp-gold-hover: #b8883d;
+  --cp-muted: #8993a4;
+  --cp-text: #f1f3f7;
+  --cp-disabled: #1c2330;
+  --cp-disabled-text: #485264;
+  --cp-red: #ef4444;
+  --cp-red-text: #f87171;
+  --cp-green: #10b981;
   position: fixed;
   inset: 0;
   z-index: 50;
-  display: grid;
-  place-items: center;
+  display: flex;
   padding: 16px;
-  background: #0f0407;
-  font-family: 'Archivo', 'Segoe UI', system-ui, sans-serif;
-  color: #f7eef0;
+  overflow-y: auto;
+  background: var(--cp-page);
+  font-family: 'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif;
+  color: var(--cp-text);
 }
 
 .change-password-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   width: 100%;
-  max-width: 440px;
+  max-width: 460px;
+  /* Centres the card, and unlike centring the row lets a tall card scroll from its top on a short window. */
+  margin: auto;
+  padding: 32px;
+  border: 1px solid var(--cp-line);
+  border-radius: 16px;
+  background: var(--cp-card);
+}
+
+.change-password-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(163, 120, 52, 0.12);
+  color: var(--cp-gold-hover);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .change-password-form h1 {
-  margin: 0;
-  font-family: 'Cormorant Garamond', Georgia, serif;
-  font-size: 40px;
-  font-weight: 700;
-  line-height: 1.05;
+  margin: -6px 0 0;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
 }
 
-.change-password-form p {
-  margin: 0;
-  color: #dbb3bf;
-  line-height: 1.5;
+.change-password-intro {
+  margin: -10px 0 0;
+  color: var(--cp-muted);
+  font-size: 14px;
+  line-height: 1.55;
 }
 
-.change-password-form label {
+.change-password-divider {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--cp-line);
+}
+
+.change-password-field {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #dbb3bf;
 }
 
-.change-password-form input {
-  height: 48px;
-  padding: 0 14px;
-  border-radius: 10px;
-  border: 1px solid #55202f;
-  background: #150610;
-  color: #f7eef0;
-  font-size: 15px;
-}
-
-.change-password-form button {
-  height: 50px;
-  border: 0;
-  border-radius: 10px;
-  background: #ecc98a;
-  color: #1c070d;
-  font-size: 15px;
+.change-password-label {
+  font-size: 11px;
   font-weight: 700;
-  cursor: pointer;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--cp-muted);
 }
 
-.change-password-form button:disabled {
-  opacity: 0.5;
-  cursor: wait;
+.change-password-control {
+  position: relative;
+}
+
+.change-password-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 50px 0 14px;
+  border: 1px solid var(--cp-line);
+  border-radius: 10px;
+  background: var(--cp-page);
+  color: var(--cp-text);
+  font-size: 15px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* The :not() list repeats the site-wide text-field focus rule further down, so that this one outranks it. */
+.change-password input.change-password-input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):focus {
+  border-color: var(--cp-gold) !important;
+  box-shadow: 0 0 0 1px var(--cp-gold);
+}
+
+.change-password input.change-password-input[aria-invalid='true'] {
+  border-color: var(--cp-red-text);
+}
+
+.change-password-toggle {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cp-muted);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.change-password-toggle:hover {
+  color: var(--cp-text);
+}
+
+.change-password-toggle span {
+  display: flex;
+}
+
+.change-password-toggle .change-password-eye-off,
+.change-password-toggle.is-shown .change-password-eye {
+  display: none;
+}
+
+.change-password-toggle.is-shown .change-password-eye-off {
+  display: flex;
+}
+
+.change-password-toggle:focus-visible,
+.change-password-submit:focus-visible {
+  outline: 2px solid var(--cp-gold-hover);
+  outline-offset: 1px;
+}
+
+.change-password-strength {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.change-password-bars {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.change-password-bars span {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--cp-line);
+  transition: background-color 0.2s ease;
+}
+
+[data-level='1'] .change-password-bars span:nth-child(-n + 1) {
+  background: var(--cp-red);
+}
+
+[data-level='2'] .change-password-bars span:nth-child(-n + 2) {
+  background: var(--cp-gold);
+}
+
+[data-level='3'] .change-password-bars span {
+  background: var(--cp-green);
+}
+
+.change-password-strength-label {
+  min-width: 96px;
+  min-height: 16px;
+  margin: 0;
+  color: var(--cp-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: right;
+}
+
+[data-level='1'] .change-password-strength-label {
+  color: var(--cp-red-text);
+}
+
+[data-level='2'] .change-password-strength-label {
+  color: var(--cp-gold-hover);
+}
+
+[data-level='3'] .change-password-strength-label {
+  color: var(--cp-green);
+}
+
+.change-password-requirements {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.change-password-requirement {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--cp-muted);
+  font-size: 13px;
+  transition: color 0.15s ease;
+}
+
+.change-password-requirement svg {
+  flex: none;
+}
+
+/* An unmet requirement shows an empty circle, so the state does not depend on colour alone. */
+.change-password-requirement .change-password-tick {
+  display: none;
+}
+
+.change-password-requirement.is-met {
+  color: var(--cp-green);
+}
+
+.change-password-requirement.is-met .change-password-tick {
+  display: inline;
+}
+
+/* Both message lines keep their height, so the form does not jump when one appears. */
+.change-password-mismatch {
+  min-height: 18px;
+  margin: -2px 0 0;
+  color: var(--cp-red-text);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
 }
 
 .change-password-error {
-  min-height: 1.4em;
-  color: #ff9a9a !important;
-  font-size: 14px !important;
+  min-height: 20px;
+  margin: -6px 0 -6px;
+  color: var(--cp-red-text);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.change-password-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 50px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--cp-gold);
+  /* Dark on gold: white on #a37834 is under the 4.5:1 that text needs. */
+  color: var(--cp-page);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.change-password-submit:hover:not(:disabled) {
+  background: var(--cp-gold-hover);
+}
+
+.change-password-submit:disabled {
+  background: var(--cp-disabled);
+  color: var(--cp-disabled-text);
+  cursor: not-allowed;
+}
+
+.change-password-submit[aria-busy='true'] {
+  cursor: wait;
+}
+
+@media (max-width: 480px) {
+  .change-password-form {
+    padding: 24px 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .change-password * {
+    transition: none !important;
+  }
 }
 
 /* Users page: form fields, buttons, errors and the temporary-password dialog. */

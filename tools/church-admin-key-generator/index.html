@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>APCCMMA Church Admin Key Generator</title>
+    <link rel="stylesheet" href="styles/tailwind.css" />
+  </head>
+  <body class="min-h-screen bg-page font-sans text-main antialiased select-none">
+    <main class="flex flex-col gap-4 p-5">
+      <header class="flex items-center gap-3">
+        <span class="flex size-10 shrink-0 items-center justify-center rounded-xl border border-line bg-card text-gold-hover">
+          <!-- Lucide: church -->
+          <svg class="size-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10 9h4" /><path d="M12 7v5" /><path d="M14 22v-4a2 2 0 0 0-4 0v4" />
+            <path d="M18 22V5.618a1 1 0 0 0-.553-.894l-4.553-2.277a2 2 0 0 0-1.788 0L6.553 4.724A1 1 0 0 0 6 5.618V22" />
+            <path d="m18 7 3.447 1.724a1 1 0 0 1 .553.894V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.618a1 1 0 0 1 .553-.894L6 7" />
+          </svg>
+        </span>
+        <div class="min-w-0">
+          <h1 class="text-base leading-tight font-bold">Church Admin Key Generator</h1>
+          <p class="mt-0.5 text-xs text-muted">Setup keys and parish codes for APCCMMA</p>
+        </div>
+      </header>
+
+      <form id="generate-form" class="flex flex-col gap-3" autocomplete="off" novalidate>
+        <div>
+          <label for="prefix" class="mb-1.5 block text-xs font-semibold">
+            Parish prefix <span class="font-normal text-muted">(optional)</span>
+          </label>
+          <input
+            id="prefix"
+            type="text"
+            spellcheck="false"
+            placeholder="PTGS"
+            aria-describedby="prefix-hint"
+            class="w-full rounded-xl border border-line bg-card px-3.5 py-2.5 font-mono text-sm tracking-widest text-main uppercase select-text placeholder:text-muted/60 focus:border-gold focus:outline-none"
+          />
+          <p id="prefix-hint" class="mt-1.5 text-xs text-muted">Up to 4 letters. Leave blank for a fully random code.</p>
+        </div>
+
+        <button
+          id="generate"
+          type="submit"
+          class="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-gold py-2.5 text-sm font-bold text-page transition-colors hover:bg-gold-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-hover disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-gold"
+        >
+          <!-- Lucide: sparkles -->
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+            <path d="M20 3v4" /><path d="M22 5h-4" /><path d="M4 17v2" /><path d="M5 18H3" />
+          </svg>
+          Generate
+        </button>
+      </form>
+
+      <div class="flex flex-col gap-3" aria-live="polite">
+        <section data-output="setupKey" class="rounded-xl border border-line bg-card p-4 opacity-60">
+          <h2 class="flex items-center gap-1.5 text-xs font-semibold text-muted">
+            <!-- Lucide: key-round -->
+            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" />
+              <circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />
+            </svg>
+            Website Setup Key
+          </h2>
+          <div class="mt-2 flex items-center justify-between gap-3">
+            <output data-value class="font-mono text-xl font-semibold tracking-wider text-muted select-text">XXXX-XXXX-XXXX</output>
+            <button data-copy type="button" disabled aria-label="Copy Website Setup Key" title="Copy" class="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-line text-muted transition-colors enabled:hover:border-gold enabled:hover:text-main focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-hover disabled:cursor-not-allowed">
+              <!-- Lucide: copy -->
+              <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+              </svg>
+            </button>
+          </div>
+        </section>
+
+        <section data-output="churchCode" class="rounded-xl border border-line bg-card p-4 opacity-60">
+          <h2 class="flex items-center gap-1.5 text-xs font-semibold text-muted">
+            <!-- Lucide: church -->
+            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M10 9h4" /><path d="M12 7v5" /><path d="M14 22v-4a2 2 0 0 0-4 0v4" />
+              <path d="M18 22V5.618a1 1 0 0 0-.553-.894l-4.553-2.277a2 2 0 0 0-1.788 0L6.553 4.724A1 1 0 0 0 6 5.618V22" />
+              <path d="m18 7 3.447 1.724a1 1 0 0 1 .553.894V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.618a1 1 0 0 1 .553-.894L6 7" />
+            </svg>
+            Parish Church Code
+          </h2>
+          <div class="mt-2 flex items-center justify-between gap-3">
+            <output data-value class="font-mono text-xl font-semibold tracking-wider text-muted select-text">XXXX-XXXX</output>
+            <button data-copy type="button" disabled aria-label="Copy Parish Church Code" title="Copy" class="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-line text-muted transition-colors enabled:hover:border-gold enabled:hover:text-main focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-hover disabled:cursor-not-allowed">
+              <!-- Lucide: copy -->
+              <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+              </svg>
+            </button>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite" class="toast pointer-events-none fixed bottom-3 left-1/2 rounded-full bg-main px-4 py-2 text-xs font-semibold whitespace-nowrap text-page"></div>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

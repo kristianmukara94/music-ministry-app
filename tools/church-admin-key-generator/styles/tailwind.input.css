@@ -1,0 +1,68 @@
+@import "tailwindcss" source(none);
+@source "../index.html";
+@source "../renderer.js";
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 800;
+  src: url("../node_modules/@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-normal.woff2") format("woff2-variations");
+}
+
+@theme {
+  --color-page: #0d1118;
+  --color-card: #141923;
+  --color-line: #222938;
+  --color-gold: #a37834;
+  --color-gold-hover: #b8883d;
+  --color-muted: #8993a4;
+  --color-main: #e6edf3;
+  --color-error: #f0a08f;
+  --font-sans: "Plus Jakarta Sans", sans-serif;
+}
+
+@keyframes card-focus {
+  from {
+    opacity: 0.45;
+    transform: translateY(10px) scale(0.98);
+    border-color: var(--color-line);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    border-color: var(--color-gold);
+  }
+}
+
+/* Unlayered, so these states win over the Tailwind utilities on the same elements. */
+.card-focus {
+  opacity: 1;
+  border-color: var(--color-gold);
+  animation: card-focus 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.card-focus + .card-focus {
+  animation-delay: 80ms;
+}
+
+.toast {
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.toast-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-focus {
+    animation: none;
+  }
+
+  .toast {
+    transition: none;
+  }
+}

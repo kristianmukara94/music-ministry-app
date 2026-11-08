@@ -1,0 +1,63 @@
+{
+  "name": "apccmma-church-admin-key-generator",
+  "productName": "APCCMMA Church Admin Key Generator",
+  "version": "1.0.0",
+  "description": "Generates Modulo-31 Website Setup Keys and Parish Church Codes for APCCMMA",
+  "author": "Our Lady of the Assumption Parish, Davao City",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "build:css": "tailwindcss -i styles/tailwind.input.css -o styles/tailwind.css --minify",
+    "sync:generator": "node -e \"require('node:fs').copyFileSync('../../shared/church-key-generator.js', 'church-key-generator.mjs')\"",
+    "start": "npm run sync:generator && npm run build:css && electron .",
+    "test": "npm run sync:generator && node --test key-service.test.mjs",
+    "dist": "npm run sync:generator && npm run build:css && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.apccmma.churchadminkeygenerator",
+    "productName": "APCCMMA Church Admin Key Generator",
+    "copyright": "Copyright © Our Lady of the Assumption Parish, Davao City",
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "church-key-generator.mjs",
+      "key-service.mjs",
+      "styles/tailwind.css",
+      "build/icon.ico",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "portable": {
+      "artifactName": "APCCMMA-Church-Admin-Key-Generator-${version}.${ext}"
+    }
+  },
+  "dependencies": {
+    "@fontsource-variable/plus-jakarta-sans": "^5.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.11",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "tailwindcss": "^4.1.11"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
+  }
+}
