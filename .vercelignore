@@ -8,7 +8,10 @@
 /dist
 /release
 /out
-/tools
+# tools/ stays out, except build-native.mjs: the API builder runs npm install, whose postinstall calls it. On Linux it
+# exits at once, but a missing file fails the whole deploy.
+/tools/*
+!/tools/build-native.mjs
 /db
 /server/test
 /server/scripts
