@@ -1,27 +1,44 @@
 /*
- * APCCMMA Web Planner: the sign-in page (login.html). Loaded after planner.css. Deep obsidian ground, dark glass cards edged in
- * gold, a warm gold call to action. Every colour is a token below, so the palette changes in one place.
+ * APCCMMA Web Planner: the sign-in page (login.html). Loaded after planner.css. The Marian colours of Our Lady of the Assumption
+ * Parish, Davao City: midnight-navy ground, glass cards edged in Marian blue, a royal-blue call to action, altar gold for headings
+ * and focus. Every colour comes from the tokens below, so the palette changes in one place.
  */
 .login {
-  --ground: #0b070e;
-  --ground-raised: #120b16;
-  --glass: rgba(24, 16, 28, 0.75);
-  --glass-strong: rgba(30, 20, 36, 0.86);
-  --edge: rgba(236, 201, 138, 0.2);
-  --edge-strong: rgba(236, 201, 138, 0.42);
-  --gold: #ecc98a;
-  --gold-hover: #f3d9a8;
-  --on-gold: #1a0f06;
-  --text: #f4eef6;
-  --text-soft: #cbbccf;
-  --text-muted: #9a8a9f;
-  --field: rgba(11, 7, 14, 0.72);
-  --field-edge: rgba(236, 201, 138, 0.16);
+  /* Marian royal blue: the mantle of Our Lady of the Assumption. Primary actions, the chosen tab, the ambient light. */
+  --marian-600: #2563eb;
+  --marian-500: #3b82f6;
+  --marian-400: #60a5fa;
+  /* Sacred altar gold: the Marian crown and the altar trim. Headings, focus rings, secondary badges. */
+  --gold-500: #dfb56c;
+  --gold-400: #ecc98a;
+  --gold-300: #f6e2b3;
+  /* Sanctuary midnight navy: the cathedral ground. */
+  --sanctuary-900: #070d19;
+  --sanctuary-800: #0f172a;
+  --sanctuary-700: #1e293b;
+
+  /* What the rules below use, built from the three scales. */
+  --ground: var(--sanctuary-900);
+  --ground-raised: var(--sanctuary-800);
+  --glass: rgba(15, 23, 42, 0.72);
+  --edge: rgba(59, 130, 246, 0.2);
+  --edge-strong: rgba(59, 130, 246, 0.45);
+  --gold: var(--gold-400);
+  --gold-edge: rgba(236, 201, 138, 0.4);
+  --gold-wash: rgba(236, 201, 138, 0.1);
+  --blue-wash: rgba(59, 130, 246, 0.14);
+  --on-marian: #ffffff;
+  --text: #f8fafc;
+  --text-soft: #cbd5e1;
+  --text-muted: #94a3b8;
+  --placeholder: #64748b;
+  --field: rgba(7, 13, 25, 0.72);
+  --field-edge: rgba(59, 130, 246, 0.18);
   --emerald: #34d399;
   --emerald-soft: #8ff0c4;
   --emerald-ground: rgba(16, 64, 44, 0.55);
   --warn: #f5b971;
-  --danger: #ff9a9a;
+  --danger: #fca5a5;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 
   background: var(--ground);
@@ -35,8 +52,8 @@
   flex-wrap: wrap;
   min-height: 100vh;
   background:
-    radial-gradient(900px 600px at 12% -10%, rgba(236, 201, 138, 0.09), transparent 60%),
-    radial-gradient(800px 700px at 105% 110%, rgba(120, 60, 140, 0.16), transparent 60%),
+    radial-gradient(900px 600px at 12% -10%, rgba(37, 99, 235, 0.12), transparent 60%),
+    radial-gradient(800px 700px at 105% 110%, rgba(236, 201, 138, 0.08), transparent 60%),
     var(--ground);
   overflow: hidden;
 }
@@ -139,6 +156,7 @@
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--gold);
 }
 
@@ -148,6 +166,7 @@
   font-weight: 700;
   font-size: clamp(40px, 5.6vh, 56px);
   line-height: 1.02;
+  color: var(--gold-300);
   text-wrap: balance;
 }
 
@@ -219,14 +238,14 @@
 }
 
 .role-tab input:checked + span {
-  background: rgba(236, 201, 138, 0.14);
-  color: var(--gold);
-  box-shadow: inset 0 0 0 1px var(--edge-strong);
+  background: var(--marian-600);
+  color: var(--on-marian);
+  box-shadow: 0 6px 18px -6px rgba(37, 99, 235, 0.7);
 }
 
 .role-tab input:focus-visible + span {
-  outline: 2px solid var(--gold);
-  outline-offset: 1px;
+  outline: 2px solid var(--gold-400);
+  outline-offset: 2px;
 }
 
 .role-note {
@@ -283,13 +302,14 @@
 }
 
 .login-input::placeholder {
-  color: #6f6274;
+  color: var(--placeholder);
 }
 
 /* Focus: the gold border from planner.css, plus a soft outer glow. */
 .login .login-input:focus {
-  background: rgba(11, 7, 14, 0.9);
-  box-shadow: 0 0 0 3px rgba(236, 201, 138, 0.22), 0 0 22px -2px rgba(236, 201, 138, 0.35);
+  border-color: var(--gold-400) !important;
+  background: rgba(7, 13, 25, 0.92);
+  box-shadow: 0 0 0 3px rgba(236, 201, 138, 0.24), 0 0 22px -2px rgba(236, 201, 138, 0.35);
 }
 
 /* "Forgot password?": a text button that still has a full-size tap area. */
@@ -339,7 +359,7 @@
 
 .password-toggle:hover {
   color: var(--gold);
-  background: rgba(236, 201, 138, 0.08);
+  background: var(--gold-wash);
 }
 
 .password-toggle .eye-closed,
@@ -428,19 +448,19 @@
   height: 48px;
   border-radius: 11px;
   border: 0;
-  background: var(--gold);
-  color: var(--on-gold);
+  background: var(--marian-600);
+  color: var(--on-marian);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 8px 24px -8px rgba(236, 201, 138, 0.55);
+  box-shadow: 0 8px 24px -8px rgba(37, 99, 235, 0.65);
   transition: transform 0.18s var(--ease), background-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
 }
 
 .login-submit:hover:not(:disabled) {
-  background: var(--gold-hover);
+  /* The fill stays marian-600: white on marian-500 is only 3.7:1, under the 4.5:1 that 15 px text needs. marian-400 lights the edge. */
   transform: translateY(-1px) scale(1.01);
-  box-shadow: 0 12px 30px -8px rgba(236, 201, 138, 0.7);
+  box-shadow: 0 0 0 1px var(--marian-400), 0 12px 30px -8px rgba(59, 130, 246, 0.8);
 }
 
 .login-submit:active:not(:disabled) {
@@ -473,8 +493,8 @@
   height: 18px;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid rgba(236, 201, 138, 0.55);
-  background: rgba(236, 201, 138, 0.12);
+  border: 1px solid var(--gold-edge);
+  background: var(--gold-wash);
   color: var(--gold);
   font: italic 700 11px/1 Georgia, serif;
   cursor: help;
@@ -502,7 +522,7 @@
   padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid var(--edge);
-  background: #1d1422;
+  background: var(--sanctuary-800);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   color: var(--text);
   font-size: 12px;
@@ -523,7 +543,7 @@
   left: 50%;
   margin-left: -5px;
   border: 5px solid transparent;
-  border-top-color: #1d1422;
+  border-top-color: var(--sanctuary-800);
 }
 
 .info-tip:hover .info-tip-text,
@@ -547,7 +567,7 @@
   gap: 24px;
   padding: 56px 72px;
   border-left: 1px solid var(--edge);
-  background: linear-gradient(180deg, rgba(18, 11, 22, 0.85), rgba(11, 7, 14, 0.6));
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.8), rgba(7, 13, 25, 0.55));
 }
 
 .aside-head {
@@ -562,6 +582,7 @@
   font-weight: 700;
   font-size: 36px;
   line-height: 1.1;
+  color: var(--gold-300);
 }
 
 .flow-steps {
@@ -581,19 +602,19 @@
   gap: 6px;
   padding: 16px 18px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--edge);
   background: var(--glass);
   transition: transform 0.2s var(--ease), border-color 0.2s var(--ease);
 }
 
 .flow-step:hover {
   transform: translateY(-2px) scale(1.015);
-  border-color: var(--edge);
+  border-color: var(--edge-strong);
 }
 
 .flow-step.is-current {
-  border-color: var(--edge-strong);
-  background: linear-gradient(160deg, rgba(236, 201, 138, 0.1), var(--glass));
+  border-color: var(--gold-edge);
+  background: linear-gradient(160deg, var(--gold-wash), var(--glass));
 }
 
 .flow-step-num {
@@ -649,7 +670,7 @@
 }
 
 .feature:hover {
-  background: rgba(236, 201, 138, 0.06);
+  background: var(--blue-wash);
   transform: translateX(2px);
 }
 
@@ -660,8 +681,8 @@
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  border: 1px solid var(--edge);
-  background: rgba(236, 201, 138, 0.08);
+  border: 1px solid var(--gold-edge);
+  background: var(--gold-wash);
   color: var(--gold);
 }
 
@@ -722,7 +743,7 @@
 /* The Forgot password dialog, in the page's palette. */
 .login .modal {
   border-color: var(--edge);
-  background: #150e19;
+  background: var(--sanctuary-800);
 }
 
 @media (max-width: 960px) {
@@ -774,4 +795,8 @@
   .feature:hover {
     transform: none;
   }
+}
+
+.login .modal::backdrop {
+  background: rgba(7, 13, 25, 0.8);
 }
