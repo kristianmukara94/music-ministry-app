@@ -142,8 +142,15 @@ export function isDevToolsShortcut(input, platform = process.platform) {
   return Boolean(input.control && input.shift && !input.alt && !input.meta);
 }
 
-/** Guards one page: the DevTools keys never reach it, and DevTools opened any other way is closed again at once and logged. */
+const guardedContents = new WeakSet();
+
+/**
+ * Guards one page: the DevTools keys never reach it, and DevTools opened any other way is closed again at once and logged. A page is only
+ * guarded once, as the operator window is reached both by the app-wide lockout and by setupAntiTamper.
+ */
 export function guardWebContents(contents, { platform = process.platform, log = writeSecurityLog } = {}) {
+  if (guardedContents.has(contents)) return;
+  guardedContents.add(contents);
   contents.on('before-input-event', (event, input) => {
     if (isDevToolsShortcut(input, platform)) event.preventDefault();
   });
@@ -163,6 +170,44 @@ export function guardWebContents(contents, { platform = process.platform, log = 
 export function installDevToolsLockout({ electronApp = app, platform = process.platform, log = writeSecurityLog } = {}) {
   if (!electronApp.isPackaged) return false;
   electronApp.on('web-contents-created', (_event, contents) => guardWebContents(contents, { platform, log }));
+  return true;
+}
+
+/** The renderer settings every window with the app's bridge is created with. */
+export const SECURE_WEB_PREFERENCES = Object.freeze({
+  contextIsolation: true,
+  nodeIntegration: false,
+  sandbox: true,
+  webSecurity: true,
+  allowRunningInsecureContent: false,
+  experimentalFeatures: false,
+});
+
+/** Whether a page may navigate to `url`: the app's own files or the local machine. electron/web-lockdown.js then narrows this to the built page. */
+export function isTrustedNavigation(url) {
+  try {
+    const target = new URL(url);
+    return target.protocol === 'file:' || ((target.protocol === 'http:' || target.protocol === 'https:') && target.hostname === 'localhost');
+  } catch {
+    return false;
+  }
+}
+
+/** Locks down one window of the packaged app: no DevTools, no leaving for an outside address, no pop-ups. An unpackaged run is left alone. */
+export function setupAntiTamper(win, isDev, { platform = process.platform, log = writeSecurityLog } = {}) {
+  if (isDev) return false;
+  const contents = win.webContents;
+  guardWebContents(contents, { platform, log });
+  contents.on('will-navigate', (event, url) => {
+    const target = event.url ?? url;
+    if (isTrustedNavigation(target)) return;
+    event.preventDefault();
+    log('navigation-blocked', { url: target });
+  });
+  contents.setWindowOpenHandler(({ url }) => {
+    log('window-open-denied', { url });
+    return { action: 'deny' };
+  });
   return true;
 }
 

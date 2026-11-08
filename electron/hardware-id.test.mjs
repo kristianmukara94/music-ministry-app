@@ -2,6 +2,7 @@
 // code and never carries a raw id, one replaced part does not lock while another PC does, the license is tamper-evident, and the start-up
 // guard activates, verifies, and locks a copied userData folder with the dialog and exit code 1 — in the packaged app on Windows only.
 // Run with: node --test electron/hardware-id.test.mjs
+import crypto from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -353,4 +354,26 @@ test('on this PC the addon reads the hardware and fingerprints it in under 5 ms'
   assert.ok(runs.every((run) => run.status === 'verified'));
   const best = Math.min(...runs.map((run) => run.ms));
   assert.ok(best < 5, `verified in ${best.toFixed(3)} ms`);
+});
+
+test('masking changed no derived value: licenses and fingerprints from the plain inputs still match', () => {
+  const key = Buffer.from(crypto.hkdfSync('sha256', Buffer.from('PTGS-X2D9'), Buffer.from('apccmma-sanctuary-license'), Buffer.from('v1'), 32));
+  const fp = computeFingerprint(PC_A);
+  const body = JSON.stringify({ v: 1, fingerprint: fp.fingerprint, components: fp.components, activatedAt: '2026-11-08T00:00:00.000Z', appVersion: '1.0.50' });
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  cipher.setAAD(Buffer.from('apccmma-sanctuary-license-v1'));
+  const ct = Buffer.concat([cipher.update(body, 'utf8'), cipher.final()]);
+  const installed = `APCCMMA-LIC1:${Buffer.concat([iv, cipher.getAuthTag(), ct]).toString('base64url')}`;
+  assert.equal(decodeLicense(installed)?.fingerprint, fp.fingerprint, 'a license written before the masking still opens');
+  const expected = crypto.createHmac('sha256', 'PTGS-X2D9').update(`apccmma-hw-v1|board|${PC_A.board}`).digest('hex');
+  assert.equal(fp.components.board, expected);
+});
+
+test('no input of the license key is written in hardware-id.js, as text or as Base64', () => {
+  const source = fs.readFileSync(new URL('./hardware-id.js', import.meta.url), 'utf8');
+  for (const plain of ['PTGS-X2D9', 'apccmma-sanctuary-license', 'apccmma-hw-v1']) {
+    assert.equal(source.includes(plain), false, plain);
+    assert.equal(source.includes(Buffer.from(plain).toString('base64')), false, `${plain} in Base64`);
+  }
 });

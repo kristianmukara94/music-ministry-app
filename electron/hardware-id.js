@@ -34,14 +34,27 @@ import path from 'node:path';
 import { writeSecurityLog } from './anti-tamper.js';
 import { loadDisplayMatrix } from './edid-watchdog.js';
 
+// The inputs of the license key are XOR-masked, so a search of the installed files finds none of them, as text or as Base64. Their values must
+// never change: every installed license was made from them, and a different value would lock those PCs out. This only stops a search. The mask
+// ships beside the values, so anyone reading the bytecode can undo it.
+const LICENSE_MASK = Buffer.from('dkwMDnKJE+aUqTzEYyg0jg==', 'base64');
+
+function unmask(masked) {
+  const bytes = Buffer.from(masked, 'base64');
+  for (let i = 0; i < bytes.length; i += 1) bytes[i] ^= LICENSE_MASK[i % LICENSE_MASK.length];
+  return bytes.toString('utf8');
+}
+
 /** The parish church code: the HMAC key for the fingerprint, and the root of the license key. */
-export const PARISH_CHURCH_CODE = 'PTGS-X2D9';
+export const PARISH_CHURCH_CODE = unmask('JhhLXV/RIaKt');
 export const LICENSE_FILE = 'sanctuary-license.lic';
 export const COMPONENTS = ['board', 'cpu', 'tpm'];
 
 const LICENSE_PREFIX = 'APCCMMA-LIC1:';
 const LICENSE_VERSION = 1;
-const LICENSE_AAD = Buffer.from('apccmma-sanctuary-license-v1');
+const LICENSE_KEY_SALT = unmask('FzxvbR/kcsvnyFKnF11V/A9hYGcR7H2V8Q==');
+const LICENSE_AAD = Buffer.from(`${LICENSE_KEY_SALT}-v1`);
+const FINGERPRINT_LABEL = unmask('FzxvbR/kcsv83hGyUg==');
 /** Reading the license failed for a moment, not because of what the file is. */
 const TEMPORARY_READ_ERRORS = new Set(['EBUSY', 'EPERM', 'EACCES', 'EMFILE', 'ENFILE', 'EAGAIN']);
 
@@ -211,9 +224,9 @@ export function computeFingerprint(identity, { churchCode = PARISH_CHURCH_CODE }
   const components = {};
   for (const name of COMPONENTS) {
     const value = identity?.[name];
-    components[name] = value ? hmac(churchCode, `apccmma-hw-v1|${name}|${value}`) : null;
+    components[name] = value ? hmac(churchCode, `${FINGERPRINT_LABEL}|${name}|${value}`) : null;
   }
-  const fingerprint = hmac(churchCode, `apccmma-hw-v1|${COMPONENTS.map((n) => `${n}=${identity?.[n] ?? ''}`).join('|')}`);
+  const fingerprint = hmac(churchCode, `${FINGERPRINT_LABEL}|${COMPONENTS.map((n) => `${n}=${identity?.[n] ?? ''}`).join('|')}`);
   return { fingerprint, components };
 }
 
@@ -243,7 +256,7 @@ export function compareFingerprints(licensed, current) {
 // License file
 
 function licenseKey(churchCode) {
-  return Buffer.from(crypto.hkdfSync('sha256', Buffer.from(churchCode), Buffer.from('apccmma-sanctuary-license'), Buffer.from('v1'), 32));
+  return Buffer.from(crypto.hkdfSync('sha256', Buffer.from(churchCode), Buffer.from(LICENSE_KEY_SALT), Buffer.from('v1'), 32));
 }
 
 /** The license file's text for one fingerprint: `APCCMMA-LIC1:` + base64url(IV | TAG | AES-256-GCM ciphertext). */

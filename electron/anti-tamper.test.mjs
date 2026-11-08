@@ -11,7 +11,7 @@ import path from 'node:path';
 import { register } from 'node:module';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { FORBIDDEN_SWITCHES, SECURITY_LOG, auditLaunch, findLaunchFlags, guardWebContents, installDevToolsLockout, isDevToolsShortcut, switchName, writeSecurityLog } =
+const { FORBIDDEN_SWITCHES, SECURE_WEB_PREFERENCES, SECURITY_LOG, auditLaunch, findLaunchFlags, guardWebContents, installDevToolsLockout, isDevToolsShortcut, isTrustedNavigation, setupAntiTamper, switchName, writeSecurityLog } =
   await import('./anti-tamper.js');
 
 const EXE = 'C:\\Program Files\\APCCMMA\\APCCMMA.exe';
@@ -194,5 +194,75 @@ test('the security log is one JSON line per event, and starts again instead of g
 test('main.js imports the lockout before any other module of the app', () => {
   const main = fs.readFileSync(new URL('./main.js', import.meta.url), 'utf8');
   const firstLocal = main.match(/^import [^\n]*'\.\/[^']+'/m)?.[0];
-  assert.equal(firstLocal, "import './anti-tamper.js'");
+  assert.match(firstLocal, /from '\.\/anti-tamper\.js'$/);
+});
+
+test('every window setting that could weaken the renderer is pinned, and the shared preferences use them', () => {
+  assert.deepEqual({ ...SECURE_WEB_PREFERENCES }, { contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, allowRunningInsecureContent: false, experimentalFeatures: false });
+  assert.ok(Object.isFrozen(SECURE_WEB_PREFERENCES));
+  const main = fs.readFileSync(new URL('./main.js', import.meta.url), 'utf8');
+  assert.match(main, /const webPreferences = \{\s+\.\.\.SECURE_WEB_PREFERENCES,/);
+  assert.match(main, /setupAntiTamper\(win, !app\.isPackaged\);\s+windows\.operator = win;/);
+});
+
+test('only the app\'s files and localhost count as trusted addresses', () => {
+  assert.ok(isTrustedNavigation('file:///C:/app/dist/index.html#/operator'));
+  assert.ok(isTrustedNavigation('http://localhost:5173/#/operator'));
+  assert.equal(isTrustedNavigation('https://example.com/'), false);
+  assert.equal(isTrustedNavigation('https://localhost.example.com/'), false);
+  assert.equal(isTrustedNavigation('javascript:alert(1)'), false);
+  assert.equal(isTrustedNavigation('not a url'), false);
+});
+
+/** A window whose page records navigation and pop-up handling. */
+function fakeWindow() {
+  const contents = fakeContents();
+  contents.setWindowOpenHandler = (handler) => {
+    contents.windowOpen = handler;
+  };
+  return { webContents: contents };
+}
+
+test('setupAntiTamper blocks outside navigation and pop-ups in production, and logs both', () => {
+  const win = fakeWindow();
+  const logs = [];
+  assert.equal(setupAntiTamper(win, false, { platform: 'win32', log: (...a) => logs.push(a) }), true);
+  const navigate = (url) => {
+    const event = { url, prevented: false, preventDefault() { this.prevented = true; } };
+    win.webContents.emit('will-navigate', event, url);
+    return event.prevented;
+  };
+  assert.equal(navigate('https://example.com/'), true);
+  assert.equal(navigate('file:///C:/app/dist/index.html'), false);
+  assert.deepEqual(win.webContents.windowOpen({ url: 'https://example.com/' }), { action: 'deny' });
+  assert.deepEqual(logs.map(([event]) => event), ['navigation-blocked', 'window-open-denied']);
+});
+
+test('setupAntiTamper leaves a development run alone', () => {
+  const win = fakeWindow();
+  assert.equal(setupAntiTamper(win, true, { platform: 'win32', log: () => {} }), false);
+  assert.equal(win.webContents.listenerCount('devtools-opened'), 0);
+  assert.equal(win.webContents.windowOpen, undefined);
+});
+
+test('a page reached by both the app-wide lockout and setupAntiTamper closes DevTools and logs only once', () => {
+  const win = fakeWindow();
+  const logs = [];
+  const options = { platform: 'win32', log: (...a) => logs.push(a) };
+  guardWebContents(win.webContents, options);
+  setupAntiTamper(win, false, options);
+  win.webContents.emit('devtools-opened');
+  assert.equal(win.webContents.closed, 1);
+  assert.equal(logs.length, 1);
+});
+
+test('the packaged build runs the compiled entry, and the fuses are applied while packaging', () => {
+  const root = new URL('../', import.meta.url);
+  const pkg = JSON.parse(fs.readFileSync(new URL('package.json', root), 'utf8'));
+  assert.equal(pkg.build.extraMetadata.main, 'dist-electron/main.js');
+  assert.ok(pkg.build.files.includes('dist-electron/**/*'));
+  assert.ok(pkg.dependencies.bytenode, 'the bytecode loader runs in the installed app, so it must be a runtime dependency');
+  for (const script of ['build', 'release', 'pack', 'dist']) assert.match(pkg.scripts[script], /npm run build:electron && electron-builder/);
+  assert.equal(pkg.build.afterPack, 'tools/after-pack.cjs');
+  assert.match(fs.readFileSync(new URL('tools/after-pack.cjs', root), 'utf8'), /setFuses/);
 });

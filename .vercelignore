@@ -6,6 +6,8 @@
 /public
 /build
 /dist
+/dist-electron
+/scripts
 /release
 /out
 # tools/ stays out, except build-native.mjs: the API builder runs npm install, whose postinstall calls it. On Linux it

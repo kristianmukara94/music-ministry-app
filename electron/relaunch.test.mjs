@@ -56,5 +56,5 @@ test('a dev window whose server is not up yet is tried again, for a limited time
 });
 
 test('in development the dev URL falls back to Vite\'s port when there is no built copy to load, and the installed app never reads it', () => {
-  assert.match(MAIN, /const DEV_URL = app\.isPackaged\s*\?\s*null\s*:\s*process\.env\.VITE_DEV_SERVER_URL \|\| \(!fs\.existsSync\(path\.join\(__dirname, '\.\.\/dist\/index\.html'\)\) \? 'http:\/\/localhost:5173' : null\);/);
+  assert.match(MAIN, /const DEV_URL = app\.isPackaged\s*\?\s*null\s*:\s*process\.env\.VITE_DEV_SERVER_URL \|\| \(!fs\.existsSync\(path\.join\(appDir, '\.\.\/dist\/index\.html'\)\) \? 'http:\/\/localhost:5173' : null\);/);
 });

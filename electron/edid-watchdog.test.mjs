@@ -500,7 +500,7 @@ test('main.js reads the hardware on every topology event, hooks WM_DISPLAYCHANGE
   assert.ok(main.includes("win.hookWindowMessage(WM_DISPLAYCHANGE, () => edid?.topologyChanged('WM_DISPLAYCHANGE'))"));
   assert.ok(main.includes("lockedTarget: () => edid?.target('projector') ?? { locked: false }"));
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  assert.ok(pkg.build.asarUnpack.includes('electron/display-matrix.node'));
-  assert.match(pkg.scripts.release, /node tools\/build-native\.mjs && electron-builder/);
+  assert.ok(pkg.build.asarUnpack.includes('dist-electron/display-matrix.node'));
+  assert.match(pkg.scripts.release, /node tools\/build-native\.mjs && npm run build:electron && electron-builder/);
   assert.match(pkg.scripts.postinstall, /build-native\.mjs --optional/);
 });

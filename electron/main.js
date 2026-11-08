@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen, session, shell } from 'electron';
 // First of the app's own modules: in the packaged app it refuses debugging flags before anything else is loaded (see anti-tamper.js).
-import './anti-tamper.js';
+import { SECURE_WEB_PREFERENCES, setupAntiTamper } from './anti-tamper.js';
 import { createCloudDevice } from './cloud-device.js';
 import { createSongSync, SONG_ROWS_SQL } from './song-sync.js';
 import { createPlanSync } from './plan-sync.js';
@@ -72,17 +72,18 @@ enforceHardwareLock();
 // Windows needs this to show notifications under the app's name. It must match build.appId in package.json.
 app.setAppUserModelId('com.apccmma.churchapp');
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Not called __dirname: the release build makes this file a CommonJS module, where that name is already taken.
+const appDir = path.dirname(fileURLToPath(import.meta.url));
 // In development the windows load the Vite dev server. The URL comes from the environment the dev script sets, and falls back to Vite's default
 // port when the app is unpackaged and there is no built copy to load, so a relaunch still finds the server. The installed app never looks at
 // this: an environment variable must not be able to point its windows, with their full bridge to the main process, at another page.
 const DEV_URL = app.isPackaged
   ? null
-  : process.env.VITE_DEV_SERVER_URL || (!fs.existsSync(path.join(__dirname, '../dist/index.html')) ? 'http://localhost:5173' : null);
+  : process.env.VITE_DEV_SERVER_URL || (!fs.existsSync(path.join(appDir, '../dist/index.html')) ? 'http://localhost:5173' : null);
 
 // Every page the app creates, from now on, stays on the app's own page and opens no other windows (see web-lockdown.js).
 app.on('web-contents-created', (_event, contents) => {
-  lockDownContents(contents, { isAllowed: (url) => isOwnPage(url, { devUrl: DEV_URL, entryFile: path.join(__dirname, '../dist/index.html') }) });
+  lockDownContents(contents, { isAllowed: (url) => isOwnPage(url, { devUrl: DEV_URL, entryFile: path.join(appDir, '../dist/index.html') }) });
 });
 
 // Failures that mean the page is not reachable yet (the dev server still starting, a network not up). A missing file is not retried.
@@ -92,7 +93,7 @@ const RETRY_MS = 1000;
 
 // The parish logo. Windows uses the .ico (taskbar and window frame); elsewhere the .png.
 // Missing files fall back to Electron's default icon rather than failing to start.
-const ICON_PATH = path.join(__dirname, '..', 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+const ICON_PATH = path.join(appDir, '..', 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 const APP_ICON = fs.existsSync(ICON_PATH) ? ICON_PATH : undefined;
 
 // The main process owns the authoritative live state. Every window is a view of it.
@@ -191,9 +192,8 @@ ipcMain.handle('whiteboard:openEditor', (_event, slideId) => {
 });
 
 const webPreferences = {
-  preload: path.join(__dirname, 'preload.cjs'),
-  contextIsolation: true,
-  sandbox: true,
+  ...SECURE_WEB_PREFERENCES,
+  preload: path.join(appDir, 'preload.cjs'),
 };
 
 function load(win, route) {
@@ -214,7 +214,7 @@ function load(win, route) {
     console.error(`[window ${route}] its renderer stopped: ${details.reason}`);
   });
   if (DEV_URL) win.loadURL(`${DEV_URL}#/${route}`);
-  else win.loadFile(path.join(__dirname, '../dist/index.html'), { hash: `/${route}` });
+  else win.loadFile(path.join(appDir, '../dist/index.html'), { hash: `/${route}` });
 }
 
 /**
@@ -497,7 +497,7 @@ const ACTIVITY_LIMIT = 30;
 /** The two viewers' pages. Each is its own server on its own port: Primary controls the output, Secondary only watches. */
 const remoteViews = {
   primary: createRemoteViewServer({
-    distDir: path.join(__dirname, '../dist'),
+    distDir: path.join(appDir, '../dist'),
     role: 'primary',
     canConnect: canAcceptPhone,
     onControl: controlFromPhone,
@@ -505,7 +505,7 @@ const remoteViews = {
     // The TV page's port, from the saved Secondary viewer settings, so the helper page links to the right address.
     tvPort: () => readConfig(app.getPath('userData')).remote_view.secondary.port,
   }),
-  secondary: createRemoteViewServer({ distDir: path.join(__dirname, '../dist'), role: 'secondary', canConnect: canAcceptPhone, mediaFile: mediaFileFor, slideFile: slideFileFor }),
+  secondary: createRemoteViewServer({ distDir: path.join(appDir, '../dist'), role: 'secondary', canConnect: canAcceptPhone, mediaFile: mediaFileFor, slideFile: slideFileFor }),
 };
 // Why each viewer is not running when it is turned on. Null when it runs, or when it is off.
 const remoteViewErrors = { primary: null, secondary: null };
@@ -900,6 +900,7 @@ function createOperator() {
     titleBarOverlay: titleBarOverlayFor(readConfig(app.getPath('userData')).theme),
     webPreferences,
   });
+  setupAntiTamper(win, !app.isPackaged);
   windows.operator = win;
   // Windows' own display-change message: a graphics driver restart sends it even when Electron reports no screen change. Electron's display
   // list may not be updated yet when it arrives, so it only re-reads the hardware and schedules the settle checks, which re-anchor the projector.
@@ -1557,7 +1558,7 @@ app.whenReady().then(() => {
   setupSpontaneousLog(announcements.db, { isProjectorOpen: () => Boolean(windows.projector && !windows.projector.isDestroyed()) });
   setupWhiteboard(announcements.db, announcements.service, { onChanged: announceWhiteboardChange, convertPdf: announcements.convertPdf });
   // The browser source: the lower third at http://127.0.0.1:3002/lower-third, updated live.
-  lowerThirdServer = createLowerThirdServer({ distDir: path.join(__dirname, '../dist') });
+  lowerThirdServer = createLowerThirdServer({ distDir: path.join(appDir, '../dist') });
   void lowerThirdServer.start().then((ok) => {
     lowerThirdServerUp = ok;
   });

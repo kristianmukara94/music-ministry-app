@@ -10,18 +10,24 @@
   "scripts": {
     "dev": "concurrently -k -n vite,electron \"vite\" \"wait-on http://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "dev:web": "vite",
-    "build": "tsc --noEmit && vite build && node tools/build-native.mjs && electron-builder",
-    "release": "tsc --noEmit && vite build && node tools/build-native.mjs && electron-builder --publish always",
+    "typecheck": "tsc --noEmit",
+    "build:electron": "node tools/compile-bytecode.mjs",
+    "build": "tsc --noEmit && vite build && node tools/build-native.mjs && npm run build:electron && electron-builder --win",
+    "release": "tsc --noEmit && vite build && node tools/build-native.mjs && npm run build:electron && electron-builder --publish always",
     "start": "electron .",
     "test": "node --test \"electron/*.test.mjs\" \"shared/*.test.js\"",
     "postinstall": "electron-builder install-app-deps && node tools/build-native.mjs --optional",
     "rebuild:native": "electron-builder install-app-deps && node tools/build-native.mjs",
-    "pack": "tsc --noEmit && vite build && node tools/build-native.mjs && electron-builder --win --dir",
-    "dist": "tsc --noEmit && vite build && node tools/build-native.mjs && electron-builder --win"
+    "pack": "tsc --noEmit && vite build && node tools/build-native.mjs && npm run build:electron && electron-builder --win --dir",
+    "postpack": "node scripts/set-fuses.js --verify",
+    "dist": "tsc --noEmit && vite build && node tools/build-native.mjs && npm run build:electron && electron-builder --win"
   },
   "build": {
     "appId": "com.apccmma.churchapp",
     "productName": "APCCMMA Presentation",
+    "extraMetadata": {
+      "main": "dist-electron/main.js"
+    },
     "copyright": "Copyright © Our Lady of the Assumption Parish, Davao City",
     "directories": {
       "buildResources": "build",
@@ -36,8 +42,7 @@
     ],
     "files": [
       "dist/**/*",
-      "electron/**/*",
-      "shared/**/*",
+      "dist-electron/**/*",
       "build/icon.ico",
       "build/icon.png",
       "package.json"
@@ -45,7 +50,7 @@
     "asar": true,
     "asarUnpack": [
       "node_modules/better-sqlite3/**/*",
-      "electron/display-matrix.node"
+      "dist-electron/display-matrix.node"
     ],
     "extraResources": [
       {
@@ -92,6 +97,7 @@
     "@fontsource/merriweather": "^5.3.0",
     "@neondatabase/serverless": "^1.2.0",
     "better-sqlite3": "^11.8.1",
+    "bytenode": "^2.1.0",
     "electron-updater": "^6.8.11",
     "jszip": "^3.10.2",
     "lucide-react": "^0.469.0",
@@ -115,6 +121,7 @@
     "cross-env": "^7.0.3",
     "electron": "^33.3.1",
     "electron-builder": "^25.1.8",
+    "esbuild": "0.25.12",
     "tailwindcss": "^4.1.11",
     "typescript": "^5.7.3",
     "vite": "^6.0.7",
