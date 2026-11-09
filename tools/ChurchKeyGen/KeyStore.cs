@@ -8,9 +8,9 @@ namespace ChurchKeyGen;
 
 /// <summary>
 /// Saves setup keys to the website database. The server only accepts a key whose keyed hash is in setup_keys, so a key must never be shown
-/// before it is saved here. Credentials come from the environment, then the fallback constants, and are never shown in a message.
+/// before it is saved here. Credentials come from the environment, then the Git-ignored KeyStore.Secrets.cs, and are never shown in a message.
 /// </summary>
-public sealed class KeyStore
+public sealed partial class KeyStore
 {
     public const string Connected = "Ready. Keys are saved to the website database.";
     public const string NotConnected = "Not connected. Set DATABASE_URL and TOKEN_SECRET, then reopen this app.";
@@ -21,9 +21,7 @@ public sealed class KeyStore
     private const int TimeoutSeconds = 20; // A sleeping Neon database can take several seconds to wake.
     private const string UndefinedColumn = "42703";
 
-    // Used when the OS environment variables are not set. Anything that is not a Postgres URL and a full-length secret reports as not connected.
-    private const string FallbackDatabaseUrl = "postgresql://neondb_owner:npg_NP97cOBUSqfQ@ep-dark-moon-b3n4lklm-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
-    private const string FallbackTokenSecret = "8b1ad7c42732908b3c99ec1c8b300bab41f694f09d907b172959e052df5eb685";
+    private static readonly (string DatabaseUrl, string TokenSecret) LocalSecrets = ReadLocalSecrets();
 
     private readonly string _databaseUrl;
     private readonly string _tokenSecret;
@@ -34,16 +32,31 @@ public sealed class KeyStore
         _tokenSecret = tokenSecret;
     }
 
+    /// <summary>
+    /// Implemented only in KeyStore.Secrets.cs, which the project compiles when the file exists. Without it the call is removed,
+    /// the values stay empty, and the app reports as not connected unless the environment variables are set.
+    /// To build a working exe, add that file with this method in a partial KeyStore class, assigning both parameters.
+    /// </summary>
+    static partial void ApplyLocalSecrets(ref string databaseUrl, ref string tokenSecret);
+
+    private static (string DatabaseUrl, string TokenSecret) ReadLocalSecrets()
+    {
+        var databaseUrl = string.Empty;
+        var tokenSecret = string.Empty;
+        ApplyLocalSecrets(ref databaseUrl, ref tokenSecret);
+        return (databaseUrl, tokenSecret);
+    }
+
     public static string GetDatabaseUrl()
     {
         var envUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
-        return !string.IsNullOrWhiteSpace(envUrl) ? envUrl : FallbackDatabaseUrl;
+        return !string.IsNullOrWhiteSpace(envUrl) ? envUrl : LocalSecrets.DatabaseUrl;
     }
 
     public static string GetTokenSecret()
     {
         var envSecret = Environment.GetEnvironmentVariable("TOKEN_SECRET");
-        return !string.IsNullOrWhiteSpace(envSecret) ? envSecret : FallbackTokenSecret;
+        return !string.IsNullOrWhiteSpace(envSecret) ? envSecret : LocalSecrets.TokenSecret;
     }
 
     public static bool IsConfigured() => Create() is not null;

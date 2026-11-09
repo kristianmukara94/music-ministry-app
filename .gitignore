@@ -13,6 +13,7 @@ out/
 /tools/ChurchKeyGen/bin
 /tools/ChurchKeyGen/obj
 /tools/ChurchKeyGen/publish
+tools/ChurchKeyGen/KeyStore.Secrets.cs
 
 # The display-matrix addon is built from src/native by tools/build-native.mjs, never committed.
 electron/display-matrix.node
