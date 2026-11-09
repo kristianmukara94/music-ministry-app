@@ -10,7 +10,7 @@ namespace ChurchKeyGen;
 /// Saves setup keys to the website database. The server only accepts a key whose keyed hash is in setup_keys, so a key must never be shown
 /// before it is saved here. Credentials come from the environment, then the Git-ignored KeyStore.Secrets.cs, and are never shown in a message.
 /// </summary>
-public sealed partial class KeyStore
+public partial class KeyStore
 {
     public const string Connected = "Ready. Keys are saved to the website database.";
     public const string NotConnected = "Not connected. Set DATABASE_URL and TOKEN_SECRET, then reopen this app.";
