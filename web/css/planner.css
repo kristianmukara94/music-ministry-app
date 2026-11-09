@@ -39,6 +39,10 @@
   --warn-bg: #33240c;
   --warn-text: #f2bd6b;
   --danger: #fca5a5;
+  --status-active-text: #34d399;
+  --status-active-bg: rgba(52, 211, 153, 0.12);
+  --status-disabled-text: #f87171;
+  --status-disabled-bg: rgba(239, 68, 68, 0.12);
   --status-saved: #34d399;
   --status-unsaved: #fbbf24;
 
@@ -573,7 +577,6 @@ button:disabled {
   color: var(--danger);
 }
 
-dialog#temp-dialog,
 dialog.modal {
   width: min(460px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
@@ -586,7 +589,6 @@ dialog.modal {
   font-family: var(--font-sans);
 }
 
-dialog#temp-dialog::backdrop,
 dialog.modal::backdrop {
   background: rgba(8, 12, 20, 0.8);
 }
@@ -630,6 +632,252 @@ dialog.modal::backdrop {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+/* Users page: the summary bar, the search toolbar, the user cards and the temporary-credentials modal. */
+.users-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(124px, 1fr));
+  gap: 10px;
+}
+
+.summary-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.summary-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.summary-pill strong {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: lining-nums;
+  line-height: 1.2;
+  color: var(--heading);
+}
+
+.users-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.users-search {
+  position: relative;
+  flex: 1 1 260px;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.users-search svg {
+  position: absolute;
+  top: 13px;
+  left: 13px;
+  pointer-events: none;
+}
+
+.users-search input,
+.users-role-filter select {
+  height: 42px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-control);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.users-search input {
+  width: 100%;
+  padding: 0 42px 0 38px;
+}
+
+.users-search kbd {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  min-width: 22px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-input);
+  border-radius: 5px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* The hint gives way to the browser's clear button once something is typed. Touch screens have no "/" key to press. */
+.users-search input:not(:placeholder-shown) ~ kbd {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .users-search kbd {
+    display: none;
+  }
+}
+
+.users-role-filter select {
+  padding: 0 12px;
+}
+
+.users-count {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.users-message {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.user-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  transition: background-color 0.15s ease;
+}
+
+.user-card:hover {
+  background: var(--surface-hover);
+}
+
+.user-card-who {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.user-card-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.user-card-meta {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.user-card-badges,
+.user-card-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge-pill.badge-you,
+.badge-pill.badge-pending {
+  border-color: var(--gold-edge);
+  background: var(--gold-wash);
+  color: var(--eyebrow);
+}
+
+.badge-pill.badge-active {
+  background: var(--status-active-bg);
+  color: var(--status-active-text);
+}
+
+.badge-pill.badge-disabled {
+  background: var(--status-disabled-bg);
+  color: var(--status-disabled-text);
+}
+
+.badge-pill.badge-locked {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+.credential-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+}
+
+.credential-fields dt {
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.credential-fields dd {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.credential-fields code {
+  overflow-wrap: anywhere;
+}
+
+.dialog-body code.credential-username {
+  padding: 10px 16px;
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.dialog-body p.credential-warning {
+  color: var(--warn-text);
+}
+
+.dialog-body p.credential-status {
+  min-height: 1.5em;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+button.credential-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-card {
+    transition: none;
+  }
 }
 
 /* The sign-in page has its own stylesheet, css/login.css. */

@@ -26,6 +26,14 @@
       <p style="margin: 0; max-width: 680px; font-size: 15px; line-height: 1.55; color: var(--text)">Add people who plan for the church, and choose what each can do. A temporary password is shown once, when it is made. The person must choose their own at first sign-in.</p>
     </header>
 
+    <section aria-label="Team summary" class="users-summary">
+      <div class="summary-pill"><span class="summary-label">Total Team</span><strong id="stat-total">–</strong></div>
+      <div class="summary-pill"><span class="summary-label">Admins</span><strong id="stat-admins">–</strong></div>
+      <div class="summary-pill"><span class="summary-label">Planners</span><strong id="stat-planners">–</strong></div>
+      <div class="summary-pill"><span class="summary-label">Viewers</span><strong id="stat-viewers">–</strong></div>
+      <div class="summary-pill" title="Accounts nobody has signed in to yet"><span class="summary-label">Pending</span><strong id="stat-pending">–</strong></div>
+    </section>
+
     <section aria-label="Add a user" style="border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 20px; display: flex; flex-direction: column; gap: 16px">
       <h2 class="section-title">Add a user</h2>
       <form id="add-user" style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px">
@@ -48,23 +56,56 @@
     </section>
 
     <section aria-label="Users in this church" style="display: flex; flex-direction: column; gap: 12px">
-      <p id="users-error" role="alert" class="form-error"></p>
-      <div id="users" style="border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden">
-        <p style="margin: 0; padding: 18px; font-size: 14px; color: var(--muted)">Loading users…</p>
+      <div class="users-toolbar">
+        <label class="users-search">
+          <span class="sr-only">Search users by name or username</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="user-search-input" type="search" maxlength="120" placeholder="Search by name or username" autocomplete="off" autocapitalize="off" spellcheck="false" aria-keyshortcuts="/">
+          <kbd aria-hidden="true">/</kbd>
+        </label>
+        <label class="users-role-filter">
+          <span class="sr-only">Filter by role</span>
+          <select id="user-role-filter">
+            <option value="All">All Roles</option>
+            <option value="admin">Admin</option>
+            <option value="planner">Planner</option>
+            <option value="viewer">Viewer</option>
+          </select>
+        </label>
+        <span id="users-count" class="users-count" role="status"></span>
       </div>
+      <p id="users-error" role="alert" class="form-error"></p>
+      <ul id="users" class="users-list" aria-busy="true">
+        <li class="users-message">Loading users…</li>
+      </ul>
     </section>
   </main>
 </div>
 
-<dialog id="temp-dialog" aria-labelledby="temp-title">
+<dialog id="credentials-modal" class="modal" aria-labelledby="credentials-title" aria-describedby="credentials-note">
   <div class="dialog-body">
-    <h2 id="temp-title">Temporary password</h2>
-    <p id="temp-who"></p>
-    <p class="dialog-note">Give this to the person now. It is not shown again, and it is not kept anywhere. They must choose their own password at first sign-in.</p>
-    <code id="temp-value" aria-label="Temporary password"></code>
+    <span class="eyebrow">Shown once</span>
+    <h2 id="credentials-title">Temporary credentials</h2>
+    <p id="credentials-who"></p>
+    <dl class="credential-fields">
+      <div>
+        <dt>Username</dt>
+        <dd><code id="credentials-username" class="credential-username"></code></dd>
+      </div>
+      <div>
+        <dt>Temporary password</dt>
+        <dd><code id="credentials-password"></code></dd>
+      </div>
+    </dl>
+    <p id="credentials-note">Give these to the person now. They are not shown again, and the password is not kept anywhere. They must choose their own password at their next sign-in.</p>
+    <p id="credentials-self-note" class="credential-warning" hidden>This is your own account and you are now signed out. Copy these before you press Done, then sign in with them.</p>
+    <p id="credentials-copy-status" class="credential-status" role="status"></p>
     <div class="dialog-actions">
-      <button type="button" id="temp-copy" class="quiet">Copy</button>
-      <button type="button" id="temp-close" class="primary">Done</button>
+      <button type="button" id="credentials-copy" class="quiet credential-copy">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
+        <span id="credentials-copy-label">Copy</span>
+      </button>
+      <button type="button" id="credentials-close" class="primary">Done</button>
     </div>
   </div>
 </dialog>

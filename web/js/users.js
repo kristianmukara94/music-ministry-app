@@ -1,22 +1,28 @@
-// Users: the church's admins manage its accounts here. Every change goes to the server, which checks the role and the
-// church again. A temporary password appears only in the dialog that follows a create or a reset, and nowhere else.
-import { esc, mountSidebar } from './shell.js';
+// Users: the church's admins manage its accounts here. Every change goes to the server, which checks the role and the church again, so the
+// guards on this page only stop accidents. Temporary credentials appear only in the modal that follows a create or a reset, and nowhere else.
+// Names and usernames reach the page through text nodes, so nothing a person typed is ever read as markup.
+import { mountSidebar } from './shell.js';
 import { guard } from './auth.js';
+import { ROLES, ROLE_LABEL, STATUS, credentialsText, filterUsers, isPending, isSelf, teamSummary } from './user-list.js';
 
 mountSidebar();
 
 const API = '/api';
-const ROLE_LABEL = { admin: 'Admin', planner: 'Planner', viewer: 'Viewer' };
-const STATUS = {
-  active: { label: 'Active', fg: 'var(--pill-text)', bg: 'var(--pill-bg)', edge: 'var(--pill-border)' },
-  disabled: { label: 'Disabled', fg: 'var(--text)', bg: 'var(--border)', edge: 'transparent' },
-  locked: { label: 'Locked', fg: 'var(--warn-text)', bg: 'var(--warn-bg)', edge: 'transparent' },
-};
+const SELF_NOTE = 'This is your account. Another admin must change its role or disable it.';
 
 const $ = (id) => document.getElementById(id);
 const setError = (id, text) => {
   $(id).textContent = text;
 };
+
+let currentSessionUser = null;
+// Set when an admin resets their own password. The server has ended this session, so the page stops asking it for anything.
+let sessionEnded = false;
+let refreshTicket = 0;
+// Which control had focus when the list was redrawn, so a keyboard user keeps their place.
+let focusKey = null;
+
+const state = { users: [], list: 'loading', q: '', role: 'All', busy: new Set() };
 
 async function call(path, method, body) {
   let res;
@@ -41,116 +47,267 @@ async function call(path, method, body) {
   return data;
 }
 
-/** Shows a temporary password once, in the dialog. Nothing is stored. */
-function showTemporary(who, password) {
-  $('temp-who').textContent = who;
-  $('temp-value').textContent = password;
-  $('temp-dialog').showModal();
+/** One element. Strings among `children` become text nodes. An attribute set to false or null is left off. */
+function h(tag, attributes = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [name, value] of Object.entries(attributes)) {
+    if (value === false || value === null || value === undefined) continue;
+    node.setAttribute(name, value === true ? '' : String(value));
+  }
+  node.append(...children.filter((child) => child !== null && child !== undefined));
+  return node;
 }
 
-function lastSignIn(iso) {
-  return iso ? new Date(iso).toLocaleString() : 'Never';
+const lastSignIn = (iso) => (iso ? new Date(iso).toLocaleString() : 'Never');
+const message = (text) => h('li', { class: 'users-message' }, text);
+
+function actionButton(action, label, user, spoken, { disabled = false, extra = {} } = {}) {
+  return h(
+    'button',
+    { type: 'button', class: 'quiet', 'data-action': action, 'data-id': user.id, 'data-focus': `${action}:${user.id}`, 'aria-label': `${spoken} ${user.displayName}`, disabled, ...extra },
+    label,
+  );
 }
 
-function rowHtml(u) {
-  const s = STATUS[u.status];
-  return `
-    <div data-row="${esc(u.id)}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 16px 18px; border-bottom: 1px solid var(--border)">
-      <span style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 3px">
-        <span style="font-size: 15px; font-weight: 700">${esc(u.displayName)}</span>
-        <span style="font-size: 12px; color: var(--muted)">${esc(u.username)} · last sign-in ${esc(lastSignIn(u.lastSignInAt))}</span>
-      </span>
-      <label class="field small">Role
-        <select data-role="${esc(u.id)}">
-          ${['admin', 'planner', 'viewer'].map((r) => `<option value="${r}" ${r === u.role ? 'selected' : ''}>${ROLE_LABEL[r]}</option>`).join('')}
-        </select>
-      </label>
-      <span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 99px; font-size: 12px; font-weight: 600; border: 1px solid ${s.edge}; color: ${s.fg}; background: ${s.bg}">${s.label}</span>
-      <span style="display: inline-flex; flex-wrap: wrap; gap: 8px">
-        ${u.status === 'locked' ? `<button type="button" class="quiet" data-action="unlock" data-id="${esc(u.id)}">Unlock</button>` : ''}
-        <button type="button" class="quiet" data-action="reset" data-id="${esc(u.id)}">Reset password</button>
-        <button type="button" class="quiet" data-action="toggle" data-id="${esc(u.id)}" data-disabled="${u.status === 'disabled'}">${u.status === 'disabled' ? 'Enable' : 'Disable'}</button>
-      </span>
-    </div>`;
+function userCard(user) {
+  const self = isSelf(user, currentSessionUser);
+  const busy = state.busy.has(user.id);
+  const status = STATUS[user.status];
+  const noteId = `self-note-${user.id}`;
+  const describedBy = self ? noteId : null;
+  const roleSelect = h(
+    'select',
+    { 'data-role': user.id, 'data-focus': `role:${user.id}`, 'aria-label': `Role for ${user.displayName}`, 'aria-describedby': describedBy, disabled: self || busy },
+    ...ROLES.map((role) => h('option', { value: role, selected: role === user.role }, ROLE_LABEL[role])),
+  );
+  const isDisabled = user.status === 'disabled';
+
+  return h(
+    'li',
+    { class: 'user-card', 'data-row': user.id },
+    h(
+      'div',
+      { class: 'user-card-who' },
+      h('div', { class: 'user-card-name' }, h('span', {}, user.displayName), self ? h('span', { class: 'badge-pill badge-you' }, 'You') : null),
+      h('span', { class: 'user-card-meta' }, `${user.username} · last sign-in ${lastSignIn(user.lastSignInAt)}`),
+      self ? h('span', { id: noteId, class: 'user-card-meta' }, SELF_NOTE) : null,
+    ),
+    h('label', { class: 'field small' }, 'Role', roleSelect),
+    h(
+      'div',
+      { class: 'user-card-badges' },
+      h('span', { class: `badge-pill badge-${status.tone}` }, status.label),
+      isPending(user) ? h('span', { class: 'badge-pill badge-pending', title: 'Nobody has signed in to this account yet.' }, 'Pending') : null,
+    ),
+    h(
+      'div',
+      { class: 'user-card-actions' },
+      user.status === 'locked' ? actionButton('unlock', 'Unlock', user, 'Unlock', { disabled: busy }) : null,
+      actionButton('reset', 'Reset password', user, 'Reset password for', { disabled: busy }),
+      actionButton('toggle', isDisabled ? 'Enable' : 'Disable', user, isDisabled ? 'Enable' : 'Disable', {
+        disabled: self || busy,
+        extra: { 'data-disabled': String(isDisabled), 'aria-describedby': describedBy },
+      }),
+    ),
+  );
+}
+
+function restoreFocus() {
+  if (!focusKey) return;
+  const active = document.activeElement;
+  if (active !== document.body && !$('users').contains(active)) return;
+  const target = $('users').querySelector(`[data-focus="${CSS.escape(focusKey)}"]`);
+  if (target && !target.disabled) {
+    target.focus();
+    focusKey = null;
+  } else if (state.busy.size === 0) {
+    focusKey = null;
+  }
+}
+
+function renderSummary() {
+  const summary = teamSummary(state.users);
+  const ready = state.list === 'ready';
+  for (const name of Object.keys(summary)) $(`stat-${name}`).textContent = ready ? String(summary[name]) : '–';
+}
+
+function render() {
+  renderSummary();
+  const focused = document.activeElement?.closest?.('#users [data-focus]');
+  if (focused) focusKey = focused.dataset.focus;
+
+  const list = $('users');
+  list.setAttribute('aria-busy', String(state.list === 'loading'));
+  if (state.list === 'loading') {
+    list.replaceChildren(message('Loading users…'));
+    return;
+  }
+  if (state.list === 'failed') {
+    list.replaceChildren(message('The list could not be loaded. Reload this page to try again.'));
+    $('users-count').textContent = '';
+    return;
+  }
+
+  const shown = filterUsers(state.users, state);
+  const filtering = state.q.trim() !== '' || state.role !== 'All';
+  $('users-count').textContent = filtering ? `Showing ${shown.length} of ${state.users.length}` : `${state.users.length} ${state.users.length === 1 ? 'person' : 'people'}`;
+  if (shown.length) list.replaceChildren(...shown.map(userCard));
+  else list.replaceChildren(message(state.users.length ? 'Nobody matches this search and role.' : 'No users yet.'));
+  restoreFocus();
 }
 
 async function refresh() {
+  if (sessionEnded) return;
+  // Two changes can overlap. Only the answer to the latest request is drawn, so an older list never overwrites a newer one.
+  const ticket = ++refreshTicket;
   try {
     const { users } = await call('users-list', 'GET');
-    $('users').innerHTML = users.length
-      ? `<div class="eyebrow" style="padding: 14px 18px; background: var(--input-bg); border-bottom: 1px solid var(--border)">${users.length} PEOPLE IN THIS CHURCH</div>${users.map(rowHtml).join('')}`
-      : '<p style="margin: 0; padding: 18px; font-size: 14px; color: var(--muted)">No users yet.</p>';
+    if (ticket !== refreshTicket) return;
+    state.users = users;
+    state.list = 'ready';
+  } catch (err) {
+    if (ticket !== refreshTicket) return;
+    if (state.list === 'loading') state.list = 'failed';
+    setError('users-error', err.message);
+  }
+  render();
+}
+
+/** Shows temporary credentials once, in the modal. Nothing is stored, and closing the modal empties it. */
+function showCredentials(who, username, password, ownAccount = false) {
+  $('credentials-who').textContent = who;
+  $('credentials-username').textContent = username;
+  $('credentials-password').textContent = password;
+  $('credentials-copy-label').textContent = 'Copy';
+  $('credentials-copy-status').textContent = '';
+  $('credentials-self-note').hidden = !ownAccount;
+  $('credentials-modal').showModal();
+}
+
+/** Runs one change on one account: its controls wait for the answer, a refusal stays on screen, and the list is read again either way. */
+async function changeUser(user, work) {
+  setError('users-error', '');
+  state.busy.add(user.id);
+  render();
+  try {
+    await work();
   } catch (err) {
     setError('users-error', err.message);
   }
+  state.busy.delete(user.id);
+  await refresh();
 }
+
+const findUser = (id) => state.users.find((u) => u.id === id);
 
 $('add-user').addEventListener('submit', async (event) => {
   event.preventDefault();
   setError('add-error', '');
   const form = event.currentTarget;
+  const submit = form.querySelector('button[type="submit"]');
   const data = Object.fromEntries(new FormData(form));
+  submit.disabled = true;
   try {
     const created = await call('users-create', 'POST', { username: data.username.trim(), displayName: data.displayName.trim(), role: data.role });
     form.reset();
-    showTemporary(`${created.user.displayName} (${created.user.username})`, created.temporaryPassword);
+    showCredentials(created.user.displayName, created.user.username, created.temporaryPassword);
     await refresh();
   } catch (err) {
     setError('add-error', err.message);
+  } finally {
+    submit.disabled = false;
   }
 });
 
 $('users').addEventListener('change', async (event) => {
   const select = event.target.closest('select[data-role]');
   if (!select) return;
-  setError('users-error', '');
-  try {
-    await call('users-update', 'POST', { userId: select.dataset.role, role: select.value });
-    await refresh();
-  } catch (err) {
-    // The refusal stays on screen. The reload puts the select back on the saved role.
-    setError('users-error', err.message);
-    await refresh();
-  }
+  const user = findUser(select.dataset.role);
+  if (!user || isSelf(user, currentSessionUser)) return;
+  const role = select.value;
+  const previous = user.role;
+  // The new role is drawn at once. If the server refuses, the select goes back to the saved role and the refusal stays on screen.
+  user.role = role;
+  await changeUser(user, async () => {
+    try {
+      await call('users-update', 'POST', { userId: user.id, role });
+    } catch (err) {
+      user.role = previous;
+      throw err;
+    }
+  });
 });
 
 $('users').addEventListener('click', async (event) => {
   const button = event.target.closest('button[data-action]');
   if (!button) return;
-  const id = button.dataset.id;
-  const name = button.closest('[data-row]')?.querySelector('span span')?.textContent ?? 'this person';
-  setError('users-error', '');
-  try {
-    if (button.dataset.action === 'unlock') {
-      await call('users-unlock', 'POST', { userId: id });
-    } else if (button.dataset.action === 'toggle') {
-      const disable = button.dataset.disabled !== 'true';
-      if (disable && !window.confirm('Disable this account? Their sessions end at once, and they cannot sign in until enabled.')) return;
-      await call('users-update', 'POST', { userId: id, disabled: disable });
-    } else if (button.dataset.action === 'reset') {
-      if (!window.confirm('Reset this password? A new temporary password is shown once, and their sessions end.')) return;
-      const reset = await call('users-reset-password', 'POST', { userId: id });
-      showTemporary(name, reset.temporaryPassword);
-    }
-  } catch (err) {
-    setError('users-error', err.message);
+  const user = findUser(button.dataset.id);
+  if (!user) return;
+  const self = isSelf(user, currentSessionUser);
+
+  if (button.dataset.action === 'unlock') {
+    await changeUser(user, () => call('users-unlock', 'POST', { userId: user.id }));
+  } else if (button.dataset.action === 'toggle') {
+    if (self) return;
+    const disable = button.dataset.disabled !== 'true';
+    if (disable && !window.confirm('Disable this account? Their sessions end at once, and they cannot sign in until enabled.')) return;
+    await changeUser(user, () => call('users-update', 'POST', { userId: user.id, disabled: disable }));
+  } else if (button.dataset.action === 'reset') {
+    // An admin may reset their own password, and it is how they replace one that still works. It ends this session, so they are told first.
+    const question = self
+      ? 'Reset your own password? You are signed out at once, and must sign in with the new temporary password shown next.'
+      : 'Reset this password? A new temporary password is shown once, and their sessions end.';
+    if (!window.confirm(question)) return;
+    await changeUser(user, async () => {
+      const reset = await call('users-reset-password', 'POST', { userId: user.id });
+      sessionEnded = self;
+      showCredentials(user.displayName, user.username, reset.temporaryPassword, self);
+    });
   }
-  await refresh();
 });
 
-$('temp-copy').addEventListener('click', async () => {
+$('user-search-input').addEventListener('input', (event) => {
+  state.q = event.target.value;
+  render();
+});
+
+$('user-role-filter').addEventListener('change', (event) => {
+  state.role = event.target.value;
+  render();
+});
+
+$('credentials-copy').addEventListener('click', async () => {
   try {
-    await navigator.clipboard.writeText($('temp-value').textContent);
-    $('temp-copy').textContent = 'Copied';
+    await navigator.clipboard.writeText(credentialsText($('credentials-username').textContent, $('credentials-password').textContent));
+    $('credentials-copy-label').textContent = 'Copied';
+    $('credentials-copy-status').textContent = 'Copied to the clipboard.';
   } catch {
-    $('temp-copy').textContent = 'Select and copy';
+    $('credentials-copy-label').textContent = 'Copy';
+    $('credentials-copy-status').textContent = 'This browser blocked the copy. Select the text above and copy it by hand.';
   }
 });
-$('temp-close').addEventListener('click', () => {
-  $('temp-value').textContent = '';
-  $('temp-dialog').close();
-  $('temp-copy').textContent = 'Copy';
+
+$('credentials-close').addEventListener('click', () => $('credentials-modal').close());
+
+// These credentials are shown once, so a stray Escape does not dismiss them. Done is the way out.
+$('credentials-modal').addEventListener('cancel', (event) => event.preventDefault());
+
+// Runs however the modal closes, so the credentials never stay in the page behind it.
+$('credentials-modal').addEventListener('close', () => {
+  $('credentials-username').textContent = '';
+  $('credentials-password').textContent = '';
+  if (sessionEnded) location.replace('login.html');
+  else restoreFocus();
 });
+
+/** "/" jumps to the search, unless the person is typing somewhere or a modal is open. */
+function onSearchHotkey(event) {
+  if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open]')) return;
+  event.preventDefault();
+  $('user-search-input').focus();
+  $('user-search-input').select();
+}
 
 (async () => {
   const me = await guard();
@@ -160,5 +317,8 @@ $('temp-close').addEventListener('click', () => {
     location.replace('index.html');
     return;
   }
+  currentSessionUser = me;
+  // Added only now, so the key cannot act behind the change-password screen.
+  document.addEventListener('keydown', onSearchHotkey);
   await refresh();
 })();
