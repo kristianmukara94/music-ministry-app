@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { PROJECTOR_SETTINGS_DEFAULTS, sanitizeProjectorSettings } from './projector-settings.js';
 import { applyLook, initialLiveState, liveReducer, slotTitleShown } from './live.js';
+import { secondaryViewSnapshot } from './remote-view.js';
 
 const view = fs.readFileSync(new URL('../src/output/ProjectorView.tsx', import.meta.url), 'utf8');
 
@@ -56,7 +57,34 @@ test('the projector draws the slot title small, and only when it is shown', () =
   assert.match(view, /const showSlotTitle = useOutput\(slotTitleShown\);/);
   assert.match(view, /\{showSlotTitle && <div className=\{`absolute top-\[4cqh\][^`]*\$\{SLOT_TITLE\}/, 'the deck banner is hidden with the setting');
   assert.match(view, /\{showSlotTitle && <div className=\{`\$\{SLOT_TITLE\} text-gold\/70`\}>Congregation response<\/div>\}/, 'the psalm label is hidden with the setting');
-  assert.match(view, /segmentName=\{frame\.massSong && !showSlotTitle \? '' : frame\.segmentName\}/, 'a Holy Mass song card hides its slot name');
+  assert.match(view, /hideTitle=\{!showSlotTitle\} type=\{frame\.type\}/, 'a lineup or Holy Mass song slide hides its label and slot name');
   // The old hero-sized banner is gone.
   assert.doesNotMatch(view, /text-\[1\.2cqw\] font-bold tracking-\[0\.2em\] text-white\/50 uppercase/);
+});
+
+test('the TV follows the switch, and a title that is all the slide says stays', () => {
+  const onTv = (frame, showSlotTitle) => {
+    let s = liveReducer(initialLiveState(), { type: 'display/mode', value: 'independent' });
+    s = liveReducer(s, { type: 'display/show', frame });
+    s = liveReducer(s, { type: 'display/live', value: true });
+    return secondaryViewSnapshot({ ...s, settings: { ...s.settings, showSlotTitle } }, 1).frame.title;
+  };
+  const prayer = { kind: 'text', title: 'I CONFESS', headline: 'I CONFESS', text: 'I confess to almighty God', bg: null };
+  assert.equal(onTv(prayer, true), 'I CONFESS');
+  assert.equal(onTv(prayer, false), '');
+  assert.equal(onTv({ ...prayer, text: '' }, false), 'I CONFESS');
+});
+
+test('the switch reaches every kind of slide that draws a title', () => {
+  // Hub prayers and announcements: the heading goes, unless it is all the slide says.
+  assert.match(view, /const headingHidden = Boolean\(frame\.headline\) && !showSlotTitle && frame\.text\.trim\(\)\.length > 0;/);
+  assert.match(view, /<HeadedText headline=\{headingHidden \? '' : frame\.headline\}/);
+  assert.match(view, /\{headline && \(\s*<h2/, 'an empty headline draws no heading');
+  // Songs, the Whiteboard, and the Rosary.
+  assert.match(view, /<SongLyricsSlide label=\{showSlotTitle \? frame\.label : ''\}/);
+  assert.match(view, /<SlideCanvas slide=\{frame\.slide\} hideTitle=\{!showSlotTitle\}/);
+  assert.match(view, /label=\{heading \? frame\.prayer : ''\}/);
+  // The Praise & Worship live preview matches the projector.
+  const preview = fs.readFileSync(new URL('../src/praise-worship/CurrentNextPreview.tsx', import.meta.url), 'utf8');
+  assert.match(preview, /hideTitle=\{!titleShown\}/);
 });

@@ -132,12 +132,14 @@ function HeadedText({ headline, body, style = null }: { headline: string; body: 
   return (
     <div className="relative flex max-w-[86cqw] flex-col items-center gap-[3cqh] text-center" style={{ textAlign: look.textAlign }}>
       <div aria-hidden className={BACKING} />
-      <h2
-        className={`relative leading-[1.1] font-bold text-white ${sizes ? '' : 'text-[length:min(4.6cqw,96px)]'} ${LEGIBLE}`}
-        style={{ ...look, fontSize: scaledSize(sizes ? `${sizes.headline / 19.2}cqw` : 'min(4.6cqw,96px)', slideScale) }}
-      >
-        {slideLine(headline, headlineChars)}
-      </h2>
+      {headline && (
+        <h2
+          className={`relative leading-[1.1] font-bold text-white ${sizes ? '' : 'text-[length:min(4.6cqw,96px)]'} ${LEGIBLE}`}
+          style={{ ...look, fontSize: scaledSize(sizes ? `${sizes.headline / 19.2}cqw` : 'min(4.6cqw,96px)', slideScale) }}
+        >
+          {slideLine(headline, headlineChars)}
+        </h2>
+      )}
       {body && (
         <div
           className={`relative flex flex-col gap-[2.2cqh] leading-[1.25] font-medium text-white ${sizes ? '' : 'text-[length:min(3.6cqw,80px)]'}`}
@@ -226,7 +228,7 @@ function TextFitBadge() {
 /**
  * A label above a text block. The text starts at the largest size that fits its space, and shrinks until it does,
  * so no prayer runs into the header or the bead row. Sizes are relative to the window width, so the mirror,
- * which is zoomed to the 1920 page, fits its text the same way the projector does.
+ * which is zoomed to the 1920 page, fits its text the same way the projector does. An empty label (the title hidden) gives the text its room.
  */
 function FittedPrayer({ label, text, className, style = null }: { label: string; text: string; className: string; style?: TextStyle | null }) {
   const slideFont = useSlideFont();
@@ -239,9 +241,9 @@ function FittedPrayer({ label, text, className, style = null }: { label: string;
     const box = boxRef.current;
     const labelEl = labelRef.current;
     const el = textRef.current;
-    if (!box || !labelEl || !el) return;
+    if (!box || !el) return;
     const fit = () => {
-      const room = box.clientHeight - labelEl.offsetHeight - 24;
+      const room = box.clientHeight - (labelEl?.offsetHeight ?? 0) - 24;
       // A chosen size is the most the prayer grows to. The fit still shrinks it when the text is long.
       const width = box.clientWidth;
       // The scale raises the maximum too, and the fit below still shrinks the text to the room it has.
@@ -263,8 +265,8 @@ function FittedPrayer({ label, text, className, style = null }: { label: string;
   const look = { color: style?.textColor, fontFamily: fontCss(style) ?? slideFont, textAlign: style?.textAlign ?? undefined };
   return (
     <div ref={boxRef} className="flex min-h-0 w-full flex-1 flex-col items-center justify-center">
-      <div ref={labelRef} className="shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase">{label}</div>
-      <p ref={textRef} className={`mt-[1.5cqh] ${className}`} style={look}>{slideText(text, charsPerLine(0.84, 4.5 * 19.2))}</p>
+      {label && <div ref={labelRef} className="shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase">{label}</div>}
+      <p ref={textRef} className={`${label ? 'mt-[1.5cqh]' : ''} ${className}`} style={look}>{slideText(text, charsPerLine(0.84, 4.5 * 19.2))}</p>
     </div>
   );
 }
@@ -280,7 +282,8 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
   const ownBackground = welcomeBackground(useOutput((s) => s.welcome.slideBackground));
   // A face that has media draws no colour of its own; the shared layer below already has its shade, so the face adds none.
   const pwBackground = sharedBackground ? SEE_THROUGH : ownBackground;
-  // The small banner naming the slot or reading above the text. The operator can hide it, for every slide or for one Holy Mass plan.
+  // The title above a slide's text, on every kind of slide: the slot or reading banner, a prayer's or announcement's heading, a song's label. The
+  // operator can hide it, for every slide or for one Holy Mass plan. A heading that is all the slide says stays, so hiding titles never blanks the screen.
   const showSlotTitle = useOutput(slotTitleShown);
   switch (frame.kind) {
     case 'idle':
@@ -326,8 +329,11 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
         </>
       );
     case 'lyrics':
-      return <SongLyricsSlide label={frame.label} text={frame.text} style={frame.style ?? null} slideFont={slideFont} slideScale={slideScale} song={frame.song ?? null} />;
-    case 'text':
+      return <SongLyricsSlide label={showSlotTitle ? frame.label : ''} text={frame.text} style={frame.style ?? null} slideFont={slideFont} slideScale={slideScale} song={frame.song ?? null} />;
+    case 'text': {
+      const headingHidden = Boolean(frame.headline) && !showSlotTitle && frame.text.trim().length > 0;
+      // A short prayer page's top was worked out with its heading above it. Without the heading, the words alone are centred in the text area.
+      const prayerPlace = headingHidden && frame.centred ? { top: `${textAreaShare().centre * 100}%`, transform: 'translateY(-50%)' } : { top: `${(frame.top ?? textAreaShare().top) * 100}%` };
       return (
         <>
           {frame.bg ? (
@@ -345,10 +351,10 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
           ) : (
           <div
             className={frame.key?.startsWith('prayer:') ? 'absolute inset-x-0 flex flex-col items-center' : 'relative flex items-center justify-center'}
-            style={frame.key?.startsWith('prayer:') ? { top: `${(frame.top ?? textAreaShare().top) * 100}%` } : undefined}
+            style={frame.key?.startsWith('prayer:') ? prayerPlace : undefined}
           >
             {frame.headline ? (
-              <HeadedText headline={frame.headline} body={frame.text} style={frame.style} />
+              <HeadedText headline={headingHidden ? '' : frame.headline} body={frame.text} style={frame.style} />
             ) : (
               <TextLines lines={frame.text.split('\n')} style={frame.style} />
             )}
@@ -362,19 +368,20 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
           )}
         </>
       );
+    }
     case 'pw':
       // A Praise & Worship slide. It draws its own background, so it fills the stage.
-      // A Holy Mass song's title card names its slot ("Entrance Song") as the segment: the slot title, hidden with the others.
-      return <PwSlideFace slide={frame.slide} segmentName={frame.massSong && !showSlotTitle ? '' : frame.segmentName} type={frame.type} index={frame.index} total={frame.total} slideFont={slideFont} slideScale={slideScale} footer={frame.footer} background={pwBackground} />;
+      return <PwSlideFace slide={frame.slide} segmentName={frame.segmentName} hideTitle={!showSlotTitle} type={frame.type} index={frame.index} total={frame.total} slideFont={slideFont} slideScale={slideScale} footer={frame.footer} background={pwBackground} />;
     case 'whiteboard':
       // Sized to the space the screen leaves, so the lower-third clearance on the parent shortens it too.
       return (
         <div className="h-full w-full">
-          <SlideCanvas slide={frame.slide} className="h-full w-full" />
+          <SlideCanvas slide={frame.slide} hideTitle={!showSlotTitle} className="h-full w-full" />
         </div>
       );
 
     case 'rosary': {
+      const heading = showSlotTitle || frame.text.trim().length === 0;
       // One column: header at the top, the prayer in the space between the header and the beads, beads at the bottom.
       // It fills its parent rather than the screen, so the lower-third clearance on the parent shortens it too.
       return (
@@ -383,17 +390,19 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
           style={{ textShadow: LEGIBLE_TEXT_SHADOW }}
         >
           <div className="shrink-0">
-            <div className="font-mono text-[1cqw] font-bold tracking-[0.25em] text-gold uppercase">
-              {frame.section}
-              {frame.decade && ` · ${frame.decade}`}
-            </div>
-            {frame.mystery && (
+            {heading && (
+              <div className="font-mono text-[1cqw] font-bold tracking-[0.25em] text-gold uppercase">
+                {frame.section}
+                {frame.decade && ` · ${frame.decade}`}
+              </div>
+            )}
+            {heading && frame.mystery && (
               <div className="mt-[1cqh] font-serif text-[length:min(3.6cqw,80px)] leading-none font-semibold tracking-wide text-gold">{frame.mystery}</div>
             )}
             {frame.scripture && <div className="mt-[0.8cqh] font-serif text-[1.3cqw] tracking-wide text-gold/80 italic">{frame.scripture}</div>}
           </div>
           <FittedPrayer
-            label={frame.prayer}
+            label={heading ? frame.prayer : ''}
             text={frame.text}
             style={frame.style}
             className={`max-w-[84cqw] font-serif leading-[1.3] whitespace-pre-line ${frame.style?.textColor ? '' : 'text-white'} ${frame.stage === 'announce' ? 'font-medium' : 'font-semibold'}`}
@@ -499,12 +508,12 @@ function SongLyricsSlide({ label, text, style, slideFont, slideScale, song }: { 
   const sizes = customSizes(style);
   const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'min(4.6cqw,96px)', slideScale);
   const shown = slideText(text, charsPerLine(0.88, sizes ? sizes.body : 4.6 * 19.2));
-  const { isTruncated } = useTextAutoFit({ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: [shown, style, slideFont] });
+  const { isTruncated } = useTextAutoFit({ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: [shown, style, slideFont, label] });
   // True on the congregation's projector, false on the operator's mirror and previews. The warning is for the operator only.
   const audience = useContext(OnAirLook);
   return (
     <div ref={boxRef} className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden px-[6cqw] py-[4cqh] text-center" style={{ textAlign: style?.textAlign ?? 'center' }}>
-      <div ref={labelRef} className="mb-[3cqh] shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase">{label}</div>
+      {label && <div ref={labelRef} className="mb-[3cqh] shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase">{label}</div>}
       <p
         ref={textRef}
         className={`apcc-legible-stroke max-w-[88cqw] overflow-hidden font-bold whitespace-pre-line ${sizes ? '' : 'text-white'}`}

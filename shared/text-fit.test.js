@@ -48,7 +48,7 @@ test('line spacing tightens as a stanza gets longer, from 1.25 to 1.15', () => {
 test('the projector, the mirror and the previews draw a song stanza through the fitted slide', () => {
   const view = read('src/output/ProjectorView.tsx');
   assert.match(view, /case 'lyrics':\s+return <SongLyricsSlide /);
-  assert.match(view, /useTextAutoFit\(\{ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: \[shown, style, slideFont\] \}\);/);
+  assert.match(view, /useTextAutoFit\(\{ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: \[shown, style, slideFont, label\] \}\);/, 'it fits again when the label is hidden or shown');
   assert.match(view, /className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden px-\[6cqw\] py-\[4cqh\] text-center"/, 'centred both ways, padded 4% and 6%, and clipped');
   assert.match(view, /lineHeight: lineHeightFor\(lineCountOf\(shown\)\)/);
   const hook = read('src/output/useTextAutoFit.ts');

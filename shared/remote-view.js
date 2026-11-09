@@ -1,4 +1,4 @@
-import { outputLookOf, presentedFrame, secondaryFrame } from './live.js';
+import { outputLookOf, presentedFrame, secondaryFrame, slotTitleShown } from './live.js';
 import { welcomeBackground } from './welcome-settings.js';
 // Remote view: the settings for the two phone viewers, the snapshot of the live screen they show, and the control requests
 // the Primary viewer may send. Shared by the main process (saved to config.json, sent to phones) and tested without
@@ -187,7 +187,8 @@ function frameSnapshot(state, frame, base) {
   const bg = settings ? welcomeBackground(settings) : { color: null, media: null, shade: false };
   return {
     kind,
-    title: base.title,
+    // The operator's Title switch reaches the TV as it does the projector. A title that is all the slide says stays, so the screen is not left blank.
+    title: slotTitleShown(state) || !base.lines.some((line) => line.trim()) ? base.title : '',
     lines: base.lines,
     image: base.image,
     color: bg.color,
