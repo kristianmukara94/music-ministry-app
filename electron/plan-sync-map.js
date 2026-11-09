@@ -3,8 +3,8 @@
 //
 // Only these fields leave the laptop: a song's uuid, a reading's name, a Mass part's name, a block or group, a minute count, and a
 // note the planner typed into the plan. Item text is never read from a lectionary row, a scripture passage or a prayer's words.
-// Announcements, media, Bible items and the laptop's own custom and note items stay on the laptop. A custom item that came from the
-// web is the exception: it is a web note, so it goes back to the web as the note it was.
+// Announcements, media, Bible items and the laptop's own custom and note items stay on the laptop. Items that came from the web are the
+// exception: a web note, a typed reading reference and a web Content Hub entry each go back to the web as what they were.
 //
 // Keys. A web item keeps the web's key (its step number, for a Mass part; its segment key, for praise). Other items get a key made
 // from their content and occurrence, so it is the same each time. Nothing is stored for a key: the Mass item table is rebuilt on
@@ -12,6 +12,7 @@
 import crypto from 'node:crypto';
 import { MASS_PARTS, PART_STEP } from '../shared/mass-parts.js';
 import { slotNumberOf } from '../shared/mass-slots.js';
+import { noteSource } from '../shared/notes.js';
 import { PRAYER_OF_THE_FAITHFUL } from '../shared/daily-readings.js';
 
 export const MASS_BLOCKS = ['introductory', 'word', 'eucharist', 'communion', 'concluding'];
@@ -20,6 +21,8 @@ export const READING_TYPES = ['First Reading', 'Responsorial Psalm', 'Second Rea
 export const PRAISE_READING_TYPES = [...READING_TYPES, 'Gospel Acclamation'];
 // A custom item whose source id starts with this came from the web, and its label is the web note.
 export const WEB_NOTE_PREFIX = 'web:';
+// A custom item whose source id starts with this is a reading the web typed by reference ("Matthew 5:1-12a"). The laptop has no reading of that name, so it is kept as words.
+export const WEB_REFERENCE_PREFIX = 'webref:';
 
 const MAX_KEY = 20;
 const MAX_ITEMS = 200;
@@ -56,9 +59,10 @@ const withSlot = (item, row) => {
 
 /**
  * The Mass plan's items in display order. `rows` are { block, module, sourceId, label, order, slot }.
- * `hymnUuidOf(sourceId)` returns the hymn's uuid, or null if it has none (such a song is kept on the laptop).
+ * `hymnUuidOf(sourceId)` returns the hymn's uuid, or null if it has none (such a song is kept on the laptop). `hubEntryOf(noteId)` returns the
+ * website's Content Hub id for a note brought in for this plan, or null for the laptop's own notes, which stay here.
  */
-export function massEntries(rows, hymnUuidOf) {
+export function massEntries(rows, hymnUuidOf, hubEntryOf = () => null) {
   const occurrences = new Map();
   return [...rows].sort(byOrder).map((row) => {
     const base = [row.module, row.sourceId, row.block].join('|');
@@ -72,9 +76,10 @@ export function massEntries(rows, hymnUuidOf) {
     if (row.module === 'lectionary') {
       // The day's Prayer of the Faithful is the parish's own text for the Prayer of the Faithful slot, which the website has no reading for: it stays on the laptop.
       if (String(row.sourceId).split('|')[1] === PRAYER_OF_THE_FAITHFUL) return entry(derived, row, null);
-      // The label is the reading's name. Anything else could carry text, so the plan is refused rather than sent.
-      if (!READING_TYPES.includes(row.label)) throw new MapRefused('A reading in this plan is not a reading name. Nothing was sent.');
-      return entry(derived, row, withSlot({ kind: 'reading', group: row.block, text: row.label }, row));
+      // Only a reading's name is ever sent. A label that is not one could carry the reading's words, so the name comes from the row's source id, and a
+      // row with no known name stays on the laptop. Either way the rest of the plan still goes.
+      const name = [row.label, String(row.sourceId).split('|')[1]].find((candidate) => READING_TYPES.includes(candidate));
+      return entry(derived, row, name ? withSlot({ kind: 'reading', group: row.block, text: name }, row) : null);
     }
     if (row.module === 'mass_order') {
       if (row.label.length > MAX_TEXT) throw new MapRefused('A Holy Mass part name in this plan is too long. Nothing was sent.');
@@ -82,6 +87,17 @@ export function massEntries(rows, hymnUuidOf) {
     }
     if (row.module === 'custom' && row.sourceId.startsWith(WEB_NOTE_PREFIX)) {
       return entry(row.sourceId.slice(WEB_NOTE_PREFIX.length), row, withSlot({ kind: 'rite', group: row.block, note: row.label.slice(0, MAX_NOTE) }, row));
+    }
+    if (row.module === 'custom' && row.sourceId.startsWith(WEB_REFERENCE_PREFIX)) {
+      return entry(row.sourceId.slice(WEB_REFERENCE_PREFIX.length), row, withSlot({ kind: 'reading', group: row.block, text: row.label.slice(0, MAX_TEXT) }, row));
+    }
+    if (row.module === 'notes') {
+      const source = noteSource(row.sourceId);
+      const contentHubId = source ? hubEntryOf(source.id) : null;
+      if (contentHubId) {
+        const text = row.label.slice(0, MAX_TEXT);
+        return entry(derived, row, withSlot({ kind: 'rite', group: row.block, text, title: text, contentHubId, contentType: 'hub_item' }, row));
+      }
     }
     return entry(derived, row, null);
   });
@@ -111,8 +127,9 @@ function segmentEntries(seg, hymnUuidOf) {
   }
   if (seg.type === 'scripture') {
     if (content.kind === 'lectionary') {
-      if (!PRAISE_READING_TYPES.includes(content.readingType)) throw new MapRefused('A reading in this plan is not a reading name. Nothing was sent.');
-      return [entry(itemKey([seg.key]), seg, withMinutes({ kind: 'reading', group: seg.group, text: content.readingType }, minutes))];
+      // Only a reading's name is sent. Without one the slot goes with no words, and the rest of the plan still goes.
+      const text = PRAISE_READING_TYPES.includes(content.readingType) ? { text: content.readingType } : {};
+      return [entry(itemKey([seg.key]), seg, withMinutes({ kind: 'reading', group: seg.group, ...text }, minutes))];
     }
     // A title slide carries no text to send.
     return [entry(itemKey([seg.key]), seg, withMinutes({ kind: 'reading', group: seg.group }, minutes))];

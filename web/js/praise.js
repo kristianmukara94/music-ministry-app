@@ -1,12 +1,13 @@
 // Praise & Worship editor: the segments with their minute steppers, the readiness panel, and the printed setlist. Changing a segment's minutes
 // updates the section totals, the total time, the time bars and the readiness checks without redrawing the list, so what is being typed in an open
-// panel stays. A segment takes a song from the church's list, a short title for a reading, or a note, through the panel that opens under it. The
-// segments and the minutes come from the saved plan on the server. Every value written into markup goes through esc().
+// panel stays. Any segment takes any song from the church's list, typed text and Content Hub entries, and more than one of them, through the panel that
+// opens under it. The segments and the minutes come from the saved plan on the server. Every value written into markup goes through esc().
 import { LANGUAGE_CODE, PRAISE_PLAN } from './sample-data.js';
 import { esc, mountSidebar } from './shell.js';
 import { guard } from './auth.js';
 import { getPlan, listSongs, savePlan } from './plan-api.js';
-import { keyChoices } from './song-keys.js';
+import { usedHubIds } from './content-hub.js';
+import { entryListHtml, entrySummaryHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
 import {
   CONTENT_TYPES,
   MAX_MINUTES,
@@ -25,8 +26,12 @@ import {
   praiseSegments,
   saveButton,
   songOptions,
+  slotEntries,
   statusText,
   withChoice,
+  withEntry,
+  withEntryKey,
+  withoutEntry,
 } from './plan-model.js';
 
 mountSidebar();
@@ -44,7 +49,10 @@ function fresh(saved) {
     segments: saved?.segments ?? {},
     notes: saved?.notes ?? {},
     extra: saved?.extra ?? [],
+    contentHubItems: structuredClone(plan?.contentHubItems ?? []),
     open: null,
+    // 'list' or 'text': which way of adding the open panel shows.
+    panelMode: 'list',
     query: '',
     dirty: false,
     // Counts the changes made, so a change made while a save is running is not marked as saved.
@@ -95,63 +103,51 @@ function renderHeader(view) {
   note.hidden = !plan || canEdit;
 }
 
-/** The key a song is sung in for this plan. Choosing the song's own key clears the change; the song in the list is never touched. */
-function keyField(row) {
-  if (!row.songId) return '';
-  const options = keyChoices(row.originalKey, row.keyTransposed)
-    .map((choice) => `<option value="${esc(choice.value)}" ${choice.value === row.keyTransposed ? 'selected' : ''}>${esc(choice.label)}</option>`)
-    .join('');
-  return `
-            <label style="${FIELD_LABEL}">
-              Key for this plan
-              <select data-role="panel-key" data-for="${esc(row.id)}" ${DISABLED(canEdit)} style="${FIELD_INPUT}">${options}</select>
-              <span style="font-size:12px;font-weight:400;line-height:1.5;color:var(--muted)">This changes the lead sheet key for this plan only. The song in the list keeps its own key.</span>
-            </label>`;
-}
-
-/** The panel that opens under a segment: the song picker, the title box, or the operator note. */
+/** The panel that opens under a segment: what it holds, then a song, typed text or the Content Hub. Any segment takes any of them. */
 function panelFor(row) {
   const close = `<button type="button" data-close="${esc(row.id)}" style="height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600;cursor:pointer">Close</button>`;
-  if (row.kind === 'song') {
-    return `
-          <div style="display:flex;flex-direction:column;gap:12px;padding:14px 18px;background:var(--input-bg);border-bottom:1px solid var(--border)">${keyField(row)}
+  const list = state.panelMode === 'list';
+  const tab = (mode, label, on) => `<button type="button" role="tab" data-panel-mode="${mode}" aria-selected="${on}" class="panel-tab${on ? ' is-on' : ''}">${label}</button>`;
+  const adder = list
+    ? `
             <label style="display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg)">
-              <input data-role="panel-search" type="search" aria-label="Search songs" placeholder="Search songs" value="${esc(state.query)}" ${DISABLED(canEdit)} style="flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font-size:14px">
+              <input data-role="panel-search" type="search" aria-label="Search songs" placeholder="Search all songs" value="${esc(state.query)}" ${DISABLED(canEdit)} style="flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font-size:14px">
             </label>
-            <div data-role="panel-options" style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:12px;overflow:hidden">${optionsFor(row)}</div>
-            <div style="display:flex;flex-wrap:wrap;gap:8px">
-              <button type="button" data-clear="${esc(row.id)}" ${DISABLED(canEdit)} style="height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--focus);font-size:13px;font-weight:600;cursor:pointer">Clear this song</button>
-              ${close}
-            </div>
-          </div>`;
-  }
-  if (row.kind === 'reading') {
-    const types = CONTENT_TYPES.map((type) => `<option value="${type.value}" ${type.value === row.contentType ? 'selected' : ''}>${type.icon} ${esc(type.label)}</option>`).join('');
-    return `
-          <div style="display:flex;flex-direction:column;gap:12px;padding:14px 18px;background:var(--input-bg);border-bottom:1px solid var(--border)">
+            <div data-role="panel-options" style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:12px;overflow:hidden">${optionsFor(row)}</div>`
+    : row.kind === 'reading'
+      ? `
             <label style="${FIELD_LABEL}">
               Type
-              <select data-role="panel-type" ${DISABLED(canEdit)} style="${FIELD_INPUT}">${types}</select>
+              <select data-role="panel-type" ${DISABLED(canEdit)} style="${FIELD_INPUT}">${CONTENT_TYPES.map((type) => `<option value="${type.value}" ${type.value === row.contentType ? 'selected' : ''}>${type.icon} ${esc(type.label)}</option>`).join('')}</select>
             </label>
             <label style="${FIELD_LABEL}">
               Title or reference
               <input data-role="panel-ref" maxlength="200" placeholder="e.g. Psalm 100:1-5" value="${esc(row.text)}" ${DISABLED(canEdit)} style="${FIELD_INPUT}">
             </label>
-            <p style="margin:0;font-size:12px;line-height:1.5;color:var(--muted)">The web planner saves only this short title. The full text stays in the Content Hub on the church laptop, and is put on the projector from the desktop app.</p>
-            <div style="display:flex;flex-wrap:wrap;gap:8px">
-              <button type="button" data-use-ref="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-primary" style="height:40px;padding:0 16px;font-size:14px;font-weight:700">Use this title</button>
-              <button type="button" data-clear="${esc(row.id)}" ${DISABLED(canEdit)} style="height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--focus);font-size:13px;font-weight:600;cursor:pointer">Clear this reading</button>
-              ${close}
-            </div>
-          </div>`;
-  }
+            <p style="margin:0;font-size:12px;line-height:1.5;color:var(--muted)">This saves a short title. To keep the full words with the plan, use the Content Hub.</p>
+            <div><button type="button" data-use-ref="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-primary" style="height:40px;padding:0 16px;font-size:14px;font-weight:700">Use this title</button></div>`
+      : `
+            <label style="${FIELD_LABEL}">
+              Words or a short note
+              <textarea data-role="panel-text" rows="3" maxlength="500" placeholder="e.g. Sung by the youth choir" ${DISABLED(canEdit)} style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;line-height:1.5;resize:vertical;outline:0"></textarea>
+            </label>
+            <div><button type="button" data-use-text="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-primary" style="height:40px;padding:0 16px;font-size:14px;font-weight:700">Add this text</button></div>`;
+  const note = row.kind === 'rite'
+    ? `
+            <label style="${FIELD_LABEL}">
+              Operator note
+              <textarea data-role="panel-note" rows="3" maxlength="1000" placeholder="e.g. Speaker to confirm" ${DISABLED(canEdit)} style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;line-height:1.5;resize:vertical;outline:0">${esc(row.note)}</textarea>
+            </label>
+            <div><button type="button" data-save-note="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-quiet" style="height:40px;padding:0 16px;font-size:14px;font-weight:600">Save note</button></div>`
+    : '';
   return `
           <div style="display:flex;flex-direction:column;gap:12px;padding:14px 18px;background:var(--input-bg);border-bottom:1px solid var(--border)">
-            <textarea data-role="panel-note" aria-label="Operator note" rows="3" maxlength="1000" placeholder="e.g. Speaker to confirm" ${DISABLED(canEdit)} style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;line-height:1.5;resize:vertical;outline:0">${esc(row.note)}</textarea>
-            <div style="display:flex;flex-wrap:wrap;gap:8px">
-              <button type="button" data-save-note="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-quiet" style="height:40px;padding:0 16px;font-size:14px;font-weight:600">Save note</button>
-              ${close}
-            </div>
+            ${entryListHtml(row.entries, row.id, canEdit)}
+            <div role="tablist" aria-label="How to fill this segment" style="display:flex;gap:8px">${tab('list', 'Song list', list)}${tab('text', 'Type text', !list)}</div>
+            ${adder}
+            ${hubButtonsHtml(canEdit)}
+            ${note}
+            <div style="display:flex;justify-content:flex-end">${close}</div>
           </div>`;
 }
 
@@ -162,7 +158,7 @@ function optionsFor(row) {
   const shown = songOptions(picker, { query: state.query });
   if (shown.length === 0) return `<div style="padding:18px 14px;font-size:13px;color:var(--muted);background:var(--input-bg)">No songs match the search.</div>`;
   return shown.map((song) => {
-    const chosen = row.songId === song.id;
+    const chosen = row.entries.some((entry) => entry.songId === song.id);
     const key = song.key ? ` · Key ${esc(song.key)}` : '';
     return `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--input-bg)">
@@ -170,27 +166,24 @@ function optionsFor(row) {
                 <span style="font-size:14px;font-weight:700">${esc(song.title)}</span>
                 <span style="font-size:12px;color:var(--muted)">${esc(LANGUAGE_CODE[song.language] ?? song.language)}${key}</span>
               </span>
-              <button type="button" data-song="${esc(song.id)}" data-for="${esc(row.id)}" aria-pressed="${chosen}" ${DISABLED(canEdit)} class="${chosen ? 'btn-chosen' : 'btn-quiet'}" style="height:34px;padding:0 14px;font-size:13px;font-weight:700">${chosen ? 'Selected' : 'Select'}</button>
+              <button type="button" data-song="${esc(song.id)}" data-for="${esc(row.id)}" aria-pressed="${chosen}" ${DISABLED(canEdit)} class="${chosen ? 'btn-chosen' : 'btn-quiet'}" style="height:34px;padding:0 14px;font-size:13px;font-weight:700">${chosen ? 'Added' : 'Add'}</button>
             </div>`;
   }).join('');
 }
 
-/** What a step shows once it is filled: the song with its key badge, or the reading's tag. */
+/** What a step shows once it is filled: each song with its key badge, a reading's tag, or a Content Hub or typed item. */
 function contentHtml(row) {
-  if (row.kind === 'rite') return '';
-  if (!row.value) return 'Nothing chosen yet';
-  if (row.kind === 'reading') return `<span class="content-tag">${esc(row.tag)}</span>`;
-  const badge = row.key ? `<span class="key-badge${row.keyTransposed ? ' is-transposed' : ''}">Key: ${esc(row.key)}</span>` : '';
-  const original = row.keyTransposed && row.originalKey ? `<span style="font-size:12px;font-weight:400;color:var(--muted)">Original: ${esc(row.originalKey)}</span>` : '';
-  return `<span>${esc(row.value)}</span>${badge}${original}`;
+  if (!row.value) return row.kind === 'rite' ? '' : 'Nothing chosen yet';
+  if (row.kind === 'reading' && row.entries.length === 1 && row.entries[0].source === 'text') return `<span class="content-tag">${esc(row.tag)}</span>`;
+  return entrySummaryHtml(row.entries);
 }
 
 function renderSegments(view) {
   document.getElementById('segments').innerHTML = view.sections.map((section) => {
     const rows = section.rows.map((r) => {
       const sub = r.kind === 'song' ? 'Song · ' + r.hint : r.kind === 'reading' ? 'Reading · ' + r.hint : r.hint;
-      const valueStyle = r.kind === 'rite' ? 'display:none' : r.value ? 'display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;color:var(--text);font-weight:600' : 'color:var(--muted)';
-      const btnLabel = r.kind === 'rite' ? 'Add note' : r.value ? 'Change' : 'Choose';
+      const valueStyle = r.kind === 'rite' && !r.value ? 'display:none' : r.value ? 'display:flex;flex-direction:column;align-items:flex-start;gap:6px;color:var(--text);font-weight:600' : 'color:var(--muted)';
+      const btnLabel = r.value ? 'Change' : r.kind === 'rite' ? 'Add' : 'Choose';
       const needs = (r.kind === 'song' || r.kind === 'reading') && !r.value && !r.optional;
       const btnClass = needs ? 'btn-primary' : 'btn-quiet';
       const open = state.open === r.id;
@@ -267,21 +260,55 @@ function choose(id, patch) {
 function applyOpenPanel() {
   if (!state.open) return false;
   const row = rowOf(state.open);
+  let changed = false;
   const ref = document.querySelector('[data-role="panel-ref"]');
   if (ref) {
     const text = ref.value.trim();
     const contentType = document.querySelector('[data-role="panel-type"]').value;
-    if (!text || (text === row.text && contentType === row.contentType)) return false;
-    choose(row.id, { text, contentType, songId: null });
-    return true;
+    if (text && (text !== row.text || contentType !== row.contentType)) {
+      // Typed words are edited in place. A song or a Content Hub entry already there stays, and the title goes after it.
+      if (row.value && !row.text) {
+        state.segments = withEntry(state.segments, row.id, { text, contentType });
+        markEdited();
+        ref.value = '';
+      } else choose(row.id, { text, contentType, songId: null });
+      changed = true;
+    }
+  }
+  const textBox = document.querySelector('[data-role="panel-text"]');
+  if (textBox && textBox.value.trim()) {
+    state.segments = withEntry(state.segments, row.id, { text: textBox.value.trim() });
+    textBox.value = '';
+    markEdited();
+    changed = true;
   }
   const noteBox = document.querySelector('[data-role="panel-note"]');
   if (noteBox && noteBox.value.trim() !== row.note) {
     state.notes[row.id] = noteBox.value.trim();
     markEdited();
-    return true;
+    changed = true;
   }
-  return false;
+  return changed;
+}
+
+function openHub(mode) {
+  const row = rowOf(state.open);
+  openContentHub({
+    items: state.contentHubItems,
+    slotName: row.name,
+    mode,
+    usedIds: () => usedHubIds(state.segments),
+    onChange: (items) => {
+      state.contentHubItems = items;
+      markEdited();
+      renderKeepingField();
+    },
+    onUse: (entry) => {
+      state.segments = withEntry(state.segments, row.id, { contentHubId: entry.id, text: entry.title, contentType: 'hub_item' });
+      markEdited();
+      render();
+    },
+  });
 }
 
 /** Redraws the list, keeping the cursor in the panel field it was in. */
@@ -316,7 +343,7 @@ async function save({ onlyIfChanged = false } = {}) {
   const sent = state.edits;
   renderHeader(compute());
   try {
-    const response = await savePlan(savePayload(plan, praiseToItems(state, SEGMENTS)));
+    const response = await savePlan(savePayload(plan, praiseToItems(state, SEGMENTS), { contentHubItems: state.contentHubItems }));
     plan.updatedAt = response.savedAt;
     if (state.edits === sent) state.dirty = false;
   } catch (err) {
@@ -366,17 +393,27 @@ document.querySelector('main').addEventListener('click', (event) => {
   } else if (button.dataset.open) {
     state.open = state.open === button.dataset.open ? null : button.dataset.open;
     state.query = '';
+    if (state.open) state.panelMode = rowOf(state.open).kind === 'song' ? 'list' : 'text';
     render();
+  } else if (button.dataset.panelMode) {
+    state.panelMode = button.dataset.panelMode;
+    render();
+  } else if (button.dataset.hub) {
+    openHub(button.dataset.hub);
+  } else if (button.dataset.removeEntry !== undefined) {
+    state.segments = withoutEntry(state.segments, button.dataset.for, Number(button.dataset.removeEntry));
+    markEdited();
+    render();
+  } else if (button.dataset.useText) {
+    if (applyOpenPanel()) render();
   } else if (button.dataset.close) {
     state.open = null;
     render();
   } else if (button.dataset.song) {
-    // A key belongs to the song it was chosen for, so a different song starts in its own key.
-    const sameSong = rowOf(button.dataset.for).songId === button.dataset.song;
-    choose(button.dataset.for, { songId: button.dataset.song, text: null, ...(sameSong ? {} : { keyTransposed: null }) });
-    render();
-  } else if (button.dataset.clear) {
-    choose(button.dataset.clear, { songId: null, text: null, keyTransposed: null, contentType: null });
+    // Add puts the song at the end of the segment; pressing Added takes it out again. A key belongs to the song it was chosen for.
+    const at = slotEntries(state.segments[button.dataset.for]).findIndex((entry) => entry.songId === button.dataset.song);
+    state.segments = at >= 0 ? withoutEntry(state.segments, button.dataset.for, at) : withEntry(state.segments, button.dataset.for, { songId: button.dataset.song, contentType: 'song' });
+    markEdited();
     render();
   } else if (button.dataset.useRef) {
     if (applyOpenPanel()) render();
@@ -400,8 +437,9 @@ document.querySelector('main').addEventListener('input', (event) => {
 });
 
 document.querySelector('main').addEventListener('change', (event) => {
-  if (event.target.dataset.role !== 'panel-key') return;
-  choose(event.target.dataset.for, { keyTransposed: event.target.value || null });
+  if (event.target.dataset.role !== 'entry-key') return;
+  state.segments = withEntryKey(state.segments, event.target.dataset.for, Number(event.target.dataset.index), event.target.value);
+  markEdited();
   renderKeepingField();
 });
 

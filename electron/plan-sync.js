@@ -29,6 +29,7 @@ export function createPlanSync({ store, cloud, setTimer = setTimeout, clearTimer
   let running = null;
   let keepRunning = false;
   let firstFailure = null;
+  let heldRetried = false;
 
   const set = (next) => {
     state = { ...state, ...next };
@@ -88,7 +89,8 @@ export function createPlanSync({ store, cloud, setTimer = setTimeout, clearTimer
     if (local.server_updated_at === plan.updatedAt) return;
     const dirty = local.synced_updated_at !== local.updated_at;
     if (dirty && laptopIsNewer(local.updated_at, plan.updatedAt)) {
-      // The laptop's edit is the newer one. It is kept, and sent against this version.
+      // The laptop's edit is the newer one. It is kept, and sent against this version. The plan's Content Hub entries still come in.
+      store.ingestHub(plan);
       store.setServerStamp(plan.id, plan.updatedAt);
       return;
     }
@@ -105,6 +107,26 @@ export function createPlanSync({ store, cloud, setTimer = setTimeout, clearTimer
       if (at) store.setCursor(at);
       if (!page.more) break;
     }
+  }
+
+  /**
+   * Reads each held plan from the website once per run of the app. A plan held by an earlier version, for an item this version can place, is already past the
+   * pull cursor, so without this it would stay held until someone saved it again on the website.
+   */
+  async function retryHeld(counts) {
+    if (heldRetried) return;
+    for (const uuid of store.heldPlans()) {
+      try {
+        const res = await cloud.getPlan(uuid);
+        if (res.status !== 'found') continue;
+        store.applyServer(res.plan);
+        counts.received += 1;
+      } catch (err) {
+        if (err?.offline || err?.revoked) throw err;
+        console.error(`[plan-sync] step=held name=${err?.name ?? 'Error'}`);
+      }
+    }
+    heldRetried = true;
   }
 
   /** Sends one plan against a base version. A conflict is settled on server time. */
@@ -205,6 +227,7 @@ export function createPlanSync({ store, cloud, setTimer = setTimeout, clearTimer
       try {
         await sendDeletions(counts);
         await pullAll(counts);
+        await retryHeld(counts);
         await sendDirty(counts);
         attempts = 0;
         counts.held = store.holdCount();

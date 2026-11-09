@@ -5,14 +5,16 @@
 // laptop's updated_at at that point. A plan is dirty when updated_at has moved on from synced_updated_at.
 //
 // Writes that come from the server run with the transfer import guard on, so the touch triggers do not count them as laptop edits.
-// A plan is held only when a server item has a value the laptop cannot map at all (today: a reading whose name it does not know, or
-// a song the laptop does not have). A held plan is not sent, because a send would drop the item. Every held item is counted.
+// A plan is held only when a server item has a value the laptop cannot map at all (today: a song the laptop does not have). A held plan
+// is not sent, because a send would drop the item. Every held item is counted. A reading's words never hold a plan.
 import { DEFAULT_TEMPLATE } from '../shared/pw.js';
 import { slotIdOfNumber } from '../shared/mass-slots.js';
 import { MASS_PARTS, MASS_STEP_PARTS } from '../shared/mass-parts.js';
+import { noteSource } from '../shared/notes.js';
 import {
-  MapRefused, massEntries, massBody, mergeEntries, praiseBody, praiseEntries, PRAISE_READING_TYPES, READING_TYPES, WEB_NOTE_PREFIX,
+  MapRefused, massEntries, massBody, mergeEntries, praiseBody, praiseEntries, PRAISE_READING_TYPES, READING_TYPES, WEB_NOTE_PREFIX, WEB_REFERENCE_PREFIX,
 } from './plan-sync-map.js';
+import { createWebHubNotes } from './web-hub-notes.js';
 
 const GUARD = 'transfer_import_guard';
 const CURSOR = 'plans_cursor';
@@ -33,17 +35,22 @@ const isCalendarDate = (value) => {
 
 /**
  * The laptop item for a Mass item from the web, or null when there is none. The rules, in order:
- * a song from the church list is a song; a reading is a reading when its name is known; a Mass part step with no song is that part;
- * any other typed text or note is kept as a web note, so it is not lost.
+ * a song from the church list is a song; a Content Hub entry the laptop has brought in is that note; a reading is a reading when its name is known, and
+ * otherwise its reference is kept as words, whatever they are; a Mass part step with no song is that part; any other typed text or note is kept as a web note.
+ * `noteIdOf(entryId)` finds the note brought in for a Content Hub entry.
  */
-export function massRowFrom(item, date, hymnByUuid) {
+export function massRowFrom(item, date, hymnByUuid, noteIdOf = () => null) {
   if (item.kind === 'song' && item.songId) {
     const hymn = hymnByUuid(item.songId);
     return hymn && LAPTOP_BLOCKS.includes(item.group) ? { block: item.group, module: 'lyrics', sourceId: String(hymn.id), label: hymn.title } : null;
   }
   if (!LAPTOP_BLOCKS.includes(item.group)) return null;
+  const hubNote = item.contentHubId ? noteIdOf(item.contentHubId) : null;
+  if (hubNote !== null) return { block: item.group, module: 'notes', sourceId: String(hubNote), label: item.title || item.text || 'Content Hub entry' };
   if (item.kind === 'reading') {
-    return READING_TYPES.includes(item.text) ? { block: item.group, module: 'lectionary', sourceId: `${date}|${item.text}`, label: item.text } : null;
+    if (READING_TYPES.includes(item.text)) return { block: item.group, module: 'lectionary', sourceId: `${date}|${item.text}`, label: item.text };
+    const label = String(item.text ?? '').trim() || String(item.note ?? '').trim() || 'Reading';
+    return { block: item.group, module: 'custom', sourceId: `${WEB_REFERENCE_PREFIX}${item.key}`, label };
   }
   // A part step with a note keeps the note as its label. The web step key still says which part it is, so no part name is added,
   // and the label does not change each time it goes round.
@@ -55,21 +62,26 @@ export function massRowFrom(item, date, hymnByUuid) {
 }
 
 /** Whether a laptop row already is this Mass item, so the row is kept as it is rather than rewritten. */
-export function sameMassRow(row, item, date, hymnByUuid) {
-  const fresh = massRowFrom(item, date, hymnByUuid);
-  if (!fresh || fresh.block !== row.block || fresh.module !== row.module || fresh.sourceId !== row.sourceId) return false;
+export function sameMassRow(row, item, date, hymnByUuid, noteIdOf = () => null) {
+  const fresh = massRowFrom(item, date, hymnByUuid, noteIdOf);
+  if (!fresh || fresh.block !== row.block || fresh.module !== row.module) return false;
+  // A row that plays only some of a note's slides is still that note, so the operator's choice of slides stays.
+  if (fresh.module === 'notes') return noteSource(row.sourceId)?.id === Number(fresh.sourceId);
+  if (fresh.sourceId !== row.sourceId) return false;
   return row.module !== 'custom' || fresh.label === row.label;
 }
 
 /** The praise segment's laptop fields for a new praise item from the server, or null when there is none to make. */
 export function praiseRowFrom(item, hymnByUuid) {
   if (item.kind === 'song') return !item.songId || hymnByUuid(item.songId) ? { id: null } : null;
-  if (item.kind === 'reading') return !item.text || PRAISE_READING_TYPES.includes(item.text) ? { id: null } : null;
+  // A reading always has a place: one whose name the laptop does not know is a titled slot, named after its reference.
+  if (item.kind === 'reading') return { id: null };
   // A prayer is a prayer segment with no note chosen, which the web also makes.
   return { id: null };
 }
 
-export function createPlanSyncStore(db) {
+export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
+  const webHub = createWebHubNotes(db, { onChanged: onNoteChanged });
   const one = (sql, ...args) => db.prepare(sql).get(...args);
   const all = (sql, ...args) => db.prepare(sql).all(...args);
   const run = (sql, ...args) => db.prepare(sql).run(...args);
@@ -122,7 +134,7 @@ export function createPlanSyncStore(db) {
     if (!isCalendarDate(plan.date)) throw new MapRefused('This plan has no valid date. Open it and choose a date, and it will be sent.');
     const name = String(plan.name ?? '').replace(/\0/g, '').trim().slice(0, 120).trim() || 'Untitled Plan';
     const head = { id: plan.uuid, name, date: plan.date };
-    if (plan.kind === 'mass') return { ...head, kind: 'mass', items: massBody(massEntries(massRows(plan.id), hymnUuidOf)).items };
+    if (plan.kind === 'mass') return { ...head, kind: 'mass', items: massBody(massEntries(massRows(plan.id), hymnUuidOf, (noteId) => webHub.entryIdOf(plan.uuid, noteId))).items };
     return { ...head, kind: 'pw', items: praiseBody(praiseEntries(segmentRows(plan.id), hymnUuidOf)).items };
   }
 
@@ -137,6 +149,19 @@ export function createPlanSyncStore(db) {
   const setHold = (uuid, count) => run('INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)', holdKey(uuid), `${count}`);
   const clearHold = (uuid) => run('DELETE FROM sync_state WHERE key = ?', holdKey(uuid));
   const holdCount = () => one("SELECT COUNT(*) AS n FROM sync_state WHERE key LIKE 'hold:%'").n;
+
+  /** The held plans it is safe to read from the website again: those with no laptop edits waiting, which a fresh copy would replace. */
+  function heldPlans() {
+    return all("SELECT key FROM sync_state WHERE key LIKE 'hold:%'")
+      .map((row) => row.key.slice('hold:'.length))
+      .filter((uuid) => {
+        const plan = planByUuid(uuid);
+        return plan && plan.synced_updated_at === plan.updated_at;
+      });
+  }
+
+  /** Brings a pulled plan's Content Hub entries in as notes. Never throws, so a bad entry cannot stop a sync. */
+  const ingestHub = (serverPlan) => webHub.ingest(serverPlan.id, serverPlan.contentHubItems);
 
   // ---- What the engine writes ----
 
@@ -171,6 +196,7 @@ export function createPlanSyncStore(db) {
    * placed. A plan with any is held until a later server version places them all.
    */
   function applyServer(serverPlan) {
+    ingestHub(serverPlan);
     const unresolved = quiet(() => (serverPlan.kind === 'mass' ? applyMass(serverPlan) : applyPraise(serverPlan)));
     if (unresolved > 0) setHold(serverPlan.id, unresolved);
     else clearHold(serverPlan.id);
@@ -189,13 +215,15 @@ export function createPlanSyncStore(db) {
     } else {
       id = Number(run('INSERT INTO mass_plans (name, liturgical_date, uuid, updated_at) VALUES (?, ?, ?, ?)', sp.name, sp.date, sp.id, sp.updatedAt).lastInsertRowid);
     }
-    const localEntries = massEntries(massRows(id), hymnUuidOf);
+    const hubEntryOf = (noteId) => webHub.entryIdOf(sp.id, noteId);
+    const noteIdOf = (entryId) => webHub.noteIdOf(sp.id, entryId);
+    const localEntries = massEntries(massRows(id), hymnUuidOf, hubEntryOf);
     const byKey = new Map(localEntries.map((e) => [e.key, e]));
     // The slot an item fills comes from the website when it names one, and otherwise stays as the laptop had it: the website's own editor
     // rebuilds the steps it shows without a slot, and a server from before slots sends none at all.
     const resolve = (item) => {
       const kept = byKey.get(item.key);
-      const row = kept && sameMassRow(kept.row, item, sp.date, hymnByUuid) ? kept.row : massRowFrom(item, sp.date, hymnByUuid);
+      const row = kept && sameMassRow(kept.row, item, sp.date, hymnByUuid, noteIdOf) ? kept.row : massRowFrom(item, sp.date, hymnByUuid, noteIdOf);
       if (!row) return null;
       const slot = slotIdOfNumber(item.slot) ?? kept?.row.slot ?? null;
       return { ...row, slot };
@@ -226,14 +254,17 @@ export function createPlanSyncStore(db) {
   }
 
   /** The segment's content as the server's items describe it. Local content is kept where the server says nothing new. */
-  function contentFor(row, items) {
+  function contentFor(row, items, planUuid) {
     const first = items[0];
     if (first.kind === 'song') {
       const hymnIds = items.map((i) => (i.songId ? hymnByUuid(i.songId)?.id : null)).filter((id) => id !== null && id !== undefined);
       const local = row?.content?.kind === 'song' ? row.content : {};
       return { kind: 'song', hymnIds, maxSongs: Math.max(local.maxSongs ?? 1, hymnIds.length, 1), category: local.category ?? null };
     }
-    if (first.kind === 'reading') return first.text ? { kind: 'lectionary', readingType: first.text } : { kind: 'title' };
+    // Only a known reading name can be a lectionary slot. Anything else, such as a reference, would be refused when the plan is sent.
+    if (first.kind === 'reading') return PRAISE_READING_TYPES.includes(first.text) ? { kind: 'lectionary', readingType: first.text } : { kind: 'title' };
+    const noteId = first.contentHubId ? webHub.noteIdOf(planUuid, first.contentHubId) : null;
+    if (noteId !== null && webHub.projectable(noteId)) return { ...(row?.content?.kind === 'prayer' ? row.content : {}), kind: 'prayer', noteId };
     return row?.content ?? { kind: 'prayer', noteId: null };
   }
 
@@ -245,7 +276,7 @@ export function createPlanSyncStore(db) {
     if (templated) return templated;
     if (first.kind === 'song') return (first.songId && hymnByUuid(first.songId)?.title) || 'Song';
     if (first.kind === 'reading') return first.text || 'Scripture';
-    return 'Prayer';
+    return first.title || 'Prayer';
   }
 
   /** Adds any group the server's items use that the session does not have yet, with its default name. */
@@ -298,7 +329,7 @@ export function createPlanSyncStore(db) {
             name: owned ? row.name : nameFor(row, items),
             type: SEGMENT_TYPE[items[0].kind],
             minutes: items[0].minutes ?? 0,
-            content: contentFor(row, items),
+            content: contentFor(row, items, sp.id),
             leader: owned ? row.leader : '',
             arrangement: owned ? row.arrangement : '{}',
             cues: owned ? row.cues : '{}',
@@ -318,7 +349,7 @@ export function createPlanSyncStore(db) {
 
   return {
     planByUuid, dirtyPlans, payloadFor, cursor, setCursor, tombstones, hasTombstone, clearTombstone,
-    holdOf, clearHold, holdCount, hold: setHold, markSynced, setServerStamp, removeByUuid, applyServer,
+    holdOf, clearHold, holdCount, heldPlans, hold: setHold, markSynced, setServerStamp, removeByUuid, applyServer, ingestHub,
   };
 }
 

@@ -15,6 +15,8 @@ register(new URL('./test-support/electron-hook.mjs', import.meta.url));
 const { HYMN_DELETE_MIGRATIONS, LYRICS_MIGRATIONS } = await import('./lyrics.js');
 const { MASS_PLAN_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_LANGUAGE_MIGRATIONS, PLAN_NOTES_MIGRATIONS } = await import('./mass-plans.js');
 const { PW_MIGRATIONS } = await import('./pw-sessions.js');
+const { NOTES_SLOT_MIGRATIONS, PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS } = await import('./notes.js');
+const { WEB_HUB_MIGRATIONS } = await import('./web-hub-notes.js');
 const { TRANSFER_MIGRATIONS } = await import('./transfer.js');
 const { PLAN_SYNC_MIGRATIONS } = await import('./plan-sync-schema.js');
 const { createPlanSync } = await import('./plan-sync.js');
@@ -97,7 +99,7 @@ function laptopDb() {
     }
   };
   for (const sqlText of [...LYRICS_MIGRATIONS, ...HYMN_DELETE_MIGRATIONS, ...MASS_PLAN_MIGRATIONS, ...PLAN_LANGUAGE_MIGRATIONS, ...PLAN_BIBLE_MIGRATIONS, ...PLAN_CUSTOM_MIGRATIONS, ...PLAN_NOTES_MIGRATIONS,
-    ...PW_MIGRATIONS, ...PLAN_COMMUNION_MIGRATIONS, ...MASS_SLOT_MIGRATIONS, ...TRANSFER_MIGRATIONS, ...PLAN_SYNC_MIGRATIONS]) {
+    ...PW_MIGRATIONS, ...PLAN_COMMUNION_MIGRATIONS, ...MASS_SLOT_MIGRATIONS, ...TRANSFER_MIGRATIONS, ...PLAN_SYNC_MIGRATIONS, ...PRAYER_NOTES_MIGRATIONS, ...PRAYER_NOTES_SPLIT_MIGRATIONS, ...NOTES_SLOT_MIGRATIONS, ...WEB_HUB_MIGRATIONS]) {
     db.exec(sqlText);
   }
   return db;
@@ -121,7 +123,7 @@ function laptop(token = laptopToken, { skewMs = 0 } = {}) {
     },
     clearTimer: () => {},
   });
-  return { db, store, engine, timers, file };
+  return { db, store, engine, timers, file, cloud };
 }
 
 const seedHymn = (db, uuid, title) => db.prepare("INSERT INTO hymns (title, category, language, uuid) VALUES (?, 'General', 'EN', ?)").run(title, uuid);
@@ -672,15 +674,102 @@ test('an item the website sends back without its slot keeps the slot the laptop 
   assert.deepEqual(slotsOf(l.db, uuid), [['Praise to the Lord', 'entrance'], ['Kyrie', 'kyrie'], ['Gospel', null]]);
 });
 
-test('the website refuses a slot that is not 1 to 28, or two items in one slot', async () => {
+test('the website refuses a slot that is not 1 to 28, and takes two items in one slot', async () => {
   const created = await serverCreate(laptopToken);
   const row = await serverRow(created.id);
   const push = (items) => api().pushPlans({ httpMethod: 'POST', headers: { authorization: `Bearer ${laptopToken}` }, body: JSON.stringify({ plans: [{ id: created.id, name: row.name, date: '2026-11-01', kind: 'mass', items, baseUpdatedAt: new Date(row.updated_at).toISOString() }] }) });
   const resultOf = async (items) => JSON.parse((await push(items)).body).results?.[0] ?? JSON.parse((await push(items)).body);
   const bad = await resultOf([readingItem('a', 1, 'Gospel'), { ...readingItem('b', 2, 'First Reading'), slot: 29 }]);
   assert.match(JSON.stringify(bad), /slot must be a number from 1 to 28/);
-  const twice = await resultOf([{ ...readingItem('a', 1, 'Gospel'), slot: 4 }, { ...readingItem('b', 2, 'First Reading'), slot: 4 }]);
-  assert.match(JSON.stringify(twice), /same Holy Mass slot/);
+  const twice = JSON.parse((await push([{ ...readingItem('a', 1, 'Gospel'), slot: 4 }, { ...readingItem('b', 2, 'First Reading'), slot: 4 }])).body).results[0];
+  assert.equal(twice.status, 'accepted');
+});
+
+test('two songs in a slot, a key and a Content Hub entry from the web survive a laptop pull and a laptop push', async () => {
+  await seedServerSong(HYMN_A, 'First communion song');
+  await seedServerSong(HYMN_B, 'Second communion song');
+  const l = laptop();
+  seedHymn(l.db, HYMN_A, 'First communion song');
+  seedHymn(l.db, HYMN_B, 'Second communion song');
+  const hubEntry = { id: 'hub-1', type: 'prayer', title: 'Prayer for the fiesta', category: 'Community Prayer', text: 'The words of the prayer.', speakerNote: 'Read by the commentator' };
+  const created = await serverCreate(laptopToken, {
+    contentHubItems: [hubEntry],
+    items: [
+      { key: 's16', group: 'communion', order: 1, kind: 'song', songId: HYMN_A, slot: 16, slotId: 's16', keyTransposed: 'Eb', contentType: 'song' },
+      { key: 's16.2', group: 'communion', order: 2, kind: 'song', songId: HYMN_B, slot: 16, slotId: 's16', keyTransposed: 'G', contentType: 'song' },
+      { key: 's2', group: 'introductory', order: 3, kind: 'rite', text: 'Prayer for the fiesta', slot: 2, slotId: 's2', contentHubId: 'hub-1', title: 'Prayer for the fiesta', contentType: 'hub_item' },
+    ],
+  });
+  await l.engine.runOnce();
+  assert.deepEqual(slotsOf(l.db, created.id).map(([, slot]) => slot), ['communion', null, 'confess'], 'the laptop keeps one item in the slot; the second sits beside it');
+  const note = l.db.prepare('SELECT id, title, body, category, display FROM notes WHERE web_hub_key = ?').get(`${created.id}:hub-1`);
+  assert.deepEqual([note.title, note.body, note.category, note.display], ['Prayer for the fiesta', 'The words of the prayer.', 'Community Prayer', 'full'], 'the words are in the laptop\'s Content Hub');
+  const played = l.db.prepare("SELECT source_module AS module, source_id AS sourceId FROM mass_plan_items WHERE slot = 'confess'").get();
+  assert.deepEqual([played.module, played.sourceId], ['notes', String(note.id)], 'Go Live plays the slot from that note');
+  serverNow = new Date(T2);
+  l.db.prepare('UPDATE mass_plans SET name = ?, updated_at = ? WHERE uuid = ?').run('Edited on the laptop', T2, created.id);
+  serverNow = new Date(T3);
+  await l.engine.runOnce();
+  const row = await serverRow(created.id);
+  assert.equal(row.name, 'Edited on the laptop', 'the laptop push went through');
+  assert.deepEqual(row.body.contentHubItems, [hubEntry], 'a laptop push keeps the plan\'s Hub');
+  const first = row.body.items.find((i) => i.songId === HYMN_A);
+  const second = row.body.items.find((i) => i.songId === HYMN_B);
+  assert.deepEqual([first.slot, first.keyTransposed, first.slotId, first.contentType], [16, 'Eb', 's16', 'song'], 'a new key from the laptop still finds the web fields');
+  assert.deepEqual([second.slot, second.keyTransposed, second.slotId], [16, 'G', 's16'], 'the second song gets its slot back');
+  const hub = row.body.items.find((i) => i.contentHubId === 'hub-1');
+  assert.deepEqual([hub.text, hub.note, hub.slot, hub.slotId, hub.contentType], ['Prayer for the fiesta', undefined, 2, 's2', 'hub_item'], 'it goes back as the same Hub entry in the same slot');
+  // Nothing new from the website: an operator's edit to the note stays.
+  l.db.prepare('UPDATE notes SET body = ? WHERE id = ?').run('Corrected on the laptop', note.id);
+  serverNow = new Date('2026-10-27T13:00:00.000Z');
+  await serverEdit(laptopToken, created.id, { name: 'Renamed on the web' });
+  serverNow = new Date('2026-10-27T14:00:00.000Z');
+  await l.engine.runOnce();
+  assert.equal(l.db.prepare('SELECT body FROM notes WHERE id = ?').get(note.id).body, 'Corrected on the laptop');
+});
+
+test('a typed reading reference never holds a plan, goes on being sent, and comes back to the website as the same reading', async () => {
+  const l = laptop();
+  const references = ['Matthew 5:1-12a', '1 Cor 13:4-7, 13', 'Isaiah 52:13-53:12', 'Psalm 15-18c', '??? <b>'];
+  const created = await serverCreate(laptopToken, {
+    items: references.map((text, i) => ({ key: `s${20 + i}`, group: 'word', order: i + 1, kind: 'reading', text, ...(i === 0 ? { slot: 20 } : {}) })),
+  });
+  await l.engine.runOnce();
+  assert.equal(l.store.holdOf(created.id), null, 'not held');
+  assert.deepEqual(slotsOf(l.db, created.id).map(([label]) => label), references);
+  serverNow = new Date(T2);
+  l.db.prepare('UPDATE mass_plans SET name = ?, updated_at = ? WHERE uuid = ?').run('Edited on the laptop', T2, created.id);
+  serverNow = new Date(T3);
+  await l.engine.runOnce();
+  const row = await serverRow(created.id);
+  assert.equal(row.name, 'Edited on the laptop', 'the outbound send went through');
+  assert.deepEqual(row.body.items.map((i) => [i.kind, i.text]), references.map((text) => ['reading', text]));
+});
+
+test('a Praise & Worship reading by reference is not held and does not refuse the next send', async () => {
+  const l = laptop();
+  const created = await serverCreate(laptopToken, { kind: 'pw', items: [{ key: 'r1', group: 'word', order: 1, kind: 'reading', text: 'Matthew 5:1-12a', minutes: 5 }] });
+  await l.engine.runOnce();
+  assert.equal(l.store.holdOf(created.id), null);
+  const local = l.db.prepare('SELECT id FROM pw_sessions WHERE uuid = ?').get(created.id);
+  serverNow = new Date(T2);
+  l.db.prepare('UPDATE pw_sessions SET name = ?, updated_at = ? WHERE id = ?').run('Night, renamed', T2, local.id);
+  serverNow = new Date(T3);
+  await l.engine.runOnce();
+  const row = await serverRow(created.id);
+  assert.equal(row.name, 'Night, renamed');
+  assert.equal(row.body.items[0].text, 'Matthew 5:1-12a', 'the reference is not wiped');
+});
+
+test('a plan held by an earlier version is read again once and released', async () => {
+  const l = laptop();
+  const created = await serverCreate(laptopToken, { items: [{ key: 's20', group: 'word', order: 1, kind: 'reading', text: 'Matthew 5:1-12a', slot: 20 }] });
+  await l.engine.runOnce();
+  // As an earlier version left it: held, its reading not placed, and already past the pull cursor.
+  l.store.hold(created.id, 1);
+  const next = createPlanSync({ store: l.store, cloud: l.cloud, setTimer: () => 0, clearTimer: () => {} });
+  await next.runOnce();
+  assert.equal(l.store.holdOf(created.id), null);
 });
 
 // ---- One plan cannot stop the others ----
@@ -694,6 +783,7 @@ function sendLoop(uuids, create, payloadFor = (plan) => ({ id: plan.uuid, name: 
     setCursor: () => {},
     holdCount: () => 0,
     holdOf: () => null,
+    heldPlans: () => [],
     dirtyPlans: () => uuids.map((uuid) => ({ uuid, updated_at: '2026-11-01T00:00:00.000Z', server_updated_at: null })),
     payloadFor,
     markSynced: (uuid) => synced.push(uuid),

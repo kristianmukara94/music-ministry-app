@@ -132,6 +132,22 @@ test('a reading can name its type, only from the list and only with a title', as
   assert.equal((await save(cookie, { baseUpdatedAt: base, items: [item(1, 1, { kind: 'reading', text: 'x', announcement: 'the words' })] })).statusCode, 400, 'a field that would carry the words is still refused');
 });
 
+test('a plan keeps its Content Hub: saved, read back by the editor, kept when a save leaves it out, and refused when a step names one it does not have', async () => {
+  const cookie = await cookieFor('planner', 'K7QM-4XD2');
+  const entry = { id: 'hub-1', type: 'announcement', title: 'Fiesta', category: 'Event Reminder', text: 'The full notice.', speakerNote: '' };
+  const items = [item(1, 1, { text: 'Fiesta', slot: 27, contentHubId: 'hub-1', contentType: 'hub_item' })];
+  assert.equal((await save(cookie, { items, contentHubItems: [entry] })).statusCode, 200);
+  const read = JSON.parse((await editing().getPlan({ httpMethod: 'GET', headers: { cookie }, queryStringParameters: { id: PLAN_A } })).body);
+  assert.deepEqual(read.plan.contentHubItems, [entry]);
+  assert.equal((await save(cookie, { baseUpdatedAt: await latest(), items })).statusCode, 200, 'a save that does not mention the Hub');
+  assert.deepEqual((await storedPlan()).body.contentHubItems, [entry]);
+  const refused = await save(cookie, { baseUpdatedAt: await latest(), items, contentHubItems: [] });
+  assert.equal(refused.statusCode, 400);
+  assert.match(JSON.parse(refused.body).error, /does not have/);
+  assert.equal((await save(cookie, { baseUpdatedAt: await latest(), items: [item(1, 1)], contentHubItems: [] })).statusCode, 200);
+  assert.equal('contentHubItems' in (await storedPlan()).body, false, 'an empty Hub leaves the body as it was');
+});
+
 test('a viewer cannot save, and the plan does not change', async () => {
   const cookie = await cookieFor('viewer', 'K7QM-4XD2');
   const res = await save(cookie, { items: [item(1, 1, { note: 'x' })] });

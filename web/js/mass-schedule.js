@@ -10,8 +10,9 @@ export const EVERY_DAY = -1;
 export const PARISH_MASS_SCHEDULE = [
   { day: 0, time: '06:00', label: 'Early Sunday Holy Mass' },
   { day: 0, time: '08:00' },
-  { day: 0, time: '10:00' },
+  { day: 0, time: '10:00', label: 'Solemn Holy Mass' },
   { day: 0, time: '16:00' },
+  { day: 0, time: '17:30', label: 'Youth Holy Mass' },
   { day: 0, time: '18:00' },
   { day: 6, time: '17:30', label: 'Anticipated Sunday Holy Mass' },
   { day: EVERY_DAY, time: '06:00', label: 'Morning Holy Mass' },

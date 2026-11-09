@@ -61,9 +61,9 @@ test('a pull takes the website\'s slot when it names one, keeps the laptop\'s ot
   assert.match(read('electron/plan-sync.js'), /i\.note \?\? null, i\.slot \?\? null\]/, 'a change of slot alone is a change');
 });
 
-test('the website accepts a slot from 1 to 28, once per plan', () => {
+test('the website accepts a slot from 1 to 28', () => {
   const server = read('server/lib/plan-sync.js');
-  assert.match(server, /const ITEM_FIELDS = \[[^\]]*'slot'\]/);
+  assert.match(server, /const ITEM_FIELDS = \[[^\]]*'slot'[,\]]/);
   assert.match(server, /item\.slot < 1 \|\| item\.slot > MASS_SLOT_COUNT/);
   assert.match(server, /export const MASS_SLOT_COUNT = 28;/);
 });

@@ -5,7 +5,7 @@
 import { ApiError } from './admin.js';
 import { sessionFrom } from './session.js';
 import { EDITING_ROLES } from './rules.js';
-import { checkItems, checkPlanDetails, dateText, planOut } from './plan-sync.js';
+import { checkContentHubItems, checkHubReferences, checkItems, checkPlanDetails, dateText, hubOf, planOut } from './plan-sync.js';
 
 export { dateText };
 export const MIN_MINUTES = 1;
@@ -116,7 +116,10 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
       const kind = row.body?.kind ?? null;
       // A Holy Mass plan's language and Mass time. A Praise & Worship plan has neither, so a request for one is ignored.
       const details = kind === 'pw' ? {} : checkPlanDetails(body, row.body);
-      await tx`UPDATE plans SET body = ${JSON.stringify({ kind, ...details, items })}::jsonb, updated_at = ${at}, synced_at = NULL WHERE id = ${planId}`;
+      // A request that leaves the Content Hub out keeps what the plan has.
+      const hub = body.contentHubItems === undefined ? hubOf(row.body) : hubOf({ contentHubItems: checkContentHubItems(body.contentHubItems) });
+      checkHubReferences(items, hub.contentHubItems ?? []);
+      await tx`UPDATE plans SET body = ${JSON.stringify({ kind, ...details, ...hub, items })}::jsonb, updated_at = ${at}, synced_at = NULL WHERE id = ${planId}`;
       await tx`INSERT INTO audit_log (church_id, actor_user_id, action, target_plan_id) VALUES (${who.churchId}, ${who.userId}, 'plan.saved', ${planId})`;
       return { savedAt: at };
     });

@@ -1512,7 +1512,8 @@ app.whenReady().then(() => {
   // One cloud client for the plan sync, so the server clock offset it measures is kept between runs.
   const planCloud = cloud();
   planSync = createPlanSync({
-    store: createPlanSyncStore(announcements.db),
+    // A note brought in from the website is announced like any other, so Notes & Prayers and Go Live read it straight away.
+    store: createPlanSyncStore(announcements.db, { onNoteChanged: (change) => announceNoteChange(change) }),
     cloud: {
       pullPlans: (cursor) => planCloud.pullPlans(cursor),
       createPlan: (plan) => planCloud.createPlan(plan),

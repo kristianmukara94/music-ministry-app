@@ -12,7 +12,7 @@ export const NOTE_DISPLAYS = ['operator', 'full', 'lower'];
 /** Prayers and intentions the congregation prays. */
 export const PRAYER_CATEGORIES = ['Special Intercession', 'Mass Intention', 'Oratio Imperata', 'Novena', 'Consecration', 'Community Prayer'];
 /** The parish's own Mass Ordinary and Mass flow texts. The app ships none: the operator types the approved text. */
-export const MASS_FLOW_CATEGORIES = ['Creed', 'Gloria', 'Kyrie', 'Sanctus', 'Agnus Dei', 'Eucharistic Preface', 'Holy Mass Response'];
+export const MASS_FLOW_CATEGORIES = ['Creed', 'Gloria', 'Kyrie', 'Sanctus', 'Agnus Dei', 'Eucharistic Preface', 'Holy Mass Response', 'Scripture Reading'];
 /** Notices for the congregation. */
 export const ANNOUNCEMENT_CATEGORIES = ['Pastoral Notice', 'Bulletin Update', 'Event Reminder', 'Emergency Notice'];
 /** Private cues for the booth. A note in any category can be private too: these are the ones meant only for the booth. */

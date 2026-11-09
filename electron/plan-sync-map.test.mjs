@@ -56,13 +56,20 @@ test("the day's Prayer of the Faithful from the Lectionary is kept on the laptop
   assert.deepEqual(massBody(entries).items.map((i) => [i.kind, i.text, i.slot]), [['reading', 'Responsorial Psalm', 4]]);
 });
 
-test('a reading whose label is not a reading name refuses the plan and names no content', () => {
+test('a reading whose label is not a reading name goes by the name in its source id, or stays on the laptop, and its words are never sent', () => {
   const verse = 'For God so loved the world that he gave his only Son';
-  const rows = [{ block: 'word', module: 'lectionary', sourceId: '2026-11-01|Gospel', label: verse, order: 1 }];
-  assert.throws(
-    () => massEntries(rows, hymnUuidOf),
-    (err) => err instanceof MapRefused && err.message === 'A reading in this plan is not a reading name. Nothing was sent.' && !err.message.includes(verse),
-  );
+  const named = massEntries([{ block: 'word', module: 'lectionary', sourceId: '2026-11-01|Gospel', label: verse, order: 1 }], hymnUuidOf);
+  assert.deepEqual(massBody(named).items.map((i) => [i.kind, i.text]), [['reading', 'Gospel']]);
+  const unnamed = massEntries([{ block: 'word', module: 'lectionary', sourceId: `2026-11-01|${verse}`, label: verse, order: 1 }], hymnUuidOf);
+  assert.equal(unnamed[0].synced, false);
+  assert.equal(JSON.stringify(massBody(unnamed)).includes(verse), false);
+});
+
+test('a laptop note goes nowhere; a note brought in from this plan\'s web Hub goes back as that entry', () => {
+  const rows = [{ block: 'word', module: 'notes', sourceId: '12:1-2', label: 'Prayer', order: 1, slot: null }, { block: 'word', module: 'notes', sourceId: '13', label: 'Mine', order: 2, slot: null }];
+  const entries = massEntries(rows, hymnUuidOf, (id) => (id === 12 ? 'hub-1' : null));
+  assert.deepEqual(entries.map((e) => e.synced), [true, false]);
+  assert.deepEqual([entries[0].item.kind, entries[0].item.text, entries[0].item.contentHubId, entries[0].item.contentType], ['rite', 'Prayer', 'hub-1', 'hub_item']);
 });
 
 test('verse text on a reading row is never read into the body', () => {
@@ -116,11 +123,10 @@ test('a scripture segment linked to a reading sends the reading name only, and t
   assert.deepEqual(praiseBody(entries).items.map((i) => i.text), ['Gospel', 'Gospel Acclamation']);
 });
 
-test('a scripture segment with an unknown reading name refuses the plan', () => {
-  assert.throws(
-    () => praiseEntries([seg({ type: 'scripture', contentRef: JSON.stringify({ kind: 'lectionary', readingType: 'Psalm 23 in full' }) })], hymnUuidOf),
-    MapRefused,
-  );
+test('a scripture segment with an unknown reading name goes with no words, and the plan is still sent', () => {
+  const body = praiseBody(praiseEntries([seg({ type: 'scripture', contentRef: JSON.stringify({ kind: 'lectionary', readingType: 'Psalm 23 in full' }) })], hymnUuidOf));
+  assert.equal(body.items[0].kind, 'reading');
+  assert.equal(body.items[0].text, undefined);
 });
 
 test('a title scripture segment sends no text, and a segment over an hour refuses the plan', () => {

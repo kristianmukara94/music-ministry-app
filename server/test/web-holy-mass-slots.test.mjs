@@ -86,14 +86,15 @@ test('a plan saved by the earlier editor, with step keys and no slots, is read i
   assert.deepEqual(state.extra, []);
 });
 
-test('a second item for a slot, or an item that fits no row, is kept among the items the editor does not show', () => {
+test('a second item for a slot joins the slot, and an item that fits no row is kept among the items the editor does not show', () => {
   const items = [
     { key: 'a', group: 'introductory', order: 1, kind: 'song', songId: SONG_A, slot: 1 },
     { key: 'b', group: 'introductory', order: 2, kind: 'song', songId: SONG_B, slot: 1 },
     { key: 'lyrics.9.word.1', group: 'word', order: 3, kind: 'song', songId: SONG_B },
   ];
   const state = model.massFromItems(items, ROWS);
-  assert.deepEqual(state.extra.map((i) => i.key), ['b', 'lyrics.9.word.1']);
+  assert.deepEqual(state.segments.s1.more.map((e) => e.key), ['b']);
+  assert.deepEqual(state.extra.map((i) => i.key), ['lyrics.9.word.1']);
 });
 
 // ---- Saving ----

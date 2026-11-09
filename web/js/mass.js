@@ -1,7 +1,7 @@
 // Holy Mass plan editor: the 17 numbered slots of the Holy Mass in five collapsible sections, then the other steps of each section, and the
 // drawer that fills the selected row. The structure comes from the template and mass-slots.js. What
-// is chosen, typed and noted comes from the saved plan on the server, and Save sends the whole plan in one request. A song step
-// takes a song from the church's list or a typed note; a reading takes a reference; a rite takes an optional note for the operator.
+// is chosen, typed and noted comes from the saved plan on the server, and Save sends the whole plan in one request. Any row can hold any song
+// from the church's list, typed text and Content Hub entries, and more than one of them. A rite also takes an optional note for the operator.
 import { LANGUAGE_CODE, MASS_PLAN } from './sample-data.js';
 import { SLOT_COUNT } from './mass-slots.js';
 import { MASS_LANGUAGES, languageName, massLanguageOf, sectionName, slotName } from './mass-language.js';
@@ -9,8 +9,11 @@ import { isMassTime, massTimesFor, timeLabel } from './mass-schedule.js';
 import { esc, mountSidebar } from './shell.js';
 import { guard } from './auth.js';
 import { getPlan, listSongs, savePlan } from './plan-api.js';
+import { usedHubIds } from './content-hub.js';
+import { entryListHtml, entrySummaryHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
 import {
   NO_SONGS,
+  describeEntries,
   VIEW_ONLY,
   dateLabel,
   massSections,
@@ -20,9 +23,11 @@ import {
   songsForEditor,
   saveButton,
   songOptions,
+  slotEntries,
   statusText,
-  titleOf,
-  withChoice,
+  withEntry,
+  withEntryKey,
+  withoutEntry,
 } from './plan-model.js';
 
 mountSidebar();
@@ -61,12 +66,14 @@ function fresh(saved) {
   return {
     sel: FIRST_ROW,
     mode: 'list',
-    allSongs: false,
+    // Every song is offered in every slot. This narrows the list to the slot's usual category, when the planner wants that.
+    categoryOnly: false,
     query: '',
     segments: saved?.segments ?? {},
     notes: saved?.notes ?? {},
     extra: saved?.extra ?? [],
     meta: saved?.meta ?? {},
+    contentHubItems: structuredClone(plan?.contentHubItems ?? []),
     // The plan's language (EN, TL, CEB) and its Mass time ("HH:MM", or '' for none). `otherTime` shows the time box for a time not on the schedule.
     language: massLanguageOf(saved?.language),
     massTime: isMassTime(saved?.massTime) ? saved.massTime : '',
@@ -81,14 +88,15 @@ function fresh(saved) {
 /** A row with what is chosen for it in the saved plan. Nothing comes from the template's sample values. */
 function stepOf(id) {
   const base = ROWS.find((r) => r.id === id);
-  const seg = state.segments[id] ?? {};
+  const entries = describeEntries(state.segments[id], songs, state.contentHubItems);
   return {
     ...base,
     // The slot's name in the plan's language; `english` is its English name, shown beneath when the two differ.
     name: slotName(base, state.language),
     english: base.name,
-    value: seg.songId ? titleOf(songs, seg.songId) : (seg.text ?? ''),
-    src: seg.songId ? 'list' : seg.text ? 'text' : '',
+    entries,
+    value: entries.map((entry) => entry.title).join(' + '),
+    src: entries[0]?.source ?? '',
   };
 }
 
@@ -175,10 +183,10 @@ function rowHtml(r) {
   const selected = r.id === state.sel;
   const isText = r.kind === 'slot-text';
   let chip = '';
-  if (r.kind !== 'rite') {
+  if (r.kind !== 'rite' || r.value) {
     let label; let fg; let bg; let edge = 'transparent';
     if (r.value) {
-      label = r.src === 'list' ? 'From list' : 'Typed note';
+      label = r.entries.length > 1 ? `${r.entries.length} items` : r.src === 'list' ? 'From list' : r.src === 'hub' ? 'Content Hub' : 'Typed note';
       fg = r.src === 'list' ? 'var(--pill-text)' : 'var(--eyebrow)';
       bg = r.src === 'list' ? 'var(--pill-bg)' : 'var(--gold-wash)';
       if (r.src === 'list') edge = 'var(--pill-border)';
@@ -189,9 +197,8 @@ function rowHtml(r) {
     }
     chip = `<span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap;border:1px solid ${edge};color:${fg};background:${bg}">${label}</span>`;
   }
-  const filled = r.kind !== 'rite' && !!r.value;
   const needs = r.kind !== 'rite' && !r.value && !r.optional;
-  const btnLabel = r.kind === 'rite' ? 'Add note' : r.value ? 'Change' : isText ? 'Type text' : 'Choose';
+  const btnLabel = r.value ? 'Change' : r.kind === 'rite' ? 'Add' : isText ? 'Type text' : 'Choose';
   const number = r.slot ? String(r.slot).padStart(2, '0') : '•';
   return `
               <div class="plan-row editor-row" data-row="${esc(r.id)}" ${r.slot ? `data-slot="${r.slot}"` : ''} style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:12px 18px;border-bottom:1px solid var(--border);${selected ? 'background:var(--primary-wash);box-shadow:inset 0 0 0 1px var(--primary)' : 'background:transparent'}">
@@ -201,7 +208,7 @@ function rowHtml(r) {
                   <span style="font-size: 12px; color: var(--muted)">${esc(subOf(r))}</span>
                 </span>
                 <span style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 3px">
-                  <span style="font-size:14px;line-height:1.4;${filled ? 'color:var(--text);font-weight:600' : 'color:var(--muted)'}">${r.kind === 'rite' ? '' : esc(r.value || 'Nothing chosen yet')}</span>
+                  <span style="font-size:14px;line-height:1.4;${r.value ? 'color:var(--text);font-weight:600' : 'color:var(--muted)'}">${r.value ? entrySummaryHtml(r.entries, { tags: r.entries.length > 1 }) : r.kind === 'rite' ? '' : 'Nothing chosen yet'}</span>
                 </span>
                 <span class="editor-item-actions" style="flex: 0 0 auto; display: inline-flex">${chip}</span>
                 <button type="button" data-pick="${esc(r.id)}" aria-pressed="${selected}" ${DISABLED(canEdit)} class="btn-choose ${needs ? BTN_PRIMARY : BTN_QUIET}" style="height:36px;padding:0 14px;font-size:13px;font-weight:700">${btnLabel}</button>
@@ -237,80 +244,47 @@ function renderSteps() {
   }).join('');
 }
 
-function songBody() {
+/** Everything that adds to a row: the song list or typed text, and the two ways into the Content Hub. Any row takes any of them. */
+function addBody(cur) {
   const list = state.mode === 'list';
+  const reading = cur.kind === 'reading';
   const tabs = `
             <div role="tablist" aria-label="How to fill this row" style="display: flex; gap: 8px">
               <button type="button" role="tab" data-mode="list" aria-selected="${list}" style="${list ? TAB_ON : TAB_OFF}">Song list</button>
               <button type="button" role="tab" data-mode="text" aria-selected="${!list}" style="${list ? TAB_OFF : TAB_ON}">Type text</button>
             </div>`;
-  if (list) {
-    const cur = stepOf(state.sel);
-    return `
-          <div style="display: flex; flex-direction: column; gap: 14px">${tabs}
+  const panel = list
+    ? `
               <div style="display: flex; flex-direction: column; gap: 12px">
                 <label style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg)">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                  <input id="song-search" type="search" aria-label="Search songs" placeholder="Search songs" value="${esc(state.query)}" ${DISABLED(canEdit)} style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 14px">
+                  <input id="song-search" type="search" aria-label="Search songs" placeholder="Search all songs" value="${esc(state.query)}" ${DISABLED(canEdit)} style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 14px">
                 </label>
-                <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px">
-                  <span style="font-size: 13px; color: var(--text)">${state.allSongs ? 'All songs' : 'Category: ' + esc(cur.category)}</span>
-                  <button type="button" data-action="toggle-all" style="height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--focus);font-size:13px;font-weight:600;cursor:pointer">${state.allSongs ? 'Show this category' : 'Show all songs'}</button>
-                </div>
+                ${cur.category ? `<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px">
+                  <span style="font-size: 13px; color: var(--text)">${state.categoryOnly ? 'Category: ' + esc(cur.category) : 'All songs'}</span>
+                  <button type="button" data-action="toggle-category" style="height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--focus);font-size:13px;font-weight:600;cursor:pointer">${state.categoryOnly ? 'Show all songs' : 'Only ' + esc(cur.category)}</button>
+                </div>` : ''}
                 <div id="song-options" style="display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden"></div>
                 <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">The list comes from the church laptop. Add or edit songs in the desktop app.</p>
-              </div>
-          </div>`;
-  }
-  return `
-          <div style="display: flex; flex-direction: column; gap: 14px">${tabs}
+              </div>`
+    : `
               <div style="display: flex; flex-direction: column; gap: 12px">
                 <label style="display: flex; flex-direction: column; gap: 8px">
-                  <span style="font-size: 13px; font-weight: 600; color: var(--text)">Song title or a short note</span>
-                  <textarea id="typed-text" rows="5" placeholder="e.g. Psalm 24 setting, sung by the cantor" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; line-height: 1.5; resize: vertical; outline: 0"></textarea>
+                  <span style="font-size: 13px; font-weight: 600; color: var(--text)">${reading ? 'Reading reference' : 'Words or a short note'}</span>
+                  <textarea id="typed-text" rows="4" maxlength="500" placeholder="${reading ? 'e.g. Matthew 5:1-12a' : 'e.g. Psalm 24 setting, sung by the cantor'}" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; line-height: 1.5; resize: vertical; outline: 0"></textarea>
                 </label>
-                <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">Typed text is a note for the operator on the laptop. It does not appear on the projector.</p>
-                <button type="button" data-action="use-text" ${DISABLED(canEdit)} class="btn-primary" style="height: 44px; font-size: 14px; font-weight: 700">Use this text</button>
-              </div>
-          </div>`;
+                <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">Typed text is a note for the operator on the church laptop. It does not appear on the projector.${reading ? ' To show the Bible text, pick the verses in the desktop app.' : ''}</p>
+                <button type="button" data-action="use-text" ${DISABLED(canEdit)} class="btn-primary" style="height: 44px; font-size: 14px; font-weight: 700">Add this text</button>
+              </div>`;
+  return `<div style="display: flex; flex-direction: column; gap: 14px">${tabs}${panel}${hubButtonsHtml(canEdit)}</div>`;
 }
 
-function readingBody(cur) {
+function riteNoteBody(cur) {
   return `
-          <div style="display: flex; flex-direction: column; gap: 14px">
-            <div style="display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 12px; background: var(--input-bg); border: 1px solid var(--border)">
-              <span class="eyebrow">CURRENT</span>
-              <span style="font-size: 15px; font-weight: 600">${esc(cur.value || 'Nothing entered yet')}</span>
-            </div>
-            <label style="display: flex; flex-direction: column; gap: 8px">
-              <span style="font-size: 13px; font-weight: 600; color: var(--text)">Reading reference</span>
-              <input id="reading-ref" placeholder="e.g. Matthew 5:1-12a" ${DISABLED(canEdit)} style="height: 46px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; outline: 0">
-            </label>
-            <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">The web planner takes the reference as a note. To show the Bible text on the projector, pick the verses in the desktop app.</p>
-            <button type="button" data-action="use-ref" ${DISABLED(canEdit)} class="btn-primary" style="height: 44px; font-size: 14px; font-weight: 700">Use this reference</button>
-          </div>`;
-}
-
-/** A spoken slot (I Confess, Prayer of the Faithful …): its words are typed. */
-function slotTextBody(cur) {
-  return `
-          <div style="display: flex; flex-direction: column; gap: 14px">
-            <label style="display: flex; flex-direction: column; gap: 8px">
-              <span style="font-size: 13px; font-weight: 600; color: var(--text)">Words or a short note for this part</span>
-              <textarea id="typed-text" rows="4" placeholder="e.g. Lord, hear our prayer" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(cur.value)}</textarea>
-            </label>
-            <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">Typed text is a note for the operator on the church laptop. It does not appear on the projector.</p>
-            <button type="button" data-action="use-text" ${DISABLED(canEdit)} class="btn-primary" style="height: 44px; font-size: 14px; font-weight: 700">Use this text</button>
-          </div>`;
-}
-
-function riteBody(cur) {
-  return `
-          <div style="display: flex; flex-direction: column; gap: 14px">
-            <p style="margin: 0; font-size: 14px; line-height: 1.55; color: var(--text)">This part of the Holy Mass needs no song or reading. You can leave a note for the operator.</p>
+          <div style="display: flex; flex-direction: column; gap: 14px; padding-top: 14px; border-top: 1px solid var(--border)">
             <label style="display: flex; flex-direction: column; gap: 8px">
               <span style="font-size: 13px; font-weight: 600; color: var(--text)">Operator note (optional)</span>
-              <textarea id="rite-note" rows="4" placeholder="e.g. Incense at the Gospel" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(state.notes[cur.id] ?? '')}</textarea>
+              <textarea id="rite-note" rows="3" maxlength="1000" placeholder="e.g. Incense at the Gospel" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(state.notes[cur.id] ?? '')}</textarea>
             </label>
             <button type="button" data-action="save-note" ${DISABLED(canEdit)} class="btn-quiet" style="height: 44px; font-size: 14px; font-weight: 600">${state.noteSaved ? 'Note saved' : 'Save note'}</button>
           </div>`;
@@ -323,17 +297,16 @@ function renderDrawer() {
     return;
   }
   const cur = stepOf(state.sel);
-  const body = cur.kind === 'song' ? songBody() : cur.kind === 'reading' ? readingBody(cur) : cur.kind === 'slot-text' ? slotTextBody(cur) : riteBody(cur);
   drawer.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 6px">
           <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted)">${cur.slot ? `SLOT ${cur.n} OF ${SLOT_COUNT}` : 'OTHER STEP'}</span>
           <h2 class="section-title" style="font-size: 24px">${esc(cur.name)}</h2>
           <span style="font-size: 13px; color: var(--text)">${esc(subOf(cur))}</span>
-        </div>${body}`;
+        </div>${entryListHtml(cur.entries, cur.id, canEdit)}${addBody(cur)}${cur.kind === 'rite' ? riteNoteBody(cur) : ''}`;
   renderOptions();
 }
 
-/** The songs offered for the selected step: its category, or all songs, narrowed by the search box. */
+/** The songs offered for the selected step: every song, or only its category when asked, narrowed by the search box. */
 function renderOptions() {
   const box = document.getElementById('song-options');
   if (!box) return;
@@ -343,22 +316,22 @@ function renderOptions() {
     return;
   }
   const cur = stepOf(state.sel);
-  const shown = songOptions(picker, { category: cur.category, allSongs: state.allSongs, query: state.query });
+  const shown = songOptions(picker, { category: cur.category, allSongs: !state.categoryOnly, query: state.query });
   if (shown.length === 0) {
-    const message = state.query.trim() ? 'No songs match the search. Clear it, show all songs, or type text.' : 'No songs in this category yet. Show all songs, or type text.';
+    const message = state.query.trim() ? 'No songs match the search. Clear it, or type text.' : 'No songs in this category yet. Show all songs, or type text.';
     box.innerHTML = `<div style="padding: 18px 14px; font-size: 13px; color: var(--muted); background: var(--input-bg)">${message}</div>`;
     return;
   }
   box.innerHTML = shown.map((song) => {
-    const chosen = state.segments[cur.id]?.songId === song.id;
+    const chosen = cur.entries.some((entry) => entry.songId === song.id);
     const key = song.key ? ` · Key ${esc(song.key)}` : '';
     return `
                     <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--input-bg)">
                       <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
                         <span style="font-size: 14px; font-weight: 700">${esc(song.title)}</span>
-                        <span style="font-size: 12px; color: var(--muted)">${state.allSongs ? esc(song.category) + ' · ' : ''}${LANGUAGE_CODE[song.language] ?? esc(song.language)}${key}</span>
+                        <span style="font-size: 12px; color: var(--muted)">${esc(song.category)} · ${LANGUAGE_CODE[song.language] ?? esc(song.language)}${key}</span>
                       </span>
-                      <button type="button" data-song="${esc(song.id)}" aria-pressed="${chosen}" ${DISABLED(canEdit)} class="${chosen ? 'btn-chosen' : BTN_QUIET}" style="height:34px;padding:0 14px;font-size:13px;font-weight:700">${chosen ? 'Selected' : 'Select'}</button>
+                      <button type="button" data-song="${esc(song.id)}" aria-pressed="${chosen}" ${DISABLED(canEdit)} class="${chosen ? 'btn-chosen' : BTN_QUIET}" style="height:34px;padding:0 14px;font-size:13px;font-weight:700">${chosen ? 'Added' : 'Add'}</button>
                     </div>`;
   }).join('');
 }
@@ -369,13 +342,44 @@ function render() {
   renderDrawer();
 }
 
-/** Changes the selected step's choice in this session. Nothing is saved until Save plan. */
-function choose(patch) {
-  state.segments = withChoice(state.segments, state.sel, patch);
+/** Changes what the selected row holds in this session. Nothing is saved until Save plan. */
+function changeSegments(segments) {
+  state.segments = segments;
   state.dirty = true;
   state.error = '';
   renderHeader();
   renderSteps();
+  renderDrawer();
+}
+
+/** Redraws for a new language, keeping anything half-typed in the drawer. */
+function renderKeepingDraft() {
+  const typed = document.getElementById('typed-text')?.value;
+  const note = document.getElementById('rite-note')?.value;
+  render();
+  const typedBox = document.getElementById('typed-text');
+  if (typedBox && typed !== undefined) typedBox.value = typed;
+  const noteBox = document.getElementById('rite-note');
+  if (noteBox && note !== undefined) noteBox.value = note;
+}
+
+function openHub(mode) {
+  const row = stepOf(state.sel);
+  openContentHub({
+    items: state.contentHubItems,
+    slotName: row.name,
+    language: state.language,
+    languageName: languageName(state.language),
+    mode,
+    usedIds: () => usedHubIds(state.segments),
+    onChange: (items) => {
+      state.contentHubItems = items;
+      state.dirty = true;
+      state.error = '';
+      render();
+    },
+    onUse: (entry) => changeSegments(withEntry(state.segments, row.id, { contentHubId: entry.id, text: entry.title, contentType: 'hub_item' })),
+  });
 }
 
 /** Reads the saved plan and the song list from the server. A failure keeps what was on screen and shows the plain message. */
@@ -399,7 +403,7 @@ async function save() {
   state.error = '';
   renderHeader();
   try {
-    const details = { language: state.language, massTime: state.massTime || null };
+    const details = { language: state.language, massTime: state.massTime || null, contentHubItems: state.contentHubItems };
     const response = await savePlan(savePayload(plan, massToItems(state, ROWS), details));
     Object.assign(plan, details);
     plan.updatedAt = response.savedAt;
@@ -419,6 +423,7 @@ document.querySelector('main').addEventListener('click', (event) => {
     state.sel = target.dataset.pick;
     state.query = '';
     state.noteSaved = false;
+    state.mode = stepOf(state.sel).kind === 'song' ? 'list' : 'text';
     renderSteps();
     renderDrawer();
     // On a phone the drawer sits below the steps, so bring it into view.
@@ -426,7 +431,7 @@ document.querySelector('main').addEventListener('click', (event) => {
   } else if (target.dataset.lang) {
     if (target.dataset.lang === state.language) return;
     setDetail({ language: target.dataset.lang });
-    render();
+    renderKeepingDraft();
     document.querySelector(`[data-lang="${target.dataset.lang}"]`)?.focus();
   } else if (target.dataset.toggle) {
     collapsed = collapsed.includes(target.dataset.toggle) ? collapsed.filter((g) => g !== target.dataset.toggle) : [...collapsed, target.dataset.toggle];
@@ -436,20 +441,19 @@ document.querySelector('main').addEventListener('click', (event) => {
     state.mode = target.dataset.mode;
     renderDrawer();
   } else if (target.dataset.song) {
-    choose({ songId: target.dataset.song, text: null });
-    renderOptions();
-  } else if (target.dataset.action === 'toggle-all') {
-    state.allSongs = !state.allSongs;
+    // Add puts the song at the end of the row; pressing Added takes it out again.
+    const at = slotEntries(state.segments[state.sel]).findIndex((entry) => entry.songId === target.dataset.song);
+    changeSegments(at >= 0 ? withoutEntry(state.segments, state.sel, at) : withEntry(state.segments, state.sel, { songId: target.dataset.song, contentType: 'song' }));
+  } else if (target.dataset.removeEntry !== undefined) {
+    changeSegments(withoutEntry(state.segments, target.dataset.for, Number(target.dataset.removeEntry)));
+  } else if (target.dataset.hub) {
+    openHub(target.dataset.hub);
+  } else if (target.dataset.action === 'toggle-category') {
+    state.categoryOnly = !state.categoryOnly;
     renderDrawer();
   } else if (target.dataset.action === 'use-text') {
     const text = document.getElementById('typed-text').value.trim();
-    if (text) choose({ text, songId: null });
-  } else if (target.dataset.action === 'use-ref') {
-    const ref = document.getElementById('reading-ref').value.trim();
-    if (ref) {
-      choose({ text: ref, songId: null });
-      renderDrawer();
-    }
+    if (text) changeSegments(withEntry(state.segments, state.sel, { text }));
   } else if (target.dataset.action === 'save-note') {
     state.notes[state.sel] = document.getElementById('rite-note').value.trim();
     state.noteSaved = true;
@@ -493,8 +497,14 @@ document.getElementById('language').addEventListener('keydown', (event) => {
   const codes = MASS_LANGUAGES.map((l) => l.code);
   const next = codes[(codes.indexOf(state.language) + step + codes.length) % codes.length];
   setDetail({ language: next });
-  render();
+  renderKeepingDraft();
   document.querySelector(`[data-lang="${next}"]`)?.focus();
+});
+
+// The key a song is sung in for this plan. The song in the church's list keeps its own key.
+document.getElementById('drawer').addEventListener('change', (event) => {
+  if (event.target.dataset.role !== 'entry-key') return;
+  changeSegments(withEntryKey(state.segments, event.target.dataset.for, Number(event.target.dataset.index), event.target.value));
 });
 
 document.getElementById('drawer').addEventListener('input', (event) => {

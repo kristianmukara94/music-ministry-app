@@ -31,7 +31,9 @@ export function textResponseFrame(slotName, text) {
  */
 export function textRowActions(row, index, slotName) {
   if (!row || row.stale || row.module !== 'custom' || !row.slot) return null;
-  const text = String(row.sourceId || row.label || '').trim();
+  // A row that came from the website keeps its own id in the source id, so its words are in the label.
+  const fromWeb = /^web(ref)?:/.test(String(row.sourceId ?? ''));
+  const text = String((fromWeb ? row.label : row.sourceId || row.label) || '').trim();
   if (!text) return null;
   return [
     { type: 'queue/cursor', index },

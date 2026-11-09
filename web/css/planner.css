@@ -9,6 +9,7 @@
   /* Midnight navy surfaces. */
   --app-bg: #080c14;
   --surface: #111726;
+  --surface-hover: #172033;
   --border: #1c263b;
   --input-bg: #0b101b;
   --border-input: #50638a !important;
@@ -1242,5 +1243,230 @@ button.danger:hover:not(:disabled) {
   }
   .setlist-print tr {
     break-inside: avoid;
+  }
+}
+
+/* What a step holds, shown in the row and in the drawer or panel. */
+.entry-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.entry-line + .entry-line {
+  margin-top: 6px;
+}
+.entry-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.entry-empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.entry-list,
+.hub-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.slot-entry,
+.hub-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--input-bg);
+}
+.hub-row:hover {
+  background: var(--surface-hover);
+}
+.slot-entry .entry-title {
+  flex: 1 1 140px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.entry-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--eyebrow);
+}
+.entry-key select {
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-control);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 13px;
+}
+.btn-link-danger {
+  min-height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.hub-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.hub-buttons button {
+  flex: 1 1 140px;
+  height: 40px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.panel-tab,
+.hub-tabs button {
+  flex: 1;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.panel-tab.is-on,
+.hub-tabs button.is-on {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 700;
+}
+
+/* The Liturgical Content Hub dialog. */
+dialog.hub-modal {
+  width: min(680px, calc(100vw - 32px));
+}
+.hub-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hub-body .muted {
+  font-size: 13px;
+  color: var(--muted);
+}
+.hub-close {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+}
+.hub-tabs,
+.hub-filters {
+  display: flex;
+  gap: 8px;
+}
+.hub-filters input {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.hub-filters select {
+  flex: 0 1 180px;
+  min-width: 0;
+}
+.hub-filters input,
+.hub-filters select,
+.hub-form input,
+.hub-form select,
+.hub-form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-control);
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+.hub-form textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+.hub-form,
+[data-hub-list] {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hub-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.hub-form-row .field {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.hub-notice {
+  padding: 10px 12px;
+  border: 1px solid var(--gold-edge);
+  border-radius: var(--radius-control);
+  background: var(--gold-wash);
+  color: var(--text);
+  font-size: 13px;
+}
+.hub-row-text {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.hub-row-actions {
+  flex: none;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hub-row-actions .btn-primary,
+.hub-row-actions .btn-quiet {
+  height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.dialog-actions .btn-primary,
+.dialog-actions .btn-quiet {
+  height: 42px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 700;
+}
+@media (max-width: 560px) {
+  .hub-body .dialog-actions {
+    flex-direction: column;
   }
 }

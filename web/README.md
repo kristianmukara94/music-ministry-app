@@ -35,8 +35,18 @@ edit that list to match the parish bulletin. A planner can always choose another
 
 A Praise & Worship song step can save the key it is sung in for that plan (`keyTransposed`), which leaves the song in the church's
 list as it is. A reading slot saves a short title and its type (`contentType`: `scripture`, `prayer` or `announcement`). The words of
-Content Hub entries never reach the website. Both fields live in the plan's JSON body, so they need no database change, and a laptop
+the laptop's Content Hub never reach the website. Both fields live in the plan's JSON body, so they need no database change, and a laptop
 push keeps them while the step still holds the same song or title. The desktop app does not read either field yet.
+
+Any song, typed text or Content Hub entry can go in any step of either planner, and a step can hold several. Each one is its own item with the
+step's `slot` or `slotId`, and an item can carry `contentType` (`song`, `hub_item` or `text_note`), `contentHubId`, `title` and `durationMinutes`.
+A laptop slot still holds one item: on a pull the second song becomes an additional item beside it, and a laptop push restores the web fields
+(`restoreWebFields` in `server/lib/plan-sync.js`).
+
+Each plan has its own web Content Hub in `contentHubItems`, in the plan's JSON body: `id`, `type`, `title`, `category`, `text` and `speakerNote`. The dialog
+and the standard texts are in `js/slot-ui.js` and `js/content-hub.js`; check those texts against the approved Roman Missal before use. A step saves only
+the entry's title and id. The words come down to linked laptops with the plan and are kept there as notes in the Content Hub (`electron/web-hub-notes.js`), so
+Go Live can project them. A website with this code must be live before a laptop release that sends `contentHubId` back.
 
 ## Logo and icons
 

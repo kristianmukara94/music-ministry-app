@@ -105,6 +105,95 @@ export function withChoice(segments, id, patch) {
   return { ...segments, [id]: current };
 }
 
+// ---- What a step holds ----
+// A step's first item lives on the segment itself, as it always has; any more are in `segment.more`, in order. An entry is
+// { key?, songId?, text?, keyTransposed?, contentType?, contentHubId?, title?, durationMinutes?, note? }.
+const ENTRY_FIELDS = ['key', 'songId', 'text', 'keyTransposed', 'contentType', 'contentHubId', 'title', 'durationMinutes'];
+const pickEntry = (source, fields = ENTRY_FIELDS) => Object.fromEntries(fields.filter((f) => source?.[f] !== undefined && source[f] !== null && source[f] !== '').map((f) => [f, source[f]]));
+const holdsContent = (entry) => Boolean(entry?.songId || entry?.text || entry?.contentHubId);
+
+/** Everything a step holds, first item first. */
+export function slotEntries(segment) {
+  const first = pickEntry(segment);
+  return [...(holdsContent(first) ? [first] : []), ...(segment?.more ?? [])];
+}
+
+/** Puts entries back on a segment, keeping what is not an entry (the minutes). */
+function withEntries(segment, entries) {
+  const rest = Object.fromEntries(Object.entries(segment ?? {}).filter(([field]) => !ENTRY_FIELDS.includes(field) && field !== 'more'));
+  const [first, ...more] = entries;
+  return { ...rest, ...(first ?? {}), ...(more.length ? { more } : {}) };
+}
+
+/** Returns new segments with one more entry at the end of a step. */
+export const withEntry = (segments, id, entry) => ({ ...segments, [id]: withEntries(segments[id], [...slotEntries(segments[id]), entry]) });
+
+/** Returns new segments without the step's entry at `index`. The next entry moves up. */
+export const withoutEntry = (segments, id, index) => ({ ...segments, [id]: withEntries(segments[id], slotEntries(segments[id]).filter((_, i) => i !== index)) });
+
+/** Returns new segments with the key of the step's entry at `index`. An empty key goes back to the song's own. */
+export function withEntryKey(segments, id, index, keyTransposed) {
+  const entries = slotEntries(segments[id]).map((entry, i) => {
+    if (i !== index) return entry;
+    const { keyTransposed: _old, ...rest } = entry;
+    return keyTransposed ? { ...rest, keyTransposed } : rest;
+  });
+  return { ...segments, [id]: withEntries(segments[id], entries) };
+}
+
+/** How a step's entries read on the page: a title, where it came from, and a song's key. `hubItems` are the plan's Content Hub entries. */
+export function describeEntries(segment, songs, hubItems = []) {
+  return slotEntries(segment).map((entry, index) => {
+    const hub = entry.contentHubId ? hubItems.find((h) => h.id === entry.contentHubId) : null;
+    const originalKey = (entry.songId && songs.find((s) => s.id === entry.songId)?.key) || '';
+    const keyTransposed = entry.songId ? entry.keyTransposed ?? '' : '';
+    return {
+      index,
+      songId: entry.songId ?? null,
+      contentHubId: entry.contentHubId ?? null,
+      title: entry.songId ? titleOf(songs, entry.songId) : hub?.title ?? entry.title ?? entry.text ?? '',
+      source: entry.songId ? 'list' : entry.contentHubId ? 'hub' : 'text',
+      originalKey,
+      keyTransposed,
+      key: keyTransposed || originalKey,
+      contentType: entry.contentType ?? '',
+    };
+  });
+}
+
+/** The fields an entry adds to a saved item. A Content Hub entry is sent by its current title; its words stay in the plan's Hub. */
+function entryFields(entry, kind, slotId, hubItems) {
+  const hubTitle = entry.contentHubId ? hubItems.find((h) => h.id === entry.contentHubId)?.title : undefined;
+  const text = entry.songId ? undefined : (hubTitle ?? entry.text);
+  const item = { slotId };
+  if (entry.songId) item.songId = entry.songId;
+  if (text) item.text = text.slice(0, 500);
+  if (entry.songId && entry.keyTransposed) item.keyTransposed = entry.keyTransposed;
+  if (entry.contentHubId) {
+    item.contentHubId = entry.contentHubId;
+    item.title = (hubTitle ?? entry.title ?? entry.text ?? '').slice(0, 200);
+  } else if (entry.title) item.title = entry.title;
+  if (entry.durationMinutes !== undefined) item.durationMinutes = entry.durationMinutes;
+  if (entry.songId) item.contentType = 'song';
+  else if (entry.contentHubId) item.contentType = 'hub_item';
+  else if (kind === 'reading') {
+    if (text && READING_TYPE_VALUES.includes(entry.contentType)) item.contentType = entry.contentType;
+  } else if (text) item.contentType = 'text_note';
+  return item;
+}
+
+/** A song names a song and a Content Hub entry is a spoken part, whatever the step was made for. Anything else keeps the step's kind. */
+const entryKind = (entry, fallback) => (entry.songId ? 'song' : entry.contentHubId ? 'rite' : fallback);
+
+/** The next key free for another item in a step: "s16.2", "s16.3" … */
+function nextKey(base, used) {
+  let n = 2;
+  while (used.has(`${base}.${n}`)) n += 1;
+  const key = `${base}.${n}`;
+  used.add(key);
+  return key;
+}
+
 /** The song's title, or a plain line when the chosen song is no longer in the church's list. Empty when nothing is chosen. */
 export function titleOf(songs, songId) {
   if (!songId) return '';
@@ -128,8 +217,8 @@ const idOf = (row) => row.id ?? String(row.n);
  * show (for example, items the laptop added that fill no row). `rows` are the editor's rows (massRows), or the template's steps.
  *
  * An item fills the slot its `slot` number names, which is how an item made on the laptop or saved by this editor finds its place. An item from
- * the website's earlier editor has no slot, only the step's key, and fills the slot that step stands for. A row holds one item; a second claim
- * on it is left among the items the editor does not show. `meta` keeps each filled row's key and kind, so saving sends them back as they were.
+ * the website's earlier editor has no slot, only the step's key, and fills the slot that step stands for. A second item with content for a row
+ * joins it in `more`; one with no content stays among the items the editor does not show. `meta` keeps each filled row's first key and kind.
  */
 export function massFromItems(items, rows) {
   const segments = {};
@@ -138,17 +227,24 @@ export function massFromItems(items, rows) {
   const extra = [];
   const rowOf = (item) =>
     (Number.isInteger(item.slot) ? rows.find((r) => r.slot === item.slot) : undefined) ??
+    (item.slotId ? rows.find((r) => idOf(r) === item.slotId) : undefined) ??
     rows.find((r) => (r.legacyKey ?? (r.slot ? null : String(r.n))) === item.key);
   for (const item of items) {
     const row = rowOf(item);
+    if (row && meta[idOf(row)]) {
+      if (holdsContent(item)) {
+        const id = idOf(row);
+        const more = { ...pickEntry(item), ...(item.note ? { note: item.note } : {}), kind: item.kind };
+        segments[id] = { ...segments[id], more: [...(segments[id]?.more ?? []), more] };
+        continue;
+      }
+    }
     if (!row || meta[idOf(row)]) {
       extra.push(item);
       continue;
     }
     const id = idOf(row);
-    const seg = {};
-    if (item.songId) seg.songId = item.songId;
-    if (item.text) seg.text = item.text;
+    const seg = pickEntry(item, ENTRY_FIELDS.filter((f) => f !== 'key'));
     if (Object.keys(seg).length) segments[id] = seg;
     if (item.note) notes[id] = item.note;
     meta[id] = { key: item.key, kind: item.kind, ...(Number.isInteger(item.slot) ? { slot: item.slot } : {}) };
@@ -161,23 +257,35 @@ export function massFromItems(items, rows) {
  * does not show. A slot's item carries its number (1 to 28), so it keeps its place on the laptop and on every other pull. An item keeps the key
  * and kind it was read with; a new one gets "s7" for slot 7, or the step number for another step. The order is then renumbered from 1.
  */
-export function massToItems({ segments, notes, extra, meta = {} }, rows) {
+export function massToItems({ segments, notes, extra, meta = {}, contentHubItems = [] }, rows) {
   const items = [];
+  const used = new Set(extra.map((item) => item.key));
+  for (const row of rows) {
+    for (const entry of slotEntries(segments[idOf(row)])) if (entry.key) used.add(entry.key);
+  }
   for (const row of rows) {
     const id = idOf(row);
-    const seg = segments[id] ?? {};
+    const entries = slotEntries(segments[id]);
     const note = (notes[id] ?? '').trim();
-    if (!seg.songId && !seg.text && !note) continue;
+    if (entries.length === 0 && !note) continue;
     const was = meta[id] ?? {};
-    const kind = was.kind ?? (row.kind === 'reading' ? 'reading' : row.kind === 'rite' || row.kind === 'slot-text' ? 'rite' : 'song');
-    const item = { key: was.key ?? (row.slot ? `s${row.slot}` : String(row.n)), group: row.group, order: 0, kind };
-    if (seg.songId) item.songId = seg.songId;
-    if (seg.text) item.text = seg.text;
-    if (note) item.note = note;
+    const baseKey = row.slot ? `s${row.slot}` : String(row.n);
+    const stepKind = row.kind === 'reading' ? 'reading' : row.kind === 'rite' || row.kind === 'slot-text' ? 'rite' : 'song';
     // A slot row names its own slot. An item that reached another row by its key keeps the slot it came with.
     const slot = row.slot ?? was.slot;
-    if (slot) item.slot = slot;
-    items.push(item);
+    (entries.length ? entries : [{}]).forEach((entry, index) => {
+      const first = index === 0;
+      // A further item that is typed or from the Hub is always a rite, so the laptop keeps it as a web note and never holds the plan.
+      const kind = entryKind(entry, first ? (was.kind ?? stepKind) : (entry.kind ?? 'rite'));
+      let key = entry.key ?? (first ? was.key ?? baseKey : undefined);
+      if (!key) key = nextKey(baseKey, used);
+      used.add(key);
+      const item = { key, group: row.group, order: 0, kind, ...entryFields(entry, kind, id, contentHubItems) };
+      if (first && note) item.note = note;
+      else if (!first && entry.note) item.note = entry.note;
+      if (slot) item.slot = slot;
+      items.push(item);
+    });
   }
   return withOrders([...items, ...extra]);
 }
@@ -185,39 +293,54 @@ export function massToItems({ segments, notes, extra, meta = {} }, rows) {
 /** Turns a saved Praise & Worship plan's items into the editor's state, with the minutes of each segment. */
 export function praiseFromItems(items, segs) {
   const known = new Set(segs.map((s) => s.id));
+  // A laptop numbers a segment's songs ("5.1", "5.2"), and this editor numbers a further item the same way, so the number is not part of the segment.
+  const segmentOf = (item) => {
+    if (known.has(item.slotId)) return item.slotId;
+    if (known.has(item.key)) return item.key;
+    const base = String(item.key).replace(/(\.\d+)+$/, '');
+    return known.has(base) ? base : null;
+  };
   const segments = {};
   const notes = {};
   const extra = [];
   for (const item of items) {
-    if (!known.has(item.key)) {
+    const id = segmentOf(item);
+    if (id === null) {
       extra.push(item);
       continue;
     }
-    const seg = {};
-    if (item.songId) seg.songId = item.songId;
-    if (item.text) seg.text = item.text;
+    if (holdsContent(segments[id]) && holdsContent(item)) {
+      const more = { ...pickEntry(item), ...(item.note ? { note: item.note } : {}), kind: item.kind };
+      segments[id] = { ...segments[id], more: [...(segments[id].more ?? []), more] };
+      continue;
+    }
+    const seg = pickEntry(item, ENTRY_FIELDS.filter((f) => f !== 'key'));
+    if (item.key !== id) seg.key = item.key;
     if (item.minutes !== undefined) seg.minutes = item.minutes;
-    if (item.keyTransposed) seg.keyTransposed = item.keyTransposed;
-    if (item.contentType) seg.contentType = item.contentType;
-    if (Object.keys(seg).length) segments[item.key] = seg;
-    if (item.note) notes[item.key] = item.note;
+    if (Object.keys(seg).length) segments[id] = { ...segments[id], ...seg };
+    if (item.note && !notes[id]) notes[id] = item.note;
   }
   return { segments, notes, extra };
 }
 
-/** The items the server takes, for a Praise & Worship plan: every segment, with its minutes, then the items the editor does not show. */
-export function praiseToItems({ segments, notes, extra }, segs) {
-  const items = segs.map((seg, index) => {
+/** The items the server takes, for a Praise & Worship plan: every segment, with its minutes on its first item, then the items the editor does not show. */
+export function praiseToItems({ segments, notes, extra, contentHubItems = [] }, segs) {
+  const used = new Set(extra.map((item) => item.key));
+  for (const seg of segs) for (const entry of slotEntries(segments[seg.id])) if (entry.key) used.add(entry.key);
+  const items = segs.flatMap((seg) => {
     const current = segments[seg.id] ?? {};
-    const kind = seg.kind === 'reading' ? 'reading' : seg.kind === 'rite' ? 'rite' : 'song';
-    const item = { key: seg.id, group: seg.group, order: index + 1, kind, minutes: current.minutes ?? seg.defaultMinutes };
-    if (current.songId) item.songId = current.songId;
-    if (current.text) item.text = current.text;
-    if (current.songId && current.keyTransposed) item.keyTransposed = current.keyTransposed;
-    if (kind === 'reading' && current.text && current.contentType) item.contentType = current.contentType;
-    const note = (notes[seg.id] ?? '').trim();
-    if (note) item.note = note;
-    return item;
+    const stepKind = seg.kind === 'reading' ? 'reading' : seg.kind === 'rite' ? 'rite' : 'song';
+    const entries = slotEntries(current);
+    return (entries.length ? entries : [{}]).map((entry, index) => {
+      const first = index === 0;
+      const kind = entryKind(entry, first ? stepKind : (entry.kind ?? 'rite'));
+      const key = entry.key ?? (first ? seg.id : nextKey(seg.id, used));
+      used.add(key);
+      const item = { key, group: seg.group, order: 0, kind, ...(first ? { minutes: current.minutes ?? seg.defaultMinutes } : {}), ...entryFields(entry, kind, seg.id, contentHubItems) };
+      const note = first ? (notes[seg.id] ?? '').trim() : entry.note;
+      if (note) item.note = note;
+      return item;
+    });
   });
   return withOrders([...items, ...extra]);
 }
@@ -228,6 +351,7 @@ export const CONTENT_TYPES = [
   { value: 'prayer', label: 'Prayer', icon: '🙏' },
   { value: 'announcement', label: 'Announcement', icon: '📢' },
 ];
+const READING_TYPE_VALUES = CONTENT_TYPES.map((type) => type.value);
 
 /** A reading's type. One saved without a type is a scripture reference, which is all a reading slot held before. */
 export const contentTypeOf = (value) => CONTENT_TYPES.find((type) => type.value === value) ?? CONTENT_TYPES[0];
@@ -239,17 +363,20 @@ export const contentTag = (value, text) => (text ? `${contentTypeOf(value).icon}
 export const durationLabel = (minutes) => (minutes >= 60 ? `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')} min` : `${minutes} min`);
 
 /** One Praise & Worship segment as the page shows it: its minutes, what is chosen, the key it is sung in, and its note. */
-export function praiseRow(seg, { segments, notes }, songs) {
+export function praiseRow(seg, { segments, notes, contentHubItems = [] }, songs) {
   const current = segments[seg.id] ?? {};
   const originalKey = (current.songId && songs.find((song) => song.id === current.songId)?.key) || '';
   const keyTransposed = current.songId ? current.keyTransposed ?? '' : '';
-  const text = current.text ?? '';
+  // `text` is what can be edited in place: typed words, never the title of a Content Hub entry.
+  const text = current.contentHubId ? '' : current.text ?? '';
+  const entries = describeEntries(current, songs, contentHubItems);
   return {
     ...seg,
     minutes: minutesOf(segments, seg),
     songId: current.songId ?? null,
     text,
-    value: current.songId ? titleOf(songs, current.songId) : text,
+    entries,
+    value: entries.map((entry) => entry.title).join(' + '),
     note: notes[seg.id] ?? '',
     originalKey,
     keyTransposed,
@@ -303,12 +430,14 @@ export function withOrders(items) {
 
 /**
  * The body the plan-save route takes: the plan's id, the version the editor loaded, and the items. A Holy Mass plan also sends its details:
- * `language` (EN, TL or CEB) and `massTime` ("HH:MM", or null for none). Details left out are not sent, and the server keeps what it has.
+ * `language` (EN, TL or CEB) and `massTime` ("HH:MM", or null for none). Either planner can send the plan's `contentHubItems`. Details left out
+ * are not sent, and the server keeps what it has.
  */
 export function savePayload(plan, items, details = {}) {
   const payload = { id: plan.id, baseUpdatedAt: plan.updatedAt, items };
   if (details.language !== undefined) payload.language = details.language;
   if (details.massTime !== undefined) payload.massTime = details.massTime || null;
+  if (details.contentHubItems !== undefined) payload.contentHubItems = details.contentHubItems;
   return payload;
 }
 
@@ -391,6 +520,7 @@ export const duplicateRequest = (plan, id) => ({
   date: plan.date,
   kind: plan.kind === 'pw' ? 'pw' : 'mass',
   items: plan.items,
+  ...(plan.contentHubItems?.length ? { contentHubItems: plan.contentHubItems } : {}),
 });
 
 /**
@@ -402,7 +532,7 @@ export function setlistEntries({ segments, extra = [] }, rows, songs, nameOf = (
     if (songId) return { label, title: titleOf(songs, songId), key: keyTransposed || (songs.find((s) => s.id === songId)?.key ?? '') };
     return text ? { label, title: text, key: '' } : null;
   };
-  return [...rows.map((row) => entry(nameOf(row), segments[idOf(row)] ?? {})), ...extra.map((item) => entry('Also in this plan', item))].filter(Boolean);
+  return [...rows.flatMap((row) => slotEntries(segments[idOf(row)]).map((e) => entry(nameOf(row), e))), ...extra.map((item) => entry('Also in this plan', item))].filter(Boolean);
 }
 
 /** The rows the list shows: the chosen tab, then the search text matched against the name. */

@@ -164,3 +164,10 @@ test('a text response with paragraphs is one slide per paragraph', () => {
   assert.deepEqual(frame.slides.map((s) => s.map((l) => l.text)), [['For the Church.', 'Lord, hear our prayer.'], ['For the sick.', 'Lord, hear our prayer.']]);
   assert.equal(frame.labels, undefined);
 });
+
+test('a typed row from the website shows its words, never its internal id', () => {
+  for (const sourceId of ['web:s2', 'webref:s20']) {
+    const actions = textRowActions({ module: 'custom', sourceId, label: 'Matthew 5:1-12a', slot: 'first_reading' }, 0, 'First Reading');
+    assert.equal(actions[1].frame.text, 'Matthew 5:1-12a');
+  }
+});

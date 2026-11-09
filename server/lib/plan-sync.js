@@ -1,8 +1,9 @@
 // Plans as one ordered list of items, shared by the web editors and the laptop. A plan has a UUID made once, on whichever side made
 // it. The web creates plans through plan-create. A laptop pulls changes after a cursor, and pushes its plans with the updated_at it
 // last saw (baseUpdatedAt). If the server has moved on, a push is not applied: the server's version comes back and nothing is
-// written. Each plan in a push is its own transaction, with its own result. Lyrics, Bible text, announcements and media never
-// reach here. The church always comes from the signed-in session or the laptop's token, never from the request body.
+// written. Each plan in a push is its own transaction, with its own result. Lyrics, Bible text, announcements and media on a laptop never
+// reach here. A web planner can type its own Content Hub entries into a plan (contentHubItems): those start on the website, stay in that
+// plan's body, and come down to the church's linked laptops with the plan, so they can be projected. The church always comes from the signed-in session or the laptop's token, never from the request body.
 import { ApiError } from './admin.js';
 import { sessionFrom } from './session.js';
 import { bearerToken, deviceFrom } from './device.js';
@@ -17,13 +18,26 @@ export const CREATE_LIMIT = { requests: 20, windowMs: 10 * 60 * 1000 };
 export const DELETE_LIMIT = { requests: 20, windowMs: 10 * 60 * 1000 };
 const KINDS = ['song', 'reading', 'rite'];
 const PLAN_KINDS = ['mass', 'pw'];
-const ITEM_FIELDS = ['key', 'group', 'order', 'kind', 'songId', 'text', 'minutes', 'note', 'keyTransposed', 'contentType', 'slot'];
+const ITEM_FIELDS = ['key', 'group', 'order', 'kind', 'songId', 'text', 'minutes', 'note', 'keyTransposed', 'contentType', 'slot', 'slotId', 'title', 'contentHubId', 'durationMinutes'];
 // The Holy Mass slot an item fills on the laptop, by number. The website keeps it as it is, so a plan edited here goes back with its slots.
 export const MASS_SLOT_COUNT = 28;
 // The key a song is sung in for this plan. The song's own key in the church's list is not changed.
 const MUSICAL_KEY = /^[A-G][#b]?m?$/;
 // What a reading item's short title stands for. The item holds the title only; the words stay in the Content Hub on the laptop.
 export const CONTENT_TYPES = ['scripture', 'prayer', 'announcement'];
+// What fills a step, as the web planners record it. Any kind of item can carry one of these.
+export const ITEM_CONTENT_TYPES = ['song', 'hub_item', 'text_note'];
+// A plan's own Content Hub: entries typed on the web and reused across its slots.
+export const HUB_TYPES = ['prayer', 'scripture', 'announcement', 'note'];
+export const MAX_HUB_ITEMS = 50;
+// The laptop keeps an entry as a note, and a note's body is at most this long (shared/notes.js).
+export const MAX_HUB_TEXT = 4000;
+// A serverless response has a size limit. A page of plans stops here and `more` says the rest is waiting.
+export const MAX_PULL_BYTES = 3_500_000;
+const HUB_FIELDS = ['id', 'type', 'title', 'category', 'text', 'speakerNote'];
+const HUB_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const SLOT_ID = /^[A-Za-z0-9_.-]{1,20}$/;
+const MAX_ITEM_TITLE = 200;
 // Field names that would carry lyrics, slides, media, Bible text or announcements. Refused by name, so nothing is silently dropped.
 const FORBIDDEN = /lyric|stanza|slide|media|bible|verse|announce|audio|video|image|file|hymn|scripture/i;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -87,7 +101,7 @@ export function checkPlanDetails(input, current = {}) {
   return out;
 }
 
-/** A plan as the API returns it: its fields, its language and Mass time when set, and its ordered items. */
+/** A plan as the API returns it: its fields, its language and Mass time when set, its Content Hub when it has one, and its ordered items. */
 export function planOut(row) {
   const body = row.body ?? {};
   // A deleted plan keeps its row, marked deleted and with no items, so every laptop learns of the delete on its next pull.
@@ -96,7 +110,7 @@ export function planOut(row) {
     name: row.name,
     date: dateText(row.liturgical_date),
     kind: body.kind ?? null,
-    ...(body.deleted ? {} : planDetails(body)),
+    ...(body.deleted ? {} : { ...planDetails(body), ...hubOf(body) }),
     items: body.deleted ? [] : Array.isArray(body.items) ? body.items : [],
     updatedAt: new Date(row.updated_at).toISOString(),
     ...(body.deleted ? { deleted: true } : {}),
@@ -117,7 +131,6 @@ export function checkItems(items, songIds) {
   if (items.length > MAX_ITEMS) throw refuse(`A plan can have up to ${MAX_ITEMS} items. Nothing was saved.`);
   const keys = new Set();
   const orders = new Set();
-  const slots = new Set();
   const out = [];
   for (const item of items) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw refuse('An item in the plan could not be read. Nothing was saved.');
@@ -155,13 +168,28 @@ export function checkItems(items, songIds) {
     }
     if (item.slot !== undefined && item.slot !== null) {
       if (!Number.isInteger(item.slot) || item.slot < 1 || item.slot > MASS_SLOT_COUNT) throw refuse(`A Holy Mass slot must be a number from 1 to ${MASS_SLOT_COUNT}. Nothing was saved.`);
-      if (slots.has(item.slot)) throw refuse('Two items in the plan fill the same Holy Mass slot. Nothing was saved.');
-      slots.add(item.slot);
       clean.slot = item.slot;
     }
     if (item.note !== undefined && item.note !== null && item.note !== '') {
       if (typeof item.note !== 'string' || item.note.length > 1000) throw refuse('A note can be up to 1000 characters. Nothing was saved.');
       if (item.note.trim() !== '') clean.note = item.note.trim();
+    }
+    if (item.slotId !== undefined && item.slotId !== null) {
+      if (typeof item.slotId !== 'string' || !SLOT_ID.test(item.slotId)) throw refuse('An item in the plan names a step that could not be read. Nothing was saved.');
+      clean.slotId = item.slotId;
+    }
+    if (item.title !== undefined && item.title !== null && item.title !== '') {
+      if (typeof item.title !== 'string' || item.title.length > MAX_ITEM_TITLE) throw refuse(`An item title can be up to ${MAX_ITEM_TITLE} characters. Nothing was saved.`);
+      clean.title = item.title;
+    }
+    if (item.durationMinutes !== undefined && item.durationMinutes !== null) {
+      if (!Number.isInteger(item.durationMinutes) || item.durationMinutes < 0 || item.durationMinutes > 60) throw refuse('An item can run for up to 60 minutes. Nothing was saved.');
+      clean.durationMinutes = item.durationMinutes;
+    }
+    if (item.contentHubId !== undefined && item.contentHubId !== null) {
+      if (typeof item.contentHubId !== 'string' || !HUB_ID.test(item.contentHubId)) throw refuse('An item names a Content Hub entry that could not be read. Nothing was saved.');
+      if (clean.songId) throw refuse('A step holds a song or a Content Hub entry, not both. Nothing was saved.');
+      clean.contentHubId = item.contentHubId;
     }
     if (item.keyTransposed !== undefined && item.keyTransposed !== null) {
       if (typeof item.keyTransposed !== 'string' || !MUSICAL_KEY.test(item.keyTransposed)) throw refuse('A song key must be written like G, Bb or F#m. Nothing was saved.');
@@ -169,13 +197,102 @@ export function checkItems(items, songIds) {
       clean.keyTransposed = item.keyTransposed;
     }
     if (item.contentType !== undefined && item.contentType !== null) {
-      if (!CONTENT_TYPES.includes(item.contentType)) throw refuse('A reading must be a scripture reading, a prayer or an announcement. Nothing was saved.');
-      if (item.kind !== 'reading' || !clean.text) throw refuse('Only a reading with a title can have a reading type. Nothing was saved.');
+      if (ITEM_CONTENT_TYPES.includes(item.contentType)) {
+        if (item.contentType === 'hub_item' && !clean.contentHubId) throw refuse('A Content Hub item must name its entry. Nothing was saved.');
+      } else {
+        if (!CONTENT_TYPES.includes(item.contentType)) throw refuse('A reading must be a scripture reading, a prayer or an announcement. Nothing was saved.');
+        if (item.kind !== 'reading' || !clean.text) throw refuse('Only a reading with a title can have a reading type. Nothing was saved.');
+      }
       clean.contentType = item.contentType;
     }
     out.push(clean);
   }
   return out.sort((a, b) => a.order - b.order);
+}
+
+/** The plan's Content Hub as it is stored, for spreading into a plan body. Left out when empty, so a plan without one is stored as before. */
+export function hubOf(body) {
+  return Array.isArray(body?.contentHubItems) && body.contentHubItems.length ? { contentHubItems: body.contentHubItems } : {};
+}
+
+/** Checks a plan's Content Hub entries. Returns clean entries, or throws a plain ApiError. Unknown field names are refused, as they are on an item. */
+export function checkContentHubItems(list) {
+  if (!Array.isArray(list)) throw refuse('The Content Hub entries could not be read. Nothing was saved.');
+  if (list.length > MAX_HUB_ITEMS) throw refuse(`A plan can have up to ${MAX_HUB_ITEMS} Content Hub entries. Nothing was saved.`);
+  const ids = new Set();
+  const textOf = (value, max, label) => {
+    if (value === undefined || value === null) return '';
+    if (typeof value !== 'string' || value.length > max) throw refuse(`${label} can be up to ${max} characters. Nothing was saved.`);
+    return value.trim();
+  };
+  return list.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw refuse('A Content Hub entry could not be read. Nothing was saved.');
+    if (Object.keys(entry).some((field) => !HUB_FIELDS.includes(field))) throw refuse('A Content Hub entry has a field the planner does not accept. Nothing was saved.');
+    if (typeof entry.id !== 'string' || !HUB_ID.test(entry.id) || ids.has(entry.id)) throw refuse('A Content Hub entry has no valid id. Nothing was saved.');
+    ids.add(entry.id);
+    if (!HUB_TYPES.includes(entry.type)) throw refuse('A Content Hub entry must be a prayer, a reading, an announcement or a note. Nothing was saved.');
+    const title = typeof entry.title === 'string' ? entry.title.trim() : '';
+    if (title === '' || title.length > 120) throw refuse('A Content Hub title must be 1 to 120 characters. Nothing was saved.');
+    return {
+      id: entry.id,
+      type: entry.type,
+      title,
+      category: textOf(entry.category, 60, 'A Content Hub category'),
+      text: textOf(entry.text, MAX_HUB_TEXT, 'Content Hub text'),
+      speakerNote: textOf(entry.speakerNote, 500, 'A speaker note'),
+    };
+  });
+}
+
+/** Every Content Hub entry an item names must be in the plan. Throws a plain ApiError otherwise. */
+export function checkHubReferences(items, hubItems) {
+  const ids = new Set(hubItems.map((entry) => entry.id));
+  if (items.some((item) => item.contentHubId && !ids.has(item.contentHubId))) throw refuse('A step names a Content Hub entry this plan does not have. Nothing was saved.');
+}
+
+const labelOf = (item) => item.text ?? item.note ?? '';
+const isWebEntry = (item) => Boolean(item.contentHubId) || item.contentType === 'text_note';
+const sameSource = (a, b) => (a.songId ? a.songId === b.songId : Boolean(a.contentHubId) && a.contentHubId === b.contentHubId) && a.group === b.group;
+
+/**
+ * What a laptop push cannot carry, put back from the stored plan. A laptop knows nothing of a song's key for the plan, a Content Hub link or a step's
+ * web id; it makes new keys for Holy Mass songs, sends a web note back as a note, and sends a prayer segment with no words at all. So an item is matched
+ * by its key, or else by its song or Content Hub entry and its group, each stored item once. A laptop slot holds one item, so the second song of a slot comes back with no slot
+ * while another item holds that slot, and it gets its slot back. Anything the laptop really changed (another song, other words) keeps the laptop's version.
+ */
+export function restoreWebFields(items, stored) {
+  const byKey = new Map(stored.map((item) => [item.key, item]));
+  const pushed = new Set(items.map((item) => item.key));
+  const spare = stored.filter((item) => (item.songId || item.contentHubId) && !pushed.has(item.key));
+  const heldSlots = new Set(items.map((item) => item.slot).filter(Boolean));
+  return items.map((item) => {
+    let was = byKey.get(item.key);
+    if (!was && (item.songId || item.contentHubId)) {
+      const at = spare.findIndex((s) => sameSource(item, s));
+      if (at >= 0) [was] = spare.splice(at, 1);
+    }
+    if (!was) return item;
+    const out = { ...item };
+    if (item.note === undefined && was.note) out.note = was.note;
+    if (item.slot === undefined && was.slot && heldSlots.has(was.slot)) out.slot = was.slot;
+    if (isWebEntry(was) && !item.songId && !item.text && (item.note === undefined || item.note === was.text)) {
+      // The words came back as a note, or not at all: this is still the web's entry.
+      out.text = was.text;
+      delete out.note;
+      if (was.note) out.note = was.note;
+    }
+    // A title slot on the laptop sends no words, so a reference typed on the web would otherwise be wiped by the next push.
+    if (item.kind === 'reading' && was.kind === 'reading' && !item.text && was.text) out.text = was.text;
+    const same = item.songId || was.songId ? item.songId === was.songId : labelOf(out) === labelOf(was);
+    if (item.keyTransposed === undefined && was.keyTransposed && was.songId === item.songId) out.keyTransposed = was.keyTransposed;
+    if (item.contentType === undefined && was.contentType && (ITEM_CONTENT_TYPES.includes(was.contentType) ? same : was.text === out.text)) out.contentType = was.contentType;
+    if (same) {
+      for (const field of ['slotId', 'title', 'contentHubId', 'durationMinutes']) {
+        if (item[field] === undefined && was[field] !== undefined) out[field] = was[field];
+      }
+    }
+    return out;
+  });
 }
 
 /** A plan's name, date and kind. Returns the clean values or throws a plain ApiError. */
@@ -208,7 +325,7 @@ async function songIdsOf(sql, churchId) {
  * The plans changed after a cursor, oldest first, up to 200 at a time. `more` says whether another page is waiting. The cursor is
  * the last plan's updated time and id, so a page can be picked up exactly where it stopped.
  */
-export async function pullPlans(sql, churchId, cursor) {
+export async function pullPlans(sql, churchId, cursor, maxBytes = MAX_PULL_BYTES) {
   const rows = cursor
     ? await (async () => {
         const [at, id] = parseCursor(cursor);
@@ -220,9 +337,16 @@ export async function pullPlans(sql, churchId, cursor) {
     : await sql`
         SELECT id, name, liturgical_date, body, updated_at FROM plans
         WHERE church_id = ${churchId} ORDER BY updated_at, id LIMIT 201`;
-  const more = rows.length > 200;
-  const page = rows.slice(0, 200);
-  return { plans: page.map(planOut), cursor: page.length ? cursorOf(page[page.length - 1]) : cursor ?? null, more };
+  const plans = [];
+  let bytes = 0;
+  for (const row of rows.slice(0, 200)) {
+    const plan = planOut(row);
+    bytes += Buffer.byteLength(JSON.stringify(plan));
+    // A page always holds at least one plan, so a large plan can never stop the sync.
+    if (plans.length > 0 && bytes > maxBytes) break;
+    plans.push(plan);
+  }
+  return { plans, cursor: plans.length ? cursorOf(rows[plans.length - 1]) : cursor ?? null, more: rows.length > plans.length };
 }
 
 /**
@@ -268,24 +392,12 @@ export async function pushOnePlan({ sql, transaction, churchId, userId, input, s
       if (base === null || new Date(base).getTime() !== new Date(row.updated_at).getTime()) {
         return { id, status: 'conflict', serverVersion: planOut(row) };
       }
-      // A laptop keeps its own segment notes and does not send them, so a push that carries no note for an item keeps the note
-      // the server already has for that item. Otherwise a note typed on the web would be lost on the next laptop push.
-      // A plan's key for a song and a reading's type are set on the web too. Each is kept for as long as the item still holds the same song or title.
-      const stored = new Map((Array.isArray(row.body?.items) ? row.body.items : []).map((i) => [i.key, i]));
-      const kept = items.map((i) => {
-        const was = stored.get(i.key);
-        if (!was) return i;
-        return {
-          ...i,
-          ...(i.note === undefined && was.note ? { note: was.note } : {}),
-          ...(i.keyTransposed === undefined && was.keyTransposed && was.songId === i.songId ? { keyTransposed: was.keyTransposed } : {}),
-          ...(i.contentType === undefined && was.contentType && was.text === i.text ? { contentType: was.contentType } : {}),
-        };
-      });
-      // The language and Mass time are set on the web; a laptop push keeps them.
+      // A laptop does not send what is set on the web: notes, keys, reading types, Content Hub links. Each is kept while the item still holds the same thing.
+      const kept = restoreWebFields(items, Array.isArray(row.body?.items) ? row.body.items : []);
+      // The language, Mass time and the plan's Content Hub are set on the web; a laptop push keeps them.
       await tx`
         UPDATE plans SET name = ${fields.name}, liturgical_date = ${fields.date},
-          body = ${JSON.stringify({ kind: fields.kind, ...planDetails(row.body), items: kept })}::jsonb, updated_at = ${at}, synced_at = ${at}
+          body = ${JSON.stringify({ kind: fields.kind, ...planDetails(row.body), ...hubOf(row.body), items: kept })}::jsonb, updated_at = ${at}, synced_at = ${at}
         WHERE id = ${id} AND church_id = ${churchId}`;
       return { id, status: 'accepted', updatedAt: at };
     });
@@ -370,6 +482,8 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
     if (!UUID.test(id)) throw refuse('A plan needs a valid id. Nothing was saved.');
     const fields = checkPlanFields(body);
     const items = checkItems(body.items, await songIdsOf(sql, churchId));
+    const contentHubItems = checkContentHubItems(body.contentHubItems ?? []);
+    checkHubReferences(items, contentHubItems);
     const at = now().toISOString();
     try {
       await transaction(async (tx) => {
@@ -377,7 +491,7 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
         if (existing.length) throw new ApiError(409, NOT_SAVED);
         await tx`
           INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at, synced_at)
-          VALUES (${id}, ${churchId}, ${fields.name}, ${fields.date}, ${JSON.stringify({ kind: fields.kind, items })}::jsonb, ${at}, ${maker.fromLaptop ? at : null})`;
+          VALUES (${id}, ${churchId}, ${fields.name}, ${fields.date}, ${JSON.stringify({ kind: fields.kind, ...hubOf({ contentHubItems }), items })}::jsonb, ${at}, ${maker.fromLaptop ? at : null})`;
         await tx`INSERT INTO audit_log (church_id, actor_user_id, action, target_plan_id) VALUES (${churchId}, ${userId}, 'plan.created', ${id})`;
       });
     } catch (err) {
