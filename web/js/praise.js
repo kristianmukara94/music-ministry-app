@@ -1,25 +1,31 @@
-// Praise & Worship editor: the segments with their minute steppers, and the readiness panel. Changing a segment's minutes updates
-// the section totals, the total time, the time bars and the readiness checks. A segment takes a song from the church's list, typed
-// text, or a note, through the panel that opens under it. The segments and the minutes come from the saved plan on the server.
+// Praise & Worship editor: the segments with their minute steppers, the readiness panel, and the printed setlist. Changing a segment's minutes
+// updates the section totals, the total time, the time bars and the readiness checks without redrawing the list, so what is being typed in an open
+// panel stays. A segment takes a song from the church's list, a short title for a reading, or a note, through the panel that opens under it. The
+// segments and the minutes come from the saved plan on the server. Every value written into markup goes through esc().
 import { LANGUAGE_CODE, PRAISE_PLAN } from './sample-data.js';
 import { esc, mountSidebar } from './shell.js';
 import { guard } from './auth.js';
 import { getPlan, listSongs, savePlan } from './plan-api.js';
+import { keyChoices } from './song-keys.js';
 import {
+  CONTENT_TYPES,
   MAX_MINUTES,
   MIN_MINUTES,
   NO_SONGS,
   VIEW_ONLY,
   dateLabel,
+  durationLabel,
+  praiseBreakdown,
   praiseFromItems,
+  praiseRow,
   praiseToItems,
   savePayload,
+  setlistEntries,
   songsForEditor,
   praiseSegments,
   saveButton,
   songOptions,
   statusText,
-  titleOf,
   withChoice,
 } from './plan-model.js';
 
@@ -41,66 +47,31 @@ function fresh(saved) {
     open: null,
     query: '',
     dirty: false,
+    // Counts the changes made, so a change made while a save is running is not marked as saved.
+    edits: 0,
     saving: false,
     error: '',
   };
 }
 
-const fmt = (m) => (m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min` : `${m} min`);
 const DISABLED = (ok) => (ok ? '' : 'disabled');
+const FIELD_LABEL = 'display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600;color:var(--text)';
+const FIELD_INPUT = 'height:44px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;font-weight:400;outline:0';
 
-/** One segment as the page shows it: its minutes, what is chosen for it, and its note. */
-function viewOf(seg) {
-  const s = state.segments[seg.id] ?? {};
-  return {
-    ...seg,
-    minutes: s.minutes ?? seg.defaultMinutes,
-    songId: s.songId ?? null,
-    text: s.text ?? '',
-    value: s.songId ? titleOf(songs, s.songId) : (s.text ?? ''),
-    note: state.notes[seg.id] ?? '',
-  };
+const rowOf = (id) => praiseRow(SEGMENTS.find((s) => s.id === id), state, songs);
+const compute = () => praiseBreakdown(PRAISE_PLAN, SEGMENTS, state, songs);
+const setlist = () => setlistEntries(state, SEGMENTS, songs);
+
+function markEdited() {
+  state.dirty = true;
+  state.edits += 1;
+  state.error = '';
 }
 
-/** Works out every number the page shows from the plan and the choices so far. */
-function compute() {
-  let total = 0;
-  let songsTotal = 0;
-  let songsDone = 0;
-  const missing = [];
-  const sections = PRAISE_PLAN.sections.map((section) => {
-    let secMin = 0;
-    const rows = section.rows.map(([id]) => {
-      const seg = SEGMENTS.find((s) => s.id === id);
-      const v = viewOf(seg);
-      secMin += v.minutes;
-      total += v.minutes;
-      const needs = seg.kind === 'song' || seg.kind === 'reading';
-      if (seg.kind === 'song') {
-        songsTotal += 1;
-        if (v.value) songsDone += 1;
-      }
-      if (needs && !v.value && !seg.optional) missing.push(seg.name);
-      return v;
-    });
-    return { title: section.title, rows, secMin };
-  });
-
-  const over = total - PRAISE_PLAN.targetMinutes;
-  const checks = [
-    {
-      ok: missing.length === 0,
-      text: missing.length === 0 ? 'Every required song and reading is set' : `${missing.length} step${missing.length === 1 ? '' : 's'} still need a song or reading`,
-      sub: missing.slice(0, 3).join(', '),
-    },
-    {
-      ok: over <= 0,
-      text: over <= 0 ? `Fits the ${PRAISE_PLAN.targetMinutes} minute slot (${fmt(total)})` : `Runs ${over} min over the ${PRAISE_PLAN.targetMinutes} minute slot`,
-      sub: '',
-    },
-    ...PRAISE_PLAN.fixedChecks,
-  ];
-  return { sections, total, songsTotal, songsDone, checks };
+function statusState() {
+  if (state.error) return 'error';
+  if (!plan) return 'idle';
+  return state.dirty ? 'unsaved' : 'saved';
 }
 
 function renderHeader(view) {
@@ -108,8 +79,9 @@ function renderHeader(view) {
   document.getElementById('title').textContent = plan ? plan.name : 'No plan open';
   document.title = `${plan ? plan.name : 'Praise & Worship'} · APCCMMA Web Planner`;
   document.getElementById('status').textContent = plan ? statusText({ dirty: state.dirty, error: state.error }) : state.error || 'Not loaded';
+  document.getElementById('status-pill').dataset.state = statusState();
   document.getElementById('songs-label').textContent = `${view.songsDone} of ${view.songsTotal} chosen`;
-  document.getElementById('total-label').textContent = fmt(view.total);
+  document.getElementById('total-label').textContent = durationLabel(view.total);
   const segments = view.sections.reduce((n, s) => n + s.rows.length, 0);
   document.getElementById('segments-label').textContent = `${segments} segments`;
   const save = saveButton(state.saving);
@@ -117,17 +89,32 @@ function renderHeader(view) {
   saveEl.disabled = !plan || !canEdit || save.disabled;
   saveEl.textContent = save.label;
   document.getElementById('discard').disabled = !plan || state.saving;
+  document.getElementById('print').disabled = !plan || setlist().length === 0;
   const note = document.getElementById('view-only');
   note.textContent = VIEW_ONLY;
   note.hidden = !plan || canEdit;
 }
 
-/** The panel that opens under a segment: the song picker, the reference box, or the operator note. */
+/** The key a song is sung in for this plan. Choosing the song's own key clears the change; the song in the list is never touched. */
+function keyField(row) {
+  if (!row.songId) return '';
+  const options = keyChoices(row.originalKey, row.keyTransposed)
+    .map((choice) => `<option value="${esc(choice.value)}" ${choice.value === row.keyTransposed ? 'selected' : ''}>${esc(choice.label)}</option>`)
+    .join('');
+  return `
+            <label style="${FIELD_LABEL}">
+              Key for this plan
+              <select data-role="panel-key" data-for="${esc(row.id)}" ${DISABLED(canEdit)} style="${FIELD_INPUT}">${options}</select>
+              <span style="font-size:12px;font-weight:400;line-height:1.5;color:var(--muted)">This changes the lead sheet key for this plan only. The song in the list keeps its own key.</span>
+            </label>`;
+}
+
+/** The panel that opens under a segment: the song picker, the title box, or the operator note. */
 function panelFor(row) {
   const close = `<button type="button" data-close="${esc(row.id)}" style="height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600;cursor:pointer">Close</button>`;
   if (row.kind === 'song') {
     return `
-          <div style="display:flex;flex-direction:column;gap:12px;padding:14px 18px;background:var(--input-bg);border-bottom:1px solid var(--border)">
+          <div style="display:flex;flex-direction:column;gap:12px;padding:14px 18px;background:var(--input-bg);border-bottom:1px solid var(--border)">${keyField(row)}
             <label style="display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg)">
               <input data-role="panel-search" type="search" aria-label="Search songs" placeholder="Search songs" value="${esc(state.query)}" ${DISABLED(canEdit)} style="flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font-size:14px">
             </label>
@@ -139,19 +126,28 @@ function panelFor(row) {
           </div>`;
   }
   if (row.kind === 'reading') {
+    const types = CONTENT_TYPES.map((type) => `<option value="${type.value}" ${type.value === row.contentType ? 'selected' : ''}>${type.icon} ${esc(type.label)}</option>`).join('');
     return `
           <div style="display:flex;flex-direction:column;gap:12px;padding:14px 18px;background:var(--input-bg);border-bottom:1px solid var(--border)">
-            <input data-role="panel-ref" aria-label="Reading reference" placeholder="e.g. Psalm 63:1-8" value="${esc(row.text)}" ${DISABLED(canEdit)} style="height:44px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;outline:0">
-            <p style="margin:0;font-size:12px;line-height:1.5;color:var(--muted)">The web planner takes the reference as a note. To show the Bible text on the projector, pick the verses in the desktop app.</p>
+            <label style="${FIELD_LABEL}">
+              Type
+              <select data-role="panel-type" ${DISABLED(canEdit)} style="${FIELD_INPUT}">${types}</select>
+            </label>
+            <label style="${FIELD_LABEL}">
+              Title or reference
+              <input data-role="panel-ref" maxlength="200" placeholder="e.g. Psalm 100:1-5" value="${esc(row.text)}" ${DISABLED(canEdit)} style="${FIELD_INPUT}">
+            </label>
+            <p style="margin:0;font-size:12px;line-height:1.5;color:var(--muted)">The web planner saves only this short title. The full text stays in the Content Hub on the church laptop, and is put on the projector from the desktop app.</p>
             <div style="display:flex;flex-wrap:wrap;gap:8px">
-              <button type="button" data-use-ref="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-primary" style="height:40px;padding:0 16px;font-size:14px;font-weight:700">Use this reference</button>
+              <button type="button" data-use-ref="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-primary" style="height:40px;padding:0 16px;font-size:14px;font-weight:700">Use this title</button>
+              <button type="button" data-clear="${esc(row.id)}" ${DISABLED(canEdit)} style="height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--focus);font-size:13px;font-weight:600;cursor:pointer">Clear this reading</button>
               ${close}
             </div>
           </div>`;
   }
   return `
           <div style="display:flex;flex-direction:column;gap:12px;padding:14px 18px;background:var(--input-bg);border-bottom:1px solid var(--border)">
-            <textarea data-role="panel-note" aria-label="Operator note" rows="3" placeholder="e.g. Speaker to confirm" ${DISABLED(canEdit)} style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;line-height:1.5;resize:vertical;outline:0">${esc(row.note)}</textarea>
+            <textarea data-role="panel-note" aria-label="Operator note" rows="3" maxlength="1000" placeholder="e.g. Speaker to confirm" ${DISABLED(canEdit)} style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;line-height:1.5;resize:vertical;outline:0">${esc(row.note)}</textarea>
             <div style="display:flex;flex-wrap:wrap;gap:8px">
               <button type="button" data-save-note="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-quiet" style="height:40px;padding:0 16px;font-size:14px;font-weight:600">Save note</button>
               ${close}
@@ -172,18 +168,28 @@ function optionsFor(row) {
             <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--input-bg)">
               <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
                 <span style="font-size:14px;font-weight:700">${esc(song.title)}</span>
-                <span style="font-size:12px;color:var(--muted)">${LANGUAGE_CODE[song.language] ?? esc(song.language)}${key}</span>
+                <span style="font-size:12px;color:var(--muted)">${esc(LANGUAGE_CODE[song.language] ?? song.language)}${key}</span>
               </span>
               <button type="button" data-song="${esc(song.id)}" data-for="${esc(row.id)}" aria-pressed="${chosen}" ${DISABLED(canEdit)} class="${chosen ? 'btn-chosen' : 'btn-quiet'}" style="height:34px;padding:0 14px;font-size:13px;font-weight:700">${chosen ? 'Selected' : 'Select'}</button>
             </div>`;
   }).join('');
 }
 
+/** What a step shows once it is filled: the song with its key badge, or the reading's tag. */
+function contentHtml(row) {
+  if (row.kind === 'rite') return '';
+  if (!row.value) return 'Nothing chosen yet';
+  if (row.kind === 'reading') return `<span class="content-tag">${esc(row.tag)}</span>`;
+  const badge = row.key ? `<span class="key-badge${row.keyTransposed ? ' is-transposed' : ''}">Key: ${esc(row.key)}</span>` : '';
+  const original = row.keyTransposed && row.originalKey ? `<span style="font-size:12px;font-weight:400;color:var(--muted)">Original: ${esc(row.originalKey)}</span>` : '';
+  return `<span>${esc(row.value)}</span>${badge}${original}`;
+}
+
 function renderSegments(view) {
   document.getElementById('segments').innerHTML = view.sections.map((section) => {
     const rows = section.rows.map((r) => {
       const sub = r.kind === 'song' ? 'Song · ' + r.hint : r.kind === 'reading' ? 'Reading · ' + r.hint : r.hint;
-      const valueStyle = r.kind === 'rite' ? 'display:none' : r.value ? 'color:var(--text);font-weight:600' : 'color:var(--muted)';
+      const valueStyle = r.kind === 'rite' ? 'display:none' : r.value ? 'display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;color:var(--text);font-weight:600' : 'color:var(--muted)';
       const btnLabel = r.kind === 'rite' ? 'Add note' : r.value ? 'Change' : 'Choose';
       const needs = (r.kind === 'song' || r.kind === 'reading') && !r.value && !r.optional;
       const btnClass = needs ? 'btn-primary' : 'btn-quiet';
@@ -195,10 +201,10 @@ function renderSegments(view) {
                   <span style="font-size: 15px; font-weight: 700">${esc(r.name)}</span>
                   <span style="font-size: 12px; color: var(--muted)">${esc(sub)}</span>
                 </span>
-                <span style="flex: 1 1 200px; min-width: 0; font-size: 14px; line-height: 1.4; ${valueStyle}">${r.kind === 'rite' ? '' : esc(r.value || 'Nothing chosen yet')}</span>
+                <span style="flex: 1 1 200px; min-width: 0; font-size: 14px; line-height: 1.4; ${valueStyle}">${contentHtml(r)}</span>
                 <span class="editor-item-actions" style="flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg)">
                   <button type="button" data-step="${esc(r.id)}" data-delta="-1" aria-label="Fewer minutes for ${esc(r.name)}" ${r.minutes <= MIN_MINUTES || !canEdit ? 'disabled' : ''} style="width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--focus); font-size: 18px; font-weight: 700; cursor: pointer">−</button>
-                  <span style="min-width: 46px; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 13px">${r.minutes} min</span>
+                  <span data-minutes="${esc(r.id)}" style="min-width: 46px; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 13px">${r.minutes} min</span>
                   <button type="button" data-step="${esc(r.id)}" data-delta="1" aria-label="More minutes for ${esc(r.name)}" ${r.minutes >= MAX_MINUTES || !canEdit ? 'disabled' : ''} style="width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--focus); font-size: 18px; font-weight: 700; cursor: pointer">+</button>
                 </span>
                 <button type="button" data-open="${esc(r.id)}" aria-expanded="${open}" ${DISABLED(canEdit)} class="btn-choose ${btnClass}" style="height: 36px; padding: 0 14px; font-size: 13px; font-weight: 700">${btnLabel}</button>
@@ -208,43 +214,27 @@ function renderSegments(view) {
           <div style="border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden">
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: var(--input-bg); border-bottom: 1px solid var(--border)">
               <h2 class="section-title sentence-case">${esc(section.title)}</h2>
-              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted)">${section.secMin} min</span>
+              <span data-section-minutes="${section.group}" style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted)">${section.minutes} min</span>
             </div>${rows}
           </div>`;
   }).join('');
 }
 
+/** Updates the readiness panel in place, so the bars slide to their new length. */
 function renderReadiness(view) {
   const okCount = view.checks.filter((c) => c.ok).length;
   const left = view.checks.length - okCount;
-  const headline = left === 0 ? 'Ready to sync' : `${left} thing${left === 1 ? '' : 's'} to finish`;
-  const maxSec = Math.max(...view.sections.map((s) => s.secMin));
-  const checks = view.checks.map((c) => `
+  document.getElementById('readiness-headline').textContent = left === 0 ? 'Ready to sync' : `${left} thing${left === 1 ? '' : 's'} to finish`;
+  document.getElementById('readiness-fill').style.width = `${Math.round((okCount / view.checks.length) * 100)}%`;
+  document.getElementById('readiness-checks').innerHTML = view.checks.map((c) => `
             <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.4">
               <span aria-hidden="true" style="flex: none; margin-top: 2px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; ${c.ok ? 'background:var(--pill-bg);color:var(--pill-text)' : 'background:var(--warn-bg);color:var(--warn-text)'}">${c.ok ? '✓' : '!'}</span>
-              <span style="${c.ok ? 'color:var(--text)' : 'color:var(--text)'}"><span class="sr-only">${c.ok ? 'Done: ' : 'To do: '}</span>${esc(c.text + (c.sub ? ` (${c.sub})` : ''))}</span>
+              <span style="color:var(--text)"><span class="sr-only">${c.ok ? 'Done: ' : 'To do: '}</span>${esc(c.text + (c.sub ? ` (${c.sub})` : ''))}</span>
             </li>`).join('');
-  const bars = view.sections.map((s, i) => `
-            <div style="display: flex; align-items: center; gap: 10px">
-              <span style="flex: 0 0 96px; font-size: 13px; color: var(--text)">${esc(PRAISE_PLAN.sectionLabels[i] ?? s.title)}</span>
-              <span style="flex: 1; height: 8px; border-radius: 99px; background: var(--border); overflow: hidden"><span style="display: block; height: 100%; border-radius: 99px; background: var(--primary); width: ${Math.round((s.secMin / maxSec) * 100)}%"></span></span>
-              <span style="flex: 0 0 52px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text)">${s.secMin} min</span>
-            </div>`).join('');
-
-  document.getElementById('readiness').innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 6px">
-          <span class="eyebrow">READINESS</span>
-          <h2 aria-live="polite" class="section-title" style="font-size: 24px">${headline}</h2>
-        </div>
-        <div style="height: 8px; border-radius: 99px; background: var(--border); overflow: hidden">
-          <div style="height: 100%; border-radius: 99px; background: var(--primary); width: ${Math.round((okCount / view.checks.length) * 100)}%"></div>
-        </div>
-        <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px">${checks}
-        </ul>
-        <div style="padding-top: 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px">
-          <span class="eyebrow">TIME BY SECTION</span>${bars}
-        </div>
-        <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">Songs come from the church laptop. Lyrics and slides are prepared in the desktop app.</p>`;
+  for (const section of view.sections) {
+    document.getElementById(`bar-fill-${section.group}`).style.width = `${section.percent}%`;
+    document.getElementById(`bar-label-${section.group}`).textContent = `${section.minutes} min`;
+  }
 }
 
 function render() {
@@ -254,11 +244,51 @@ function render() {
   renderReadiness(view);
 }
 
+/** After a stepper: the step's minutes and every total, leaving the list and any open panel as they are. */
+function renderTimes(id) {
+  const view = compute();
+  renderHeader(view);
+  renderReadiness(view);
+  for (const section of view.sections) document.querySelector(`[data-section-minutes="${section.group}"]`).textContent = `${section.minutes} min`;
+  const row = rowOf(id);
+  const key = CSS.escape(id);
+  document.querySelector(`[data-minutes="${key}"]`).textContent = `${row.minutes} min`;
+  document.querySelector(`[data-step="${key}"][data-delta="-1"]`).disabled = row.minutes <= MIN_MINUTES || !canEdit;
+  document.querySelector(`[data-step="${key}"][data-delta="1"]`).disabled = row.minutes >= MAX_MINUTES || !canEdit;
+}
+
 /** Changes a segment's choice in this session. Nothing is saved until Save plan. */
 function choose(id, patch) {
   state.segments = withChoice(state.segments, id, patch);
-  state.dirty = true;
-  state.error = '';
+  markEdited();
+}
+
+/** Takes in what is typed in the open panel but not yet applied, so a save never leaves it behind. Returns whether anything changed. */
+function applyOpenPanel() {
+  if (!state.open) return false;
+  const row = rowOf(state.open);
+  const ref = document.querySelector('[data-role="panel-ref"]');
+  if (ref) {
+    const text = ref.value.trim();
+    const contentType = document.querySelector('[data-role="panel-type"]').value;
+    if (!text || (text === row.text && contentType === row.contentType)) return false;
+    choose(row.id, { text, contentType, songId: null });
+    return true;
+  }
+  const noteBox = document.querySelector('[data-role="panel-note"]');
+  if (noteBox && noteBox.value.trim() !== row.note) {
+    state.notes[row.id] = noteBox.value.trim();
+    markEdited();
+    return true;
+  }
+  return false;
+}
+
+/** Redraws the list, keeping the cursor in the panel field it was in. */
+function renderKeepingField() {
+  const role = document.activeElement?.dataset?.role;
+  render();
+  if (role) document.querySelector(`[data-role="${role}"]`)?.focus();
 }
 
 /** Reads the saved plan and the song list from the server. A failure keeps what was on screen and shows the plain message. */
@@ -276,22 +306,51 @@ async function load() {
   render();
 }
 
-async function save() {
+async function save({ onlyIfChanged = false } = {}) {
   if (!plan || !canEdit || state.saving) return;
+  const applied = applyOpenPanel();
+  if (onlyIfChanged && !state.dirty) return;
+  if (applied) renderKeepingField();
   state.saving = true;
   state.error = '';
+  const sent = state.edits;
   renderHeader(compute());
   try {
     const response = await savePlan(savePayload(plan, praiseToItems(state, SEGMENTS)));
     plan.updatedAt = response.savedAt;
-    state.dirty = false;
+    if (state.edits === sent) state.dirty = false;
   } catch (err) {
     state.error = err.message;
   } finally {
     state.saving = false;
-    render();
+    renderHeader(compute());
   }
 }
+
+/** Fills the print-only setlist from what is on the page, unsaved changes included. Without a setlist, the browser prints the page as it is. */
+function prepareSetlist() {
+  const entries = setlist();
+  if (!plan || entries.length === 0) return;
+  const hasKeys = entries.some((entry) => entry.key);
+  document.getElementById('setlist-print').innerHTML = `
+    <p class="setlist-eyebrow">Assumption Parish · Music Ministry</p>
+    <h1>${esc(plan.name)}</h1>
+    <p class="setlist-when">${esc(`${dateLabel(plan.date)} · ${durationLabel(compute().total)}`)}</p>
+    <table>
+      <thead><tr><th scope="col">#</th><th scope="col">Part</th><th scope="col">Song or text</th>${hasKeys ? '<th scope="col">Key</th>' : ''}</tr></thead>
+      <tbody>${entries.map((entry, index) => `<tr><td>${index + 1}</td><td>${esc(entry.label)}</td><td>${esc(entry.title)}</td>${hasKeys ? `<td>${esc(entry.key)}</td>` : ''}</tr>`).join('')}</tbody>
+    </table>`;
+  document.body.classList.add('is-printing-setlist');
+  // The browser offers this as the name of the saved PDF.
+  document.title = `Setlist - ${plan.name}`;
+}
+
+// The browser's own Print command gets the same clean setlist as the button.
+window.addEventListener('beforeprint', prepareSetlist);
+window.addEventListener('afterprint', () => {
+  document.body.classList.remove('is-printing-setlist');
+  renderHeader(compute());
+});
 
 document.querySelector('main').addEventListener('click', (event) => {
   const button = event.target.closest('button');
@@ -299,14 +358,11 @@ document.querySelector('main').addEventListener('click', (event) => {
   if (button.dataset.step) {
     const id = button.dataset.step;
     const delta = Number(button.dataset.delta);
-    const seg = SEGMENTS.find((s) => s.id === id);
-    const current = viewOf(seg).minutes;
+    const current = rowOf(id).minutes;
     choose(id, { minutes: Math.max(MIN_MINUTES, Math.min(MAX_MINUTES, current + delta)) });
-    state.dirty = true;
-    render();
-    // The list is redrawn, so keep keyboard focus on the same stepper button (or its pair if this one is now disabled).
-    const again = document.querySelector(`[data-step="${CSS.escape(id)}"][data-delta="${delta}"]`);
-    (again && !again.disabled ? again : document.querySelector(`[data-step="${CSS.escape(id)}"][data-delta="${-delta}"]`))?.focus();
+    renderTimes(id);
+    // A stepper at its limit is now disabled, so keyboard focus moves to its pair.
+    if (button.disabled) document.querySelector(`[data-step="${CSS.escape(id)}"][data-delta="${-delta}"]`)?.focus();
   } else if (button.dataset.open) {
     state.open = state.open === button.dataset.open ? null : button.dataset.open;
     state.query = '';
@@ -315,20 +371,20 @@ document.querySelector('main').addEventListener('click', (event) => {
     state.open = null;
     render();
   } else if (button.dataset.song) {
-    choose(button.dataset.for, { songId: button.dataset.song, text: null });
+    // A key belongs to the song it was chosen for, so a different song starts in its own key.
+    const sameSong = rowOf(button.dataset.for).songId === button.dataset.song;
+    choose(button.dataset.for, { songId: button.dataset.song, text: null, ...(sameSong ? {} : { keyTransposed: null }) });
     render();
   } else if (button.dataset.clear) {
-    choose(button.dataset.clear, { songId: null, text: null });
+    choose(button.dataset.clear, { songId: null, text: null, keyTransposed: null, contentType: null });
     render();
   } else if (button.dataset.useRef) {
-    const input = document.querySelector('[data-role="panel-ref"]');
-    const ref = input.value.trim();
-    if (ref) choose(button.dataset.useRef, { text: ref, songId: null });
-    render();
+    if (applyOpenPanel()) render();
   } else if (button.dataset.saveNote) {
-    state.notes[button.dataset.saveNote] = document.querySelector('[data-role="panel-note"]').value.trim();
-    state.dirty = true;
-    render();
+    if (applyOpenPanel()) render();
+  } else if (button.id === 'print') {
+    prepareSetlist();
+    window.print();
   } else if (button.id === 'discard') {
     if (planId) void load();
   } else if (button.id === 'save') {
@@ -339,9 +395,22 @@ document.querySelector('main').addEventListener('click', (event) => {
 document.querySelector('main').addEventListener('input', (event) => {
   if (event.target.dataset.role !== 'panel-search') return;
   state.query = event.target.value;
-  const row = SEGMENTS.find((s) => s.id === state.open);
   const box = document.querySelector('[data-role="panel-options"]');
-  if (row && box) box.innerHTML = optionsFor(viewOf(row));
+  if (state.open && box) box.innerHTML = optionsFor(rowOf(state.open));
+});
+
+document.querySelector('main').addEventListener('change', (event) => {
+  if (event.target.dataset.role !== 'panel-key') return;
+  choose(event.target.dataset.for, { keyTransposed: event.target.value || null });
+  renderKeepingField();
+});
+
+// Ctrl + S, or Cmd + S on a Mac, from anywhere on the page. The browser's own Save page is always held back here. A plan with nothing new is not
+// saved again, so a habitual press does not make a new version for the laptops to pull.
+document.addEventListener('keydown', (event) => {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key?.toLowerCase() !== 's') return;
+  event.preventDefault();
+  if (!event.repeat) void save({ onlyIfChanged: true });
 });
 
 const user = await guard();

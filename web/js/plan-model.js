@@ -197,6 +197,8 @@ export function praiseFromItems(items, segs) {
     if (item.songId) seg.songId = item.songId;
     if (item.text) seg.text = item.text;
     if (item.minutes !== undefined) seg.minutes = item.minutes;
+    if (item.keyTransposed) seg.keyTransposed = item.keyTransposed;
+    if (item.contentType) seg.contentType = item.contentType;
     if (Object.keys(seg).length) segments[item.key] = seg;
     if (item.note) notes[item.key] = item.note;
   }
@@ -211,11 +213,87 @@ export function praiseToItems({ segments, notes, extra }, segs) {
     const item = { key: seg.id, group: seg.group, order: index + 1, kind, minutes: current.minutes ?? seg.defaultMinutes };
     if (current.songId) item.songId = current.songId;
     if (current.text) item.text = current.text;
+    if (current.songId && current.keyTransposed) item.keyTransposed = current.keyTransposed;
+    if (kind === 'reading' && current.text && current.contentType) item.contentType = current.contentType;
     const note = (notes[seg.id] ?? '').trim();
     if (note) item.note = note;
     return item;
   });
   return withOrders([...items, ...extra]);
+}
+
+/** What a reading slot can hold. The slot keeps a short title or reference only; the words stay in the Content Hub on the laptop. */
+export const CONTENT_TYPES = [
+  { value: 'scripture', label: 'Scripture reading', icon: '📖' },
+  { value: 'prayer', label: 'Prayer', icon: '🙏' },
+  { value: 'announcement', label: 'Announcement', icon: '📢' },
+];
+
+/** A reading's type. One saved without a type is a scripture reference, which is all a reading slot held before. */
+export const contentTypeOf = (value) => CONTENT_TYPES.find((type) => type.value === value) ?? CONTENT_TYPES[0];
+
+/** The tag a filled reading slot shows, for example "📖 Psalm 100:1-5". */
+export const contentTag = (value, text) => (text ? `${contentTypeOf(value).icon} ${text}` : '');
+
+/** Minutes as the page shows them: "45 min", or "1 h 17 min" from an hour up. */
+export const durationLabel = (minutes) => (minutes >= 60 ? `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')} min` : `${minutes} min`);
+
+/** One Praise & Worship segment as the page shows it: its minutes, what is chosen, the key it is sung in, and its note. */
+export function praiseRow(seg, { segments, notes }, songs) {
+  const current = segments[seg.id] ?? {};
+  const originalKey = (current.songId && songs.find((song) => song.id === current.songId)?.key) || '';
+  const keyTransposed = current.songId ? current.keyTransposed ?? '' : '';
+  const text = current.text ?? '';
+  return {
+    ...seg,
+    minutes: minutesOf(segments, seg),
+    songId: current.songId ?? null,
+    text,
+    value: current.songId ? titleOf(songs, current.songId) : text,
+    note: notes[seg.id] ?? '',
+    originalKey,
+    keyTransposed,
+    key: keyTransposed || originalKey,
+    contentType: contentTypeOf(current.contentType).value,
+    tag: seg.kind === 'reading' ? contentTag(current.contentType, text) : '',
+  };
+}
+
+/**
+ * Every number and check the Praise & Worship editor shows, worked out from the template and the choices so far. A section's `percent` is its
+ * share of the target slot, so a bar moves with every minute and all three bars can be read against the same 90 minutes.
+ */
+export function praiseBreakdown(template, segs, state, songs) {
+  const target = template.targetMinutes;
+  const sections = template.sections.map((section, index) => {
+    const rows = section.rows.map(([id]) => praiseRow(segs.find((seg) => seg.id === id), state, songs));
+    const minutes = rows.reduce((sum, row) => sum + row.minutes, 0);
+    return { group: PRAISE_GROUPS[index], title: section.title, rows, minutes, percent: Math.min(100, Math.round((minutes / target) * 100)) };
+  });
+  const rows = sections.flatMap((section) => section.rows);
+  const total = rows.reduce((sum, row) => sum + row.minutes, 0);
+  const songRows = rows.filter((row) => row.kind === 'song');
+  const missing = rows.filter((row) => (row.kind === 'song' || row.kind === 'reading') && !row.value && !row.optional).map((row) => row.name);
+  const over = total - target;
+  const speaker = Boolean((state.notes[template.speakerSegment] ?? '').trim());
+  const checks = [
+    {
+      ok: missing.length === 0,
+      text: missing.length === 0 ? 'Every required song and reading is set' : `${missing.length} step${missing.length === 1 ? '' : 's'} still need${missing.length === 1 ? 's' : ''} a song or reading`,
+      sub: missing.slice(0, 3).join(', '),
+    },
+    {
+      ok: over <= 0,
+      text: over <= 0 ? `Fits the ${target} minute slot (${durationLabel(total)})` : `Runs ${over} min over the ${target} minute slot`,
+      sub: '',
+    },
+    {
+      ok: speaker,
+      text: speaker ? 'Speaker is noted' : 'Speaker is not confirmed',
+      sub: speaker ? '' : `Add a note on step ${template.speakerSegment}`,
+    },
+  ];
+  return { sections, total, songsTotal: songRows.length, songsDone: songRows.filter((row) => row.value).length, checks };
 }
 
 /** The same items in a fresh order, 1 upward, so no two items share an order number. */
@@ -320,8 +398,8 @@ export const duplicateRequest = (plan, id) => ({
  * massFromItems or praiseFromItems returned for the plan, `rows` the same rows, and `songs` the songs plan-get sent. Notes are not included.
  */
 export function setlistEntries({ segments, extra = [] }, rows, songs, nameOf = (row) => row.name) {
-  const entry = (label, { songId, text }) => {
-    if (songId) return { label, title: titleOf(songs, songId), key: songs.find((s) => s.id === songId)?.key ?? '' };
+  const entry = (label, { songId, text, keyTransposed }) => {
+    if (songId) return { label, title: titleOf(songs, songId), key: keyTransposed || (songs.find((s) => s.id === songId)?.key ?? '') };
     return text ? { label, title: text, key: '' } : null;
   };
   return [...rows.map((row) => entry(nameOf(row), segments[idOf(row)] ?? {})), ...extra.map((item) => entry('Also in this plan', item))].filter(Boolean);

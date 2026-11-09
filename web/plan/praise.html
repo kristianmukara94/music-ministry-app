@@ -31,9 +31,13 @@
           <h1 id="title" class="page-title"></h1>
         </div>
         <div class="plan-actions" style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
-          <span class="plan-status" style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--warn-text); font-weight: 600"><span style="width: 7px; height: 7px; border-radius: 50%; background: var(--warn-text)"></span><span id="status" aria-live="polite"></span></span>
+          <span id="status-pill" class="plan-status" data-state="idle" style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600"><span class="status-dot"></span><span id="status" aria-live="polite"></span></span>
+          <button id="print" type="button" class="btn-quiet" style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px; font-size: 14px; font-weight: 600">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></svg>
+            Print Setlist
+          </button>
           <button id="discard" type="button" class="btn-quiet" style="height: 44px; padding: 0 18px; font-size: 14px; font-weight: 600">Discard changes</button>
-          <button id="save" type="button" class="btn-primary" style="height: 44px; padding: 0 22px; font-size: 14px; font-weight: 700">Save plan</button>
+          <button id="save" type="button" class="btn-primary" title="Ctrl + S, or Cmd + S on a Mac" aria-keyshortcuts="Control+S Meta+S" style="height: 44px; padding: 0 22px; font-size: 14px; font-weight: 700">Save plan</button>
         </div>
       </div>
       <p id="view-only" hidden style="margin: 0; font-size: 13px; color: var(--muted)"></p>
@@ -46,9 +50,35 @@
 
     <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px">
       <section id="segments" aria-label="Segments" style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 22px"></section>
-      <aside id="readiness" aria-label="Readiness" style="flex: 1 1 320px; min-width: 0; position: sticky; top: 16px; display: flex; flex-direction: column; gap: 16px; padding: 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface)"></aside>
+      <aside id="readiness" aria-label="Readiness" style="flex: 1 1 320px; min-width: 0; position: sticky; top: 16px; display: flex; flex-direction: column; gap: 16px; padding: 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface)">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <span class="eyebrow">READINESS</span>
+          <h2 id="readiness-headline" aria-live="polite" class="section-title" style="font-size: 24px"></h2>
+        </div>
+        <div style="height: 8px; border-radius: 99px; background: var(--border); overflow: hidden">
+          <span id="readiness-fill" class="time-bar-fill"></span>
+        </div>
+        <ul id="readiness-checks" style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px"></ul>
+        <div style="padding-top: 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px">
+          <span class="eyebrow">TIME BY SECTION</span>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 13px"><span>Opening</span><span id="bar-label-opening" style="flex: none; font-family: 'JetBrains Mono', monospace; font-size: 12px"></span></div>
+            <div style="height: 8px; border-radius: 99px; background: var(--border); overflow: hidden"><span id="bar-fill-opening" class="time-bar-fill"></span></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 13px"><span>Word and teaching</span><span id="bar-label-word" style="flex: none; font-family: 'JetBrains Mono', monospace; font-size: 12px"></span></div>
+            <div style="height: 8px; border-radius: 99px; background: var(--border); overflow: hidden"><span id="bar-fill-word" class="time-bar-fill"></span></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 13px"><span>Intercession and closing</span><span id="bar-label-closing" style="flex: none; font-family: 'JetBrains Mono', monospace; font-size: 12px"></span></div>
+            <div style="height: 8px; border-radius: 99px; background: var(--border); overflow: hidden"><span id="bar-fill-closing" class="time-bar-fill"></span></div>
+          </div>
+        </div>
+        <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">Songs come from the church laptop. Lyrics and slides are prepared in the desktop app.</p>
+      </aside>
     </div>
   </main>
 </div>
+<section id="setlist-print" class="setlist-print" aria-hidden="true"></section>
 </body>
 </html>

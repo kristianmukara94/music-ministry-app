@@ -105,6 +105,33 @@ test('a save with no version named is refused', async () => {
   assert.equal(res.statusCode, 400);
 });
 
+const latest = async () => (await storedPlan()).updated_at.toISOString();
+
+test('a song can keep a key for the plan, written as a key, and only a chosen song can', async () => {
+  const cookie = await cookieFor('planner', 'K7QM-4XD2');
+  assert.equal((await save(cookie, { items: [item(1, 1, { kind: 'song', songId: SONG_A, keyTransposed: 'F#m' })] })).statusCode, 200);
+  assert.equal((await storedPlan()).body.items[0].keyTransposed, 'F#m');
+  const song = await pg.query('SELECT musical_key FROM songs WHERE id = $1', [SONG_A]);
+  assert.equal(song.rows[0].musical_key, 'D', 'the song in the list keeps its own key');
+  const base = await latest();
+  for (const bad of ['H', 'g', 'G<b>', 7, '']) {
+    assert.equal((await save(cookie, { baseUpdatedAt: base, items: [item(1, 1, { kind: 'song', songId: SONG_A, keyTransposed: bad })] })).statusCode, 400, String(bad));
+  }
+  assert.equal((await save(cookie, { baseUpdatedAt: base, items: [item(1, 1, { kind: 'song', text: 'typed', keyTransposed: 'G' })] })).statusCode, 400, 'typed text has no key');
+});
+
+test('a reading can name its type, only from the list and only with a title', async () => {
+  const cookie = await cookieFor('planner', 'K7QM-4XD2');
+  const items = [item(1, 1, { kind: 'reading', text: 'Psalm 100:1-5', contentType: 'scripture' }), item(2, 2, { kind: 'reading', text: 'Parish fiesta', contentType: 'announcement' })];
+  assert.equal((await save(cookie, { items })).statusCode, 200);
+  assert.deepEqual((await storedPlan()).body.items.map((i) => i.contentType), ['scripture', 'announcement']);
+  const base = await latest();
+  assert.equal((await save(cookie, { baseUpdatedAt: base, items: [item(1, 1, { kind: 'reading', text: 'x', contentType: 'homily' })] })).statusCode, 400);
+  assert.equal((await save(cookie, { baseUpdatedAt: base, items: [item(1, 1, { kind: 'reading', contentType: 'prayer' })] })).statusCode, 400, 'no title');
+  assert.equal((await save(cookie, { baseUpdatedAt: base, items: [item(1, 1, { kind: 'rite', text: 'x', contentType: 'prayer' })] })).statusCode, 400, 'not a reading');
+  assert.equal((await save(cookie, { baseUpdatedAt: base, items: [item(1, 1, { kind: 'reading', text: 'x', announcement: 'the words' })] })).statusCode, 400, 'a field that would carry the words is still refused');
+});
+
 test('a viewer cannot save, and the plan does not change', async () => {
   const cookie = await cookieFor('viewer', 'K7QM-4XD2');
   const res = await save(cookie, { items: [item(1, 1, { note: 'x' })] });

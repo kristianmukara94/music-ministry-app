@@ -74,7 +74,8 @@ export const PRAISE_PLAN = {
   title: 'Charismatic Prayer Night',
   status: 'Draft · not yet synced',
   targetMinutes: 90,
-  sectionLabels: ['Opening', 'Word', 'Closing'],
+  /** The segment whose operator note names the speaker. */
+  speakerSegment: '7',
   sections: [
     { title: 'OPENING', rows: [
       ['1', 'Welcome and opening prayer', 'rite', 5, '', 'Led by the prayer leader'],
@@ -94,10 +95,5 @@ export const PRAISE_PLAN = {
       ['11', 'Closing song', 'song', 5, '', 'Fast praise'],
       ['12', 'Blessing and dismissal', 'rite', 3, '', 'Led by the priest or lay leader'],
     ] },
-  ],
-  /** Checks the planner cannot work out from the steps. */
-  fixedChecks: [
-    { ok: true, text: 'Date, time and venue are set', sub: '' },
-    { ok: false, text: 'Speaker is not confirmed', sub: 'Add a note on step 7' },
   ],
 };

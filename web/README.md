@@ -33,6 +33,11 @@ body. The slot and section names in Tagalog and Cebuano are in `js/mass-language
 `shared/mass-language.js` that a test keeps equal. The times offered come from `PARISH_MASS_SCHEDULE` in `js/mass-schedule.js`:
 edit that list to match the parish bulletin. A planner can always choose another time.
 
+A Praise & Worship song step can save the key it is sung in for that plan (`keyTransposed`), which leaves the song in the church's
+list as it is. A reading slot saves a short title and its type (`contentType`: `scripture`, `prayer` or `announcement`). The words of
+Content Hub entries never reach the website. Both fields live in the plan's JSON body, so they need no database change, and a laptop
+push keeps them while the step still holds the same song or title. The desktop app does not read either field yet.
+
 ## Logo and icons
 
 `img/logo.png` (256×256), `favicon.ico` (16, 32 and 48 px), `favicon.svg` and `apple-touch-icon.png` (180×180, on a cream

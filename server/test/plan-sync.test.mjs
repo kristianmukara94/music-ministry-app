@@ -506,6 +506,39 @@ test('a push that carries no note for an item keeps the note the server already 
   assert.equal((await serverRow(id)).body.items[0].note, 'Pray for the parish');
 });
 
+test("a push keeps a reading's type while the title is the same, and drops it when the title changes", async () => {
+  const reading = (text, extra = {}) => item('6', 1, { kind: 'reading', text, ...extra });
+  const push = async (id, items) => {
+    const stored = await serverRow(id);
+    const pushed = await sync().pushPlans(pushReq(laptopA, [body({ id, kind: 'pw', baseUpdatedAt: new Date(stored.updated_at).toISOString(), items })]));
+    assert.equal(JSON.parse(pushed.body).results[0].status, 'accepted');
+    return (await serverRow(id)).body.items[0];
+  };
+  const id = await plantPlan(CHURCH_A, { kind: 'pw', items: [reading('Parish fiesta', { contentType: 'announcement' })] });
+  assert.equal((await push(id, [reading('Parish fiesta')])).contentType, 'announcement');
+  clock = new Date(clock.getTime() + 1000);
+  assert.equal((await push(id, [reading('Psalm 100')])).contentType, undefined);
+});
+
+test('a push keeps a plan\'s key for a song while the song is the same, and drops it for another song', async () => {
+  const [one, two] = [randomUUID(), randomUUID()];
+  await pg.query(
+    `INSERT INTO songs (id, church_id, title, category, language, musical_key, updated_at) VALUES ($1, $3, 'One', '', 'English', 'G', now()), ($2, $3, 'Two', '', 'English', 'D', now())`,
+    [one, two, CHURCH_A],
+  );
+  const song = (songId, extra = {}) => item('5', 1, { kind: 'song', songId, ...extra });
+  const push = async (id, items) => {
+    const stored = await serverRow(id);
+    const pushed = await sync().pushPlans(pushReq(laptopA, [body({ id, kind: 'pw', baseUpdatedAt: new Date(stored.updated_at).toISOString(), items })]));
+    assert.equal(JSON.parse(pushed.body).results[0].status, 'accepted');
+    return (await serverRow(id)).body.items[0];
+  };
+  const id = await plantPlan(CHURCH_A, { kind: 'pw', items: [song(one, { keyTransposed: 'A' })] });
+  assert.equal((await push(id, [song(one)])).keyTransposed, 'A');
+  clock = new Date(clock.getTime() + 1000);
+  assert.equal((await push(id, [song(two)])).keyTransposed, undefined);
+});
+
 test('a laptop push keeps the language and Mass time set on the web, which the laptop does not send', async () => {
   const id = await plantPlan(CHURCH_A, { kind: 'mass', items: [] });
   await pg.query(`UPDATE plans SET body = body || '{"language":"CEB","massTime":"08:00"}'::jsonb WHERE id = $1`, [id]);

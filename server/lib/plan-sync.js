@@ -17,9 +17,13 @@ export const CREATE_LIMIT = { requests: 20, windowMs: 10 * 60 * 1000 };
 export const DELETE_LIMIT = { requests: 20, windowMs: 10 * 60 * 1000 };
 const KINDS = ['song', 'reading', 'rite'];
 const PLAN_KINDS = ['mass', 'pw'];
-const ITEM_FIELDS = ['key', 'group', 'order', 'kind', 'songId', 'text', 'minutes', 'note', 'slot'];
+const ITEM_FIELDS = ['key', 'group', 'order', 'kind', 'songId', 'text', 'minutes', 'note', 'keyTransposed', 'contentType', 'slot'];
 // The Holy Mass slot an item fills on the laptop, by number. The website keeps it as it is, so a plan edited here goes back with its slots.
 export const MASS_SLOT_COUNT = 28;
+// The key a song is sung in for this plan. The song's own key in the church's list is not changed.
+const MUSICAL_KEY = /^[A-G][#b]?m?$/;
+// What a reading item's short title stands for. The item holds the title only; the words stay in the Content Hub on the laptop.
+export const CONTENT_TYPES = ['scripture', 'prayer', 'announcement'];
 // Field names that would carry lyrics, slides, media, Bible text or announcements. Refused by name, so nothing is silently dropped.
 const FORBIDDEN = /lyric|stanza|slide|media|bible|verse|announce|audio|video|image|file|hymn|scripture/i;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -159,6 +163,16 @@ export function checkItems(items, songIds) {
       if (typeof item.note !== 'string' || item.note.length > 1000) throw refuse('A note can be up to 1000 characters. Nothing was saved.');
       if (item.note.trim() !== '') clean.note = item.note.trim();
     }
+    if (item.keyTransposed !== undefined && item.keyTransposed !== null) {
+      if (typeof item.keyTransposed !== 'string' || !MUSICAL_KEY.test(item.keyTransposed)) throw refuse('A song key must be written like G, Bb or F#m. Nothing was saved.');
+      if (!clean.songId) throw refuse('Only a chosen song can have a key for the plan. Nothing was saved.');
+      clean.keyTransposed = item.keyTransposed;
+    }
+    if (item.contentType !== undefined && item.contentType !== null) {
+      if (!CONTENT_TYPES.includes(item.contentType)) throw refuse('A reading must be a scripture reading, a prayer or an announcement. Nothing was saved.');
+      if (item.kind !== 'reading' || !clean.text) throw refuse('Only a reading with a title can have a reading type. Nothing was saved.');
+      clean.contentType = item.contentType;
+    }
     out.push(clean);
   }
   return out.sort((a, b) => a.order - b.order);
@@ -256,8 +270,18 @@ export async function pushOnePlan({ sql, transaction, churchId, userId, input, s
       }
       // A laptop keeps its own segment notes and does not send them, so a push that carries no note for an item keeps the note
       // the server already has for that item. Otherwise a note typed on the web would be lost on the next laptop push.
-      const notes = new Map((Array.isArray(row.body?.items) ? row.body.items : []).filter((i) => i.note).map((i) => [i.key, i.note]));
-      const kept = items.map((i) => (i.note === undefined && notes.has(i.key) ? { ...i, note: notes.get(i.key) } : i));
+      // A plan's key for a song and a reading's type are set on the web too. Each is kept for as long as the item still holds the same song or title.
+      const stored = new Map((Array.isArray(row.body?.items) ? row.body.items : []).map((i) => [i.key, i]));
+      const kept = items.map((i) => {
+        const was = stored.get(i.key);
+        if (!was) return i;
+        return {
+          ...i,
+          ...(i.note === undefined && was.note ? { note: was.note } : {}),
+          ...(i.keyTransposed === undefined && was.keyTransposed && was.songId === i.songId ? { keyTransposed: was.keyTransposed } : {}),
+          ...(i.contentType === undefined && was.contentType && was.text === i.text ? { contentType: was.contentType } : {}),
+        };
+      });
       // The language and Mass time are set on the web; a laptop push keeps them.
       await tx`
         UPDATE plans SET name = ${fields.name}, liturgical_date = ${fields.date},
