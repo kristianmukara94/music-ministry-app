@@ -481,6 +481,8 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
     const id = typeof body.id === 'string' ? body.id.toLowerCase() : '';
     if (!UUID.test(id)) throw refuse('A plan needs a valid id. Nothing was saved.');
     const fields = checkPlanFields(body);
+    // Optional, and sent only by the web's New plan form. A body without them, such as a laptop's, stores neither.
+    const details = checkPlanDetails(body);
     const items = checkItems(body.items, await songIdsOf(sql, churchId));
     const contentHubItems = checkContentHubItems(body.contentHubItems ?? []);
     checkHubReferences(items, contentHubItems);
@@ -491,14 +493,14 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
         if (existing.length) throw new ApiError(409, NOT_SAVED);
         await tx`
           INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at, synced_at)
-          VALUES (${id}, ${churchId}, ${fields.name}, ${fields.date}, ${JSON.stringify({ kind: fields.kind, ...hubOf({ contentHubItems }), items })}::jsonb, ${at}, ${maker.fromLaptop ? at : null})`;
+          VALUES (${id}, ${churchId}, ${fields.name}, ${fields.date}, ${JSON.stringify({ kind: fields.kind, ...details, ...hubOf({ contentHubItems }), items })}::jsonb, ${at}, ${maker.fromLaptop ? at : null})`;
         await tx`INSERT INTO audit_log (church_id, actor_user_id, action, target_plan_id) VALUES (${churchId}, ${userId}, 'plan.created', ${id})`;
       });
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) return json(409, { error: NOT_SAVED });
       throw err;
     }
-    return json(201, { plan: { id, name: fields.name, date: fields.date, kind: fields.kind, items, updatedAt: at } });
+    return json(201, { plan: { id, name: fields.name, date: fields.date, kind: fields.kind, ...details, items, updatedAt: at } });
   });
 
   /**

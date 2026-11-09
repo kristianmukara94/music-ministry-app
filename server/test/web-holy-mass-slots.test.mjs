@@ -165,7 +165,7 @@ test('the editor draws the five sections as collapsible, slots first, and rememb
 test('every label on the web portal says Holy Mass: the list tab, the plan rows, the form, the editor and the login page', () => {
   assert.match(readWeb('js/plans.js'), /\{ key: 'mass', label: 'Holy Mass' \}/);
   assert.match(readWeb('js/plans.js'), /'Holy Mass plan'/);
-  assert.match(readWeb('plan/new.html'), /<option value="mass">Holy Mass<\/option>/, 'the stored value is still mass');
+  assert.match(readWeb('plan/new.html'), /name="kind" value="mass"[\s\S]*?template-card-title">Holy Mass Plan</, 'the stored value is still mass');
   assert.match(readWeb('plan/mass.html'), /<title>Holy Mass plan · APCCMMA Web Planner<\/title>/);
   assert.match(readWeb('js/mass.js'), /\[dateLabel\(plan\.date\), state\.massTime/);
   assert.match(readWeb('js/mass.js'), /`HOLY MASS PLAN · \$\{when\}/);

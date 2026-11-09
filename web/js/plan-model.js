@@ -610,3 +610,33 @@ export function checkNewPlan({ name, date, kind } = {}) {
   if (kind !== 'mass' && kind !== 'pw') return 'Choose Holy Mass or Praise & Worship.';
   return null;
 }
+
+/**
+ * The date a New plan shortcut picks, on the reader's calendar. 'today' is today. 'saturday' is the Saturday of this week, today when it is
+ * Saturday. 'sunday' is the next Sunday after today, so on a Sunday it is a week away.
+ */
+export function dateShortcut(which, now = new Date()) {
+  const weekday = now.getDay();
+  const ahead = { today: 0, saturday: 6 - weekday, sunday: 7 - weekday }[which];
+  return localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + ahead));
+}
+
+/** The name the New plan form suggests: "Sunday Holy Mass (15 Nov)" or "Praise & Worship Night (26 Oct)". With no date yet, the name without one. */
+export function suggestPlanName({ kind, date } = {}) {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(date ?? ''));
+  if (!parts) return kind === 'pw' ? 'Praise & Worship Night' : 'Holy Mass';
+  const [year, month, day] = parts.slice(1).map(Number);
+  const when = `(${day} ${MONTHS[month - 1].slice(0, 3)})`;
+  if (kind === 'pw') return `Praise & Worship Night ${when}`;
+  return `${WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]} Holy Mass ${when}`;
+}
+
+/** The plan-create body for a new, empty plan. Language and Mass time belong to a Holy Mass plan; a time left unchosen is not sent. */
+export const newPlanRequest = ({ name, date, kind, language, massTime }, id) => ({
+  id,
+  name: name.trim(),
+  date,
+  kind,
+  items: [],
+  ...(kind === 'mass' ? { language, ...(massTime ? { massTime } : {}) } : {}),
+});

@@ -128,6 +128,35 @@ test('creating with an id that already exists is refused, and a viewer cannot cr
   assert.equal((await sync().createPlan({ httpMethod: 'POST', headers: { cookie: viewerCookie }, body: JSON.stringify(body()) })).statusCode, 403);
 });
 
+test('a new plan can carry its language and Mass time; left out, neither is stored', async () => {
+  const cookie = await cookieFor('planner');
+  const create = (over) => sync().createPlan({ httpMethod: 'POST', headers: { cookie }, body: JSON.stringify(body(over)) });
+  const id = randomUUID();
+  const res = await create({ id, language: 'TL', massTime: '17:30' });
+  assert.equal(res.statusCode, 201);
+  const { plan } = JSON.parse(res.body);
+  assert.deepEqual([plan.language, plan.massTime], ['TL', '17:30']);
+  const stored = (await serverRow(id)).body;
+  assert.deepEqual([stored.language, stored.massTime], ['TL', '17:30']);
+
+  const plain = randomUUID();
+  const without = await create({ id: plain });
+  assert.equal(without.statusCode, 201);
+  assert.equal('language' in JSON.parse(without.body).plan, false, 'the answer to a body without them is unchanged');
+  const row = (await serverRow(plain)).body;
+  assert.equal('language' in row || 'massTime' in row, false);
+});
+
+test('a new plan with a language or Mass time that is not allowed is refused, and nothing is created', async () => {
+  const cookie = await cookieFor('planner');
+  for (const bad of [{ language: 'FR' }, { massTime: '8:00' }, { massTime: 800 }]) {
+    const id = randomUUID();
+    const res = await sync().createPlan({ httpMethod: 'POST', headers: { cookie }, body: JSON.stringify(body({ id, ...bad })) });
+    assert.equal(res.statusCode, 400, JSON.stringify(bad));
+    assert.equal(await serverRow(id), undefined);
+  }
+});
+
 // ---- Pulling ----
 
 test('a pull returns only the plans changed after the cursor, with body, name, date and updated time', async () => {

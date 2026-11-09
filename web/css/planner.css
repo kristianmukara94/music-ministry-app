@@ -657,6 +657,290 @@ select:focus {
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
+/* New plan: the form and, beside it, a preview that stays in view. One column once the two no longer fit. */
+.new-plan-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  align-items: start;
+  max-width: 1080px;
+}
+
+.new-plan-form,
+.preview-card-box {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.new-plan-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px;
+}
+
+.new-plan-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.new-plan-mass-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.new-plan-label {
+  display: block;
+  margin-bottom: 10px;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.new-plan-input {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border-input);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.new-plan-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* The template cards and language pills are radio buttons, kept in the page for the keyboard and screen readers and drawn by the span after them. */
+.template-card input,
+.language-pill input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.template-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.template-card {
+  position: relative;
+  display: flex;
+  cursor: pointer;
+}
+
+.template-card-body {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-card);
+  background: var(--input-bg);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.template-card:hover .template-card-body {
+  background: var(--surface-hover);
+}
+
+.template-card input:checked + .template-card-body {
+  border-color: var(--focus);
+  background: var(--primary-wash);
+  box-shadow: inset 0 0 0 1px var(--focus);
+}
+
+.template-card input:focus-visible + .template-card-body,
+.language-pill input:focus-visible + span {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.template-card-check {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  color: var(--focus);
+  visibility: hidden;
+}
+
+.template-card input:checked + .template-card-body .template-card-check {
+  visibility: visible;
+}
+
+.template-card-title {
+  padding-right: 24px;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--heading);
+}
+
+.template-card-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--eyebrow);
+}
+
+.template-card-text {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.date-chips,
+.language-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.date-chips {
+  margin-top: 10px;
+}
+
+.date-chip,
+.language-pill span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border-input);
+  border-radius: 999px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.date-chip:hover,
+.language-pill:hover span {
+  background: var(--surface-hover);
+}
+
+.date-chip[aria-pressed='true'],
+.language-pill input:checked + span {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.language-pill {
+  position: relative;
+}
+
+.preview-card-box {
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+}
+
+.preview-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--heading);
+  overflow-wrap: anywhere;
+}
+
+.preview-title.is-empty {
+  color: var(--muted);
+}
+
+.preview-kind {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border: 1px solid var(--gold-edge);
+  border-radius: 999px;
+  background: var(--gold-wash);
+  color: var(--eyebrow);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.preview-details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.preview-details > div {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.preview-details dt {
+  color: var(--muted);
+}
+
+.preview-details dd {
+  margin: 0;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.preview-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.preview-parts li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.preview-parts li span:last-child {
+  color: var(--eyebrow);
+  font-weight: 700;
+}
+
+@media (max-width: 1024px) {
+  .new-plan-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .preview-card-box {
+    position: static;
+  }
+}
+
 /* Mass and Praise editor rows: the status or minutes control and the action button never shrink or break across lines. */
 .editor-item-actions,
 .editor-row .btn-choose {

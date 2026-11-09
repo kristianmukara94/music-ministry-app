@@ -18,7 +18,7 @@
 
   <div data-sidebar="plans"></div>
 
-  <main class="main" style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; display: flex; flex-direction: column; gap: 24px">
+  <main class="main pad" style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; display: flex; flex-direction: column; gap: 24px">
 
     <header style="display: flex; flex-direction: column; gap: 16px">
       <a href="../index.html" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text)">
@@ -33,28 +33,83 @@
 
     <p id="new-plan-denied" hidden style="margin: 0; font-size: 14px; line-height: 1.5; color: var(--text)">Only a planner or an admin can create a plan. Ask a planner to make it.</p>
 
-    <form id="new-plan-form" novalidate hidden style="display: flex; flex-direction: column; gap: 20px; padding: 22px; max-width: 640px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface)">
-      <label style="display: flex; flex-direction: column; gap: 8px">
-        <span style="font-size: 13px; font-weight: 600; color: var(--text)">Name</span>
-        <input id="plan-name" type="text" maxlength="120" autocomplete="off" placeholder="e.g. All Saints, Sunday Holy Mass" style="height: 46px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; outline: 0">
-      </label>
-      <label style="display: flex; flex-direction: column; gap: 8px">
-        <span style="font-size: 13px; font-weight: 600; color: var(--text)">Date</span>
-        <input id="plan-date" type="date" style="height: 46px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; outline: 0">
-      </label>
-      <label style="display: flex; flex-direction: column; gap: 8px">
-        <span style="font-size: 13px; font-weight: 600; color: var(--text)">Type</span>
-        <select id="plan-kind" style="height: 46px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; outline: 0">
-          <option value="mass">Holy Mass</option>
-          <option value="pw">Praise &amp; Worship</option>
-        </select>
-      </label>
-      <p id="new-plan-status" role="alert" style="margin: 0; min-height: 20px; font-size: 13px; line-height: 1.5; color: var(--danger)"></p>
-      <div>
-        <button id="new-plan-submit" type="submit" class="btn-primary" style="height: 44px; padding: 0 22px; font-size: 14px; font-weight: 700">Create plan</button>
-      </div>
-      <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">Songs and readings are chosen in the editor. Lyrics and slides are prepared in the desktop app.</p>
-    </form>
+    <div id="new-plan-layout" class="new-plan-layout" hidden>
+      <form id="new-plan-form" class="new-plan-form" novalidate autocomplete="off">
+
+        <fieldset class="new-plan-group">
+          <legend class="new-plan-label">Template</legend>
+          <div class="template-cards">
+            <label class="template-card">
+              <input type="radio" name="kind" value="mass" checked>
+              <span class="template-card-body">
+                <svg class="template-card-check" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                <span class="template-card-title">Holy Mass Plan</span>
+                <span class="template-card-count">28 slots</span>
+                <span class="template-card-text">Introductory Rites, Liturgy of the Word, Eucharist and Recessional.</span>
+              </span>
+            </label>
+            <label class="template-card">
+              <input type="radio" name="kind" value="pw">
+              <span class="template-card-body">
+                <svg class="template-card-check" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                <span class="template-card-title">Praise &amp; Worship Night</span>
+                <span class="template-card-count">12 segments</span>
+                <span class="template-card-text">Opening, Word &amp; Teaching and Intercession sets.</span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="new-plan-group">
+          <label class="new-plan-label" for="plan-date">Date</label>
+          <input id="plan-date" class="new-plan-input" type="date">
+          <div class="date-chips">
+            <button type="button" class="date-chip" data-date-shortcut="sunday" aria-pressed="false">Next Sunday</button>
+            <button type="button" class="date-chip" data-date-shortcut="saturday" aria-pressed="false">This Saturday</button>
+            <button type="button" class="date-chip" data-date-shortcut="today" aria-pressed="false">Today</button>
+          </div>
+        </div>
+
+        <div class="new-plan-group">
+          <label class="new-plan-label" for="plan-name">Plan name</label>
+          <input id="plan-name" class="new-plan-input" type="text" maxlength="120">
+        </div>
+
+        <div id="mass-fields" class="new-plan-mass-fields">
+          <fieldset class="new-plan-group">
+            <legend class="new-plan-label">Liturgy language</legend>
+            <div class="language-pills">
+              <label class="language-pill"><input type="radio" name="language" value="EN" checked><span>English</span></label>
+              <label class="language-pill"><input type="radio" name="language" value="TL"><span>Tagalog</span></label>
+              <label class="language-pill"><input type="radio" name="language" value="CEB"><span>Cebuano</span></label>
+            </div>
+          </fieldset>
+          <div class="new-plan-group">
+            <label class="new-plan-label" for="plan-mass-time">Parish Holy Mass schedule</label>
+            <select id="plan-mass-time" class="new-plan-input"></select>
+          </div>
+        </div>
+
+        <p id="new-plan-status" class="form-error" role="alert"></p>
+        <div>
+          <button id="new-plan-submit" type="submit" class="btn-primary" style="height: 44px; padding: 0 22px; font-size: 14px; font-weight: 700">Create plan</button>
+        </div>
+        <p class="new-plan-note">Songs and readings are chosen in the editor. Lyrics and slides are prepared in the desktop app.</p>
+      </form>
+
+      <aside class="preview-card-box" aria-label="Plan preview">
+        <span class="eyebrow">Live preview</span>
+        <h2 id="preview-title" class="preview-title"></h2>
+        <span id="preview-kind" class="preview-kind"></span>
+        <dl class="preview-details">
+          <div><dt>Date</dt><dd id="preview-date"></dd></div>
+          <div id="preview-language-row"><dt>Language</dt><dd id="preview-language"></dd></div>
+          <div id="preview-time-row"><dt>Holy Mass time</dt><dd id="preview-time"></dd></div>
+          <div><dt>Order</dt><dd id="preview-count"></dd></div>
+        </dl>
+        <ul id="preview-parts" class="preview-parts"></ul>
+      </aside>
+    </div>
   </main>
 </div>
 </body>
