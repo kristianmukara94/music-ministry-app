@@ -25,6 +25,7 @@ const LOADERS = {
   'plan-sync-pull': () => import('../functions/plan-sync-pull.js'),
   'plan-sync-push': () => import('../functions/plan-sync-push.js'),
   'songs-list': () => import('../functions/songs-list.js'),
+  'song-usage': () => import('../functions/song-usage.js'),
   'users-create': () => import('../functions/users-create.js'),
   'users-list': () => import('../functions/users-list.js'),
   'users-reset-password': () => import('../functions/users-reset-password.js'),

@@ -80,13 +80,30 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
     if (gate.response) return gate.response;
     // Only this church's songs, and only those not removed. The last update counts removals too, since a removal is a change to the list.
     const rows = await sql`
-      SELECT id, title, category, language, musical_key FROM songs
+      SELECT id, title, category, scope, language, musical_key FROM songs
       WHERE church_id = ${gate.who.churchId} AND removed_at IS NULL ORDER BY lower(title), id`;
     const [last] = await sql`SELECT MAX(updated_at) AS last FROM songs WHERE church_id = ${gate.who.churchId}`;
     return json(200, {
-      songs: rows.map((r) => ({ id: r.id, title: r.title, category: r.category, language: r.language, key: r.musical_key })),
+      songs: rows.map((r) => ({ id: r.id, title: r.title, category: r.category, scope: r.scope, language: r.language, key: r.musical_key })),
       lastUpdatedAt: last?.last ? new Date(last.last).toISOString() : null,
     });
+  });
+
+  /**
+   * Which of the church's plans use each song, for the Songs page: { usage: { songId: [planId, …] } }. Only ids are sent; the plan list has the
+   * names. A deleted plan does not count, and a song a plan holds twice lists that plan once.
+   */
+  const songUsage = safely(async (event) => {
+    const gate = await signedIn(event, 'GET');
+    if (gate.response) return gate.response;
+    const rows = await sql`
+      SELECT DISTINCT item->>'songId' AS song_id, p.id AS plan_id
+      FROM plans p
+      CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(p.body->'items') = 'array' THEN p.body->'items' ELSE '[]'::jsonb END) AS item
+      WHERE p.church_id = ${gate.who.churchId} AND COALESCE(p.body->>'deleted', '') <> 'true' AND item->>'songId' IS NOT NULL`;
+    const usage = {};
+    for (const { song_id: songId, plan_id: planId } of rows) (usage[songId] ??= []).push(planId);
+    return json(200, { usage });
   });
 
   /**
@@ -132,5 +149,5 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
     return json(200, { ok: true, savedAt: result.savedAt });
   });
 
-  return { getPlan, listSongs, savePlan };
+  return { getPlan, listSongs, songUsage, savePlan };
 }

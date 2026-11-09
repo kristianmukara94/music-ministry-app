@@ -40,6 +40,9 @@ export const getPlan = (id) => request('plan-get', { query: `?id=${encodeURIComp
 /** The church's songs, for the song picker. An empty list is a normal answer. */
 export const listSongs = () => request('songs-list');
 
+/** Which of the church's plans use each song: { usage: { songId: [planId, …] } }. */
+export const songUsage = () => request('song-usage');
+
 /** Saves the whole plan in one request. */
 export const savePlan = (payload) => request('plan-save', { method: 'POST', body: payload });
 

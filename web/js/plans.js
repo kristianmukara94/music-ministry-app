@@ -10,7 +10,6 @@ import { timeLabel } from './mass-schedule.js';
 import {
   DEFAULT_SORT,
   canCreatePlans,
-  dateLabel,
   duplicateRequest,
   editorPathFor,
   localDate,
@@ -21,6 +20,7 @@ import {
   praiseSegments,
   savePayload,
   setlistEntries,
+  shortDate,
   sortPlans,
   tabCounts,
   viewModeOf,
@@ -79,9 +79,6 @@ const ICON_VIEW = stroke(16, '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-
 const ICON_COPY = stroke(16, '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>');
 const ICON_PRINT = stroke(16, '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h8"/>');
 const ICON_TRASH = stroke(16, '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/>');
-
-/** The date as it reads in a list: "Sunday 1 November 2026". */
-const shortDate = (iso) => dateLabel(iso).toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
 /** When a plan was last saved, in the reader's own format. */
 const updatedText = (iso) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });

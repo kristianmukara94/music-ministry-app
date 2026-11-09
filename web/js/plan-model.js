@@ -423,6 +423,42 @@ export function praiseBreakdown(template, segs, state, songs) {
   return { sections, total, songsTotal: songRows.length, songsDone: songRows.filter((row) => row.value).length, checks };
 }
 
+/** A saved plan read the way its editor reads it. `templates` is { mass, praise }. */
+function readPlan(plan, templates) {
+  if (plan.kind === 'pw') {
+    const rows = praiseSegments(templates.praise);
+    return { rows, filled: praiseFromItems(plan.items, rows), toItems: (state) => praiseToItems(state, rows) };
+  }
+  const rows = massRows(templates.mass);
+  return { rows, filled: massFromItems(plan.items, rows), toItems: (state) => massToItems(state, rows) };
+}
+
+/** The steps of a saved plan that can hold a song: { id, row, filled, hasSong, matches }. `matches` is a step of the song's own category. */
+export function songSteps(plan, templates, songId, category = '') {
+  const { rows, filled } = readPlan(plan, templates);
+  return rows.filter((row) => row.kind === 'song').map((row) => {
+    const entries = slotEntries(filled.segments[idOf(row)]);
+    return { id: idOf(row), row, filled: entries.length, hasSong: entries.some((entry) => entry.songId === songId), matches: Boolean(category) && row.category === category };
+  });
+}
+
+/** The step to offer first: the song's own category, then an empty step, then any step that does not already hold the song. */
+export function defaultSongStep(steps) {
+  const open = steps.filter((step) => !step.hasSong);
+  return open.find((step) => step.matches) ?? open.find((step) => step.filled === 0) ?? open[0] ?? null;
+}
+
+/**
+ * The plan's items with one more song at the end of a step, built the way its editor builds them, so a song added from the Songs page is saved
+ * exactly like one added in the plan. Null when the step cannot hold a song or already holds this one.
+ */
+export function itemsWithSong(plan, templates, stepId, songId) {
+  const { rows, filled, toItems } = readPlan(plan, templates);
+  if (!rows.some((row) => idOf(row) === stepId && row.kind === 'song')) return null;
+  if (slotEntries(filled.segments[stepId]).some((entry) => entry.songId === songId)) return null;
+  return toItems({ ...filled, segments: withEntry(filled.segments, stepId, { songId }), contentHubItems: plan.contentHubItems ?? [] });
+}
+
 /** The same items in a fresh order, 1 upward, so no two items share an order number. */
 export function withOrders(items) {
   return items.map((item, index) => ({ ...item, order: index + 1 }));
@@ -465,6 +501,9 @@ export function dateLabel(isoDate) {
   const weekday = WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
   return `${weekday} ${day} ${MONTHS[month - 1]} ${year}`.toUpperCase();
 }
+
+/** The date as it reads in a list: "Sunday 1 November 2026". */
+export const shortDate = (isoDate) => dateLabel(isoDate).toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
 /**
  * The editor a plan opens in, with its id in the address. A Praise & Worship plan (kind 'pw') opens the Praise editor; a Mass

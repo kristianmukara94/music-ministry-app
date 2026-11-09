@@ -161,3 +161,40 @@ test('a planner still saves a plan from the list', async () => {
   const res = await editing().savePlan(event({ method: 'POST', cookie, body: { id: ALPHA, baseUpdatedAt: '2026-10-27T09:00:00.000Z', items: [] } }));
   assert.equal(res.statusCode, 200);
 });
+
+// ---- Which plans use a song ----
+
+const SONG_1 = '20000000-0000-4000-8000-000000000001';
+const SONG_2 = '20000000-0000-4000-8000-000000000002';
+const item = (key, songId) => ({ key, group: 'word', order: 1, kind: 'song', ...(songId ? { songId } : {}) });
+const setItems = (planId, items, extra = {}) => pg.query('UPDATE plans SET body = $1 WHERE id = $2', [JSON.stringify({ kind: 'mass', items, ...extra }), planId]);
+
+test('song use lists each plan once per song, leaves out deleted plans and other churches, and copes with a plan with no items', async () => {
+  await setItems(ALPHA, [item('s1', SONG_1), item('s1.2', SONG_1), item('s2', SONG_2), item('s3')]);
+  await setItems(BETA, [item('s1', SONG_1)], { deleted: true });
+  await setItems(ZETA, [item('s1', SONG_2)]);
+  await setItems(OTHER, [item('s1', SONG_1)]);
+  const cookie = await cookieFor('viewer', 'K7QM-4XD2');
+  const res = await editing().songUsage(event({ cookie }));
+  assert.equal(res.statusCode, 200);
+  const { usage } = JSON.parse(res.body);
+  assert.deepEqual(Object.keys(usage).sort(), [SONG_1, SONG_2]);
+  assert.deepEqual(usage[SONG_1], [ALPHA]);
+  assert.deepEqual(usage[SONG_2].sort(), [ZETA, ALPHA].sort());
+});
+
+test('song use needs a signed-in user and a GET', async () => {
+  assert.equal((await editing().songUsage(event({}))).statusCode, 401);
+  const cookie = await cookieFor('viewer', 'K7QM-4XD2');
+  assert.equal((await editing().songUsage(event({ method: 'POST', cookie }))).statusCode, 405);
+});
+
+test('the song list sends each song\'s scope', async () => {
+  await pg.query(
+    `INSERT INTO songs (id, church_id, title, category, scope, language, musical_key, updated_at) VALUES ($1, $2, 'Gloria', 'Gloria', 'MASS', 'English', 'G', '2026-10-27T09:00:00Z')`,
+    [SONG_1, CHURCH_A],
+  );
+  const cookie = await cookieFor('viewer', 'K7QM-4XD2');
+  const { songs } = JSON.parse((await editing().listSongs(event({ cookie }))).body);
+  assert.equal(songs[0].scope, 'MASS');
+});

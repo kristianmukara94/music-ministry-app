@@ -21,33 +21,71 @@
   <main class="main" style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; display: flex; flex-direction: column; gap: 24px">
 
     <header style="display: flex; flex-direction: column; gap: 8px">
-      <span class="eyebrow">SONGS · READ ONLY</span>
-      <h1 class="page-title">Song list</h1>
+      <span class="eyebrow">SONGS</span>
+      <h1 class="page-title">Song library</h1>
       <p style="margin: 0; max-width: 620px; font-size: 15px; line-height: 1.55; color: var(--text)">Titles, categories and languages from the church laptop. Lyrics stay on the laptop. To add or edit a song, open the desktop app.</p>
     </header>
+
+    <div id="scopes" role="tablist" aria-label="Liturgical scope" style="display: flex; flex-wrap: wrap; gap: 8px"></div>
 
     <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
       <label style="flex: 1 1 280px; display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg)">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="song-search" type="search" aria-label="Search songs" placeholder="Search by title" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 14px">
+        <input id="song-search-input" type="search" aria-label="Search songs" aria-keyshortcuts="/" placeholder="Search by title" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 14px">
+        <kbd class="shortcut-hint" aria-hidden="true">/</kbd>
       </label>
       <div id="langs" role="group" aria-label="Language" style="display: flex; flex-wrap: wrap; gap: 6px"></div>
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--muted)">
+        Sort by
+        <select id="song-sort" style="height: 46px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); color: var(--text); font-size: 14px">
+          <option value="title-asc">Title (A to Z)</option>
+          <option value="key-asc">Key (A to G)</option>
+          <option value="used-desc">Most used in plans</option>
+        </select>
+      </label>
       <span id="synced" style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted)"></span>
     </div>
 
     <div id="cats" role="group" aria-label="Category" style="display: flex; flex-wrap: wrap; gap: 8px"></div>
 
-    <div style="border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden">
-      <div class="eyebrow" style="display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 12px 18px; background: var(--input-bg); border-bottom: 1px solid var(--border)">
-        <span style="flex: 3 1 220px">TITLE</span>
-        <span style="flex: 2 1 160px">CATEGORY</span>
-        <span style="flex: 1 1 90px">LANGUAGE</span>
-        <span style="flex: 0 0 72px; text-align: right">KEY</span>
+    <p id="song-status" class="plan-list-status" role="status" style="margin: -18px 0"></p>
+
+    <div id="song-table" class="song-table">
+      <div class="song-row song-row-head eyebrow">
+        <span>TITLE</span>
+        <span>CATEGORY</span>
+        <span>LANGUAGE</span>
+        <span>KEY</span>
+        <span>PLANS</span>
+        <span class="song-cell-action"></span>
       </div>
       <div id="song-rows"></div>
     </div>
     <span id="footer" aria-live="polite" style="font-size: 13px; color: var(--muted)"></span>
   </main>
 </div>
+
+<dialog id="song-drawer" class="song-drawer" aria-labelledby="song-drawer-title"></dialog>
+
+<dialog id="add-plan-dialog" class="modal" aria-labelledby="add-plan-title">
+  <form id="add-plan-form" class="dialog-body">
+    <h2 id="add-plan-title">Add to plan</h2>
+    <p id="add-plan-song" style="font-weight: 700; overflow-wrap: anywhere"></p>
+    <p id="add-plan-none" class="muted" hidden>There are no upcoming plans to add this song to. Create one on the Plans page first.</p>
+    <div id="add-plan-fields" style="display: flex; flex-direction: column; gap: 14px">
+      <label class="field">Plan
+        <select id="add-plan-select"></select>
+      </label>
+      <label class="field">Step
+        <select id="add-plan-step"></select>
+      </label>
+    </div>
+    <p id="add-plan-error" class="form-error" role="alert"></p>
+    <div class="dialog-actions">
+      <button type="button" id="add-plan-cancel" class="btn-quiet">Cancel</button>
+      <button type="submit" id="add-plan-confirm" class="btn-primary">Add to plan</button>
+    </div>
+  </form>
+</dialog>
 </body>
 </html>
