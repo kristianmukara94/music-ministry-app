@@ -82,7 +82,7 @@ test('(c) the threshold is applied the same way on every surface', () => {
 test('(c, surfaces) every surface reads the top from the same rule, not its own', () => {
   const face = read('src/praise-worship/PwSlideFace.tsx');
   assert.match(face, /top: `\$\{\(slide\.top \?\? textAreaShare\(\)\.top\) \* 100\}%`/, 'the lineup, the live preview and the projector start the text at the slide\'s top');
-  assert.match(read('src/output/ProjectorView.tsx'), /top: `\$\{\(frame\.top \?\? textAreaShare\(\)\.top\) \* 100\}%`/, 'the projector starts a Notes page at its top');
+  assert.match(read('src/output/ProjectorView.tsx'), /\{ top: frame\.top \?\? textAreaShare\(\)\.top \}/, 'the projector starts a Notes page at its top');
   assert.match(read('src/notes/present.ts'), /top: page\.top,\s*\n\s*centred: page\.centred/, 'the Notes frame carries the page\'s top');
   assert.match(read('src/notes/NotesPrayersView.tsx'), /top=\{screen\[shown\]\?\.top \?\? null\}/, 'the Notes preview uses the same top');
   assert.match(read('src/announcements/TextSlideModal.tsx'), /top: `\$\{top \* 100\}%`/, 'the preview places its block at that top');

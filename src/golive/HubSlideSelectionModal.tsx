@@ -6,7 +6,8 @@ import { screenPagesOf } from '../../shared/prayer-screen.js';
 import { sanitizeTextStyle } from '../../shared/text-style.js';
 import { slotById } from '../../shared/mass-slots.js';
 import type { FlowRow, MassFlowTarget } from '../../shared/flow-insert.js';
-import type { QueueItem } from '../../shared/live.js';
+import { slotTitleShown, type QueueItem } from '../../shared/live.js';
+import { useLive } from '../live/store';
 import { insertDeckIntoFlow } from '../planner/plan-api';
 import { MassSlotPicker } from '../whiteboard/TargetSlotSelectorModal';
 import { errorText } from '../whiteboard/errors';
@@ -76,6 +77,7 @@ export function HubSlideSelectionModal({
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
+  const titleShown = useLive((s) => slotTitleShown(s.state));
   const current = cursor >= 0 ? queue[cursor] ?? null : null;
   const activeSlot = current ? slotOfRow(queue, cursor) : null;
   const [where, setWhere] = useState<Where>(activeSlot || !current ? 'slot' : 'next');
@@ -202,7 +204,7 @@ export function HubSlideSelectionModal({
                         </span>
                         <SlidePreview
                           text={page.text}
-                          headline={note.title}
+                          headline={titleShown || !page.text.trim() ? note.title : null}
                           top={page.top ?? null}
                           bgSrc={null}
                           style={{ ...style, fontSize: page.fontPx }}

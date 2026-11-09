@@ -24,6 +24,15 @@ export function fitFontSize(maxPx, minPx, fits) {
   return best;
 }
 
+/** A title over a body may take at most this many lines and this share of the slide's room. Past either it shrinks, and the body keeps the rest. */
+export const TITLE_MAX_LINES = 2;
+export const TITLE_MAX_SHARE = 0.25;
+
+/** Whether a title of `heightPx`, set at `fontPx` with `leading` as its line spacing, is within its two lines and its share of `roomPx`. */
+export function titleFits(heightPx, fontPx, leading, roomPx) {
+  return heightPx <= roomPx * TITLE_MAX_SHARE + 1 && heightPx <= fontPx * leading * TITLE_MAX_LINES + 1;
+}
+
 /** Line spacing for a stanza: open for a short chorus, tighter as lines are added, so a long verse does not grow tall from spacing alone. */
 export function lineHeightFor(lineCount) {
   if (lineCount <= 2) return 1.25;

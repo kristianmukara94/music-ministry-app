@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { fitFontSize, lineCountOf, lineHeightFor } from './text-fit.js';
+import { fitFontSize, lineCountOf, lineHeightFor, titleFits } from './text-fit.js';
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), 'utf8');
 
@@ -43,6 +43,36 @@ test('line spacing tightens as a stanza gets longer, from 1.25 to 1.15', () => {
   assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 12].map(lineHeightFor), [1.25, 1.25, 1.2, 1.2, 1.18, 1.18, 1.15, 1.15]);
   assert.equal(lineCountOf('a\nb\n\nc'), 4, 'a blank line counts');
   assert.equal(lineCountOf(''), 1);
+});
+
+test('a title over a body keeps to two lines and a quarter of the room', () => {
+  assert.equal(titleFits(220, 100, 1.1, 1000), true, 'two lines, within the share');
+  assert.equal(titleFits(330, 100, 1.1, 2000), false, 'three lines is too many, whatever the room');
+  assert.equal(titleFits(220, 100, 1.1, 800), false, 'two lines, but more than a quarter of the room');
+});
+
+test('a prayer or document slide is fitted title first, and stays inside its safe box', () => {
+  const view = read('src/output/ProjectorView.tsx');
+  assert.match(view, /useHeadedTextFit\(\{ boxRef, titleRef, bodyRef, titleSize, bodySize, deps: \[headline, body, style, slideFont\] \}\);/);
+  assert.match(view, /\{before > 0 && <div aria-hidden style=\{\{ flex: `0 1 \$\{before\}cqh` \}\} \/>\}/, 'the space above gives way before the text shrinks');
+  const hook = read('src/output/useHeadedTextFit.ts');
+  assert.match(hook, /const room = roomHeight - titleBlock;/, 'the body gets what the title leaves');
+  assert.match(hook, /const ceiling = Math\.min\(natural, titlePx\);/, 'the body is never larger than a shrunk title');
+  assert.match(hook, /new ResizeObserver\(\(\) => fit\(\)\)/, 'it fits again when the window changes size');
+});
+
+test('the psalm, the lineup face and the rosary are bounded too, and the rosary floor follows the slide', () => {
+  const view = read('src/output/ProjectorView.tsx');
+  assert.match(view, /<TextLines safe inset=\{false\} serif /, 'a psalm page is fitted under its response');
+  assert.match(view, /const min = width \* 0\.018;/, 'the rosary floor is a share of the slide, not of the window');
+  assert.doesNotMatch(view, /window\.innerWidth/);
+  assert.match(read('src/praise-worship/PwSlideFace.tsx'), /useProjectorTextAutoFit\(/, 'the lineup face steps down rather than running into the footer');
+});
+
+test('the page counts sit over the text margin and never take a click', () => {
+  const view = read('src/output/ProjectorView.tsx');
+  assert.equal((view.match(/pointer-events-none absolute right-\[4cqw\] bottom-\[\d+cqh\] z-20/g) ?? []).length, 4, 'psalm, prayer, deck and the preview count');
+  assert.doesNotMatch(read('src/golive/MassLiveView.tsx'), /right-2 bottom-2/, 'the preview count is drawn inside the slide');
 });
 
 test('the projector, the mirror and the previews draw a song stanza through the fitted slide', () => {

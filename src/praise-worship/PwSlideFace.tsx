@@ -1,3 +1,4 @@
+import { useRef, type CSSProperties } from 'react';
 import { BookOpen, Cross, Music } from 'lucide-react';
 import type { PwSlide, PwType } from '../../shared/pw.js';
 import { LINEUP_LINE_HEIGHT } from '../../shared/prayer-fit.js';
@@ -7,6 +8,7 @@ import type { WelcomeBackground } from '../../shared/welcome-settings.js';
 import { charsPerLine, slideLine, slideText } from '../../shared/text-wrap.js';
 import { TEXT_FONTS, scaledSize } from '../../shared/text-style.js';
 import { BackgroundShade } from '../output/BackgroundMedia';
+import { useProjectorTextAutoFit } from '../output/useProjectorTextAutoFit';
 
 const TYPE_ICON = { prayer: Cross, song: Music, scripture: BookOpen } as const;
 
@@ -112,20 +114,16 @@ export function PwSlideFace({
         {!background?.media && <div className="absolute inset-0 bg-panel" />}
         {!hideTitle && <div className="absolute top-[3.938cqw] left-[6cqw] text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{slideLine(slide.label, charsPerLine(0.88, 1.6 * 19.2))}</div>}
         {/* Full size, at the slide's top: the shared top for normal slides, the centred top for a short one (see shared/text-area.js). */}
-        <p
-          className={`absolute inset-x-[6cqw] font-serif text-[5cqw] whitespace-pre-line ${slide.placeholder ? 'text-muted italic' : 'font-semibold'}`}
-          style={{
-            top: `${(slide.top ?? textAreaShare().top) * 100}%`,
-            textAlign: slide.align ?? 'center',
-            lineHeight: LINEUP_LINE_HEIGHT,
-            fontFamily: slideFont,
-            fontSize: scaledSize(`${(slide.fontPx ?? 96) / 19.2}cqw`, slideScale),
-          }}
+        <FittedFaceText
+          className={`font-serif text-[5cqw] whitespace-pre-line ${slide.placeholder ? 'text-muted italic' : 'font-semibold'}`}
+          place={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slide.align ?? 'center' }}
+          fontFamily={slideFont}
+          naturalSize={scaledSize(`${(slide.fontPx ?? 96) / 19.2}cqw`, slideScale)}
         >
           {slideText(slide.text, charsPerLine(PRAYER_WIDTH_SHARE, slide.fontPx ?? 96))}
-        </p>
+        </FittedFaceText>
         <div className="absolute bottom-[3.938cqw] left-[6cqw] text-[1.6cqw] text-muted">{footer}</div>
-        {position && <div className="absolute right-[6cqw] bottom-[3.938cqw] font-mono text-[1.6cqw] text-muted">{position}</div>}
+        {position && <div className="pointer-events-none absolute right-[6cqw] bottom-[3.938cqw] z-20 font-mono text-[1.6cqw] text-muted">{position}</div>}
       </div>
     );
   }
@@ -136,11 +134,29 @@ export function PwSlideFace({
       {!hideTitle && <div className="absolute top-[3.938cqw] left-[6cqw] text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{slideLine(slide.label, charsPerLine(0.88, 1.6 * 19.2))}</div>}
       {!hideTitle && <div className="absolute top-[3.938cqw] right-[6cqw] text-[1.6cqw] text-muted">{segmentName}</div>}
       {/* Lyrics: the same rule as the prayer, at the slide's top. */}
-      <p className="absolute inset-x-[6cqw] font-serif text-[5cqw] font-semibold whitespace-pre-line" style={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slide.align ?? 'center', lineHeight: LINEUP_LINE_HEIGHT, fontFamily: slideFont, fontSize: scaledSize('5cqw', slideScale) }}>
+      <FittedFaceText className="font-serif text-[5cqw] font-semibold whitespace-pre-line" place={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slide.align ?? 'center' }} fontFamily={slideFont} naturalSize={scaledSize('5cqw', slideScale)}>
         {slideText(slide.text, charsPerLine(0.88, 5 * 19.2))}
-      </p>
+      </FittedFaceText>
       <div className="absolute bottom-[3.938cqw] left-[6cqw] text-[1.6cqw] text-muted">{footer}</div>
-      {position && <div className="absolute right-[6cqw] bottom-[3.938cqw] font-mono text-[1.6cqw] text-muted">{position}</div>}
+      {position && <div className="pointer-events-none absolute right-[6cqw] bottom-[3.938cqw] z-20 font-mono text-[1.6cqw] text-muted">{position}</div>}
+    </div>
+  );
+}
+
+/**
+ * The words of a prayer or lyric slide, between their top and the footer. Pagination already lays a page out to fit, so this normally draws it at its
+ * own size; when a real font wraps wider than the page was counted, the text steps down rather than running into the footer and the page count.
+ */
+function FittedFaceText({ className, place, fontFamily, naturalSize, children }: { className: string; place: { top: string; textAlign: CSSProperties['textAlign'] }; fontFamily?: string; naturalSize: string; children: string }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLParagraphElement>(null);
+  useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps: [children, fontFamily, place.top] });
+  // The line spacing is on the box: the fit clears the text's own when it restores a step, and the text then inherits this.
+  return (
+    <div ref={boxRef} className="absolute inset-x-[6cqw] bottom-[6.6cqw] overflow-hidden" style={{ ...place, lineHeight: LINEUP_LINE_HEIGHT }}>
+      <p ref={textRef} className={className} style={{ fontFamily, fontSize: naturalSize }}>
+        {children}
+      </p>
     </div>
   );
 }

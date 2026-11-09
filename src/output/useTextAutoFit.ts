@@ -3,8 +3,7 @@ import { fitFontSize } from '../../shared/text-fit.js';
 
 /** The share of the box's height the text may take, so it never touches the bottom edge. */
 export const FIT_HEIGHT_SHARE = 0.9;
-/** The smallest the text shrinks to: this share of the size it was set for, and never below `FIT_FLOOR_CQW` of the slide's width. */
-export const FIT_FLOOR_SHARE = 0.45;
+/** The smallest the text shrinks to, as a share of the slide's width: about 35px on a 1920 slide, whatever the operator's text size. */
 export const FIT_FLOOR_CQW = 1.8;
 
 interface Options {
@@ -55,9 +54,10 @@ export function useTextAutoFit({ boxRef, textRef, reservedRef, naturalSize, deps
         text.style.fontSize = `${px}px`;
         return text.scrollHeight <= roomHeight && text.scrollWidth <= roomWidth + 1;
       };
-      const floor = Math.max(ceiling * FIT_FLOOR_SHARE, (box.clientWidth * FIT_FLOOR_CQW) / 100);
-      const size = fitFontSize(ceiling, floor, fits);
-      text.style.fontSize = size >= Math.floor(ceiling) ? naturalSize : `${size}px`;
+      const floor = (box.clientWidth * FIT_FLOOR_CQW) / 100;
+      // Tested at its exact size first: a whole pixel is a large step in a small preview, so the size just below it says nothing about this one.
+      const size = fits(ceiling) ? ceiling : fitFontSize(ceiling, floor, fits);
+      text.style.fontSize = size === ceiling ? naturalSize : `${size}px`;
       // At the floor and still too tall: the clip below hides the last lines.
       const cut = size <= Math.ceil(floor) && text.scrollHeight > roomHeight + 1;
       setTruncated((was) => (was === cut ? was : cut));

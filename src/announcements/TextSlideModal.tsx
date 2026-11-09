@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useHeadedTextFit } from '../output/useHeadedTextFit';
 import { charsPerLine, slideLine, slideText } from '../../shared/text-wrap.js';
 import { ChevronLeft, ChevronRight, ImagePlus, Scissors, Sparkles, Type, X } from 'lucide-react';
 import { BACKGROUND_COLORS, customSizes, fontCss, sanitizeTextStyle } from '../../shared/text-style.js';
@@ -44,6 +45,10 @@ export function SlidePreview({
   const bodyChars = charsPerLine(0.86, sizes ? sizes.body : (headline ? 3.2 : 4.1) * 19.2);
   const color = style?.textColor ?? '#FFFFFF';
   const family = fontCss(style);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLParagraphElement>(null);
+  const bodyRef = useRef<HTMLParagraphElement>(null);
+  useHeadedTextFit({ boxRef, titleRef, bodyRef, titleSize: headSize, bodySize, deps: [headline, text, family, top] });
 
   return (
     <div
@@ -58,16 +63,17 @@ export function SlidePreview({
       )}
       {/* A prayer's page starts at its top, as the lineup and the projector place it. Other text is centred. */}
       <div
-        className={`absolute flex flex-col gap-[3cqw] ${top != null ? 'inset-x-[7%]' : 'inset-[7%] justify-center'} ${ALIGN_ITEMS[align]}`}
+        ref={boxRef}
+        className={`absolute flex flex-col gap-[3cqw] overflow-hidden ${top != null ? 'inset-x-[7%] bottom-[7%]' : 'inset-[7%] justify-center'} ${ALIGN_ITEMS[align]}`}
         style={{ textAlign: align, ...(top != null ? { top: `${top * 100}%` } : {}) }}
       >
         {headline && (
-          <p className="leading-tight font-bold" style={{ color, fontFamily: family, fontSize: headSize }}>
+          <p ref={titleRef} className="shrink-0 leading-tight font-bold" style={{ color, fontFamily: family, fontSize: headSize }}>
             {slideLine(headline, headChars)}
           </p>
         )}
         {text && (
-          <p className="whitespace-pre-line leading-[1.22] font-medium" style={{ color, fontFamily: family, fontSize: bodySize }}>
+          <p ref={bodyRef} className="shrink-0 whitespace-pre-line leading-[1.22] font-medium" style={{ color, fontFamily: family, fontSize: bodySize }}>
             {slideText(text, bodyChars)}
           </p>
         )}

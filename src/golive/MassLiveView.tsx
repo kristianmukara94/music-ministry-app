@@ -31,7 +31,7 @@ import { usePlannerT } from '../planner/strings';
 import { BLOCKS } from '../planner/types';
 import { useT } from '../i18n/strings';
 import { setUi } from '../state/ui';
-import { blackoutOverMass, welcomeOverMass, type QueueItem } from '../../shared/live.js';
+import { blackoutOverMass, slotTitleShown, welcomeOverMass, type QueueItem } from '../../shared/live.js';
 import { endMassSession, frameAt, goLiveMassAt, goWithin, massShowing, playMassAt, slotNameAt, stepMass, stepsOf, useHymnOf, useMassClock, useNoteOf } from './massLive';
 import { LiveStageCanvas, type StageChipGroup } from '../components/LiveStageCanvas';
 import { useGoLiveT } from './strings';
@@ -99,6 +99,7 @@ function NoteDrawer({
   /** The slides of the prayer the row plays (0-based), or null for every slide. */
   slides?: number[] | null;
   onStage: (n: Note, slides: number[] | null) => void; onTake: () => void; busy: boolean; t: ReturnType<typeof useGoLiveT> }) {
+  const titleShown = useLive((s) => slotTitleShown(s.state));
   if (!note) return <p className="mx-1 mt-1 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{t('noteGone')}</p>;
   if (note.display === 'operator') {
     return (
@@ -117,7 +118,7 @@ function NoteDrawer({
         <div className="relative">
           <SlidePreview
             text={pages[0]?.text ?? note.body}
-            headline={note.title}
+            headline={titleShown || !(pages[0]?.text ?? note.body).trim() ? note.title : null}
             top={pages[0]?.top ?? null}
             bgSrc={null}
             style={{ ...sanitizeTextStyle(note.style), fontSize: pages[0]?.fontPx }}
@@ -763,22 +764,14 @@ export function MassLiveView({ planName }: { planName: string | null }) {
                     <figure className="flex min-w-0 flex-col gap-1.5">
                       <figcaption className={EYEBROW}>{t('massCurrent')}</figcaption>
                       <div className={STAGE}>
-                        <FramePreview frame={frame} />
-                        {steps && (
-                          <span className="absolute right-2 bottom-2 rounded-full bg-black/75 px-2.5 py-0.5 font-mono text-[11px] font-bold tracking-wider text-white shadow">
-                            {steps.index + 1} / {steps.count}
-                          </span>
-                        )}
+                        <FramePreview frame={frame} counter={steps ? `${steps.index + 1} / ${steps.count}` : undefined} />
                       </div>
                     </figure>
                     <figure className="flex min-w-0 flex-col gap-1.5">
                       <figcaption className={EYEBROW}>{nextInItem ? t('massNextSlide') : t('massNextItemCard')}</figcaption>
                       {nextInItem ? (
                         <div className={STAGE}>
-                          <FramePreview frame={nextInItem} />
-                          <span className="absolute right-2 bottom-2 rounded-full bg-black/75 px-2.5 py-0.5 font-mono text-[11px] font-bold tracking-wider text-white shadow">
-                            {steps!.index + 2} / {steps!.count}
-                          </span>
+                          <FramePreview frame={nextInItem} counter={`${steps!.index + 2} / ${steps!.count}`} />
                         </div>
                       ) : nextItemFrame ? (
                         <div className={STAGE}>

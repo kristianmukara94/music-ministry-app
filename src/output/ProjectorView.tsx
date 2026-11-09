@@ -26,6 +26,7 @@ import { SlideBackgroundLayer } from './BackgroundMedia';
 import { SanctuaryAlertOverlay } from './SanctuaryAlertOverlay';
 import { useTextAutoFit } from './useTextAutoFit';
 import { useProjectorTextAutoFit } from './useProjectorTextAutoFit';
+import { useHeadedTextFit } from './useHeadedTextFit';
 import { lineCountOf, lineHeightFor } from '../../shared/text-fit.js';
 import { LegibilityContext, gradientShadeStyle, legibilityShadowVars, useBackgroundLegibility, type BackgroundAsset, type ShadeChoice, type ShadeTarget } from '../components/ContrastEngine';
 
@@ -85,7 +86,7 @@ const BACKING = 'pointer-events-none absolute -top-[3cqh] -bottom-[3cqh] -left-[
  * Projected text, one paragraph per line. The sizes here are the ones the paginator
  * measures against (see paginate.ts). Empty lines keep their height.
  */
-function TextLines({ lines, serif = false, style = null, safe = false }: { lines: string[]; serif?: boolean; style?: TextStyle | null; safe?: boolean }) {
+function TextLines({ lines, serif = false, style = null, safe = false, inset = true }: { lines: string[]; serif?: boolean; style?: TextStyle | null; safe?: boolean; inset?: boolean }) {
   const slideFont = useSlideFont();
   const slideScale = useSlideScale();
   // A chosen style replaces the default size, face, colour and alignment. Without one, the default classes apply.
@@ -115,43 +116,69 @@ function TextLines({ lines, serif = false, style = null, safe = false }: { lines
       </div>
     </div>
   );
-  return safe ? <SafeFit naturalSize={naturalSize} deps={[lines.join('\n'), style, slideFont]} render={body} /> : body();
+  return safe ? <SafeFit inset={inset} naturalSize={naturalSize} deps={[lines.join('\n'), style, slideFont]} render={body} /> : body();
+}
+
+/** The safe margins of a headed slide, as shares of the stage's height: clear of the edge at the top, and of the page count at the bottom. */
+const HEADED_SAFE_TOP = 6;
+const HEADED_SAFE_BOTTOM = 9;
+
+/** Where a prayer's page sits: from a top (a share of the height), or centred on a height. Without one, the block is centred in the safe box. */
+type HeadedPlace = { top: number } | { centre: number };
+
+/**
+ * The flexible space that places the block. It gives way first, so a block too tall for its place rises before its text is made smaller.
+ */
+function headedSpacers(place: HeadedPlace | null): { justify: string; before: number; after: number } {
+  if (!place) return { justify: 'justify-center', before: 0, after: 0 };
+  if ('top' in place) return { justify: 'justify-start', before: Math.max(0, place.top * 100 - HEADED_SAFE_TOP), after: 0 };
+  // The safe box's own centre, moved to the height asked for by a space on one side.
+  const shift = 2 * ((HEADED_SAFE_TOP + 100 - HEADED_SAFE_BOTTOM) / 2 - place.centre * 100);
+  return { justify: 'justify-center', before: Math.max(0, -shift), after: Math.max(0, shift) };
 }
 
 /**
- * A document slide: a large headline over the body, on the same glass card as other text. The body is one
- * line per paragraph, and each size is relative to the window, so the mirror fits it the same way.
+ * A document or prayer slide: a large headline over the body, on the same glass card as other text. The body is one line per paragraph, and each
+ * size is relative to the window, so the mirror fits it the same way. Both stay inside the safe box at any text size (see useHeadedTextFit).
  */
-function HeadedText({ headline, body, style = null }: { headline: string; body: string; style?: TextStyle | null }) {
+function HeadedText({ headline, body, style = null, place = null }: { headline: string; body: string; style?: TextStyle | null; place?: HeadedPlace | null }) {
   const slideFont = useSlideFont();
   const slideScale = useSlideScale();
   const sizes = customSizes(style);
   const chars = charsPerLine(0.86, sizes ? sizes.body : 3.6 * 19.2);
   const headlineChars = charsPerLine(0.86, sizes ? sizes.headline : 4.6 * 19.2);
   const look = { color: style?.textColor, fontFamily: fontCss(style) ?? slideFont, textAlign: style?.textAlign ?? undefined };
+  const titleSize = scaledSize(sizes ? `${sizes.headline / 19.2}cqw` : 'min(4.6cqw,96px)', slideScale);
+  const bodySize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'min(3.6cqw,80px)', slideScale);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const { overflow } = useHeadedTextFit({ boxRef, titleRef, bodyRef, titleSize, bodySize, deps: [headline, body, style, slideFont] });
+  // True on the congregation's projector, false on the operator's mirror and previews. The warning is for the operator only.
+  const audience = useContext(OnAirLook);
+  const { justify, before, after } = headedSpacers(place);
   return (
-    <div className="relative flex max-w-[86cqw] flex-col items-center gap-[3cqh] text-center" style={{ textAlign: look.textAlign }}>
-      <div aria-hidden className={BACKING} />
-      {headline && (
-        <h2
-          className={`relative leading-[1.1] font-bold text-white ${sizes ? '' : 'text-[length:min(4.6cqw,96px)]'} ${LEGIBLE}`}
-          style={{ ...look, fontSize: scaledSize(sizes ? `${sizes.headline / 19.2}cqw` : 'min(4.6cqw,96px)', slideScale) }}
-        >
-          {slideLine(headline, headlineChars)}
-        </h2>
-      )}
-      {body && (
-        <div
-          className={`relative flex flex-col gap-[2.2cqh] leading-[1.25] font-medium text-white ${sizes ? '' : 'text-[length:min(3.6cqw,80px)]'}`}
-          style={{ ...look, fontSize: scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'min(3.6cqw,80px)', slideScale) }}
-        >
-          {body.split('\n').map((line, i) => (
-            <p key={i} className={LEGIBLE}>
-              {slideLine(line, chars) || ' '}
-            </p>
-          ))}
-        </div>
-      )}
+    <div ref={boxRef} data-safe-fit className={`relative flex h-full w-full flex-col items-center overflow-hidden px-[6cqw] ${justify}`} style={{ paddingTop: `${HEADED_SAFE_TOP}cqh`, paddingBottom: `${HEADED_SAFE_BOTTOM}cqh` }}>
+      {before > 0 && <div aria-hidden style={{ flex: `0 1 ${before}cqh` }} />}
+      <div className="relative flex max-w-[86cqw] shrink-0 flex-col items-center gap-[3cqh] text-center" style={{ textAlign: look.textAlign }}>
+        <div aria-hidden className={BACKING} />
+        {headline && (
+          <h2 ref={titleRef} className={`relative leading-[1.1] font-bold text-white ${sizes ? '' : 'text-[length:min(4.6cqw,96px)]'} ${LEGIBLE}`} style={{ ...look, fontSize: titleSize }}>
+            {slideLine(headline, headlineChars)}
+          </h2>
+        )}
+        {body && (
+          <div ref={bodyRef} className={`relative flex flex-col gap-[2.2cqh] leading-[1.25] font-medium text-white ${sizes ? '' : 'text-[length:min(3.6cqw,80px)]'}`} style={{ ...look, fontSize: bodySize }}>
+            {body.split('\n').map((line, i) => (
+              <p key={i} className={LEGIBLE}>
+                {slideLine(line, chars) || ' '}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
+      {after > 0 && <div aria-hidden style={{ flex: `0 1 ${after}cqh` }} />}
+      {!audience && overflow && <TextFitBadge />}
     </div>
   );
 }
@@ -193,16 +220,17 @@ function Slide({ lines, style = null, safe = false, header = true }: { lines: Sl
  * The safe box a Holy Mass Order or text slide is drawn in: the whole slide less a margin at the top (clear of the title and slot name), at the
  * bottom (clear of the page count and the operator's badges) and at the sides. It fills its parent, so a lower third on air, which raises the
  * parent's bottom, shrinks it too. The text inside steps down in size until it fits (see useProjectorTextAutoFit). With `header` off (the slot
- * title hidden) the top margin is smaller, so the text has more of the slide.
+ * title hidden) the top margin is smaller, so the text has more of the slide. With `inset` off the parent has already kept the top and the sides clear
+ * (the psalm, under its response), and only the bottom margin is left.
  */
-function SafeFit({ naturalSize, deps, render, header = true }: { naturalSize: string; deps: unknown[]; render: (textRef: RefObject<HTMLDivElement>) => ReactNode; header?: boolean }) {
+function SafeFit({ naturalSize, deps, render, header = true, inset = true }: { naturalSize: string; deps: unknown[]; render: (textRef: RefObject<HTMLDivElement>) => ReactNode; header?: boolean; inset?: boolean }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
   const { overflow } = useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps: [...deps, header] });
   // True on the congregation's projector, false on the operator's mirror and previews. The warning is for the operator only.
   const audience = useContext(OnAirLook);
   return (
-    <div ref={boxRef} data-safe-fit className={`relative flex h-full w-full flex-col items-center justify-center overflow-hidden px-[6cqw] pb-[9cqh] ${header ? 'pt-[9cqh]' : 'pt-[6cqh]'}`}>
+    <div ref={boxRef} data-safe-fit className={`relative flex h-full w-full flex-col items-center justify-center overflow-hidden pb-[9cqh] ${!inset ? '' : header ? 'px-[6cqw] pt-[9cqh]' : 'px-[6cqw] pt-[6cqh]'}`}>
       {render(textRef)}
       {!audience && overflow && <TextFitBadge />}
     </div>
@@ -243,28 +271,31 @@ function FittedPrayer({ label, text, className, style = null }: { label: string;
     const el = textRef.current;
     if (!box || !el) return;
     const fit = () => {
-      const room = box.clientHeight - (labelEl?.offsetHeight ?? 0) - 24;
+      const room = box.clientHeight - (labelEl?.offsetHeight ?? 0) - Math.min(24, box.clientHeight * 0.04);
       // A chosen size is the most the prayer grows to. The fit still shrinks it when the text is long.
       const width = box.clientWidth;
       // The scale raises the maximum too, and the fit below still shrinks the text to the room it has.
       const max = (style?.fontSize ? (width * style.fontSize) / 1920 : width * 0.045) * slideScale;
-      const min = window.innerWidth * 0.016;
+      // A share of this slide's width, so the floor scales down with a small preview as the text does.
+      const min = width * 0.018;
+      const step = Math.max(0.5, width / 960);
       let size = max;
       el.style.fontSize = `${size}px`;
       while (el.offsetHeight > room && size > min) {
-        size -= 2;
+        size -= step;
         el.style.fontSize = `${size}px`;
       }
     };
     fit();
-    // The mirror's zoom is set after the page loads, which changes the window width. Fit again on every resize.
-    window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
+    // The box changes size with the window, the mirror's zoom, and a lower third raising the bottom. Fit again each time.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => fit());
+    observer?.observe(box);
+    return () => observer?.disconnect();
   }, [label, text, style, slideScale]);
 
   const look = { color: style?.textColor, fontFamily: fontCss(style) ?? slideFont, textAlign: style?.textAlign ?? undefined };
   return (
-    <div ref={boxRef} className="flex min-h-0 w-full flex-1 flex-col items-center justify-center">
+    <div ref={boxRef} className="flex min-h-0 w-full flex-1 flex-col items-center justify-center overflow-hidden">
       {label && <div ref={labelRef} className="shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase">{label}</div>}
       <p ref={textRef} className={`${label ? 'mt-[1.5cqh]' : ''} ${className}`} style={look}>{slideText(text, charsPerLine(0.84, 4.5 * 19.2))}</p>
     </div>
@@ -319,10 +350,10 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
             </p>
           </div>
           <div className="absolute inset-x-0 top-[34cqh] bottom-0 flex items-center justify-center px-[6cqw]">
-            <TextLines serif lines={(frame.pages[frame.index] ?? '').split('\n')} style={frame.style} />
+            <TextLines safe inset={false} serif lines={(frame.pages[frame.index] ?? '').split('\n')} style={frame.style} />
           </div>
           {frame.pages.length > 1 && (
-            <div className="absolute right-[4cqw] bottom-[3cqh] font-mono text-[1cqw] text-white/40">
+            <div className="pointer-events-none absolute right-[4cqw] bottom-[3cqh] z-20 font-mono text-[1cqw] text-white/40">
               {frame.index + 1} / {frame.pages.length}
             </div>
           )}
@@ -332,8 +363,8 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
       return <SongLyricsSlide label={showSlotTitle ? frame.label : ''} text={frame.text} style={frame.style ?? null} slideFont={slideFont} slideScale={slideScale} song={frame.song ?? null} />;
     case 'text': {
       const headingHidden = Boolean(frame.headline) && !showSlotTitle && frame.text.trim().length > 0;
-      // A short prayer page's top was worked out with its heading above it. Without the heading, the words alone are centred in the text area.
-      const prayerPlace = headingHidden && frame.centred ? { top: `${textAreaShare().centre * 100}%`, transform: 'translateY(-50%)' } : { top: `${(frame.top ?? textAreaShare().top) * 100}%` };
+      // A prayer's page shares a top with its other pages. A short one is centred in the text area, at whatever size its block is drawn.
+      const prayerPlace = !frame.key?.startsWith('prayer:') ? null : frame.centred ? { centre: textAreaShare().centre } : { top: frame.top ?? textAreaShare().top };
       return (
         <>
           {frame.bg ? (
@@ -345,24 +376,15 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
             // A chosen background colour fills the slide when there is no background image.
             frame.style?.bgColor && <div className="absolute inset-0" style={{ backgroundColor: frame.style.bgColor }} />
           )}
-          {/* A prayer's page (a Notes & Prayers slide) starts at its top, the same rule as the lineup: a shared top, or centred when short. Plain text is fitted in the safe box. */}
-          {!frame.key?.startsWith('prayer:') && !frame.headline ? (
-            <TextLines safe lines={frame.text.split('\n')} style={frame.style} />
+          {/* A prayer's page (a Notes & Prayers slide) starts at its top, the same rule as the lineup: a shared top, or centred when short. All text is fitted in the safe box. */}
+          {frame.headline ? (
+            <HeadedText headline={headingHidden ? '' : frame.headline} body={frame.text} style={frame.style} place={prayerPlace} />
           ) : (
-          <div
-            className={frame.key?.startsWith('prayer:') ? 'absolute inset-x-0 flex flex-col items-center' : 'relative flex items-center justify-center'}
-            style={frame.key?.startsWith('prayer:') ? prayerPlace : undefined}
-          >
-            {frame.headline ? (
-              <HeadedText headline={headingHidden ? '' : frame.headline} body={frame.text} style={frame.style} />
-            ) : (
-              <TextLines lines={frame.text.split('\n')} style={frame.style} />
-            )}
-          </div>
+            <TextLines safe lines={frame.text.split('\n')} style={frame.style} />
           )}
           {/* A prayer split into slides shows its place, as the psalm pages do. */}
           {frame.page && frame.page.total > 1 && (
-            <div className="absolute right-[4cqw] bottom-[3cqh] font-mono text-[1cqw] text-white/40">
+            <div className="pointer-events-none absolute right-[4cqw] bottom-[3cqh] z-20 font-mono text-[1cqw] text-white/40">
               {frame.page.index + 1} / {frame.page.total}
             </div>
           )}
@@ -430,7 +452,7 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
           {showSlotTitle && <div className={`absolute top-[4cqh] right-[12cqw] left-[4cqw] truncate ${SLOT_TITLE} text-white/45`}>{frame.labels?.[frame.index] ?? frame.title}</div>}
           <Slide safe header={showSlotTitle} lines={lines} style={frame.style} />
           {frame.slides.length > 1 && (
-            <div className="absolute right-[4cqw] bottom-[4cqh] font-mono text-[1cqw] text-white/40">
+            <div className="pointer-events-none absolute right-[4cqw] bottom-[4cqh] z-20 font-mono text-[1cqw] text-white/40">
               {frame.index + 1} / {frame.slides.length}
             </div>
           )}
@@ -735,9 +757,10 @@ export function ProjectorView(props: { mirror?: boolean; embedded?: boolean }) {
 
 /**
  * One frame drawn as the projector draws it, filling its box. For the operator's previews (the next slide, a slide not yet shown): nothing
- * here is on air, so it uses the working look and has no fades, background video or lower third.
+ * here is on air, so it uses the working look and has no fades, background video or lower third. `counter` is the operator's place in the item,
+ * drawn in the slide's own proportions so it stays in the margin the text keeps clear, however small the preview is.
  */
-export function FramePreview({ frame }: { frame: Frame }) {
+export function FramePreview({ frame, counter }: { frame: Frame; counter?: string }) {
   const introSlideMode = useOutput((s) => s.introSlideMode);
   const shown = presentedFrame(frame, introSlideMode);
   return (
@@ -749,6 +772,11 @@ export function FramePreview({ frame }: { frame: Frame }) {
         <div className="absolute inset-0 flex items-center justify-center">
           <FrameView frame={shown} />
         </div>
+        {counter && (
+          <span className="pointer-events-none absolute right-[4cqw] bottom-[2cqh] z-20 rounded-full bg-black/75 px-[1.2cqw] font-mono text-[length:max(7px,1.4cqw)] font-bold tracking-wider text-white shadow">
+            {counter}
+          </span>
+        )}
       </div>
     </OnAirLook.Provider>
   );

@@ -88,3 +88,24 @@ test('the switch reaches every kind of slide that draws a title', () => {
   const preview = fs.readFileSync(new URL('../src/praise-worship/CurrentNextPreview.tsx', import.meta.url), 'utf8');
   assert.match(preview, /hideTitle=\{!titleShown\}/);
 });
+
+test('the Live toolbar button is lit while titles are hidden, and the Settings switch while they are shown', () => {
+  const toggle = fs.readFileSync(new URL('../src/operator/SlotTitleToggle.tsx', import.meta.url), 'utf8');
+  assert.match(toggle, /const on = live \? shown : setting;/);
+  assert.match(toggle, /const lit = live \? !on : on;/);
+  assert.match(toggle, /aria-checked=\{lit\}/);
+  assert.match(toggle, /\$\{lit \? 'border-accent bg-accent\/15 text-accent'/, 'the highlight follows lit, not on');
+  assert.match(toggle, /aria-label=\{live \? 'Hide title' : 'Show slot title'\}/);
+  assert.match(toggle, /^\s*\{live \? 'Hide title' : 'Show slot title'\}\s*$/m, 'the label says what lit means');
+  // A press still flips what the projector does.
+  assert.match(toggle, /showSlotTitle: !on/);
+  assert.match(toggle, /setPlanSlotTitle\(planId, !on\)/);
+});
+
+test('the Go Live prayer previews drop the title with the switch, unless it is all the slide says', () => {
+  for (const file of ['MassLiveView.tsx', 'HubSlideSelectionModal.tsx']) {
+    const source = fs.readFileSync(new URL(`../src/golive/${file}`, import.meta.url), 'utf8');
+    assert.match(source, /const titleShown = useLive\(\(s\) => slotTitleShown\(s\.state\)\);/, file);
+    assert.match(source, /headline=\{titleShown \|\| !.+\.trim\(\) \? note\.title : null\}/, file);
+  }
+});

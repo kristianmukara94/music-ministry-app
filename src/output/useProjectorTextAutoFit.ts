@@ -1,5 +1,7 @@
 import { useLayoutEffect, useState, type RefObject } from 'react';
 import { pickFitStep } from '../../shared/projector-autofit.js';
+import { fitFontSize } from '../../shared/text-fit.js';
+import { FIT_FLOOR_CQW } from './useTextAutoFit';
 
 interface Options {
   /** The safe box the text must stay inside. Its padding is the margin kept clear of the title, the page count and the badges. */
@@ -30,18 +32,35 @@ export function useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps }: 
 
     const fit = () => {
       text.style.maxHeight = '';
+      text.style.overflow = '';
       const style = getComputedStyle(box);
       const roomHeight = box.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
       const roomWidth = box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
       if (roomHeight <= 0 || roomWidth <= 0) return;
+      const clear = () => text.scrollHeight <= roomHeight + 1 && text.scrollWidth <= roomWidth + 1;
       const picked = pickFitStep((scale, leading) => {
         text.style.fontSize = scale === 1 ? naturalSize : `calc(${naturalSize} * ${scale})`;
         text.style.lineHeight = leading == null ? '' : String(leading);
-        return text.scrollHeight <= roomHeight + 1 && text.scrollWidth <= roomWidth + 1;
+        return clear();
       });
-      // The fail-safe: what is still too tall at the smallest step is clipped inside the room.
-      if (picked.overflow) text.style.maxHeight = `${Math.floor(roomHeight)}px`;
-      setResult((was) => (was.overflow === picked.overflow && was.step === picked.index ? was : { overflow: picked.overflow, step: picked.index }));
+      let overflow = picked.overflow;
+      if (overflow) {
+        // The steps are shares of the set size, so at a large text scale the last one can still be big. Below it, shrink to the legible floor.
+        const last = parseFloat(getComputedStyle(text).fontSize);
+        const floor = (box.clientWidth * FIT_FLOOR_CQW) / 100;
+        const size = fitFontSize(last, floor, (px) => {
+          text.style.fontSize = `${px}px`;
+          return clear();
+        });
+        text.style.fontSize = `${size}px`;
+        overflow = !clear();
+      }
+      // The fail-safe: what is still too tall at the smallest size is clipped inside the room.
+      if (overflow) {
+        text.style.maxHeight = `${Math.floor(roomHeight)}px`;
+        text.style.overflow = 'hidden';
+      }
+      setResult((was) => (was.overflow === overflow && was.step === picked.index ? was : { overflow, step: picked.index }));
     };
 
     fit();
