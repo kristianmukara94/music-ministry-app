@@ -9,61 +9,61 @@
 <title>Devices &amp; sync · APCCMMA Web Planner</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/planner.css">
 <script type="module" src="js/devices.js"></script>
 </head>
 <body>
-<div class="shell" style="display: flex; flex-wrap: wrap; background: #0f0407; color: #f7eef0; font-family: 'Archivo','Segoe UI',system-ui,sans-serif">
+<div class="shell" style="display: flex; flex-wrap: wrap">
 
   <div data-sidebar="devices"></div>
 
   <main class="main" style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; display: flex; flex-direction: column; gap: 28px">
 
     <header style="display: flex; flex-direction: column; gap: 8px">
-      <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #ecc98a">DEVICES &amp; SYNC</span>
-      <h1 style="margin: 0; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 48px; line-height: 1.02">Church laptops</h1>
-      <p style="margin: 0; max-width: 620px; font-size: 15px; line-height: 1.55; color: #dbb3bf">Link the desktop app once with a one-time code. After that it pulls new plans and sends its song list on its own.</p>
+      <span class="eyebrow">DEVICES &amp; SYNC</span>
+      <h1 class="page-title">Church laptops</h1>
+      <p style="margin: 0; max-width: 620px; font-size: 15px; line-height: 1.55; color: var(--text)">Link the desktop app once with a one-time code. After that it pulls new plans and sends its song list on its own.</p>
     </header>
 
     <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px">
 
       <section style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 24px">
 
-        <div style="border: 1px solid #3a1523; border-radius: 16px; background: #1b0a13; overflow: hidden">
-          <div style="padding: 14px 18px; background: #22101a; border-bottom: 1px solid #3a1523"><h2 style="margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.12em; color: #ecc98a">LINKED DEVICES</h2></div>
+        <div style="border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden">
+          <div style="padding: 14px 18px; background: var(--input-bg); border-bottom: 1px solid var(--border)"><h2 class="section-title">Linked devices</h2></div>
           <div id="devices"></div>
         </div>
 
-        <p id="devices-error" role="alert" style="margin: 0; font-size: 14px; color: #ff9a9a"></p>
+        <p id="devices-error" role="alert" style="margin: 0; font-size: 14px; color: var(--danger)"></p>
 
-        <div style="border: 1px solid #3a1523; border-radius: 16px; background: #1b0a13; overflow: hidden">
-          <div style="padding: 14px 18px; background: #22101a; border-bottom: 1px solid #3a1523"><h2 style="margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.12em; color: #ecc98a">SYNC ACTIVITY</h2></div>
+        <div style="border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden">
+          <div style="padding: 14px 18px; background: var(--input-bg); border-bottom: 1px solid var(--border)"><h2 class="section-title">Sync activity</h2></div>
           <div id="activity"></div>
         </div>
       </section>
 
-      <aside class="drawer" style="flex: 1 1 340px; min-width: 0; position: sticky; top: 16px; display: flex; flex-direction: column; gap: 16px; padding: 22px; border: 1px solid #55202f; border-radius: 16px; background: #1b0a13">
+      <aside class="drawer" style="flex: 1 1 340px; min-width: 0; position: sticky; top: 16px; display: flex; flex-direction: column; gap: 16px; padding: 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface)">
         <div style="display: flex; flex-direction: column; gap: 6px">
-          <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #ecc98a">LINK A NEW LAPTOP</span>
-          <h2 style="margin: 0; font-size: 24px; font-weight: 800; line-height: 1.15">Enter this code in the app</h2>
+          <span class="eyebrow">LINK A NEW LAPTOP</span>
+          <h2 class="section-title" style="font-size: 24px">Enter this code in the app</h2>
         </div>
-        <p id="link-viewer" hidden style="margin: 0; font-size: 14px; line-height: 1.5; color: #dbb3bf">Only a church admin can create a link code. Ask your admin for one.</p>
+        <p id="link-viewer" hidden style="margin: 0; font-size: 14px; line-height: 1.5; color: var(--text)">Only a church admin can create a link code. Ask your admin for one.</p>
         <div id="link-admin" hidden style="display: flex; flex-direction: column; gap: 16px">
-          <div id="code" style="padding: 20px 14px; border-radius: 12px; background: #150610; border: 1px dashed #6e2a3e; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 34px; font-weight: 500; letter-spacing: 0.14em; color: #ecc98a; overflow-wrap: anywhere"></div>
+          <div id="code" style="padding: 20px 14px; border-radius: 12px; background: var(--input-bg); border: 1px dashed var(--border); text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 34px; font-weight: 500; letter-spacing: 0.14em; color: var(--eyebrow); overflow-wrap: anywhere"></div>
           <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px">
-            <span id="code-note" aria-live="polite" style="font-size: 13px; color: #dbb3bf">Valid for 10 minutes, one use</span>
-            <button id="new-code" type="button" style="height: 34px; padding: 0 14px; border-radius: 9px; border: 1px solid #6e2a3e; background: #2a0c18; color: #f7eef0; font-size: 13px; font-weight: 700; cursor: pointer">New code</button>
+            <span id="code-note" aria-live="polite" style="font-size: 13px; color: var(--text)">Valid for 10 minutes, one use</span>
+            <button id="new-code" type="button" class="btn-quiet" style="height: 34px; padding: 0 14px; font-size: 13px; font-weight: 700">New code</button>
           </div>
         </div>
-        <ol style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.45; color: #dbb3bf">
+        <ol style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.45; color: var(--text)">
           <li>Open APCCMMA on the laptop.</li>
           <li>Go to Settings, then Cloud sync.</li>
           <li>Choose Link this laptop and type the code.</li>
         </ol>
-        <div style="padding-top: 14px; border-top: 1px solid #3a1523; display: flex; flex-direction: column; gap: 6px">
-          <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: #b48d99">WHAT LEAVES THE LAPTOP</span>
-          <span style="font-size: 13px; line-height: 1.5; color: #dbb3bf">Song titles, categories and languages. Lyrics, Bible text, announcements and media never leave the laptop.</span>
+        <div style="padding-top: 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px">
+          <span class="eyebrow">WHAT LEAVES THE LAPTOP</span>
+          <span style="font-size: 13px; line-height: 1.5; color: var(--text)">Song titles, categories and languages. Lyrics, Bible text, announcements and media never leave the laptop.</span>
         </div>
       </aside>
     </div>

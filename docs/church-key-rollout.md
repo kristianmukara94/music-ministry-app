@@ -40,7 +40,7 @@ The server accepts both kinds of key, and existing church codes stay valid. Only
    npm run typecheck
    ```
 
-   Expected: 1,570 desktop and shared tests, 310 server tests, 11 setup-key tool tests, 5 key generator app tests, all passing, and no TypeScript errors.
+   Expected: 1,570 desktop and shared tests, 310 server tests, 11 setup-key tool tests, 11 key generator app tests, all passing, and no TypeScript errors.
 
 ## Step 1: Push to `main`
 
@@ -87,7 +87,7 @@ Run this from the updated working copy, because keys are made on your computer a
    node server/scripts/create-setup-key.mjs
    ```
 
-   Use this script, not the Church Admin Key Generator app. The app's keys pass the typing check but are not recorded in `setup_keys`, so the server refuses them.
+   Or start the Church Admin Key Generator from this same terminal and click **Generate**. It saves each key in `setup_keys` before showing it, and it makes no key without both credentials. Rebuild it first with `npm run dist --prefix tools/church-admin-key-generator`, because a copy built before this change makes keys the server refuses. Every click creates a key that stays open for 7 days.
 
 4. Retire the old keys, using the time just before the first replacement as the cutoff (UTC):
 

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { createSongsSyncApi, failureLine, SONGS_PUSH_LIMIT } from '../lib/songs-sync.js';
 import { createPlanEditingApi } from '../lib/plan-editing.js';
+import { createPlanSyncApi } from '../lib/plan-sync.js';
 import { createApi } from '../lib/handlers.js';
 import { hashPassword, hashToken } from '../lib/auth.js';
 import { tagFromQuery } from '../lib/db.js';
@@ -447,4 +448,35 @@ test('a hymn deleted on the laptop is removed on the web, and re-adding it under
   const restored = await pageList(await cookieFor('planner', 'K7QM-4XD2'));
   assert.ok(restored.songs.some((s) => s.id === HYMN_2 && s.title === 'Came back'), 'it is back in the web list');
   assert.deepEqual((await pg.query('SELECT body FROM plans WHERE id = $1', [planId])).rows[0].body, planBefore, 'the plan still refers to it after the restore');
+});
+
+// ---- A database from before scopes ----
+
+test('without the scope column a push fails and its plan is refused; the migration fixes both and can run twice', async (t) => {
+  const logged = t.mock.method(console, 'error', () => {});
+  const migration = fs.readFileSync(path.join(here, '..', 'db', 'migrations', '2026-11-09-songs-scope.sql'), 'utf8');
+  const planSync = createPlanSyncApi({ sql, transaction, secret: SECRET, now: () => clock });
+  const createPlan = (id) => planSync.createPlan({
+    httpMethod: 'POST',
+    headers: { authorization: `Bearer ${laptopA}` },
+    body: JSON.stringify({ id, name: 'Sunday praise', date: '2026-11-15', kind: 'pw', items: [{ key: 'a', order: 1, kind: 'song', group: 'g', songId: HYMN_1 }] }),
+  });
+  const list = { songs: [laptopSong(HYMN_1, 'Praise to the Lord', { scope: 'MASS' })] };
+
+  await pg.exec('ALTER TABLE songs DROP COLUMN scope');
+  try {
+    const failed = await push(laptopA, list);
+    assert.equal(failed.statusCode, 500);
+    assert.equal(logged.mock.calls[0].arguments[0], '[songs] step=read name=error code=42703 column=scope');
+    const refused = await createPlan(randomUUID());
+    assert.equal(refused.statusCode, 400);
+    assert.match(JSON.parse(refused.body).error, /not in your church's song list/);
+  } finally {
+    await pg.exec(migration);
+  }
+  await pg.exec(migration);
+
+  assert.equal((await push(laptopA, list)).statusCode, 200);
+  assert.equal(await scopeOf(HYMN_1), 'MASS');
+  assert.equal((await createPlan(randomUUID())).statusCode, 201);
 });

@@ -7,10 +7,17 @@ const form = document.getElementById('generate-form');
 const prefixInput = document.getElementById('prefix');
 const prefixHint = document.getElementById('prefix-hint');
 const generateButton = document.getElementById('generate');
+const generateError = document.getElementById('generate-error');
 const toast = document.getElementById('toast');
 const outputs = [...document.querySelectorAll('[data-output]')];
 
 let toastTimer;
+let generating = false;
+
+function showGenerateError(message) {
+  generateError.textContent = message;
+  generateError.hidden = !message;
+}
 
 function showToast(message) {
   toast.textContent = message;
@@ -31,7 +38,7 @@ function refreshPrefix() {
   prefixHint.classList.toggle('text-error', hasLookAlike);
   prefixHint.classList.toggle('text-muted', !hasLookAlike);
   prefixInput.setAttribute('aria-invalid', String(hasLookAlike));
-  generateButton.disabled = hasLookAlike;
+  generateButton.disabled = generating || hasLookAlike;
 }
 
 function showOutput(card, value) {
@@ -47,12 +54,23 @@ function showOutput(card, value) {
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (generateButton.disabled) return;
-  const result = await window.keyGenerator.generate(prefixInput.value);
-  if (result.error) {
-    showToast(result.error);
-    return;
+  // Each click saves a key in the database, so a second click must wait for the first.
+  generating = true;
+  generateButton.disabled = true;
+  showGenerateError('');
+  try {
+    const result = await window.keyGenerator.generate(prefixInput.value);
+    if (result.error) {
+      showGenerateError(result.error);
+      return;
+    }
+    for (const card of outputs) showOutput(card, result[card.dataset.output]);
+  } catch {
+    showGenerateError('Something went wrong, so no key was made. Please try again.');
+  } finally {
+    generating = false;
+    refreshPrefix();
   }
-  for (const card of outputs) showOutput(card, result[card.dataset.output]);
 });
 
 for (const card of outputs) {

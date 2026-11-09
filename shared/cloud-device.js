@@ -108,7 +108,7 @@ export function plansStatusText(state, now = Date.now()) {
   const held = state.counts?.held ?? 0;
   const failed = state.counts?.failed ?? 0;
   if (held) parts.push(`${held} ${held === 1 ? 'plan is' : 'plans are'} held: something in ${held === 1 ? 'it' : 'them'} cannot be shown on this laptop yet.`);
-  if (failed) parts.push(`${failed} ${failed === 1 ? 'plan' : 'plans'} could not be sent. Try again later.`);
+  if (failed) parts.push(`${failed} ${failed === 1 ? 'plan' : 'plans'} could not be sent${state.message ? `: ${state.message}` : '. Try again later.'}`);
   return parts.join('. ');
 }
 

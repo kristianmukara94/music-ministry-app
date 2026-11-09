@@ -124,36 +124,36 @@ function renderHeader(view) {
 
 /** The panel that opens under a segment: the song picker, the reference box, or the operator note. */
 function panelFor(row) {
-  const close = `<button type="button" data-close="${esc(row.id)}" style="height:34px;padding:0 14px;border-radius:9px;border:1px solid #3a1523;background:transparent;color:#dbb3bf;font-size:13px;font-weight:600;cursor:pointer">Close</button>`;
+  const close = `<button type="button" data-close="${esc(row.id)}" style="height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600;cursor:pointer">Close</button>`;
   if (row.kind === 'song') {
     return `
-          <div style="display:flex;flex-direction:column;gap:12px;padding:14px 18px;background:#150610;border-bottom:1px solid #2b1019">
-            <label style="display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border:1px solid #55202f;border-radius:10px;background:#0f0407">
-              <input data-role="panel-search" type="search" aria-label="Search songs" placeholder="Search songs" value="${esc(state.query)}" ${DISABLED(canEdit)} style="flex:1;min-width:0;border:0;outline:0;background:transparent;color:#f7eef0;font-size:14px">
+          <div style="display:flex;flex-direction:column;gap:12px;padding:14px 18px;background:var(--input-bg);border-bottom:1px solid var(--border)">
+            <label style="display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg)">
+              <input data-role="panel-search" type="search" aria-label="Search songs" placeholder="Search songs" value="${esc(state.query)}" ${DISABLED(canEdit)} style="flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font-size:14px">
             </label>
-            <div data-role="panel-options" style="display:flex;flex-direction:column;border:1px solid #3a1523;border-radius:12px;overflow:hidden">${optionsFor(row)}</div>
+            <div data-role="panel-options" style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:12px;overflow:hidden">${optionsFor(row)}</div>
             <div style="display:flex;flex-wrap:wrap;gap:8px">
-              <button type="button" data-clear="${esc(row.id)}" ${DISABLED(canEdit)} style="height:34px;padding:0 14px;border-radius:9px;border:1px solid #3a1523;background:transparent;color:#ecc98a;font-size:13px;font-weight:600;cursor:pointer">Clear this song</button>
+              <button type="button" data-clear="${esc(row.id)}" ${DISABLED(canEdit)} style="height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--focus);font-size:13px;font-weight:600;cursor:pointer">Clear this song</button>
               ${close}
             </div>
           </div>`;
   }
   if (row.kind === 'reading') {
     return `
-          <div style="display:flex;flex-direction:column;gap:12px;padding:14px 18px;background:#150610;border-bottom:1px solid #2b1019">
-            <input data-role="panel-ref" aria-label="Reading reference" placeholder="e.g. Psalm 63:1-8" value="${esc(row.text)}" ${DISABLED(canEdit)} style="height:44px;padding:0 14px;border-radius:10px;border:1px solid #55202f;background:#0f0407;color:#f7eef0;font-size:14px;outline:0">
-            <p style="margin:0;font-size:12px;line-height:1.5;color:#b48d99">The web planner takes the reference as a note. To show the Bible text on the projector, pick the verses in the desktop app.</p>
+          <div style="display:flex;flex-direction:column;gap:12px;padding:14px 18px;background:var(--input-bg);border-bottom:1px solid var(--border)">
+            <input data-role="panel-ref" aria-label="Reading reference" placeholder="e.g. Psalm 63:1-8" value="${esc(row.text)}" ${DISABLED(canEdit)} style="height:44px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;outline:0">
+            <p style="margin:0;font-size:12px;line-height:1.5;color:var(--muted)">The web planner takes the reference as a note. To show the Bible text on the projector, pick the verses in the desktop app.</p>
             <div style="display:flex;flex-wrap:wrap;gap:8px">
-              <button type="button" data-use-ref="${esc(row.id)}" ${DISABLED(canEdit)} style="height:40px;padding:0 16px;border-radius:10px;border:0;background:#ecc98a;color:#1c070d;font-size:14px;font-weight:700;cursor:pointer">Use this reference</button>
+              <button type="button" data-use-ref="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-primary" style="height:40px;padding:0 16px;font-size:14px;font-weight:700">Use this reference</button>
               ${close}
             </div>
           </div>`;
   }
   return `
-          <div style="display:flex;flex-direction:column;gap:12px;padding:14px 18px;background:#150610;border-bottom:1px solid #2b1019">
-            <textarea data-role="panel-note" aria-label="Operator note" rows="3" placeholder="e.g. Speaker to confirm" ${DISABLED(canEdit)} style="padding:12px 14px;border-radius:10px;border:1px solid #55202f;background:#0f0407;color:#f7eef0;font-size:14px;line-height:1.5;resize:vertical;outline:0">${esc(row.note)}</textarea>
+          <div style="display:flex;flex-direction:column;gap:12px;padding:14px 18px;background:var(--input-bg);border-bottom:1px solid var(--border)">
+            <textarea data-role="panel-note" aria-label="Operator note" rows="3" placeholder="e.g. Speaker to confirm" ${DISABLED(canEdit)} style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;line-height:1.5;resize:vertical;outline:0">${esc(row.note)}</textarea>
             <div style="display:flex;flex-wrap:wrap;gap:8px">
-              <button type="button" data-save-note="${esc(row.id)}" ${DISABLED(canEdit)} style="height:40px;padding:0 16px;border-radius:10px;border:1px solid #6e2a3e;background:#2a0c18;color:#f7eef0;font-size:14px;font-weight:600;cursor:pointer">Save note</button>
+              <button type="button" data-save-note="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-quiet" style="height:40px;padding:0 16px;font-size:14px;font-weight:600">Save note</button>
               ${close}
             </div>
           </div>`;
@@ -162,19 +162,19 @@ function panelFor(row) {
 /** The songs offered in a segment's panel: the church's list, narrowed by the search box. */
 function optionsFor(row) {
   const picker = songs.filter((s) => !s.removed);
-  if (picker.length === 0) return `<div style="padding:18px 14px;font-size:13px;color:#b48d99;background:#0f0407">${esc(NO_SONGS)}</div>`;
+  if (picker.length === 0) return `<div style="padding:18px 14px;font-size:13px;color:var(--muted);background:var(--input-bg)">${esc(NO_SONGS)}</div>`;
   const shown = songOptions(picker, { query: state.query });
-  if (shown.length === 0) return `<div style="padding:18px 14px;font-size:13px;color:#b48d99;background:#0f0407">No songs match the search.</div>`;
+  if (shown.length === 0) return `<div style="padding:18px 14px;font-size:13px;color:var(--muted);background:var(--input-bg)">No songs match the search.</div>`;
   return shown.map((song) => {
     const chosen = row.songId === song.id;
     const key = song.key ? ` · Key ${esc(song.key)}` : '';
     return `
-            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid #2b1019;background:#0f0407">
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--input-bg)">
               <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
                 <span style="font-size:14px;font-weight:700">${esc(song.title)}</span>
-                <span style="font-size:12px;color:#b48d99">${LANGUAGE_CODE[song.language] ?? esc(song.language)}${key}</span>
+                <span style="font-size:12px;color:var(--muted)">${LANGUAGE_CODE[song.language] ?? esc(song.language)}${key}</span>
               </span>
-              <button type="button" data-song="${esc(song.id)}" data-for="${esc(row.id)}" aria-pressed="${chosen}" ${DISABLED(canEdit)} style="height:34px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;${chosen ? 'border:1px solid #8fd9ae;background:#12301f;color:#8fd9ae' : 'border:1px solid #6e2a3e;background:#2a0c18;color:#f7eef0'}">${chosen ? 'Selected' : 'Select'}</button>
+              <button type="button" data-song="${esc(song.id)}" data-for="${esc(row.id)}" aria-pressed="${chosen}" ${DISABLED(canEdit)} class="${chosen ? 'btn-chosen' : 'btn-quiet'}" style="height:34px;padding:0 14px;font-size:13px;font-weight:700">${chosen ? 'Selected' : 'Select'}</button>
             </div>`;
   }).join('');
 }
@@ -183,32 +183,32 @@ function renderSegments(view) {
   document.getElementById('segments').innerHTML = view.sections.map((section) => {
     const rows = section.rows.map((r) => {
       const sub = r.kind === 'song' ? 'Song · ' + r.hint : r.kind === 'reading' ? 'Reading · ' + r.hint : r.hint;
-      const valueStyle = r.kind === 'rite' ? 'display:none' : r.value ? 'color:#f7eef0;font-weight:600' : 'color:#b48d99';
+      const valueStyle = r.kind === 'rite' ? 'display:none' : r.value ? 'color:var(--text);font-weight:600' : 'color:var(--muted)';
       const btnLabel = r.kind === 'rite' ? 'Add note' : r.value ? 'Change' : 'Choose';
       const needs = (r.kind === 'song' || r.kind === 'reading') && !r.value && !r.optional;
-      const btnStyle = needs ? 'border:0;background:#ecc98a;color:#1c070d' : 'border:1px solid #6e2a3e;background:#2a0c18;color:#f7eef0';
+      const btnClass = needs ? 'btn-primary' : 'btn-quiet';
       const open = state.open === r.id;
       return `
-              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 18px; border-bottom: 1px solid #2b1019">
-                <span style="flex: none; width: 28px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #b48d99">${esc(r.id.padStart(2, '0'))}</span>
+              <div class="editor-row" style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 18px; border-bottom: 1px solid var(--border)">
+                <span style="flex: none; width: 28px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--muted)">${esc(r.id.padStart(2, '0'))}</span>
                 <span style="flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; gap: 3px">
                   <span style="font-size: 15px; font-weight: 700">${esc(r.name)}</span>
-                  <span style="font-size: 12px; color: #b48d99">${esc(sub)}</span>
+                  <span style="font-size: 12px; color: var(--muted)">${esc(sub)}</span>
                 </span>
                 <span style="flex: 1 1 200px; min-width: 0; font-size: 14px; line-height: 1.4; ${valueStyle}">${r.kind === 'rite' ? '' : esc(r.value || 'Nothing chosen yet')}</span>
-                <span style="flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 4px; border: 1px solid #55202f; border-radius: 9px; background: #150610">
-                  <button type="button" data-step="${esc(r.id)}" data-delta="-1" aria-label="Fewer minutes for ${esc(r.name)}" ${r.minutes <= MIN_MINUTES || !canEdit ? 'disabled' : ''} style="width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: #ecc98a; font-size: 18px; font-weight: 700; cursor: pointer">−</button>
+                <span class="editor-item-actions" style="flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg)">
+                  <button type="button" data-step="${esc(r.id)}" data-delta="-1" aria-label="Fewer minutes for ${esc(r.name)}" ${r.minutes <= MIN_MINUTES || !canEdit ? 'disabled' : ''} style="width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--focus); font-size: 18px; font-weight: 700; cursor: pointer">−</button>
                   <span style="min-width: 46px; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 13px">${r.minutes} min</span>
-                  <button type="button" data-step="${esc(r.id)}" data-delta="1" aria-label="More minutes for ${esc(r.name)}" ${r.minutes >= MAX_MINUTES || !canEdit ? 'disabled' : ''} style="width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: #ecc98a; font-size: 18px; font-weight: 700; cursor: pointer">+</button>
+                  <button type="button" data-step="${esc(r.id)}" data-delta="1" aria-label="More minutes for ${esc(r.name)}" ${r.minutes >= MAX_MINUTES || !canEdit ? 'disabled' : ''} style="width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--focus); font-size: 18px; font-weight: 700; cursor: pointer">+</button>
                 </span>
-                <button type="button" data-open="${esc(r.id)}" aria-expanded="${open}" ${DISABLED(canEdit)} style="height: 36px; padding: 0 14px; border-radius: 9px; font-size: 13px; font-weight: 700; cursor: pointer; ${btnStyle}">${btnLabel}</button>
+                <button type="button" data-open="${esc(r.id)}" aria-expanded="${open}" ${DISABLED(canEdit)} class="btn-choose ${btnClass}" style="height: 36px; padding: 0 14px; font-size: 13px; font-weight: 700">${btnLabel}</button>
               </div>${open ? panelFor(r) : ''}`;
     }).join('');
     return `
-          <div style="border: 1px solid #3a1523; border-radius: 16px; background: #1b0a13; overflow: hidden">
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: #22101a; border-bottom: 1px solid #3a1523">
-              <h2 style="margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.12em; color: #ecc98a">${esc(section.title)}</h2>
-              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #b48d99">${section.secMin} min</span>
+          <div style="border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: var(--input-bg); border-bottom: 1px solid var(--border)">
+              <h2 class="section-title sentence-case">${esc(section.title)}</h2>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted)">${section.secMin} min</span>
             </div>${rows}
           </div>`;
   }).join('');
@@ -221,30 +221,30 @@ function renderReadiness(view) {
   const maxSec = Math.max(...view.sections.map((s) => s.secMin));
   const checks = view.checks.map((c) => `
             <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.4">
-              <span aria-hidden="true" style="flex: none; margin-top: 2px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; ${c.ok ? 'background:#12301f;color:#8fd9ae' : 'background:#33240c;color:#f2bd6b'}">${c.ok ? '✓' : '!'}</span>
-              <span style="${c.ok ? 'color:#dbb3bf' : 'color:#f7eef0'}"><span class="sr-only">${c.ok ? 'Done: ' : 'To do: '}</span>${esc(c.text + (c.sub ? ` (${c.sub})` : ''))}</span>
+              <span aria-hidden="true" style="flex: none; margin-top: 2px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; ${c.ok ? 'background:var(--pill-bg);color:var(--pill-text)' : 'background:var(--warn-bg);color:var(--warn-text)'}">${c.ok ? '✓' : '!'}</span>
+              <span style="${c.ok ? 'color:var(--text)' : 'color:var(--text)'}"><span class="sr-only">${c.ok ? 'Done: ' : 'To do: '}</span>${esc(c.text + (c.sub ? ` (${c.sub})` : ''))}</span>
             </li>`).join('');
   const bars = view.sections.map((s, i) => `
             <div style="display: flex; align-items: center; gap: 10px">
-              <span style="flex: 0 0 96px; font-size: 13px; color: #dbb3bf">${esc(PRAISE_PLAN.sectionLabels[i] ?? s.title)}</span>
-              <span style="flex: 1; height: 8px; border-radius: 99px; background: #2b1019; overflow: hidden"><span style="display: block; height: 100%; border-radius: 99px; background: #6e2a3e; width: ${Math.round((s.secMin / maxSec) * 100)}%"></span></span>
-              <span style="flex: 0 0 52px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #dbb3bf">${s.secMin} min</span>
+              <span style="flex: 0 0 96px; font-size: 13px; color: var(--text)">${esc(PRAISE_PLAN.sectionLabels[i] ?? s.title)}</span>
+              <span style="flex: 1; height: 8px; border-radius: 99px; background: var(--border); overflow: hidden"><span style="display: block; height: 100%; border-radius: 99px; background: var(--primary); width: ${Math.round((s.secMin / maxSec) * 100)}%"></span></span>
+              <span style="flex: 0 0 52px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text)">${s.secMin} min</span>
             </div>`).join('');
 
   document.getElementById('readiness').innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 6px">
-          <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #ecc98a">READINESS</span>
-          <h2 aria-live="polite" style="margin: 0; font-size: 24px; font-weight: 800; line-height: 1.15">${headline}</h2>
+          <span class="eyebrow">READINESS</span>
+          <h2 aria-live="polite" class="section-title" style="font-size: 24px">${headline}</h2>
         </div>
-        <div style="height: 8px; border-radius: 99px; background: #2b1019; overflow: hidden">
-          <div style="height: 100%; border-radius: 99px; background: #ecc98a; width: ${Math.round((okCount / view.checks.length) * 100)}%"></div>
+        <div style="height: 8px; border-radius: 99px; background: var(--border); overflow: hidden">
+          <div style="height: 100%; border-radius: 99px; background: var(--primary); width: ${Math.round((okCount / view.checks.length) * 100)}%"></div>
         </div>
         <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px">${checks}
         </ul>
-        <div style="padding-top: 14px; border-top: 1px solid #3a1523; display: flex; flex-direction: column; gap: 6px">
-          <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: #b48d99">TIME BY SECTION</span>${bars}
+        <div style="padding-top: 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px">
+          <span class="eyebrow">TIME BY SECTION</span>${bars}
         </div>
-        <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #b48d99">Songs come from the church laptop. Lyrics and slides are prepared in the desktop app.</p>`;
+        <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">Songs come from the church laptop. Lyrics and slides are prepared in the desktop app.</p>`;
 }
 
 function render() {

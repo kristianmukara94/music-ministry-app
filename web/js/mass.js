@@ -101,10 +101,10 @@ const subOf = (r) => {
 /** The HTML lang of the plan's language, so a screen reader reads the Tagalog and Cebuano names in their own voice. */
 const HTML_LANG = { EN: 'en', TL: 'tl', CEB: 'ceb' };
 
-const BTN_PRIMARY = 'border:0;background:#ecc98a;color:#1c070d';
-const BTN_QUIET = 'border:1px solid #6e2a3e;background:#2a0c18;color:#f7eef0';
-const TAB_ON = 'flex:1;height:40px;border-radius:10px;border:1px solid #ecc98a;background:#2a0c18;color:#ecc98a;font-size:14px;font-weight:700;cursor:pointer';
-const TAB_OFF = 'flex:1;height:40px;border-radius:10px;border:1px solid #3a1523;background:transparent;color:#dbb3bf;font-size:14px;font-weight:600;cursor:pointer';
+const BTN_PRIMARY = 'btn-primary';
+const BTN_QUIET = 'btn-quiet';
+const TAB_ON = 'flex:1;height:40px;border-radius:8px;border:1px solid var(--primary);background:var(--primary);color:var(--on-primary);font-size:14px;font-weight:700;cursor:pointer';
+const TAB_OFF = 'flex:1;height:40px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:14px;font-weight:600;cursor:pointer';
 const DISABLED = canEditAttr => (canEditAttr ? '' : 'disabled');
 
 function renderHeader() {
@@ -136,7 +136,7 @@ function renderDetails() {
   const locked = !plan || !canEdit;
   document.getElementById('language').innerHTML = MASS_LANGUAGES.map((l) => {
     const on = l.code === state.language;
-    return `<button type="button" role="radio" data-lang="${l.code}" aria-checked="${on}" tabindex="${on ? 0 : -1}" ${locked ? 'disabled' : ''} style="flex:1;min-width:0;height:40px;padding:0 10px;border-radius:9px;font-size:14px;cursor:pointer;${on ? 'border:1px solid #ecc98a;background:#2a0c18;color:#ecc98a;font-weight:700' : 'border:1px solid transparent;background:transparent;color:#dbb3bf;font-weight:600'}">${esc(l.name)}</button>`;
+    return `<button type="button" role="radio" data-lang="${l.code}" aria-checked="${on}" tabindex="${on ? 0 : -1}" ${locked ? 'disabled' : ''} style="flex:1;min-width:0;height:40px;padding:0 10px;border-radius:8px;font-size:14px;cursor:pointer;${on ? 'border:1px solid var(--primary);background:var(--primary);color:var(--on-primary);font-weight:700' : 'border:1px solid transparent;background:transparent;color:var(--text);font-weight:600'}">${esc(l.name)}</button>`;
   }).join('');
 
   const select = document.getElementById('mass-time');
@@ -176,34 +176,35 @@ function rowHtml(r) {
   const isText = r.kind === 'slot-text';
   let chip = '';
   if (r.kind !== 'rite') {
-    let label; let fg; let bg;
+    let label; let fg; let bg; let edge = 'transparent';
     if (r.value) {
       label = r.src === 'list' ? 'From list' : 'Typed note';
-      fg = r.src === 'list' ? '#8fd9ae' : '#ecc98a';
-      bg = r.src === 'list' ? '#12301f' : '#2a1b0c';
+      fg = r.src === 'list' ? 'var(--pill-text)' : 'var(--eyebrow)';
+      bg = r.src === 'list' ? 'var(--pill-bg)' : 'var(--gold-wash)';
+      if (r.src === 'list') edge = 'var(--pill-border)';
     } else if (r.optional) {
-      label = 'Optional'; fg = '#dbb3bf'; bg = '#2a1019';
+      label = 'Optional'; fg = 'var(--text)'; bg = 'var(--border)';
     } else {
-      label = r.kind === 'song' ? 'Needs a song' : isText ? 'Needs text' : 'Needs a reading'; fg = '#f2bd6b'; bg = '#33240c';
+      label = r.kind === 'song' ? 'Needs a song' : isText ? 'Needs text' : 'Needs a reading'; fg = 'var(--warn-text)'; bg = 'var(--warn-bg)';
     }
-    chip = `<span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap;color:${fg};background:${bg}">${label}</span>`;
+    chip = `<span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap;border:1px solid ${edge};color:${fg};background:${bg}">${label}</span>`;
   }
   const filled = r.kind !== 'rite' && !!r.value;
   const needs = r.kind !== 'rite' && !r.value && !r.optional;
   const btnLabel = r.kind === 'rite' ? 'Add note' : r.value ? 'Change' : isText ? 'Type text' : 'Choose';
   const number = r.slot ? String(r.slot).padStart(2, '0') : '•';
   return `
-              <div class="plan-row" data-row="${esc(r.id)}" ${r.slot ? `data-slot="${r.slot}"` : ''} style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:12px 18px;border-bottom:1px solid #2b1019;${selected ? 'background:#2a0c18;box-shadow:inset 0 0 0 1px #ecc98a' : 'background:transparent'}">
-                <span style="flex: none; width: 28px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: ${r.slot ? '#ecc98a' : '#b48d99'}"><span class="sr-only">${r.slot ? 'Slot ' : 'Step '}</span>${number}</span>
+              <div class="plan-row editor-row" data-row="${esc(r.id)}" ${r.slot ? `data-slot="${r.slot}"` : ''} style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:12px 18px;border-bottom:1px solid var(--border);${selected ? 'background:var(--primary-wash);box-shadow:inset 0 0 0 1px var(--primary)' : 'background:transparent'}">
+                <span style="flex: none; width: 28px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: ${r.slot ? 'var(--eyebrow)' : 'var(--muted)'}"><span class="sr-only">${r.slot ? 'Slot ' : 'Step '}</span>${number}</span>
                 <span style="flex: 1 1 190px; min-width: 0; display: flex; flex-direction: column; gap: 3px">
                   <span style="font-size: 15px; font-weight: 700">${esc(r.name)}</span>
-                  <span style="font-size: 12px; color: #b48d99">${esc(subOf(r))}</span>
+                  <span style="font-size: 12px; color: var(--muted)">${esc(subOf(r))}</span>
                 </span>
                 <span style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 3px">
-                  <span style="font-size:14px;line-height:1.4;${filled ? 'color:#f7eef0;font-weight:600' : 'color:#b48d99'}">${r.kind === 'rite' ? '' : esc(r.value || 'Nothing chosen yet')}</span>
+                  <span style="font-size:14px;line-height:1.4;${filled ? 'color:var(--text);font-weight:600' : 'color:var(--muted)'}">${r.kind === 'rite' ? '' : esc(r.value || 'Nothing chosen yet')}</span>
                 </span>
-                <span style="flex: 0 0 auto; display: inline-flex">${chip}</span>
-                <button type="button" data-pick="${esc(r.id)}" aria-pressed="${selected}" ${DISABLED(canEdit)} style="height:36px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;${needs ? BTN_PRIMARY : BTN_QUIET}">${btnLabel}</button>
+                <span class="editor-item-actions" style="flex: 0 0 auto; display: inline-flex">${chip}</span>
+                <button type="button" data-pick="${esc(r.id)}" aria-pressed="${selected}" ${DISABLED(canEdit)} class="btn-choose ${needs ? BTN_PRIMARY : BTN_QUIET}" style="height:36px;padding:0 14px;font-size:13px;font-weight:700">${btnLabel}</button>
               </div>`;
 }
 
@@ -217,18 +218,18 @@ function renderSteps() {
     const body = open
       ? slotRows.map((r) => rowHtml(stepOf(r.id))).join('') +
         (otherRows.length
-          ? `<div style="padding: 10px 18px 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; color: #b48d99; background: #170811">OTHER STEPS</div>` + otherRows.map((r) => rowHtml(stepOf(r.id))).join('')
+          ? `<div class="eyebrow" style="padding: 10px 18px 6px; background: var(--input-bg)">OTHER STEPS</div>` + otherRows.map((r) => rowHtml(stepOf(r.id))).join('')
           : '')
       : '';
     return `
-          <div data-section="${section.group}" style="border: 1px solid #3a1523; border-radius: 16px; background: #1b0a13; overflow: hidden">
-            <h2 style="margin: 0; background: #22101a; border-bottom: ${open ? '1px solid #3a1523' : '0'}">
+          <div data-section="${section.group}" style="border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden">
+            <h2 style="margin: 0; background: var(--input-bg); border-bottom: ${open ? '1px solid var(--border)' : '0'}">
               <button type="button" data-toggle="${section.group}" aria-expanded="${open}" aria-controls="section-${section.group}" style="display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border: 0; background: transparent; cursor: pointer; text-align: left">
-                <span style="display: inline-flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 800; letter-spacing: 0.12em; color: #ecc98a">
+                <span class="section-title" style="display: inline-flex; align-items: center; gap: 10px">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform: rotate(${open ? 90 : 0}deg)"><path d="m9 6 6 6-6 6"/></svg>
-                  ${section.number} · ${esc(sectionName(section, state.language).toUpperCase())}
+                  ${section.number} · ${esc(sectionName(section, state.language))}
                 </span>
-                <span style="font-size: 12px; font-weight: 600; color: #b48d99">${filled} of ${slotRows.length} slots${otherRows.length ? ' · ' + otherRows.length + ' other' : ''}</span>
+                <span style="font-size: 12px; font-weight: 600; color: var(--muted)">${filled} of ${slotRows.length} slots${otherRows.length ? ' · ' + otherRows.length + ' other' : ''}</span>
               </button>
             </h2>
             <div id="section-${section.group}" ${open ? '' : 'hidden'}>${body}</div>
@@ -248,16 +249,16 @@ function songBody() {
     return `
           <div style="display: flex; flex-direction: column; gap: 14px">${tabs}
               <div style="display: flex; flex-direction: column; gap: 12px">
-                <label style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border: 1px solid #55202f; border-radius: 10px; background: #150610">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b48d99" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                  <input id="song-search" type="search" aria-label="Search songs" placeholder="Search songs" value="${esc(state.query)}" ${DISABLED(canEdit)} style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #f7eef0; font-size: 14px">
+                <label style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                  <input id="song-search" type="search" aria-label="Search songs" placeholder="Search songs" value="${esc(state.query)}" ${DISABLED(canEdit)} style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 14px">
                 </label>
                 <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px">
-                  <span style="font-size: 13px; color: #dbb3bf">${state.allSongs ? 'All songs' : 'Category: ' + esc(cur.category)}</span>
-                  <button type="button" data-action="toggle-all" style="height:32px;padding:0 12px;border-radius:9px;border:1px solid #3a1523;background:transparent;color:#ecc98a;font-size:13px;font-weight:600;cursor:pointer">${state.allSongs ? 'Show this category' : 'Show all songs'}</button>
+                  <span style="font-size: 13px; color: var(--text)">${state.allSongs ? 'All songs' : 'Category: ' + esc(cur.category)}</span>
+                  <button type="button" data-action="toggle-all" style="height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--focus);font-size:13px;font-weight:600;cursor:pointer">${state.allSongs ? 'Show this category' : 'Show all songs'}</button>
                 </div>
-                <div id="song-options" style="display: flex; flex-direction: column; border: 1px solid #3a1523; border-radius: 12px; overflow: hidden"></div>
-                <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #b48d99">The list comes from the church laptop. Add or edit songs in the desktop app.</p>
+                <div id="song-options" style="display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden"></div>
+                <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">The list comes from the church laptop. Add or edit songs in the desktop app.</p>
               </div>
           </div>`;
   }
@@ -265,11 +266,11 @@ function songBody() {
           <div style="display: flex; flex-direction: column; gap: 14px">${tabs}
               <div style="display: flex; flex-direction: column; gap: 12px">
                 <label style="display: flex; flex-direction: column; gap: 8px">
-                  <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Song title or a short note</span>
-                  <textarea id="typed-text" rows="5" placeholder="e.g. Psalm 24 setting, sung by the cantor" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 14px; line-height: 1.5; resize: vertical; outline: 0"></textarea>
+                  <span style="font-size: 13px; font-weight: 600; color: var(--text)">Song title or a short note</span>
+                  <textarea id="typed-text" rows="5" placeholder="e.g. Psalm 24 setting, sung by the cantor" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; line-height: 1.5; resize: vertical; outline: 0"></textarea>
                 </label>
-                <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #b48d99">Typed text is a note for the operator on the laptop. It does not appear on the projector.</p>
-                <button type="button" data-action="use-text" ${DISABLED(canEdit)} style="height: 44px; border-radius: 10px; border: 0; background: #ecc98a; color: #1c070d; font-size: 14px; font-weight: 700; cursor: pointer">Use this text</button>
+                <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">Typed text is a note for the operator on the laptop. It does not appear on the projector.</p>
+                <button type="button" data-action="use-text" ${DISABLED(canEdit)} class="btn-primary" style="height: 44px; font-size: 14px; font-weight: 700">Use this text</button>
               </div>
           </div>`;
 }
@@ -277,16 +278,16 @@ function songBody() {
 function readingBody(cur) {
   return `
           <div style="display: flex; flex-direction: column; gap: 14px">
-            <div style="display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 12px; background: #150610; border: 1px solid #3a1523">
-              <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: #b48d99">CURRENT</span>
+            <div style="display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 12px; background: var(--input-bg); border: 1px solid var(--border)">
+              <span class="eyebrow">CURRENT</span>
               <span style="font-size: 15px; font-weight: 600">${esc(cur.value || 'Nothing entered yet')}</span>
             </div>
             <label style="display: flex; flex-direction: column; gap: 8px">
-              <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Reading reference</span>
-              <input id="reading-ref" placeholder="e.g. Matthew 5:1-12a" ${DISABLED(canEdit)} style="height: 46px; padding: 0 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 14px; outline: 0">
+              <span style="font-size: 13px; font-weight: 600; color: var(--text)">Reading reference</span>
+              <input id="reading-ref" placeholder="e.g. Matthew 5:1-12a" ${DISABLED(canEdit)} style="height: 46px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; outline: 0">
             </label>
-            <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #b48d99">The web planner takes the reference as a note. To show the Bible text on the projector, pick the verses in the desktop app.</p>
-            <button type="button" data-action="use-ref" ${DISABLED(canEdit)} style="height: 44px; border-radius: 10px; border: 0; background: #ecc98a; color: #1c070d; font-size: 14px; font-weight: 700; cursor: pointer">Use this reference</button>
+            <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">The web planner takes the reference as a note. To show the Bible text on the projector, pick the verses in the desktop app.</p>
+            <button type="button" data-action="use-ref" ${DISABLED(canEdit)} class="btn-primary" style="height: 44px; font-size: 14px; font-weight: 700">Use this reference</button>
           </div>`;
 }
 
@@ -295,39 +296,39 @@ function slotTextBody(cur) {
   return `
           <div style="display: flex; flex-direction: column; gap: 14px">
             <label style="display: flex; flex-direction: column; gap: 8px">
-              <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Words or a short note for this part</span>
-              <textarea id="typed-text" rows="4" placeholder="e.g. Lord, hear our prayer" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(cur.value)}</textarea>
+              <span style="font-size: 13px; font-weight: 600; color: var(--text)">Words or a short note for this part</span>
+              <textarea id="typed-text" rows="4" placeholder="e.g. Lord, hear our prayer" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(cur.value)}</textarea>
             </label>
-            <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #b48d99">Typed text is a note for the operator on the church laptop. It does not appear on the projector.</p>
-            <button type="button" data-action="use-text" ${DISABLED(canEdit)} style="height: 44px; border-radius: 10px; border: 0; background: #ecc98a; color: #1c070d; font-size: 14px; font-weight: 700; cursor: pointer">Use this text</button>
+            <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">Typed text is a note for the operator on the church laptop. It does not appear on the projector.</p>
+            <button type="button" data-action="use-text" ${DISABLED(canEdit)} class="btn-primary" style="height: 44px; font-size: 14px; font-weight: 700">Use this text</button>
           </div>`;
 }
 
 function riteBody(cur) {
   return `
           <div style="display: flex; flex-direction: column; gap: 14px">
-            <p style="margin: 0; font-size: 14px; line-height: 1.55; color: #dbb3bf">This part of the Holy Mass needs no song or reading. You can leave a note for the operator.</p>
+            <p style="margin: 0; font-size: 14px; line-height: 1.55; color: var(--text)">This part of the Holy Mass needs no song or reading. You can leave a note for the operator.</p>
             <label style="display: flex; flex-direction: column; gap: 8px">
-              <span style="font-size: 13px; font-weight: 600; color: #dbb3bf">Operator note (optional)</span>
-              <textarea id="rite-note" rows="4" placeholder="e.g. Incense at the Gospel" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 10px; border: 1px solid #55202f; background: #150610; color: #f7eef0; font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(state.notes[cur.id] ?? '')}</textarea>
+              <span style="font-size: 13px; font-weight: 600; color: var(--text)">Operator note (optional)</span>
+              <textarea id="rite-note" rows="4" placeholder="e.g. Incense at the Gospel" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(state.notes[cur.id] ?? '')}</textarea>
             </label>
-            <button type="button" data-action="save-note" ${DISABLED(canEdit)} style="height: 44px; border-radius: 10px; border: 1px solid #6e2a3e; background: #2a0c18; color: #f7eef0; font-size: 14px; font-weight: 600; cursor: pointer">${state.noteSaved ? 'Note saved' : 'Save note'}</button>
+            <button type="button" data-action="save-note" ${DISABLED(canEdit)} class="btn-quiet" style="height: 44px; font-size: 14px; font-weight: 600">${state.noteSaved ? 'Note saved' : 'Save note'}</button>
           </div>`;
 }
 
 function renderDrawer() {
   const drawer = document.getElementById('drawer');
   if (!plan) {
-    drawer.innerHTML = `<p style="margin: 0; font-size: 14px; line-height: 1.5; color: #dbb3bf">${esc(state.error || 'Open a plan from your plan list to see its slots and steps.')}</p>`;
+    drawer.innerHTML = `<p style="margin: 0; font-size: 14px; line-height: 1.5; color: var(--text)">${esc(state.error || 'Open a plan from your plan list to see its slots and steps.')}</p>`;
     return;
   }
   const cur = stepOf(state.sel);
   const body = cur.kind === 'song' ? songBody() : cur.kind === 'reading' ? readingBody(cur) : cur.kind === 'slot-text' ? slotTextBody(cur) : riteBody(cur);
   drawer.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 6px">
-          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #b48d99">${cur.slot ? `SLOT ${cur.n} OF ${SLOT_COUNT}` : 'OTHER STEP'}</span>
-          <h2 style="margin: 0; font-size: 24px; font-weight: 800; line-height: 1.15">${esc(cur.name)}</h2>
-          <span style="font-size: 13px; color: #dbb3bf">${esc(subOf(cur))}</span>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted)">${cur.slot ? `SLOT ${cur.n} OF ${SLOT_COUNT}` : 'OTHER STEP'}</span>
+          <h2 class="section-title" style="font-size: 24px">${esc(cur.name)}</h2>
+          <span style="font-size: 13px; color: var(--text)">${esc(subOf(cur))}</span>
         </div>${body}`;
   renderOptions();
 }
@@ -338,26 +339,26 @@ function renderOptions() {
   if (!box) return;
   const picker = songs.filter((s) => !s.removed);
   if (picker.length === 0) {
-    box.innerHTML = `<div style="padding: 18px 14px; font-size: 13px; color: #b48d99; background: #150610">${esc(NO_SONGS)}</div>`;
+    box.innerHTML = `<div style="padding: 18px 14px; font-size: 13px; color: var(--muted); background: var(--input-bg)">${esc(NO_SONGS)}</div>`;
     return;
   }
   const cur = stepOf(state.sel);
   const shown = songOptions(picker, { category: cur.category, allSongs: state.allSongs, query: state.query });
   if (shown.length === 0) {
     const message = state.query.trim() ? 'No songs match the search. Clear it, show all songs, or type text.' : 'No songs in this category yet. Show all songs, or type text.';
-    box.innerHTML = `<div style="padding: 18px 14px; font-size: 13px; color: #b48d99; background: #150610">${message}</div>`;
+    box.innerHTML = `<div style="padding: 18px 14px; font-size: 13px; color: var(--muted); background: var(--input-bg)">${message}</div>`;
     return;
   }
   box.innerHTML = shown.map((song) => {
     const chosen = state.segments[cur.id]?.songId === song.id;
     const key = song.key ? ` · Key ${esc(song.key)}` : '';
     return `
-                    <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #2b1019; background: #150610">
+                    <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--input-bg)">
                       <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
                         <span style="font-size: 14px; font-weight: 700">${esc(song.title)}</span>
-                        <span style="font-size: 12px; color: #b48d99">${state.allSongs ? esc(song.category) + ' · ' : ''}${LANGUAGE_CODE[song.language] ?? esc(song.language)}${key}</span>
+                        <span style="font-size: 12px; color: var(--muted)">${state.allSongs ? esc(song.category) + ' · ' : ''}${LANGUAGE_CODE[song.language] ?? esc(song.language)}${key}</span>
                       </span>
-                      <button type="button" data-song="${esc(song.id)}" aria-pressed="${chosen}" ${DISABLED(canEdit)} style="height:34px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;${chosen ? 'border:1px solid #8fd9ae;background:#12301f;color:#8fd9ae' : BTN_QUIET}">${chosen ? 'Selected' : 'Select'}</button>
+                      <button type="button" data-song="${esc(song.id)}" aria-pressed="${chosen}" ${DISABLED(canEdit)} class="${chosen ? 'btn-chosen' : BTN_QUIET}" style="height:34px;padding:0 14px;font-size:13px;font-weight:700">${chosen ? 'Selected' : 'Select'}</button>
                     </div>`;
   }).join('');
 }

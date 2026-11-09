@@ -96,19 +96,8 @@ const requirement = (key, text) => `
     <span><span class="sr-only" data-requirement-status>Not met: </span>${text}</span>
   </li>`;
 
-/** The page fonts are listed in each page's head; only this screen uses this one, so it is fetched when the screen opens. */
-function loadScreenFont() {
-  if (document.querySelector('link[data-change-password-font]')) return;
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap';
-  link.dataset.changePasswordFont = '';
-  document.head.append(link);
-}
-
 /** The screen a user with a temporary password sees before anything else. It resolves once the password is changed. */
 function changePassword() {
-  loadScreenFont();
   return new Promise((resolve) => {
     const screen = document.createElement('div');
     screen.className = 'change-password';

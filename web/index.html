@@ -9,12 +9,12 @@
 <title>Plans · APCCMMA Web Planner</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/planner.css">
 <script type="module" src="js/plans.js"></script>
 </head>
 <body>
-<div class="shell" style="display: flex; flex-wrap: wrap; background: #0f0407; color: #f7eef0; font-family: 'Archivo','Segoe UI',system-ui,sans-serif">
+<div class="shell" style="display: flex; flex-wrap: wrap">
 
   <div data-sidebar="plans"></div>
 
@@ -22,11 +22,11 @@
 
     <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px">
       <div style="display: flex; flex-direction: column; gap: 6px">
-        <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #ecc98a">ASSUMPTION PARISH · MUSIC MINISTRY</span>
-        <h1 style="margin: 0; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 52px; line-height: 1">Plans</h1>
+        <span class="eyebrow">ASSUMPTION PARISH · MUSIC MINISTRY</span>
+        <h1 class="page-title">Plans</h1>
       </div>
       <div id="new-plan-actions" style="display: none; flex-wrap: wrap; gap: 12px">
-        <a href="plan/new.html" style="height: 44px; padding: 0 18px; border-radius: 10px; border: 0; background: #ecc98a; color: #1c070d; font-size: 14px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; cursor: pointer">
+        <a href="plan/new.html" class="btn-primary" style="height: 44px; padding: 0 18px; font-size: 14px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
           New plan
         </a>
@@ -39,15 +39,15 @@
     <section aria-label="Plan list" style="display: flex; flex-direction: column; gap: 16px">
       <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
         <div id="tabs" role="tablist" aria-label="Plan type" style="display: flex; flex-wrap: wrap; gap: 8px"></div>
-        <label style="flex: 0 1 260px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border: 1px solid #55202f; border-radius: 10px; background: #150610; min-width: 0">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b48d99" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-          <input id="plan-search" type="search" aria-label="Search plans" placeholder="Search plans" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #f7eef0; font-size: 14px">
+        <label style="flex: 0 1 260px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); min-width: 0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="plan-search" type="search" aria-label="Search plans" placeholder="Search plans" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 14px">
         </label>
       </div>
 
-      <div id="plan-rows" style="border: 1px solid #3a1523; border-radius: 16px; background: #1b0a13; overflow: hidden"></div>
+      <div id="plan-rows" style="border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden"></div>
 
-      <p style="margin: 0; font-size: 13px; color: #b48d99; line-height: 1.5; max-width: 720px">Plans sync with the church laptop automatically. Open the app and press Sync now to pull the latest. Lyrics, Bible text and media stay on the laptop.</p>
+      <p style="margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5; max-width: 720px">Plans sync with the church laptop automatically. Open the app and press Sync now to pull the latest. Lyrics, Bible text and media stay on the laptop.</p>
     </section>
   </main>
 </div>

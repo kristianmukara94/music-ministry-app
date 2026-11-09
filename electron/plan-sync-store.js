@@ -11,7 +11,7 @@ import { DEFAULT_TEMPLATE } from '../shared/pw.js';
 import { slotIdOfNumber } from '../shared/mass-slots.js';
 import { MASS_PARTS, MASS_STEP_PARTS } from '../shared/mass-parts.js';
 import {
-  massEntries, massBody, mergeEntries, praiseBody, praiseEntries, PRAISE_READING_TYPES, READING_TYPES, WEB_NOTE_PREFIX,
+  MapRefused, massEntries, massBody, mergeEntries, praiseBody, praiseEntries, PRAISE_READING_TYPES, READING_TYPES, WEB_NOTE_PREFIX,
 } from './plan-sync-map.js';
 
 const GUARD = 'transfer_import_guard';
@@ -23,6 +23,13 @@ const DEFAULT_SEGMENT_NAMES = Object.fromEntries(DEFAULT_TEMPLATE.segments.map((
 export const HOLD_MESSAGE = 'Some items in this plan cannot be shown on this laptop yet, so the plan is not sent.';
 
 const holdKey = (uuid) => `hold:${uuid}`;
+
+/** True for a real YYYY-MM-DD date. Compared back to the text, the same check the server makes, because 2026-02-31 would roll over to March. */
+const isCalendarDate = (value) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+};
 
 /**
  * The laptop item for a Mass item from the web, or null when there is none. The rules, in order:
@@ -111,7 +118,10 @@ export function createPlanSyncStore(db) {
 
   /** The body the server takes for a plan. Throws MapRefused if a plan has something that cannot be sent. */
   function payloadFor(plan) {
-    const head = { id: plan.uuid, name: plan.name, date: plan.date };
+    // A missing name has a plain default. A date has none, because a guess would move the plan to the wrong day, so such a plan stays here.
+    if (!isCalendarDate(plan.date)) throw new MapRefused('This plan has no valid date. Open it and choose a date, and it will be sent.');
+    const name = String(plan.name ?? '').replace(/\0/g, '').trim().slice(0, 120).trim() || 'Untitled Plan';
+    const head = { id: plan.uuid, name, date: plan.date };
     if (plan.kind === 'mass') return { ...head, kind: 'mass', items: massBody(massEntries(massRows(plan.id), hymnUuidOf)).items };
     return { ...head, kind: 'pw', items: praiseBody(praiseEntries(segmentRows(plan.id), hymnUuidOf)).items };
   }

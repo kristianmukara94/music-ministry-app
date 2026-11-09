@@ -1,60 +1,10 @@
-/*
- * APCCMMA Web Planner: the sign-in page (login.html). Loaded after planner.css. The Marian colours of Our Lady of the Assumption
- * Parish, Davao City: midnight-navy ground, glass cards edged in Marian blue, a royal-blue call to action, altar gold for headings
- * and focus. Every colour comes from the tokens below, so the palette changes in one place.
- */
-.login {
-  /* Marian royal blue: the mantle of Our Lady of the Assumption. Primary actions, the chosen tab, the ambient light. */
-  --marian-600: #2563eb;
-  --marian-500: #3b82f6;
-  --marian-400: #60a5fa;
-  /* Sacred altar gold: the Marian crown and the altar trim. Headings, focus rings, secondary badges. */
-  --gold-500: #dfb56c;
-  --gold-400: #ecc98a;
-  --gold-300: #f6e2b3;
-  /* Sanctuary midnight navy: the cathedral ground. */
-  --sanctuary-900: #070d19;
-  --sanctuary-800: #0f172a;
-  --sanctuary-700: #1e293b;
-
-  /* What the rules below use, built from the three scales. */
-  --ground: var(--sanctuary-900);
-  --ground-raised: var(--sanctuary-800);
-  --glass: rgba(15, 23, 42, 0.72);
-  --edge: rgba(59, 130, 246, 0.2);
-  --edge-strong: rgba(59, 130, 246, 0.45);
-  --gold: var(--gold-400);
-  --gold-edge: rgba(236, 201, 138, 0.4);
-  --gold-wash: rgba(236, 201, 138, 0.1);
-  --blue-wash: rgba(59, 130, 246, 0.14);
-  --on-marian: #ffffff;
-  --text: #f8fafc;
-  --text-soft: #cbd5e1;
-  --text-muted: #94a3b8;
-  --placeholder: #64748b;
-  --field: rgba(7, 13, 25, 0.72);
-  --field-edge: rgba(59, 130, 246, 0.18);
-  --emerald: #34d399;
-  --emerald-soft: #8ff0c4;
-  --emerald-ground: rgba(16, 64, 44, 0.55);
-  --warn: #f5b971;
-  --danger: #fca5a5;
-  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
-
-  background: var(--ground);
-  color: var(--text);
-  font-family: 'Archivo', 'Segoe UI', system-ui, sans-serif;
-}
-
+/* APCCMMA Web Planner: the sign-in page (login.html). Loaded after planner.css, whose :root holds every colour and font used here. */
 .login-shell {
   position: relative;
   display: flex;
   flex-wrap: wrap;
   min-height: 100vh;
-  background:
-    radial-gradient(900px 600px at 12% -10%, rgba(37, 99, 235, 0.12), transparent 60%),
-    radial-gradient(800px 700px at 105% 110%, rgba(236, 201, 138, 0.08), transparent 60%),
-    var(--ground);
+  background: var(--app-bg);
   overflow: hidden;
 }
 
@@ -94,7 +44,7 @@
 
 .login-brand-sub {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 
 /* Which desktop app version the planner is built for, with a pulsing "connected" dot. */
@@ -106,9 +56,9 @@
   margin-left: auto;
   padding: 0 12px 0 10px;
   border-radius: 99px;
-  border: 1px solid rgba(52, 211, 153, 0.35);
-  background: var(--emerald-ground);
-  color: var(--emerald-soft);
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--pill-text);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -120,7 +70,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--emerald);
+  background: var(--pill-text);
   box-shadow: 0 0 8px rgba(52, 211, 153, 0.8);
 }
 
@@ -129,7 +79,7 @@
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: var(--emerald);
+  background: var(--pill-text);
   animation: sync-pulse 2s var(--ease) infinite;
 }
 
@@ -153,20 +103,20 @@
 }
 
 .login-eyebrow {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--gold);
+  color: var(--eyebrow);
 }
 
 .login h1 {
   margin: 0;
-  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-family: var(--font-serif);
   font-weight: 700;
-  font-size: clamp(40px, 5.6vh, 56px);
-  line-height: 1.02;
-  color: var(--gold-300);
+  font-size: clamp(34px, 5vh, 48px);
+  line-height: 1.08;
+  color: var(--heading);
   text-wrap: balance;
 }
 
@@ -174,22 +124,19 @@
   margin: 0;
   font-size: 15px;
   line-height: 1.55;
-  color: var(--text-soft);
+  color: var(--text);
 }
 
-/* The sign-in form: a dark glass card with a thin gold edge. */
+/* The sign-in form. */
 .login-card {
   display: flex;
   flex-direction: column;
   gap: 16px;
   max-width: 480px;
   padding: 24px 28px;
-  border-radius: 18px;
-  border: 1px solid var(--edge);
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-  backdrop-filter: blur(16px) saturate(140%);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 24px 60px -16px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 /* Ministry Planner / Booth Operator Sync: a radio pair drawn as tabs. Arrow keys move between them, as radios do. */
@@ -199,9 +146,9 @@
   gap: 4px;
   margin: 0;
   padding: 4px;
-  border: 1px solid var(--field-edge);
-  border-radius: 12px;
-  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--input-bg);
 }
 
 .role-tab {
@@ -224,8 +171,8 @@
   gap: 8px;
   min-height: 40px;
   padding: 0 10px;
-  border-radius: 9px;
-  color: var(--text-muted);
+  border-radius: var(--radius-control);
+  color: var(--muted);
   font-size: 13px;
   font-weight: 600;
   text-align: center;
@@ -238,13 +185,12 @@
 }
 
 .role-tab input:checked + span {
-  background: var(--marian-600);
-  color: var(--on-marian);
-  box-shadow: 0 6px 18px -6px rgba(37, 99, 235, 0.7);
+  background: var(--primary);
+  color: var(--on-primary);
 }
 
 .role-tab input:focus-visible + span {
-  outline: 2px solid var(--gold-400);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -252,7 +198,7 @@
   margin: -8px 0 0;
   font-size: 12px;
   line-height: 1.45;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 
 .login-field {
@@ -264,7 +210,7 @@
 .login-label {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-soft);
+  color: var(--text);
 }
 
 .login-label-row {
@@ -281,16 +227,16 @@
 
 .login-hint {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 
 .login-input {
   width: 100%;
   height: 46px;
   padding: 0 14px;
-  border-radius: 10px;
-  border: 1px solid var(--field-edge);
-  background: var(--field);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--input-bg);
   color: var(--text);
   font-size: 15px;
   outline: 0;
@@ -298,18 +244,11 @@
 }
 
 .login-input:hover {
-  border-color: var(--edge-strong);
+  border-color: var(--focus);
 }
 
 .login-input::placeholder {
-  color: var(--placeholder);
-}
-
-/* Focus: the gold border from planner.css, plus a soft outer glow. */
-.login .login-input:focus {
-  border-color: var(--gold-400) !important;
-  background: rgba(7, 13, 25, 0.92);
-  box-shadow: 0 0 0 3px rgba(236, 201, 138, 0.24), 0 0 22px -2px rgba(236, 201, 138, 0.35);
+  color: var(--muted);
 }
 
 /* "Forgot password?": a text button that still has a full-size tap area. */
@@ -320,7 +259,7 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--gold);
+  color: var(--focus);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -352,14 +291,14 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--muted);
   cursor: pointer;
   transition: color 0.15s var(--ease), background-color 0.15s var(--ease);
 }
 
 .password-toggle:hover {
-  color: var(--gold);
-  background: var(--gold-wash);
+  color: var(--text);
+  background: var(--border);
 }
 
 .password-toggle .eye-closed,
@@ -400,24 +339,24 @@
   min-height: 24px;
   font-size: 12px;
   line-height: 1.35;
-  color: var(--text-muted);
+  color: var(--muted);
   transition: color 0.2s var(--ease), background-color 0.2s var(--ease), padding 0.2s var(--ease);
 }
 
 .code-status[data-state='invalid'] {
-  color: var(--warn);
+  color: var(--warn-text);
 }
 
 .code-status[data-state='format'] {
-  color: var(--gold);
+  color: var(--eyebrow);
 }
 
 .code-status[data-state='known'] {
   padding: 2px 10px;
   border-radius: 99px;
-  border: 1px solid rgba(52, 211, 153, 0.35);
-  background: var(--emerald-ground);
-  color: var(--emerald-soft);
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--pill-text);
   font-weight: 700;
   animation: badge-in 0.3s var(--ease);
 }
@@ -430,7 +369,7 @@
 }
 
 .code-input[data-state='known'] {
-  border-color: rgba(52, 211, 153, 0.5);
+  border-color: var(--pill-border);
 }
 
 .code-input[data-state='invalid'] {
@@ -446,21 +385,18 @@
 
 .login-submit {
   height: 48px;
-  border-radius: 11px;
+  border-radius: var(--radius-control);
   border: 0;
-  background: var(--marian-600);
-  color: var(--on-marian);
+  background: var(--primary);
+  color: var(--on-primary);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 8px 24px -8px rgba(37, 99, 235, 0.65);
-  transition: transform 0.18s var(--ease), background-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+  transition: background-color 0.18s var(--ease), transform 0.18s var(--ease);
 }
 
 .login-submit:hover:not(:disabled) {
-  /* The fill stays marian-600: white on marian-500 is only 3.7:1, under the 4.5:1 that 15 px text needs. marian-400 lights the edge. */
-  transform: translateY(-1px) scale(1.01);
-  box-shadow: 0 0 0 1px var(--marian-400), 0 12px 30px -8px rgba(59, 130, 246, 0.8);
+  background: var(--primary-hover);
 }
 
 .login-submit:active:not(:disabled) {
@@ -476,7 +412,7 @@
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
-  color: var(--text-muted);
+  color: var(--muted);
 }
 
 /* The "i" badge beside Church code, whose tooltip shows on hover and on keyboard focus. */
@@ -495,7 +431,7 @@
   border-radius: 50%;
   border: 1px solid var(--gold-edge);
   background: var(--gold-wash);
-  color: var(--gold);
+  color: var(--eyebrow);
   font: italic 700 11px/1 Georgia, serif;
   cursor: help;
 }
@@ -521,8 +457,8 @@
   max-width: 240px;
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid var(--edge);
-  background: var(--sanctuary-800);
+  border: 1px solid var(--border);
+  background: var(--surface);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   color: var(--text);
   font-size: 12px;
@@ -543,7 +479,7 @@
   left: 50%;
   margin-left: -5px;
   border: 5px solid transparent;
-  border-top-color: var(--sanctuary-800);
+  border-top-color: var(--surface);
 }
 
 .info-tip:hover .info-tip-text,
@@ -554,7 +490,7 @@
 }
 
 .login a:hover {
-  color: var(--gold);
+  color: var(--focus);
 }
 
 /* ---- Right column: how it works, and what v1.0.59 brings to the church laptop ---- */
@@ -566,8 +502,7 @@
   justify-content: center;
   gap: 24px;
   padding: 56px 72px;
-  border-left: 1px solid var(--edge);
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.8), rgba(7, 13, 25, 0.55));
+  border-left: 1px solid var(--border);
 }
 
 .aside-head {
@@ -578,11 +513,11 @@
 
 .login-aside h2 {
   margin: 0;
-  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-family: var(--font-serif);
   font-weight: 700;
-  font-size: 36px;
-  line-height: 1.1;
-  color: var(--gold-300);
+  font-size: 32px;
+  line-height: 1.15;
+  color: var(--heading);
 }
 
 .flow-steps {
@@ -601,31 +536,27 @@
   flex-direction: column;
   gap: 6px;
   padding: 16px 18px;
-  border-radius: 14px;
-  border: 1px solid var(--edge);
-  background: var(--glass);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
   transition: transform 0.2s var(--ease), border-color 0.2s var(--ease);
 }
 
 .flow-step:hover {
   transform: translateY(-2px) scale(1.015);
-  border-color: var(--edge-strong);
+  border-color: var(--focus);
 }
 
 .flow-step.is-current {
-  border-color: var(--gold-edge);
-  background: linear-gradient(160deg, var(--gold-wash), var(--glass));
+  border-color: var(--primary);
 }
 
 .flow-step-num {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: var(--text-muted);
-}
-
-.flow-step.is-current .flow-step-num {
-  color: var(--gold);
+  text-transform: uppercase;
+  color: var(--eyebrow);
 }
 
 .flow-step-text {
@@ -636,19 +567,18 @@
 
 .feature-panel {
   padding: 20px;
-  border-radius: 16px;
-  border: 1px solid var(--edge);
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .feature-panel-title {
   margin: 0 0 14px;
-  font-size: 13px;
+  font-family: var(--font-serif);
+  font-size: 18px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--gold);
+  line-height: 1.25;
+  color: var(--heading);
 }
 
 .feature-list {
@@ -670,7 +600,7 @@
 }
 
 .feature:hover {
-  background: var(--blue-wash);
+  background: var(--primary-wash);
   transform: translateX(2px);
 }
 
@@ -683,7 +613,7 @@
   border-radius: 10px;
   border: 1px solid var(--gold-edge);
   background: var(--gold-wash);
-  color: var(--gold);
+  color: var(--eyebrow);
 }
 
 .feature-body {
@@ -700,7 +630,7 @@
 .feature-desc {
   font-size: 13px;
   line-height: 1.45;
-  color: var(--text-soft);
+  color: var(--text);
 }
 
 .sync-split {
@@ -724,41 +654,36 @@
   padding-left: 18px;
   font-size: 14px;
   line-height: 1.4;
-  color: var(--text-soft);
+  color: var(--text);
 }
 
 .sync-col-title {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
-}
-
-.sync-col-title.is-web {
-  color: var(--emerald-soft);
-}
-
-.sync-col-title.is-laptop {
-  color: var(--gold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--eyebrow);
 }
 
 /* The Forgot password dialog, in the page's palette. */
 .login .modal {
-  border-color: var(--edge);
-  background: var(--sanctuary-800);
+  border-color: var(--border);
+  background: var(--surface);
 }
 
 @media (max-width: 960px) {
   .login-aside {
     border-left: 0;
-    border-top: 1px solid var(--edge);
+    border-top: 1px solid var(--border);
   }
 }
 
 @media (max-width: 560px) {
   .login h1 {
-    font-size: 40px;
+    font-size: 34px;
   }
   .login-aside h2 {
-    font-size: 30px;
+    font-size: 26px;
   }
   .login-brand {
     flex-wrap: wrap;
@@ -798,5 +723,5 @@
 }
 
 .login .modal::backdrop {
-  background: rgba(7, 13, 25, 0.8);
+  background: rgba(8, 12, 20, 0.8);
 }

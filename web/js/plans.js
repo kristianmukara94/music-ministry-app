@@ -15,8 +15,8 @@ const TABS = [
   { key: 'mass', label: 'Holy Mass' },
   { key: 'pw', label: 'Praise &amp; Worship' },
 ];
-const TAB_ON = 'height:40px;padding:0 16px;border-radius:10px;border:1px solid #ecc98a;background:#2a0c18;color:#ecc98a;font-size:14px;font-weight:700;cursor:pointer';
-const TAB_OFF = 'height:40px;padding:0 16px;border-radius:10px;border:1px solid #3a1523;background:transparent;color:#dbb3bf;font-size:14px;font-weight:600;cursor:pointer';
+const TAB_ON = 'height:40px;padding:0 16px;border-radius:8px;border:1px solid var(--primary);background:var(--primary);color:var(--on-primary);font-size:14px;font-weight:700;cursor:pointer';
+const TAB_OFF = 'height:40px;padding:0 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:14px;font-weight:600;cursor:pointer';
 
 const ICON_MASS = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M7 8h10"/></svg>';
 const ICON_PW = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>';
@@ -34,13 +34,13 @@ function renderTabs() {
 }
 
 /** The message in place of the rows: a loading line, a server error, the empty message, or no match. */
-function notice(text, tone = '#b48d99') {
+function notice(text, tone = 'var(--muted)') {
   return `<div style="padding: 36px 18px; text-align: center; font-size: 14px; line-height: 1.5; color: ${tone}">${esc(text)}</div>`;
 }
 
 function renderRows() {
   const list = document.getElementById('plan-rows');
-  if (state.error) return void (list.innerHTML = notice(state.error, '#ff9a9a'));
+  if (state.error) return void (list.innerHTML = notice(state.error, 'var(--danger)'));
   if (!state.plans) return void (list.innerHTML = notice('Loading plans…'));
   if (state.plans.length === 0) return void (list.innerHTML = notice(state.message || EMPTY));
   const rows = visiblePlans(state.plans, { tab: state.tab, query: state.query });
@@ -48,15 +48,15 @@ function renderRows() {
   list.innerHTML = rows.map((p) => {
     const isPw = p.kind === 'pw';
     return `
-          <a href="${esc(editorPathFor(p))}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; padding: 18px 22px; border-bottom: 1px solid #2b1019; text-decoration: none; color: inherit">
+          <a href="${esc(editorPathFor(p))}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; padding: 18px 22px; border-bottom: 1px solid var(--border); text-decoration: none; color: inherit">
             <span style="flex: 1 1 280px; min-width: 0; display: flex; align-items: center; gap: 14px">
-              <span style="flex: none; width: 44px; height: 44px; border-radius: 12px; background: #2a0c18; border: 1px solid #55202f; display: grid; place-items: center; color: #ecc98a">${isPw ? ICON_PW : ICON_MASS}</span>
+              <span style="flex: none; width: 44px; height: 44px; border-radius: 12px; background: var(--input-bg); border: 1px solid var(--border); display: grid; place-items: center; color: var(--eyebrow)">${isPw ? ICON_PW : ICON_MASS}</span>
               <span style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
                 <span style="font-size: 16px; font-weight: 700">${esc(p.name)}</span>
-                <span style="font-size: 13px; color: #b48d99">${isPw ? 'Praise &amp; Worship' : 'Holy Mass plan'} · Updated ${esc(updatedText(p.updated_at))}</span>
+                <span style="font-size: 13px; color: var(--muted)">${isPw ? 'Praise &amp; Worship' : 'Holy Mass plan'} · Updated ${esc(updatedText(p.updated_at))}</span>
               </span>
             </span>
-            <span style="flex: 0 0 240px; font-size: 14px; color: #dbb3bf">${esc(shortDate(p.liturgical_date))}</span>
+            <span style="flex: 0 0 240px; font-size: 14px; color: var(--text)">${esc(shortDate(p.liturgical_date))}</span>
           </a>`;
   }).join('');
 }

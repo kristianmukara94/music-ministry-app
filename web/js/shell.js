@@ -28,9 +28,9 @@ const LINKS = [
   { key: 'users', href: 'users.html', label: 'Users', adminOnly: true },
 ];
 
-const LINK_STYLE = 'display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; font-size: 14px;';
-const ON = 'background: #2a0c18; color: #ecc98a; font-weight: 600';
-const OFF = 'color: #dbb3bf; font-weight: 500';
+const LINK_STYLE = 'display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 14px;';
+const ON = 'background: var(--primary); color: var(--on-primary); font-weight: 600';
+const OFF = 'color: var(--text); font-weight: 500';
 
 /** Replaces the `[data-sidebar]` placeholder with the sidebar. Its value names the current section. */
 export function mountSidebar() {
@@ -47,26 +47,26 @@ export function mountSidebar() {
   }).join('');
 
   slot.outerHTML = `
-  <aside class="side" style="flex: 1 1 248px; padding: 24px 16px; border-right: 1px solid #3a1523; background: #150610; display: flex; flex-direction: column; gap: 28px">
+  <aside class="side" style="flex: 1 1 248px; padding: 24px 16px; border-right: 1px solid var(--border); background: var(--app-bg); display: flex; flex-direction: column; gap: 28px">
     <div style="display: flex; align-items: center; gap: 12px">
       <img src="${root}img/logo.png" alt="" width="40" height="40" class="brand-mark small">
       <div style="display: flex; flex-direction: column; gap: 2px; line-height: 1.25; min-width: 0">
         <span style="font-weight: 700; font-size: 15px">APCCMMA Web Planner</span>
-        <span style="font-size: 12px; color: #b48d99">Assumption Parish Church · Music Ministry</span>
+        <span style="font-size: 12px; color: var(--muted)">Assumption Parish Church · Music Ministry</span>
       </div>
     </div>
     <nav class="nav" aria-label="Main" style="display: flex; flex-direction: column; gap: 4px">${links}</nav>
     <div style="margin-top: auto; display: flex; flex-direction: column; gap: 12px">
-      <div style="display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #3a1523; border-radius: 12px; background: #1b0a13">
-        <span style="width: 8px; height: 8px; border-radius: 50%; background: #8fd9ae"></span>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface)">
+        <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--pill-text)"></span>
         <div style="display: flex; flex-direction: column; line-height: 1.3">
           <span data-account-name style="font-size: 13px; font-weight: 600; overflow-wrap: anywhere"></span>
-          <span data-account-role style="font-size: 12px; color: #b48d99"></span>
+          <span data-account-role style="font-size: 12px; color: var(--muted)"></span>
         </div>
       </div>
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 0">
-        <span style="font-size: 13px; color: #dbb3bf">Signed in</span>
-        <button type="button" data-sign-out style="border: 0; background: transparent; padding: 0; cursor: pointer; font-size: 13px; color: #ecc98a; font-weight: 600">Sign out</button>
+        <span style="font-size: 13px; color: var(--text)">Signed in</span>
+        <button type="button" data-sign-out style="border: 0; background: transparent; padding: 0; cursor: pointer; font-size: 13px; color: var(--focus); font-weight: 600">Sign out</button>
       </div>
     </div>
   </aside>`;

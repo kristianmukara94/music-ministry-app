@@ -62,10 +62,26 @@ test('the laptop\'s language codes are sent as the names the server stores', () 
   assert.deepEqual(songs.map((s) => s.language), ['English', 'Tagalog', 'Cebuano']);
 });
 
-test('a song with an unknown language or no title is left out and counted, not sent', () => {
-  const { songs, skipped } = buildSongList([row({ language: 'FR' }), row({ uuid: 'b', title: '   ' }), row({ uuid: 'c' })]);
+test('a song with an unknown language or no id is left out and counted, not sent', () => {
+  const { songs, skipped } = buildSongList([row({ language: 'FR' }), row({ uuid: null }), row({ uuid: 'c' })]);
   assert.equal(songs.length, 1);
   assert.equal(skipped, 2);
+});
+
+test('a song with a missing field gets a plain default, so one bad row cannot lose the whole list', () => {
+  const { songs, skipped } = buildSongList([row({ title: '   ', song_category: null, musical_key: undefined })]);
+  assert.equal(skipped, 0);
+  assert.equal(songs[0].title, 'Untitled Song');
+  assert.equal(songs[0].category, 'General');
+  assert.equal(songs[0].key, '');
+});
+
+test('a song field is cut to what the server accepts, and NUL characters are removed', () => {
+  const [song] = buildSongList([row({ title: `A\0B${'t'.repeat(300)}`, song_category: 'c'.repeat(50), musical_key: 'k'.repeat(20) })]).songs;
+  assert.equal(song.title.length, 200);
+  assert.equal(song.title.includes('\0'), false);
+  assert.equal(song.category.length, 40);
+  assert.equal(song.key.length, 10);
 });
 
 test('the song query reads only the columns it may send, and never the lyrics table', () => {

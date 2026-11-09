@@ -682,3 +682,70 @@ test('the website refuses a slot that is not 1 to 28, or two items in one slot',
   const twice = await resultOf([{ ...readingItem('a', 1, 'Gospel'), slot: 4 }, { ...readingItem('b', 2, 'First Reading'), slot: 4 }]);
   assert.match(JSON.stringify(twice), /same Holy Mass slot/);
 });
+
+// ---- One plan cannot stop the others ----
+
+/** A store and cloud with no database, for the send loop alone. `create` decides what the cloud does with each plan. */
+function sendLoop(uuids, create, payloadFor = (plan) => ({ id: plan.uuid, name: 'Plan', date: '2026-11-15', kind: 'mass', items: [] })) {
+  const synced = [];
+  const store = {
+    tombstones: () => [],
+    cursor: () => null,
+    setCursor: () => {},
+    holdCount: () => 0,
+    holdOf: () => null,
+    dirtyPlans: () => uuids.map((uuid) => ({ uuid, updated_at: '2026-11-01T00:00:00.000Z', server_updated_at: null })),
+    payloadFor,
+    markSynced: (uuid) => synced.push(uuid),
+  };
+  const cloud = {
+    pullPlans: async () => ({ plans: [], cursor: null, more: false }),
+    createPlan: create,
+    serverOffset: () => 0,
+  };
+  return { engine: createPlanSync({ store, cloud }), synced };
+}
+const createdOk = { status: 'created', updatedAt: '2026-11-01T00:00:01.000Z' };
+
+test('a plan the website refuses is counted with its reason, and the plans after it still go', async () => {
+  const { engine, synced } = sendLoop(['a', 'b', 'c'], async (plan) => (plan.id === 'b' ? { status: 'error', message: 'Refused for a plain reason.' } : createdOk));
+  const state = await engine.runOnce();
+  assert.deepEqual(synced, ['a', 'c']);
+  assert.equal(state.status, 'synced');
+  assert.equal(state.counts.sent, 2);
+  assert.equal(state.counts.failed, 1);
+  assert.equal(state.message, 'Refused for a plain reason.');
+});
+
+test('an unexpected error on one plan is counted, shows no raw text, and the plans after it still go', async (t) => {
+  const logged = t.mock.method(console, 'error', () => {});
+  const { engine, synced } = sendLoop(['a', 'b'], async (plan) => {
+    if (plan.id === 'a') throw new TypeError('private detail');
+    return createdOk;
+  });
+  const state = await engine.runOnce();
+  assert.deepEqual(synced, ['b']);
+  assert.equal(state.counts.failed, 1);
+  assert.equal(state.message, null);
+  assert.equal(logged.mock.calls[0].arguments[0], '[plan-sync] step=send name=TypeError');
+});
+
+test('a lost connection part-way stops the run as offline rather than counting every plan as failed', async () => {
+  const { engine, synced } = sendLoop(['a', 'b'], async () => {
+    throw Object.assign(new Error('No connection.'), { offline: true });
+  });
+  const state = await engine.runOnce();
+  assert.equal(state.status, 'offline');
+  assert.deepEqual(synced, []);
+  engine.stop();
+});
+
+test('a plan with an impossible date is never sent; a blank name is sent with a default', async () => {
+  const db = laptopDb();
+  const store = createPlanSyncStore(db);
+  const payload = (date, name) => store.payloadFor({ id: 0, kind: 'mass', uuid: 'u', name, date });
+  assert.throws(() => payload('2026-02-31', 'Plan'), /no valid date/);
+  assert.throws(() => payload(null, 'Plan'), /no valid date/);
+  assert.equal(payload('2026-11-15', '  ').name, 'Untitled Plan');
+  assert.equal(payload('2026-11-15', ' Sunday ').name, 'Sunday');
+});

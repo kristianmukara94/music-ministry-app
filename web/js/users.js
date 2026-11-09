@@ -8,9 +8,9 @@ mountSidebar();
 const API = '/api';
 const ROLE_LABEL = { admin: 'Admin', planner: 'Planner', viewer: 'Viewer' };
 const STATUS = {
-  active: { label: 'Active', fg: '#8fd9ae', bg: '#12301f' },
-  disabled: { label: 'Disabled', fg: '#dbb3bf', bg: '#2a1019' },
-  locked: { label: 'Locked', fg: '#f2bd6b', bg: '#33240c' },
+  active: { label: 'Active', fg: 'var(--pill-text)', bg: 'var(--pill-bg)', edge: 'var(--pill-border)' },
+  disabled: { label: 'Disabled', fg: 'var(--text)', bg: 'var(--border)', edge: 'transparent' },
+  locked: { label: 'Locked', fg: 'var(--warn-text)', bg: 'var(--warn-bg)', edge: 'transparent' },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -55,17 +55,17 @@ function lastSignIn(iso) {
 function rowHtml(u) {
   const s = STATUS[u.status];
   return `
-    <div data-row="${esc(u.id)}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 16px 18px; border-bottom: 1px solid #2b1019">
+    <div data-row="${esc(u.id)}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 16px 18px; border-bottom: 1px solid var(--border)">
       <span style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 3px">
         <span style="font-size: 15px; font-weight: 700">${esc(u.displayName)}</span>
-        <span style="font-size: 12px; color: #b48d99">${esc(u.username)} · last sign-in ${esc(lastSignIn(u.lastSignInAt))}</span>
+        <span style="font-size: 12px; color: var(--muted)">${esc(u.username)} · last sign-in ${esc(lastSignIn(u.lastSignInAt))}</span>
       </span>
       <label class="field small">Role
         <select data-role="${esc(u.id)}">
           ${['admin', 'planner', 'viewer'].map((r) => `<option value="${r}" ${r === u.role ? 'selected' : ''}>${ROLE_LABEL[r]}</option>`).join('')}
         </select>
       </label>
-      <span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 99px; font-size: 12px; font-weight: 600; color: ${s.fg}; background: ${s.bg}">${s.label}</span>
+      <span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 99px; font-size: 12px; font-weight: 600; border: 1px solid ${s.edge}; color: ${s.fg}; background: ${s.bg}">${s.label}</span>
       <span style="display: inline-flex; flex-wrap: wrap; gap: 8px">
         ${u.status === 'locked' ? `<button type="button" class="quiet" data-action="unlock" data-id="${esc(u.id)}">Unlock</button>` : ''}
         <button type="button" class="quiet" data-action="reset" data-id="${esc(u.id)}">Reset password</button>
@@ -78,8 +78,8 @@ async function refresh() {
   try {
     const { users } = await call('users-list', 'GET');
     $('users').innerHTML = users.length
-      ? `<div style="padding: 14px 18px; background: #22101a; border-bottom: 1px solid #3a1523; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; color: #b48d99">${users.length} PEOPLE IN THIS CHURCH</div>${users.map(rowHtml).join('')}`
-      : '<p style="margin: 0; padding: 18px; font-size: 14px; color: #b48d99">No users yet.</p>';
+      ? `<div class="eyebrow" style="padding: 14px 18px; background: var(--input-bg); border-bottom: 1px solid var(--border)">${users.length} PEOPLE IN THIS CHURCH</div>${users.map(rowHtml).join('')}`
+      : '<p style="margin: 0; padding: 18px; font-size: 14px; color: var(--muted)">No users yet.</p>';
   } catch (err) {
     setError('users-error', err.message);
   }

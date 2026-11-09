@@ -28,6 +28,7 @@ export function createPlanSync({ store, cloud, setTimer = setTimeout, clearTimer
   let timer = null;
   let running = null;
   let keepRunning = false;
+  let firstFailure = null;
 
   const set = (next) => {
     state = { ...state, ...next };
@@ -42,6 +43,12 @@ export function createPlanSync({ store, cloud, setTimer = setTimeout, clearTimer
       timer = null;
       void runOnce();
     }, delayMs);
+  };
+
+  /** Counts a plan that could not be sent, and keeps the first plain reason for the screen. The reason never names the plan. */
+  const failOne = (counts, reason) => {
+    counts.failed += 1;
+    firstFailure ??= reason ?? null;
   };
 
   /** True when the laptop's edit is the newer one, on server time: the laptop stamp is corrected by the server offset. */
@@ -120,7 +127,7 @@ export function createPlanSync({ store, cloud, setTimer = setTimeout, clearTimer
       counts.received += 1;
       return;
     }
-    counts.failed += 1;
+    failOne(counts, res.message);
   }
 
   /**
@@ -149,34 +156,41 @@ export function createPlanSync({ store, cloud, setTimer = setTimeout, clearTimer
     counts.received += 1;
   }
 
+  /** Sends one changed plan. */
+  async function sendPlan(plan, counts) {
+    const payload = store.payloadFor(plan);
+    // The laptop's stamp is read before sending, so an edit made during the send is still dirty afterwards.
+    const stamp = plan.updated_at;
+    if (plan.server_updated_at !== null) {
+      await pushOne(plan, payload, stamp, plan.server_updated_at, counts);
+      return;
+    }
+    const created = await cloud.createPlan(payload);
+    if (created.status === 'created') {
+      store.markSynced(plan.uuid, created.updatedAt, stamp);
+      counts.sent += 1;
+    } else if (created.status === 'exists') {
+      await settleExisting(plan, payload, stamp, counts);
+    } else {
+      failOne(counts, created.message);
+    }
+  }
+
+  /** Each plan stands alone: one that fails is counted and the rest still go. Only a lost connection or link stops the run. */
   async function sendDirty(counts) {
     for (const plan of store.dirtyPlans()) {
       // A held plan is not sent: a send would drop the items the laptop cannot show.
       if (store.holdOf(plan.uuid)) continue;
-      let payload;
       try {
-        payload = store.payloadFor(plan);
+        await sendPlan(plan, counts);
       } catch (err) {
+        if (err?.offline || err?.revoked) throw err;
         if (err instanceof MapRefused) {
-          counts.failed += 1;
-          continue;
+          failOne(counts, err.message);
+        } else {
+          console.error(`[plan-sync] step=send name=${err?.name ?? 'Error'}`);
+          failOne(counts);
         }
-        throw err;
-      }
-      // The laptop's stamp is read before sending, so an edit made during the send is still dirty afterwards.
-      const stamp = plan.updated_at;
-      if (plan.server_updated_at !== null) {
-        await pushOne(plan, payload, stamp, plan.server_updated_at, counts);
-        continue;
-      }
-      const created = await cloud.createPlan(payload);
-      if (created.status === 'created') {
-        store.markSynced(plan.uuid, created.updatedAt, stamp);
-        counts.sent += 1;
-      } else if (created.status === 'exists') {
-        await settleExisting(plan, payload, stamp, counts);
-      } else {
-        counts.failed += 1;
       }
     }
   }
@@ -187,13 +201,14 @@ export function createPlanSync({ store, cloud, setTimer = setTimeout, clearTimer
     running = (async () => {
       set({ status: 'syncing', message: null });
       const counts = { sent: 0, received: 0, deleted: 0, failed: 0 };
+      firstFailure = null;
       try {
         await sendDeletions(counts);
         await pullAll(counts);
         await sendDirty(counts);
         attempts = 0;
         counts.held = store.holdCount();
-        set({ status: 'synced', lastSyncedAt: new Date().toISOString(), message: null, counts });
+        set({ status: 'synced', lastSyncedAt: new Date().toISOString(), message: firstFailure, counts });
       } catch (err) {
         if (err?.revoked) {
           set({ status: 'error', message: err.message });

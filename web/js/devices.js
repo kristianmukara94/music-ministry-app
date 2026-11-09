@@ -8,9 +8,9 @@ import { createLinkCode, listDevices, unlinkDevice } from './plan-api.js';
 mountSidebar();
 
 const TONE = {
-  ok: { fg: '#8fd9ae', bg: '#12301f' },
-  warn: { fg: '#f2bd6b', bg: '#33240c' },
-  idle: { fg: '#dbb3bf', bg: '#2a1019' },
+  ok: { fg: 'var(--pill-text)', bg: 'var(--pill-bg)', edge: 'var(--pill-border)' },
+  warn: { fg: 'var(--warn-text)', bg: 'var(--warn-bg)', edge: 'transparent' },
+  idle: { fg: 'var(--text)', bg: 'var(--border)', edge: 'transparent' },
 };
 // A laptop that reached the server within this long is shown as connected.
 const RECENT_MS = 24 * 60 * 60 * 1000;
@@ -27,7 +27,7 @@ function statusOf(device) {
   return recent ? { text: 'Connected', tone: 'ok' } : { text: 'Not seen lately', tone: 'warn' };
 }
 
-const message = (text, color = '#b48d99') => `<p style="margin: 0; padding: 16px 18px; font-size: 14px; color: ${color}">${esc(text)}</p>`;
+const message = (text, color = 'var(--muted)') => `<p style="margin: 0; padding: 16px 18px; font-size: 14px; color: ${color}">${esc(text)}</p>`;
 
 function renderDevices() {
   const box = document.getElementById('devices');
@@ -41,16 +41,16 @@ function renderDevices() {
       .filter(Boolean)
       .join(' · ');
     return `
-            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 16px 18px; border-bottom: 1px solid #2b1019">
-              <span style="flex: none; width: 44px; height: 44px; border-radius: 12px; background: #2a0c18; border: 1px solid #55202f; display: grid; place-items: center">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ecc98a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 16px 18px; border-bottom: 1px solid var(--border)">
+              <span style="flex: none; width: 44px; height: 44px; border-radius: 12px; background: var(--input-bg); border: 1px solid var(--border); display: grid; place-items: center">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--eyebrow)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>
               </span>
               <span style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 3px">
                 <span style="font-size: 15px; font-weight: 700; overflow-wrap: anywhere">${esc(d.name)}</span>
-                <span style="font-size: 12px; color: #b48d99">${esc(meta)}</span>
+                <span style="font-size: 12px; color: var(--muted)">${esc(meta)}</span>
               </span>
-              <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 99px; font-size: 12px; font-weight: 600; color:${TONE[status.tone].fg};background:${TONE[status.tone].bg}">${esc(status.text)}</span>
-              ${state.canManage ? `<button type="button" data-unlink="${esc(d.id)}" data-name="${esc(d.name)}" ${state.busy ? 'disabled' : ''} style="height: 36px; padding: 0 14px; border-radius: 9px; border: 1px solid #6e2a3e; background: #2a0c18; color: #ff9a9a; font-size: 13px; font-weight: 700; cursor: pointer">Unlink</button>` : ''}
+              <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 99px; font-size: 12px; font-weight: 600; border:1px solid ${TONE[status.tone].edge};color:${TONE[status.tone].fg};background:${TONE[status.tone].bg}">${esc(status.text)}</span>
+              ${state.canManage ? `<button type="button" data-unlink="${esc(d.id)}" data-name="${esc(d.name)}" ${state.busy ? 'disabled' : ''} class="btn-quiet" style="height: 36px; padding: 0 14px; color: var(--danger); font-size: 13px; font-weight: 700">Unlink</button>` : ''}
             </div>`;
   }).join('');
 }
@@ -82,8 +82,8 @@ function renderActivity() {
   box.innerHTML = state.activity.map((a) => {
     const line = activityText(a);
     return `
-            <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; padding: 12px 18px; border-bottom: 1px solid #2b1019">
-              <span style="flex: 0 0 150px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #b48d99">${esc(when(a.at))}</span>
+            <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; padding: 12px 18px; border-bottom: 1px solid var(--border)">
+              <span style="flex: 0 0 150px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted)">${esc(when(a.at))}</span>
               <span style="flex: 1 1 260px; min-width: 0; font-size: 14px; line-height: 1.4">${esc(line.text)}</span>
               <span style="font-size: 12px; font-weight: 600; color:${TONE[line.tone].fg}">${esc(line.tag)}</span>
             </div>`;

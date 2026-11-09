@@ -22,28 +22,31 @@ export const SONG_ROWS_SQL = `
   SELECT uuid, title, song_category, primary_category, language, musical_key
   FROM hymns WHERE uuid IS NOT NULL AND deleted_at IS NULL ORDER BY id`;
 
+/** A text field the way the server stores it: no NUL characters (Postgres cannot hold them), trimmed, and within the column's limit. */
+const fieldText = (value, max) => (typeof value === 'string' ? value.replace(/\0/g, '').trim().slice(0, max).trim() : '');
+
 /**
  * Turns the laptop's song rows into the list the server takes. Only the fields the server accepts are copied, so nothing else can
- * be sent. A row with an unknown language, or no title, is left out and counted, so the sync says how many were not sent.
+ * be sent, and the server refuses the whole list for one bad song, so each field is made safe here. A song with no title or category
+ * gets a plain default. A row with an unknown language or no id cannot be defaulted: it is left out and counted.
  */
 export function buildSongList(rows) {
   const songs = [];
   let skipped = 0;
   for (const row of rows) {
     const language = LANGUAGE_NAMES[row.language];
-    const title = typeof row.title === 'string' ? row.title.trim() : '';
-    if (!language || title === '' || typeof row.uuid !== 'string') {
+    if (!language || typeof row.uuid !== 'string') {
       skipped += 1;
       continue;
     }
     songs.push({
       id: row.uuid,
-      title,
-      category: typeof row.song_category === 'string' ? row.song_category.trim() : '',
+      title: fieldText(row.title, 200) || 'Untitled Song',
+      category: fieldText(row.song_category, 40) || 'General',
       // Where the song is used. A row with no readable scope is General, which every scope shows.
       scope: SCOPES.includes(row.primary_category) ? row.primary_category : 'GENERAL',
       language,
-      key: typeof row.musical_key === 'string' ? row.musical_key.trim() : '',
+      key: fieldText(row.musical_key, 10),
     });
   }
   return { songs, skipped };
