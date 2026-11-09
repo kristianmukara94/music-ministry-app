@@ -290,6 +290,7 @@ interface ElectronApi {
   welcome: WelcomeApi;
   lowerThird: LowerThirdApi;
   cloud: CloudApi;
+  license: LicenseApi;
   vault: VaultApi;
   remoteView: RemoteViewApi;
   library: LibraryApi;
@@ -704,6 +705,7 @@ export interface CloudApi {
   unlink(): Promise<CloudLink>;
   createWebUser(input: NewWebUser): Promise<CreatedWebUser>;
   createChurchAdmin(input: NewChurchAdmin): Promise<CreatedChurchAdmin>;
+  renewLicense(setupKey: string): Promise<{ licenseExpiresAt: string | null }>;
   defaultLabel(): Promise<string>;
 }
 
@@ -713,11 +715,32 @@ const offlineCloud: CloudApi = {
   unlink: async () => ({ linked: false, error: null }),
   createWebUser: async () => offlineError(),
   createChurchAdmin: async () => offlineError(),
+  renewLicense: async () => offlineError(),
   songsStatus: async () => ({ status: 'idle', lastSyncedAt: null, message: null }),
   plansStatus: async () => ({ status: 'idle', lastSyncedAt: null, message: null, counts: null }),
   saveAddress: async () => ({ ok: false, message: 'Open the desktop app to change the cloud address.' }),
   syncSongsNow: async () => ({ status: 'idle', lastSyncedAt: null, message: null }),
   defaultLabel: async () => 'This computer',
+};
+
+/** This laptop's license window. The text is written by the main process (electron/license-manager.js). */
+export interface LicenseStatus {
+  state: 'unlinked' | 'perpetual' | 'active' | 'expired';
+  expiresAt: string | null;
+  canProject: boolean;
+  statusText: string | null;
+  banner: string | null;
+}
+
+export interface LicenseApi {
+  get(): Promise<LicenseStatus>;
+  /** Told when a renewal or the heartbeat changes the license. Returns the stop function. */
+  onChanged(callback: (status: LicenseStatus) => void): () => void;
+}
+
+const offlineLicense: LicenseApi = {
+  get: async () => ({ state: 'unlinked', expiresAt: null, canProject: true, statusText: null, banner: null }),
+  onChanged: () => () => undefined,
 };
 
 const offlineRemoteView: RemoteViewApi = {
@@ -893,6 +916,7 @@ function createBrowserBridge(): LiveBridge {
     welcome: offlineWelcome,
     lowerThird: offlineLowerThird,
     cloud: offlineCloud,
+    license: offlineLicense,
     vault: offlineVault,
     remoteView: offlineRemoteView,
     library: offlineLibrary,

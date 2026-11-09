@@ -175,7 +175,7 @@ export function deviceLabel(userAgent = '') {
  * Secondary port is refused whatever the page sends. `/api/remote/stream` sends the live screen as the laptop changes it.
  * When a PIN is set, every route needs an unlocked session, and each viewer has its own session cookie.
  */
-export function createRemoteViewServer({ distDir, role = 'primary', canConnect = () => true, onControl = () => ({ ok: false, status: 409, error: 'Control is not set up.' }), mediaFile = () => null, slideFile = () => null, tvPort = () => REMOTE_VIEW_PORTS.secondary }) {
+export function createRemoteViewServer({ distDir, role = 'primary', isExpired = () => false, canConnect = () => true, onControl = () => ({ ok: false, status: 409, error: 'Control is not set up.' }), mediaFile = () => null, slideFile = () => null, tvPort = () => REMOTE_VIEW_PORTS.secondary }) {
   let server = null;
   let bound = null;
   let starting = null;
@@ -425,6 +425,11 @@ export function createRemoteViewServer({ distDir, role = 'primary', canConnect =
     // Only the local network, and only by this laptop's own address or name: a web site that points its domain here is refused.
     if (!isPrivateAddress(req.socket.remoteAddress) || !hostAllowed(req.headers.host)) {
       return sendJson(res, 403, { ok: false, error: "Open this page with the laptop's address." });
+    }
+    // Every route, so a phone gets neither the page, the stream, nor control. The text is what shows when a phone opens the page.
+    if (isExpired()) {
+      res.writeHead(403, { ...SECURITY_HEADERS, 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }).end('Church License Expired');
+      return;
     }
     let pathname;
     try {

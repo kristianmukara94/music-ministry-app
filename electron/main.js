@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen, session
 // First of the app's own modules: in the packaged app it refuses debugging flags before anything else is loaded (see anti-tamper.js).
 import { SECURE_WEB_PREFERENCES, setupAntiTamper } from './anti-tamper.js';
 import { createCloudDevice } from './cloud-device.js';
+import { createLicenseManager, PROJECTION_OUTPUTS } from './license-manager.js';
 import { createSongSync, SONG_ROWS_SQL } from './song-sync.js';
 import { createPlanSync } from './plan-sync.js';
 import { createPlanSyncStore } from './plan-sync-store.js';
@@ -499,13 +500,14 @@ const remoteViews = {
   primary: createRemoteViewServer({
     distDir: path.join(appDir, '../dist'),
     role: 'primary',
+    isExpired: () => licenseManager.isExpired(),
     canConnect: canAcceptPhone,
     onControl: controlFromPhone,
     slideFile: slideFileFor,
     // The TV page's port, from the saved Secondary viewer settings, so the helper page links to the right address.
     tvPort: () => readConfig(app.getPath('userData')).remote_view.secondary.port,
   }),
-  secondary: createRemoteViewServer({ distDir: path.join(appDir, '../dist'), role: 'secondary', canConnect: canAcceptPhone, mediaFile: mediaFileFor, slideFile: slideFileFor }),
+  secondary: createRemoteViewServer({ distDir: path.join(appDir, '../dist'), role: 'secondary', isExpired: () => licenseManager.isExpired(), canConnect: canAcceptPhone, mediaFile: mediaFileFor, slideFile: slideFileFor }),
 };
 // Why each viewer is not running when it is turned on. Null when it runs, or when it is off.
 const remoteViewErrors = { primary: null, secondary: null };
@@ -646,6 +648,11 @@ function saveQueueState() {
 const alertExpiry = createAlertExpiry({ clear: (id) => apply({ type: 'sanctuaryAlert/clear', id }) });
 
 function apply(action) {
+  // Every route to an output comes through here. The console shows why through its license banner.
+  if (licenseManager.refuses(action, state.outputs)) {
+    console.warn(`[license] expired: ${action.output} was not turned on.`);
+    return;
+  }
   // A Sanctuary Alert's clock starts when the main process takes it, the same clock its expiry timer runs on.
   if (action?.type === 'sanctuaryAlert/show') action = { ...action, now: Date.now() };
   const prev = state;
@@ -746,6 +753,10 @@ function recoverSession(planService, pwService) {
     return false;
   }
   state = next;
+  // The plan and its position come back for preparation, but an expired license does not reopen what the congregation sees.
+  if (!licenseManager.status().canProject) {
+    for (const output of PROJECTION_OUTPUTS) state = liveReducer(state, { type: 'output/set', output, on: false });
+  }
   skipStartupScreen = state.outputs.projector;
   saveQueueState();
   console.info(`[session] restored the live session saved at ${saved.updated_at} UTC (plan ${saved.active_plan_id ?? 'none'}, row ${state.queueCursor})`);
@@ -1071,7 +1082,33 @@ const cloud = () =>
     },
     fetchFn: (...args) => fetch(...args),
     baseUrl: cloudUrl(),
+    onLicenseChanged: () => licenseManager.reevaluate(),
   });
+
+// The license window saved with this laptop's link. Read from the local file only, so it works offline.
+const licenseManager = createLicenseManager({
+  readExpiry: () => cloud().licenseExpiresAt(),
+  onChange: (status) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('license:changed', status);
+    }
+  },
+});
+ipcMain.handle('license:get', () => licenseManager.status());
+// The key is checked in cloud-device.js and only this field is read.
+ipcMain.handle('cloud:renew-license', (_event, input) => cloud().renewLicense(input?.setupKey));
+
+/** Asks the cloud for this laptop's link and license, so a renewal made on another laptop arrives here. Offline it changes nothing. */
+const LICENSE_HEARTBEAT_MS = 15 * 60 * 1000;
+function startLicenseHeartbeat() {
+  const beat = () => cloud().status().catch((err) => console.warn(`[license] heartbeat failed: ${err.name}`));
+  const first = setTimeout(beat, 10 * 1000);
+  const timer = setInterval(beat, LICENSE_HEARTBEAT_MS);
+  app.on('before-quit', () => {
+    clearTimeout(first);
+    clearInterval(timer);
+  });
+}
 
 /** Link state for the Settings screen. It holds display fields only, never the token. */
 // The cloud address is shown on the Cloud sync screen, so the user can see where the laptop is pointing. It is not part of any message.
@@ -1440,6 +1477,8 @@ ipcMain.handle('launch:open', async (event, target) => {
 
 
 app.whenReady().then(() => {
+  console.info(`[license] ${licenseManager.reevaluate().state}`);
+  startLicenseHeartbeat();
   // No page gets the camera, the microphone, location and the like: nothing in the app uses them. The mirror has a session of its own.
   for (const target of [session.defaultSession, session.fromPartition(MIRROR_PARTITION)]) restrictPermissions(target);
   // No default menu: it would steal F11 (fullscreen) and Ctrl+R from our hotkeys.
@@ -1559,7 +1598,7 @@ app.whenReady().then(() => {
   setupSpontaneousLog(announcements.db, { isProjectorOpen: () => Boolean(windows.projector && !windows.projector.isDestroyed()) });
   setupWhiteboard(announcements.db, announcements.service, { onChanged: announceWhiteboardChange, convertPdf: announcements.convertPdf });
   // The browser source: the lower third at http://127.0.0.1:3002/lower-third, updated live.
-  lowerThirdServer = createLowerThirdServer({ distDir: path.join(appDir, '../dist') });
+  lowerThirdServer = createLowerThirdServer({ distDir: path.join(appDir, '../dist'), isExpired: () => licenseManager.isExpired() });
   void lowerThirdServer.start().then((ok) => {
     lowerThirdServerUp = ok;
   });

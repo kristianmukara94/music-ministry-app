@@ -4,6 +4,7 @@ import {
   Menu, Music, NotebookPen, Presentation, Radio, Search, Settings, type LucideIcon,
 } from 'lucide-react';
 import { useLive } from '../live/store';
+import { useLicense } from '../live/license';
 import { LANGS, useT, type StringKey } from '../i18n/strings';
 import { exportSettings, importSettings, setUi, useUi, type ViewKey } from '../state/ui';
 import { toggleFullscreen } from './actions';
@@ -86,6 +87,7 @@ export function Sidebar() {
   const t = useT();
   const { view, collapsed, lang } = useUi();
   const outputs = useLive((s) => s.state.outputs);
+  const license = useLicense((s) => s.status);
   const lowerThirdLive = useLive((s) => s.state.lowerThird.live);
   const [ioOpen, setIoOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -226,6 +228,12 @@ export function Sidebar() {
             ))}
           </ul>
         </div>
+
+        {!collapsed && license?.statusText && (
+          <p title={license.statusText} className={`truncate px-3 pt-2 text-center text-[11px] ${license.canProject ? 'text-fg/60' : 'text-danger'}`}>
+            {license.statusText}
+          </p>
+        )}
 
         {/* Licensing footer. Subtle on purpose: it identifies the licensed build without competing with the operator's tools. */}
         <p

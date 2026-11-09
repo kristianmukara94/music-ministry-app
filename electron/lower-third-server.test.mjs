@@ -63,6 +63,31 @@ function get(port, target, headers = {}) {
   });
 }
 
+test('an expired license refuses the stream but leaves the page blank rather than broken', async () => {
+  const port = (nextPort += 1);
+  let expired = true;
+  const server = createLowerThirdServer({ distDir: makeDist(), port, host: '127.0.0.1', isExpired: () => expired });
+  assert.equal(await server.start(), true);
+  try {
+    const refused = await get(port, '/api/lower-third/stream');
+    assert.equal(refused.status, 403);
+    assert.equal(refused.text, 'Church License Expired');
+    assert.equal((await get(port, '/lower-third')).status, 200, 'no error text can reach a live broadcast');
+    expired = false;
+    const open = await new Promise((resolve, reject) => {
+      const req = http.request({ host: '127.0.0.1', port, path: '/api/lower-third/stream' }, (res) => {
+        resolve(res.statusCode);
+        req.destroy();
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(open, 200, 'a renewal opens it again');
+  } finally {
+    await server.stop();
+  }
+});
+
 test('the page and its files are served, by address', async () => {
   await withServer(async (port) => {
     assert.match((await get(port, '/lower-third')).text, /page/);

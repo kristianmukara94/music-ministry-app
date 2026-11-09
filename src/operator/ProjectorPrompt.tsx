@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { MonitorOff, Presentation, X } from 'lucide-react';
 import { setUi, useUi } from '../state/ui';
+import { LICENSE_LOCKED_TIP, useProjectionLocked } from '../live/license';
 
 /**
  * Shown when a live launch (a Mass Queue item or a Praise & Worship segment) finds the projector off. The operator can turn
@@ -8,6 +9,7 @@ import { setUi, useUi } from '../state/ui';
  */
 export function ProjectorPrompt() {
   const prompt = useUi((s) => s.projectorPrompt);
+  const locked = useProjectionLocked();
 
   useEffect(() => {
     if (!prompt) return;
@@ -64,7 +66,9 @@ export function ProjectorPrompt() {
           <button
             type="button"
             onClick={() => prompt.turnOnAndGo()}
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 text-xs font-bold tracking-wider text-on-accent uppercase shadow-md shadow-black/40 hover:brightness-110"
+            disabled={locked}
+            title={locked ? LICENSE_LOCKED_TIP : undefined}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 text-xs font-bold tracking-wider text-on-accent uppercase shadow-md shadow-black/40 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Presentation size={14} aria-hidden /> Turn On Projector &amp; Go Live
           </button>

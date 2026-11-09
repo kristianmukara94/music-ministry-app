@@ -11,7 +11,8 @@ CREATE TABLE churches (
   accent_gold   TEXT NOT NULL DEFAULT '#ecc98a' CHECK (accent_gold ~ '^#[0-9a-f]{6}$'),
   font_choice   TEXT NOT NULL DEFAULT 'Archivo'
                 CHECK (font_choice IN ('Archivo', 'Cormorant Garamond', 'JetBrains Mono')),
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  license_expires_at TIMESTAMPTZ                   -- when the church's license ends; NULL is perpetual
 );
 
 
@@ -139,7 +140,8 @@ CREATE TABLE setup_keys (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   expires_at  TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '7 days'),
   used_at     TIMESTAMPTZ,
-  church_id   UUID REFERENCES churches(id) ON DELETE SET NULL  -- set when the key is used
+  church_id   UUID REFERENCES churches(id) ON DELETE SET NULL,  -- set when the key is used
+  license_days INTEGER CHECK (license_days >= 0)  -- licence length from the moment the key is used; null or 0 is perpetual
 );
 
 -- Request counts for the rate limits, shared by every function instance. One row per bucket (a limit name and a client

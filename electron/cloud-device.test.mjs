@@ -410,6 +410,154 @@ test('a laptop that is already linked cannot create a church, and nothing is sen
   assert.equal(server.calls.length, sentBefore);
 });
 
+// ---- The license window saved at activation ----
+
+const activation = (licenseExpiresAt) => ({
+  'setup-church-admin': () => respond(201, { token: TOKEN, churchName: 'St Mary Parish', displayCode: 'K7QM-4XD2', username: 'parishadmin', displayName: 'Parish Admin', deviceLabel: 'Office laptop', temporaryPassword: PASSWORD, ...(licenseExpiresAt === undefined ? {} : { licenseExpiresAt }) }),
+});
+const deviceWith = (overrides, file = memoryFile(), storage = realisticStorage()) =>
+  createCloudDevice({ storage, file, fetchFn: fakeServer(overrides).fetchFn, baseUrl: BASE });
+
+test('activation stores the license expiry encrypted, and a status check keeps it', async () => {
+  const file = memoryFile();
+  const expiry = '2026-12-15T12:00:00.000Z';
+  const device = deviceWith(activation(expiry), file);
+  await device.createChurchAdmin(SETUP);
+  assert.equal(device.licenseExpiresAt(), expiry);
+  assert.equal(file.raw.toString('latin1').includes(expiry), false, 'the expiry is not readable in the file, so it cannot be edited there');
+  await device.status();
+  assert.equal(device.licenseExpiresAt(), expiry);
+});
+
+test('a perpetual activation is null, as is one from a server that sends no expiry or a bad one', async () => {
+  for (const reply of [null, undefined, 'not a date', 5]) {
+    const device = deviceWith(activation(reply));
+    await device.createChurchAdmin(SETUP);
+    assert.equal(device.licenseExpiresAt(), null, String(reply));
+  }
+});
+
+test('a link made before licenses existed reads as perpetual', async () => {
+  const device = deviceWith({});
+  await device.link('K7QM-4XD2', 'Operator booth');
+  assert.equal(device.licenseExpiresAt(), null);
+});
+
+test('with no link there is no license, and unlinking clears it', async () => {
+  const device = deviceWith(activation('2026-12-15T12:00:00.000Z'));
+  assert.equal(device.licenseExpiresAt(), undefined);
+  await device.createChurchAdmin(SETUP);
+  await device.unlink();
+  assert.equal(device.licenseExpiresAt(), undefined);
+});
+
+test('reading the license from a damaged file leaves the file alone and sends nothing', async () => {
+  const file = memoryFile();
+  file.write(Buffer.from('damaged'));
+  const server = fakeServer();
+  const device = createCloudDevice({ storage: realisticStorage(), file, fetchFn: server.fetchFn, baseUrl: BASE });
+  assert.equal(device.licenseExpiresAt(), undefined);
+  assert.notEqual(file.raw, null, 'a passing fault at Go Live must not unlink the laptop');
+  assert.equal(server.calls.length, 0);
+});
+
+// ---- The heartbeat and renewal ----
+
+const statusReply = (extra) => ({ 'device-status': () => respond(200, { churchName: 'St Mary', adminName: 'Boss', deviceLabel: 'Booth', lastSeenAt: '2026-10-27T12:00:00.000Z', ...extra }) });
+const OLD_END = '2026-12-15T12:00:00.000Z';
+const NEW_END = '2027-03-15T12:00:00.000Z';
+
+/** A device linked at `start`, with a heartbeat that answers `reply`, and a count of license changes. */
+async function heartbeatDevice(start, reply) {
+  const file = memoryFile();
+  const storage = realisticStorage();
+  await deviceWith({ ...activation(start), ...statusReply({ licenseExpiresAt: start }) }, file, storage).createChurchAdmin(SETUP);
+  const changes = [];
+  const device = createCloudDevice({ storage, file, fetchFn: fakeServer(statusReply(reply)).fetchFn, baseUrl: BASE, onLicenseChanged: () => changes.push(device.licenseExpiresAt()) });
+  return { device, changes };
+}
+
+test('a heartbeat with a new date saves it and reports the change', async () => {
+  const { device, changes } = await heartbeatDevice(OLD_END, { licenseExpiresAt: NEW_END });
+  await device.status();
+  assert.equal(device.licenseExpiresAt(), NEW_END);
+  assert.deepEqual(changes, [NEW_END], 'the file is already updated when the change is reported');
+});
+
+test('a heartbeat can make a license perpetual', async () => {
+  const { device, changes } = await heartbeatDevice(OLD_END, { licenseExpiresAt: null });
+  await device.status();
+  assert.equal(device.licenseExpiresAt(), null);
+  assert.equal(changes.length, 1);
+});
+
+test('a heartbeat with the same date reports nothing', async () => {
+  const { device, changes } = await heartbeatDevice(OLD_END, { licenseExpiresAt: OLD_END });
+  await device.status();
+  assert.equal(changes.length, 0);
+});
+
+test('an older server that sends no date, or a bad date, leaves the saved one alone', async () => {
+  for (const reply of [{}, { licenseExpiresAt: 'soon' }, { licenseExpiresAt: 5 }]) {
+    const { device, changes } = await heartbeatDevice(OLD_END, reply);
+    await device.status();
+    assert.equal(device.licenseExpiresAt(), OLD_END, JSON.stringify(reply));
+    assert.equal(changes.length, 0);
+  }
+});
+
+test('a laptop linked by code picks up the church license on its first check', async () => {
+  const device = deviceWith(statusReply({ licenseExpiresAt: NEW_END }));
+  await device.link('K7QM-4XD2', 'Second laptop');
+  assert.equal(device.licenseExpiresAt(), NEW_END);
+});
+
+test('losing the link reports a license change', async () => {
+  const { device, changes } = await heartbeatDevice(OLD_END, {});
+  await device.unlink();
+  assert.deepEqual(changes, [undefined]);
+});
+
+const renewServer = (reply) => ({ ...statusReply({ licenseExpiresAt: OLD_END }), 'church-renew': reply });
+
+test('renewing sends the key with the device token, saves the new date and reports it', async () => {
+  const file = memoryFile();
+  const storage = realisticStorage();
+  await deviceWith(activation(OLD_END), file, storage).createChurchAdmin(SETUP);
+  const server = fakeServer(renewServer(() => respond(200, { ok: true, licenseExpiresAt: NEW_END })));
+  const changes = [];
+  const device = createCloudDevice({ storage, file, fetchFn: server.fetchFn, baseUrl: BASE, onLicenseChanged: () => changes.push(device.licenseExpiresAt()) });
+  assert.deepEqual(await device.renewLicense(SETUP_KEY), { licenseExpiresAt: NEW_END });
+  const call = server.calls.find((c) => c.name === 'church-renew');
+  assert.equal(call.method, 'POST');
+  assert.equal(call.auth, `Bearer ${TOKEN}`);
+  assert.deepEqual(JSON.parse(call.body), { setupKey: SETUP_KEY });
+  assert.deepEqual(changes, [NEW_END]);
+  assert.equal(file.raw.toString('latin1').includes(SETUP_KEY_PLAIN), false);
+});
+
+test('a mistyped renewal key is refused on the laptop, and nothing is sent', async () => {
+  const server = fakeServer();
+  const device = createCloudDevice({ storage: realisticStorage(), file: memoryFile(), fetchFn: server.fetchFn, baseUrl: BASE });
+  const wrong = SETUP_KEY.slice(0, -1) + (SETUP_KEY.endsWith('A') ? 'B' : 'A');
+  await assert.rejects(device.renewLicense(wrong), (err) => err.message === MESSAGES.setupKeyTypo);
+  assert.equal(server.calls.length, 0);
+});
+
+test('a refused renewal shows the server message and keeps the saved date', async () => {
+  const file = memoryFile();
+  const storage = realisticStorage();
+  await deviceWith(activation(OLD_END), file, storage).createChurchAdmin(SETUP);
+  const device = createCloudDevice({ storage, file, fetchFn: fakeServer(renewServer(() => respond(400, { error: 'That setup key is not valid or has already been used.' }))).fetchFn, baseUrl: BASE });
+  await assert.rejects(device.renewLicense(SETUP_KEY), /not valid or has already been used/);
+  assert.equal(device.licenseExpiresAt(), OLD_END);
+});
+
+test('renewing with no link says so', async () => {
+  const device = createCloudDevice({ storage: realisticStorage(), file: memoryFile(), fetchFn: fakeServer().fetchFn, baseUrl: BASE });
+  await assert.rejects(device.renewLicense(SETUP_KEY), (err) => err.message === MESSAGES.notLinked);
+});
+
 test('a laptop with no safe storage refuses before it sends the setup key', async () => {
   const server = fakeServer();
   const device = createCloudDevice({ storage: realisticStorage({ available: false }), file: memoryFile(), fetchFn: server.fetchFn, baseUrl: BASE });

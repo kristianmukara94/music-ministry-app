@@ -1,5 +1,6 @@
 import { dispatch, useLive } from './store';
 import { bridge } from './bridge';
+import { projectionLocked } from './license';
 
 /** How long to wait for the projector's startup screen before going ahead anyway. */
 const STARTUP_WAIT_MS = 2000;
@@ -15,6 +16,8 @@ const STARTUP_WAIT_MS = 2000;
  * black startup screen holds new content behind a blackout, so the blackout is lifted after `go`, and the content shows.
  */
 export function turnOnProjectorAndGo(go: () => void): void {
+  // The main process would refuse the switch-on, and `go` would then mark a slide as live with nothing on the projector.
+  if (projectionLocked()) return;
   const base = useLive.getState().state.rev;
   dispatch({ type: 'output/set', output: 'projector', on: true });
   void afterStartup(base).then((startedBlack) => {

@@ -8,8 +8,8 @@ import { setPlanSlotTitle } from '../planner/plan-api';
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /**
- * Show slot title: the switch for the small banner above a slide's text that names its Holy Mass slot or reading ("FIRST READING",
- * "CONGREGATION RESPONSE"). Off, the slide shows only its words.
+ * Show slot title: the switch for the title above a slide's text, on every kind of slide: its Holy Mass slot or reading ("FIRST READING",
+ * "CONGREGATION RESPONSE"), a Hub prayer's or announcement's heading, a song's label. Off, the slide shows only its words.
  *
  * `live` is the Live panel's compact toolbar switch. It shows what the projector does now: when the Holy Mass plan in the queue has its own
  * choice (set in the planner) it changes that plan's choice, so it never seems to do nothing; otherwise it changes the projector setting.
@@ -31,8 +31,8 @@ export function SlotTitleToggle({ live = false }: { live?: boolean }) {
   };
 
   const what = on
-    ? 'On: slides show the small slot title (such as "First Reading") above their text. Click to hide it.'
-    : 'Off: slides show only their words, with no slot title above. Click to show it.';
+    ? 'On: slides show their title (such as "First Reading" or a prayer\'s name) above their text. Click to hide it.'
+    : 'Off: slides show only their words, with no title above. A slide whose title is all it says keeps it. Click to show titles.';
   const scope = forPlan ? 'The Holy Mass plan in the queue has its own choice, and this changes it.' : 'This is the projector setting, for every plan without its own choice.';
   return (
     <div className={live ? 'flex shrink-0 items-center gap-1' : 'flex flex-col gap-1'}>

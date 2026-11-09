@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Clock, ListOrdered, Monitor, MonitorPlay, 
 import { EVERY_DAY, formatCountdown, nextMassStart, sanitizeMassTimes, type MassTime } from '../../shared/service-schedule.js';
 import { bridge, type RemoteViewStatus } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
+import { LICENSE_LOCKED_TIP, useProjectionLocked } from '../live/license';
 import { DATE_LOCALES, useT, type StringKey } from '../i18n/strings';
 import { formatClock, formatWeekday } from '../state/region';
 import { useRegion } from '../state/useRegion';
@@ -19,7 +20,7 @@ interface Check {
   /** Null while the first reading is on its way. */
   ok: boolean | null;
   detail: string;
-  fix?: { label: StringKey; run: () => void };
+  fix?: { label: StringKey; run: () => void; locked?: boolean };
 }
 
 /** Everything the checks need from the main process, read every few seconds while the dashboard is open. */
@@ -52,6 +53,7 @@ function useChecks(): Check[] {
   const t = useT();
   const { outputs, queue, queuePlanId } = useLive((s) => s.state);
   const { displays, remote, lower } = useSystemChecks();
+  const locked = useProjectionLocked();
 
   // Projector: its output is on, and there is a second display for it (on one screen it would cover the console).
   const projectorOk = displays === null ? null : outputs.projector && displays >= 2;
@@ -61,7 +63,7 @@ function useChecks(): Check[] {
     label: 'ready.projector',
     ok: projectorOk,
     detail: !outputs.projector ? t('ready.projectorOff') : displays !== null && displays < 2 ? t('ready.oneDisplay') : t('ready.projectorOk'),
-    fix: !outputs.projector ? { label: 'ready.fixProjector', run: () => dispatch({ type: 'output/set', output: 'projector', on: true }) } : undefined,
+    fix: !outputs.projector ? { label: 'ready.fixProjector', run: () => dispatch({ type: 'output/set', output: 'projector', on: true }), locked } : undefined,
   };
 
   const lowerThird: Check = {
@@ -117,8 +119,8 @@ function CheckRow({ check }: { check: Check }) {
         <div className="truncate text-xs text-fg/65" title={check.detail}>{check.ok === null ? t('ready.checking') : check.detail}</div>
       </div>
       {check.fix && (
-        <button type="button" onClick={check.fix.run}
-          className="shrink-0 rounded-md border border-warn/50 bg-warn/10 px-2.5 py-1 text-xs font-bold text-warn transition hover:bg-warn/20">
+        <button type="button" onClick={check.fix.run} disabled={check.fix.locked} title={check.fix.locked ? LICENSE_LOCKED_TIP : undefined}
+          className="shrink-0 rounded-md border border-warn/50 bg-warn/10 px-2.5 py-1 text-xs font-bold text-warn transition hover:bg-warn/20 disabled:cursor-not-allowed disabled:opacity-50">
           {t(check.fix.label)}
         </button>
       )}

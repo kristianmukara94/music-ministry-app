@@ -40,7 +40,7 @@ export function lanAddress() {
  * the lower third and its look, so nothing else in the app is exposed. It listens on every network so that a streaming
  * computer on the same network can use it, and answers only that local network.
  */
-export function createLowerThirdServer({ distDir, port = LOWER_THIRD_PORT, host = '0.0.0.0' }) {
+export function createLowerThirdServer({ distDir, port = LOWER_THIRD_PORT, host = '0.0.0.0', isExpired = () => false }) {
   const clients = new Set();
   let latest = { lowerThird: null, lowerStyle: null };
 
@@ -63,6 +63,11 @@ export function createLowerThirdServer({ distDir, port = LOWER_THIRD_PORT, host 
     }
 
     if (pathname === '/api/lower-third/stream') {
+      // Only the stream is refused. The page stays blank, so no error text can appear over a live broadcast.
+      if (isExpired()) {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Church License Expired');
+        return;
+      }
       if (clients.size >= MAX_CLIENTS) {
         res.writeHead(503).end();
         return;

@@ -38,6 +38,8 @@ import { NAV, Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { startLiveSongWatch } from '../live/liveSongs';
 import { LiveNoticeBanner } from '../live/LiveNoticeBanner';
+import { LicenseBanner } from '../live/LicenseBanner';
+import { startLicenseWatch } from '../live/license';
 import { watchPlanSlotTitle } from '../planner/plan-api';
 
 function useGlobalHotkeys() {
@@ -157,6 +159,7 @@ export function OperatorApp() {
   useEffect(() => watchRemoteCommands(), []);
   // A song or prayer on the projector follows its edits, and the operator is told when it was deleted.
   useEffect(() => startLiveSongWatch(), []);
+  useEffect(() => startLicenseWatch(), []);
   const view = useUi((s) => s.view);
   const previewOpen = useUi((s) => s.previewOpen);
   const lang = useUi((s) => s.lang);
@@ -198,6 +201,7 @@ export function OperatorApp() {
         <TopBar />
       </div>
       <LiveNoticeBanner />
+      <LicenseBanner />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-clip">
         <Sidebar />

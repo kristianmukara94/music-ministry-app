@@ -21,6 +21,8 @@ import {
   songsStatusText,
   plansStatusText,
 } from '../../shared/cloud-device.js';
+import { refreshLicense, useLicense } from '../live/license';
+import { RenewLicenseDialog } from '../live/RenewLicenseDialog';
 
 const cloud = bridge.cloud;
 const errorText = (err: unknown) => plainErrorText(err instanceof Error ? err.message : String(err));
@@ -64,6 +66,13 @@ export function CloudSyncSettings() {
   const [plans, setPlans] = useState<PlansSyncState | null>(null);
   // What the operator has typed in the address field. Null until they type, so the field shows the current address.
   const [addressText, setAddressText] = useState<string | null>(null);
+  const license = useLicense((s) => s.status);
+  const [renewing, setRenewing] = useState(false);
+
+  // Activating, unlinking, or a link revoked on the website all change the license, and each one arrives here as a new link state.
+  useEffect(() => {
+    void refreshLicense();
+  }, [link]);
 
   // The song list's state, refreshed while the screen is open. It holds a status and a plain message, never a token.
   useEffect(() => {
@@ -259,6 +268,19 @@ export function CloudSyncSettings() {
             </p>
           )}
         </div>
+
+        {license?.statusText && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className={`text-sm font-semibold ${license.canProject ? '' : 'text-danger'}`}>{license.statusText}</p>
+            {/* A running license can be renewed early: the new time is added to its end. */}
+            {license.state !== 'perpetual' && (
+              <button type="button" onClick={() => setRenewing(true)} className={button}>
+                Renew license
+              </button>
+            )}
+          </div>
+        )}
+        {renewing && <RenewLicenseDialog onClose={() => setRenewing(false)} />}
 
         {view.kind === 'unlinked' && (
           <div className="flex flex-col gap-4">

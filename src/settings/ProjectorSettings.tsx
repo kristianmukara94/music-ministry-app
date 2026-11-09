@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, CheckCircle2, Grid3x3, History, House, Monitor, MonitorUp, Moon, Power, PowerOff } from 'lucide-react';
 import { PROJECTOR_SETTINGS_DEFAULTS as DEFAULTS, type ProjectorSettings as Settings } from '../../shared/projector-settings.js';
 import { dispatch, useLive } from '../live/store';
+import { LICENSE_LOCKED_TIP, useProjectionLocked } from '../live/license';
 import { bridge, type DisplayInfo } from '../live/bridge';
 import type { MediaAsset } from '../media/types';
 import { CARD, CardHeader, FOCUS, GoldSwitch, HEADING, Row, SUB, Segmented } from './settingsControls';
@@ -88,6 +89,7 @@ export function ProjectorSettingsPanel() {
   };
 
   const togglePicking = () => dispatch({ type: 'output/toggle', output: 'projector' });
+  const locked = useProjectionLocked();
 
   const identify = () => {
     setError(null);
@@ -159,7 +161,9 @@ export function ProjectorSettingsPanel() {
         <button
           type="button"
           onClick={togglePicking}
-          className={projectorOn ? `${SECONDARY} h-10 border-danger/50 text-danger hover:border-danger hover:text-danger` : `${PRIMARY} h-10`}
+          disabled={locked && !projectorOn}
+          title={locked && !projectorOn ? LICENSE_LOCKED_TIP : undefined}
+          className={projectorOn ? `${SECONDARY} h-10 border-danger/50 text-danger hover:border-danger hover:text-danger` : `${PRIMARY} h-10 disabled:cursor-not-allowed disabled:opacity-50`}
         >
           {projectorOn ? <PowerOff size={14} aria-hidden /> : <Power size={14} aria-hidden />}
           {projectorOn ? 'Close projector window' : 'Open projector window'}

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { createChurchSetupApi, KEY_MESSAGE, SETUP_LIMIT } from '../lib/church-setup.js';
+import { createChurchRenewApi, createChurchSetupApi, KEY_MESSAGE, PERPETUAL_MESSAGE, SETUP_LIMIT } from '../lib/church-setup.js';
 import { createLinkingApi } from '../lib/linking.js';
 
 import { hashToken, setupKey, temporaryPassword } from '../lib/auth.js';
@@ -45,9 +45,9 @@ const request = (key, extra = {}) => ({
 });
 
 /** Issues a key the way scripts/create-setup-key.mjs does: only its keyed hash is stored. Returns the key, shown once. */
-async function issueKey({ expiresAt = new Date(clock.getTime() + 7 * 24 * 60 * 60 * 1000) } = {}) {
+async function issueKey({ expiresAt = new Date(clock.getTime() + 7 * 24 * 60 * 60 * 1000), licenseDays = null } = {}) {
   const key = setupKey();
-  await pg.query('INSERT INTO setup_keys (key_hash, expires_at) VALUES ($1, $2)', [hashToken(key, SECRET), expiresAt.toISOString()]);
+  await pg.query('INSERT INTO setup_keys (key_hash, expires_at, license_days) VALUES ($1, $2, $3)', [hashToken(key, SECRET), expiresAt.toISOString(), licenseDays]);
   return key;
 }
 
@@ -89,6 +89,198 @@ test('a valid key creates the church, its first admin and a linked laptop in one
   assert.equal(shown.churchName, 'St Mary Parish');
   assert.equal(shown.adminName, 'Parish Admin');
   assert.equal(shown.deviceLabel, 'Office laptop');
+});
+
+// ---- The licence window ----
+
+test('a key with license_days returns when the licence ends, counted from the moment it is used', async () => {
+  const key = await issueKey({ licenseDays: 90 });
+  const res = await setupApi()(event({ body: request(key) }));
+  assert.equal(res.statusCode, 201);
+  assert.equal(JSON.parse(res.body).licenseExpiresAt, '2027-01-25T12:00:00.000Z');
+});
+
+for (const licenseDays of [null, 0]) {
+  test(`a key with license_days ${licenseDays} gives a perpetual licence`, async () => {
+    const key = await issueKey({ licenseDays });
+    const body = JSON.parse((await setupApi()(event({ body: request(key) }))).body);
+    assert.equal(body.licenseExpiresAt, null);
+    assert.ok('licenseExpiresAt' in body, 'the field is present, so the laptop can tell perpetual from an old server');
+  });
+}
+
+test('a negative license_days cannot be stored', async () => {
+  await assert.rejects(issueKey({ licenseDays: -1 }));
+});
+
+test('activation records the license on the church, so every laptop can be told', async () => {
+  const key = await issueKey({ licenseDays: 90 });
+  await setupApi()(event({ body: request(key) }));
+  const [church] = (await pg.query('SELECT license_expires_at FROM churches')).rows;
+  assert.equal(new Date(church.license_expires_at).toISOString(), '2027-01-25T12:00:00.000Z');
+});
+
+// ---- Renewing a church's license ----
+
+const renewApi = () => createChurchRenewApi({ sql, transaction, secret: SECRET, now: () => clock });
+const DAY = 24 * 60 * 60 * 1000;
+const renewal = (token, setupKey, extra = {}) => ({ ...event({ body: { setupKey } }), headers: { 'x-real-ip': '203.0.113.200', authorization: `Bearer ${token}`, ...extra } });
+
+/** A church activated with `licenseDays`, with its license end date then set to `expiresAt` when given. Returns the laptop's token. */
+async function activatedChurch({ licenseDays = 30, expiresAt } = {}) {
+  const body = JSON.parse((await setupApi()(event({ body: request(await issueKey({ licenseDays })) }))).body);
+  if (expiresAt !== undefined) await pg.query('UPDATE churches SET license_expires_at = $1', [expiresAt]);
+  return body.token;
+}
+const churchExpiry = async () => {
+  const value = (await pg.query('SELECT license_expires_at FROM churches')).rows[0].license_expires_at;
+  return value ? new Date(value).toISOString() : null;
+};
+
+test('renewing a running license adds the days to its end', async () => {
+  const token = await activatedChurch({ expiresAt: '2026-11-10T12:00:00Z' });
+  const res = await renewApi()(renewal(token, await issueKey({ licenseDays: 30 })));
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(JSON.parse(res.body), { ok: true, licenseExpiresAt: '2026-12-10T12:00:00.000Z' });
+  assert.equal(await churchExpiry(), '2026-12-10T12:00:00.000Z');
+});
+
+test('renewing an expired license counts from now', async () => {
+  const token = await activatedChurch({ expiresAt: '2026-09-01T00:00:00Z' });
+  const body = JSON.parse((await renewApi()(renewal(token, await issueKey({ licenseDays: 30 })))).body);
+  assert.equal(body.licenseExpiresAt, new Date(clock.getTime() + 30 * DAY).toISOString());
+});
+
+test('a license ending this very moment counts as expired', async () => {
+  const token = await activatedChurch({ expiresAt: clock.toISOString() });
+  const body = JSON.parse((await renewApi()(renewal(token, await issueKey({ licenseDays: 1 })))).body);
+  assert.equal(body.licenseExpiresAt, new Date(clock.getTime() + DAY).toISOString());
+});
+
+// ---- A perpetual license cannot be downgraded ----
+
+const usedAt = async (key) => (await pg.query('SELECT used_at FROM setup_keys WHERE key_hash = $1', [hashToken(key, SECRET)])).rows[0].used_at;
+
+for (const licenseDays of [30, 90, 365]) {
+  test(`a ${licenseDays}-day key is refused on a perpetual church, and the key stays unused`, async () => {
+    const token = await activatedChurch({ licenseDays: null });
+    const key = await issueKey({ licenseDays });
+    const res = await renewApi()(renewal(token, key));
+    assert.equal(res.statusCode, 400);
+    assert.deepEqual(JSON.parse(res.body), { error: PERPETUAL_MESSAGE });
+    assert.equal(await usedAt(key), null);
+    assert.equal(await churchExpiry(), null, 'the church stays perpetual');
+  });
+}
+
+test('a timed key refused on a perpetual church still works on a timed one', async () => {
+  const token = await activatedChurch({ licenseDays: null });
+  const key = await issueKey({ licenseDays: 30 });
+  assert.equal((await renewApi()(renewal(token, key))).statusCode, 400);
+  await pg.query(`UPDATE churches SET license_expires_at = '2026-11-10T12:00:00Z'`);
+  const res = await renewApi()(renewal(token, key));
+  assert.equal(res.statusCode, 200);
+  assert.ok(await usedAt(key));
+});
+
+for (const licenseDays of [null, 0]) {
+  test(`a key with license_days ${licenseDays} can be used on a perpetual church`, async () => {
+    const token = await activatedChurch({ licenseDays: null });
+    const key = await issueKey({ licenseDays });
+    const res = await renewApi()(renewal(token, key));
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(JSON.parse(res.body), { ok: true, licenseExpiresAt: null });
+    assert.ok(await usedAt(key));
+  });
+}
+
+for (const licenseDays of [null, 0]) {
+  test(`a key with license_days ${licenseDays} makes the license perpetual`, async () => {
+    const token = await activatedChurch({ expiresAt: '2026-11-10T12:00:00Z' });
+    const res = await renewApi()(renewal(token, await issueKey({ licenseDays })));
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(JSON.parse(res.body), { ok: true, licenseExpiresAt: null });
+    assert.equal(await churchExpiry(), null);
+  });
+}
+
+test('a renewal uses up the key and ties it to the church', async () => {
+  const token = await activatedChurch();
+  const key = await issueKey({ licenseDays: 30 });
+  await renewApi()(renewal(token, key));
+  const [row] = (await pg.query('SELECT used_at, church_id FROM setup_keys WHERE key_hash = $1', [hashToken(key, SECRET)])).rows;
+  assert.ok(row.used_at);
+  assert.equal(row.church_id, (await pg.query('SELECT id FROM churches')).rows[0].id);
+  assert.equal(await count('churches'), 1, 'no new church is made');
+});
+
+test('a used, expired or unknown key is refused with the one message, and the license is unchanged', async () => {
+  const token = await activatedChurch({ expiresAt: '2026-11-10T12:00:00Z' });
+  const used = await issueKey({ licenseDays: 30 });
+  await renewApi()(renewal(token, used));
+  const before = await churchExpiry();
+  const stale = await issueKey({ licenseDays: 30, expiresAt: new Date(clock.getTime() - 1000) });
+  for (const key of [used, stale, setupKey(), 'not-a-key']) {
+    const res = await renewApi()(renewal(token, key));
+    assert.equal(res.statusCode, 400, key);
+    assert.equal(JSON.parse(res.body).error, KEY_MESSAGE);
+  }
+  assert.equal(await churchExpiry(), before);
+});
+
+test('a renewal needs a live device token, and POST', async () => {
+  const key = await issueKey({ licenseDays: 30 });
+  assert.equal((await renewApi()({ ...event({ body: { setupKey: key } }), headers: {} })).statusCode, 401);
+  assert.equal((await renewApi()(renewal('no-such-token', key))).statusCode, 401);
+  assert.equal((await renewApi()({ ...renewal('x', key), httpMethod: 'GET' })).statusCode, 405);
+  const token = await activatedChurch();
+  await pg.query('UPDATE device_tokens SET revoked_at = now()');
+  assert.equal((await renewApi()(renewal(token, key))).statusCode, 401);
+  assert.equal((await pg.query('SELECT used_at FROM setup_keys WHERE key_hash = $1', [hashToken(key, SECRET)])).rows[0].used_at, null);
+});
+
+test('a laptop whose linking admin was disabled cannot renew, and the key is kept', async () => {
+  const token = await activatedChurch();
+  const key = await issueKey({ licenseDays: 30 });
+  await pg.query('UPDATE users SET disabled = true');
+  const res = await renewApi()(renewal(token, key));
+  assert.equal(res.statusCode, 403);
+  assert.equal((await pg.query('SELECT used_at FROM setup_keys WHERE key_hash = $1', [hashToken(key, SECRET)])).rows[0].used_at, null);
+});
+
+test('renewal attempts from one laptop are limited', async () => {
+  const token = await activatedChurch();
+  for (let i = 0; i < SETUP_LIMIT.requests; i += 1) assert.equal((await renewApi()(renewal(token, 'not-a-key'))).statusCode, 400);
+  assert.equal((await renewApi()(renewal(token, 'not-a-key'))).statusCode, 429);
+});
+
+test('the heartbeat tells every laptop of the church the current license', async () => {
+  const token = await activatedChurch({ licenseDays: 30 });
+  const heartbeat = async () => JSON.parse((await linkingApi().status({ ...event({ method: 'GET' }), headers: { authorization: `Bearer ${token}` } })).body).licenseExpiresAt;
+  assert.equal(await heartbeat(), new Date(clock.getTime() + 30 * DAY).toISOString());
+  await renewApi()(renewal(token, await issueKey({ licenseDays: null })));
+  assert.equal(await heartbeat(), null);
+});
+
+test('the migration keeps timed licenses already issued, adds nothing for perpetual ones, and cannot undo a renewal when run again', async () => {
+  const migration = fs.readFileSync(path.join(here, '..', 'db', 'migrations', '2026-11-09-churches-license-expires-at.sql'), 'utf8');
+  const old = new PGlite();
+  await old.exec(SCHEMA.replace(/DEFAULT now\(\),\s*license_expires_at TIMESTAMPTZ[^\n]*\n/, 'DEFAULT now()\n'));
+  const church = (id, code) => old.query('INSERT INTO churches (id, display_code, name) VALUES ($1, $2, $3)', [id, code, 'Parish']);
+  const timed = '00000000-0000-4000-8000-000000000001';
+  const perpetual = '00000000-0000-4000-8000-000000000002';
+  await church(timed, 'AAAA-AAAA');
+  await church(perpetual, 'BBBB-BBBB');
+  const usedKey = (hash, id, days) => old.query(`INSERT INTO setup_keys (key_hash, used_at, church_id, license_days) VALUES ($1, '2026-10-01T00:00:00Z', $2, $3)`, [hash, id, days]);
+  await usedKey('h1', timed, 30);
+  await usedKey('h2', perpetual, null);
+  await old.exec(migration);
+  const expiry = async (id) => (await old.query('SELECT license_expires_at FROM churches WHERE id = $1', [id])).rows[0].license_expires_at;
+  assert.equal(new Date(await expiry(timed)).toISOString(), '2026-10-31T00:00:00.000Z');
+  assert.equal(await expiry(perpetual), null);
+  await old.query('UPDATE churches SET license_expires_at = NULL WHERE id = $1', [timed]);
+  await old.exec(migration);
+  assert.equal(await expiry(timed), null, 'a second run leaves a renewal alone');
 });
 
 test('the same key is refused the second time, with the same message as any unusable key', async () => {

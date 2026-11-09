@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { FileX, MonitorOff, PanelBottom } from 'lucide-react';
 import { dispatch, useLive } from '../live/store';
+import { useProjectionLocked } from '../live/license';
 import { quickLiveBand } from '../praise-worship/useQuickLiveController';
 import { isTextEntry } from '../praise-worship/textEntry';
 import type { LyT } from './strings';
@@ -19,6 +20,7 @@ export function LiveQuickControls({ hymn, keys, t }: { hymn: Hymn | null; keys: 
   const somethingOnScreen = useLive((s) => s.state.projector.live.kind !== 'idle');
   const lowerLive = useLive((s) => s.state.lowerThird.live !== null);
   const lowerStaged = useLive((s) => s.state.lowerThird.staged !== null);
+  const locked = useProjectionLocked();
 
   const blackout = () => dispatch({ type: 'projector/blackout' });
   const clearText = () => dispatch({ type: 'projector/clear' });
@@ -74,7 +76,7 @@ export function LiveQuickControls({ hymn, keys, t }: { hymn: Hymn | null; keys: 
         role="switch"
         aria-checked={lowerLive}
         onClick={toggleLower}
-        disabled={!lowerLive && !hymn && !lowerStaged}
+        disabled={!lowerLive && (locked || (!hymn && !lowerStaged))}
         title={t('lowerThirdHint')}
         className={`${BTN} ml-auto ${lowerLive ? 'border-accent bg-accent/20 text-accent' : OFF}`}
       >

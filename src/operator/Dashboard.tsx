@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react';
 import type { Frame } from '../../shared/live.js';
 import { frameKey } from '../../shared/stage-plan-row.js';
 import { dispatch, useLive } from '../live/store';
+import { LICENSE_LOCKED_TIP, useProjectionLocked } from '../live/license';
 import { useT, type StringKey } from '../i18n/strings';
 import { sundayCycle, weekdayCycle, liturgicalYear } from '../liturgy/lectionary';
 import { setUi, type ViewKey } from '../state/ui';
@@ -122,9 +123,11 @@ function EmphasisLast({ text, tone }: { text: string; tone: BadgeTone }) {
  * An interactive status widget: a header band with the name and a state badge, what the output is doing, and one action that
  * changes it. With `inlineBadge` the badge sits beside the main text instead of in the header.
  */
-function StatusWidget({ icon: Icon, eyebrow, tone, badge, detail, emphasis = false, inlineBadge = false, action, onAction, primary = false, sub, footer }: {
+function StatusWidget({ icon: Icon, eyebrow, tone, badge, detail, emphasis = false, inlineBadge = false, action, onAction, actionLocked = false, primary = false, sub, footer }: {
   icon: LucideIcon; eyebrow: string; tone: BadgeTone; badge: string; detail: string; emphasis?: boolean; inlineBadge?: boolean;
   action?: string; onAction?: () => void; primary?: boolean;
+  /** An expired license has closed this action. */
+  actionLocked?: boolean;
   /** A line under the main text, such as the slide on screen. */
   sub?: ReactNode;
   /** Replaces the single action button, for a card with more than one action. */
@@ -151,7 +154,9 @@ function StatusWidget({ icon: Icon, eyebrow, tone, badge, detail, emphasis = fal
           <button
             type="button"
             onClick={onAction}
-            className={`flex h-10 w-full items-center justify-center rounded-md text-sm font-bold transition ${CARD_BUTTON[primary ? 'primary' : 'ghost']}`}
+            disabled={actionLocked}
+            title={actionLocked ? LICENSE_LOCKED_TIP : undefined}
+            className={`flex h-10 w-full items-center justify-center rounded-md text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${CARD_BUTTON[primary ? 'primary' : 'ghost']}`}
           >
             {action}
           </button>
@@ -280,6 +285,7 @@ function StatusCards() {
       : { tone: 'live', label: t('status.live') };
   // Toggle only works once a lower third has been shown or staged. Until then, the button opens the editor that makes one.
   const lowerReady = lowerThird.live !== null || lowerThird.staged !== null;
+  const locked = useProjectionLocked();
   const lowerBadge: { tone: BadgeTone; label: string } = lowerThird.live === null
     ? { tone: 'off', label: t('status.off') }
     : lowerThird.paused
@@ -296,10 +302,12 @@ function StatusCards() {
         emphasis={!outputs.projector}
         primary={!outputs.projector}
         action={outputs.projector ? t('card.action.projectorOff') : t('card.action.projectorOn')}
+        actionLocked={locked && !outputs.projector}
         onAction={() => dispatch({ type: 'output/toggle', output: 'projector' })} />
       <StatusWidget icon={MonitorPlay} eyebrow={t('card.lowerThird')} tone={lowerBadge.tone} badge={lowerBadge.label}
         detail={lowerThird.live ? lowerThird.live.line1 : t('card.nothingShowing')}
         action={lowerReady ? t('card.action.lowerThird') : t('card.action.lowerThirdSetup')}
+        actionLocked={locked && lowerReady && lowerThird.live === null}
         onAction={() => (lowerReady ? dispatch({ type: 'lowerThird/toggle' }) : setUi({ view: 'media' }))} />
       <StatusWidget icon={Eye} eyebrow={t('card.mirror')} tone={mirrorBadge.tone} badge={mirrorBadge.label} inlineBadge
         detail={t('card.preview')}

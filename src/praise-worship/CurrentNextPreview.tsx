@@ -5,6 +5,7 @@
 import type { ReactNode } from 'react';
 import type { PwSlide, PwType } from '../../shared/pw.js';
 import { useLive } from '../live/store';
+import { slotTitleShown } from '../../shared/live.js';
 import { welcomeBackground, type WelcomeBackground } from '../../shared/welcome-settings.js';
 import { slideFontCss } from '../../shared/text-style.js';
 import { PwSlideFace } from './PwSlideFace';
@@ -29,6 +30,7 @@ function Face({ shown, blackLabel, background }: { shown: Shown; blackLabel: str
   // The thumbnails follow the font and size the operator picks, so the change shows in the preview as it is made.
   const slideFont = useLive((s) => slideFontCss(s.state.settings.slideFont));
   const slideScale = useLive((s) => s.state.settings.slideFontScale);
+  const titleShown = useLive((s) => slotTitleShown(s.state));
   if (!shown.slide) {
     return (
       <div data-theme="default" className="absolute inset-0 grid place-items-center bg-canvas text-muted">
@@ -47,6 +49,7 @@ function Face({ shown, blackLabel, background }: { shown: Shown; blackLabel: str
       background={background}
       slideFont={slideFont}
       slideScale={slideScale}
+      hideTitle={!titleShown}
     />
   );
 }

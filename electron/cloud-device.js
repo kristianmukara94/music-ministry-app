@@ -5,6 +5,7 @@
 // The dependencies are passed in (safeStorage, the file, fetch) so the logic can be tested without Electron.
 import { checkChurchSetup, checkWebUser } from '../shared/cloud-device.js';
 import { validateSetupKey } from '../shared/church-key-generator.js';
+import { isLicenseExpiry, parseLicenseExpiry } from './license-manager.js';
 
 /** How long one request to the cloud may take before it is given up as unreachable. */
 export const REQUEST_TIMEOUT_MS = 20_000;
@@ -42,8 +43,13 @@ const serverMessage = (res) => {
   return 'Something went wrong. Try again.';
 };
 
-export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () => Date.now() }) {
+export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () => Date.now(), onLicenseChanged = () => {} }) {
   const url = (name) => `${baseUrl.replace(/\/+$/, '')}/api/${name}`;
+  // The license is kept with the link, so removing the link changes it too.
+  const forgetLink = () => {
+    file.remove();
+    onLicenseChanged();
+  };
   // How far the server's clock is ahead of this laptop's, from the Date header of the last reply. Edit times are compared on server
   // time by correcting the laptop's stamps with this. It is zero until the first reply.
   let serverOffsetMs = 0;
@@ -94,12 +100,25 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
     try {
       return JSON.parse(storage.decryptString(raw));
     } catch {
-      file.remove();
+      forgetLink();
       return 'unreadable';
     }
   };
 
   const writeRecord = (record) => file.write(storage.encryptString(JSON.stringify(record)));
+
+  /**
+   * When this laptop's license ends, with no network: an ISO string, null for perpetual (and for links made before licenses existed), or undefined
+   * when no church is linked or the record cannot be read. Unlike readRecord it never removes the file, because it runs at start-up and at Go Live.
+   */
+  function licenseExpiresAt() {
+    try {
+      const raw = file.read();
+      return raw ? parseLicenseExpiry(JSON.parse(storage.decryptString(raw)).licenseExpiresAt) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
 
   /** The state the screen shows. Only display fields: never the token. */
   const view = (record, extra = {}) => ({
@@ -141,7 +160,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
     try {
       const res = await call('device-status', { token: record.token });
       if (isRevoked(res)) {
-        file.remove();
+        forgetLink();
         return { linked: false, error: MESSAGES.revokedOnWeb };
       }
       if (!res.ok) return view(record, { offline: true, error: serverMessage(res) });
@@ -151,8 +170,11 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
         admin: res.body.adminName,
         label: res.body.deviceLabel,
         lastSeenAt: res.body.lastSeenAt,
+        // The church's license is set on the server, so a renewal on any laptop reaches this one here.
+        licenseExpiresAt: isLicenseExpiry(res.body.licenseExpiresAt) ? parseLicenseExpiry(res.body.licenseExpiresAt) : record.licenseExpiresAt,
       };
       writeRecord(updated);
+      if ((updated.licenseExpiresAt ?? null) !== (record.licenseExpiresAt ?? null)) onLicenseChanged();
       return view(updated);
     } catch (err) {
       return view(record, { offline: true, error: err.message });
@@ -166,7 +188,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
   async function unlink() {
     const record = readRecord();
     if (!record || record === 'unreadable') {
-      file.remove();
+      forgetLink();
       return { linked: false, error: null, serverConfirmed: true };
     }
     let serverConfirmed = false;
@@ -177,7 +199,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
         serverConfirmed = false;
       }
     }
-    file.remove();
+    forgetLink();
     return {
       linked: false,
       error: serverConfirmed || !baseUrl ? null : 'This computer is unlinked. The cloud could not be reached, so also unlink it on the website.',
@@ -204,11 +226,31 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
     if (record === 'unreadable') throw new Error(MESSAGES.unreadable);
     const res = await call('device-users-create', { method: 'POST', body: clean, token: record.token });
     if (isRevoked(res)) {
-      file.remove();
+      forgetLink();
       throw new Error(MESSAGES.revokedOnWeb);
     }
     if (!res.ok) throw new Error(serverMessage(res));
     return { username: res.body.user.username, temporaryPassword: res.body.temporaryPassword };
+  }
+
+  /** Renews this church's license with a setup key. The key is sent once and never kept. The new end date is saved here straight away. */
+  async function renewLicense(setupKey) {
+    const key = String(setupKey ?? '');
+    if (!validateSetupKey(key)) throw new Error(MESSAGES.setupKeyTypo);
+    if (!baseUrl) throw new Error(MESSAGES.noCloudAddress);
+    const record = readRecord();
+    if (record === null) throw new Error(MESSAGES.notLinked);
+    if (record === 'unreadable') throw new Error(MESSAGES.unreadable);
+    const res = await call('church-renew', { method: 'POST', body: { setupKey: key }, token: record.token });
+    if (isRevoked(res)) {
+      forgetLink();
+      throw new Error(MESSAGES.revokedOnWeb);
+    }
+    if (!res.ok) throw new Error(serverMessage(res));
+    const licenseExpiresAt = parseLicenseExpiry(res.body.licenseExpiresAt);
+    writeRecord({ ...record, licenseExpiresAt });
+    onLicenseChanged();
+    return { licenseExpiresAt };
   }
 
   /**
@@ -242,6 +284,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
       label: res.body.deviceLabel,
       lastSeenAt: null,
       linkedAddress: baseUrl.replace(/\/+$/, ''),
+      licenseExpiresAt: parseLicenseExpiry(res.body.licenseExpiresAt),
     });
     return {
       username: res.body.username,
@@ -273,7 +316,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
       throw Object.assign(new Error(MESSAGES.offline), { offline: true });
     }
     if (isRevoked(res)) {
-      file.remove();
+      forgetLink();
       throw Object.assign(new Error(MESSAGES.revokedOnWeb), { revoked: true });
     }
     if (!res.ok) throw new Error(serverMessage(res));
@@ -295,7 +338,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
       throw Object.assign(new Error(MESSAGES.offline), { offline: true });
     }
     if (isRevoked(res)) {
-      file.remove();
+      forgetLink();
       throw Object.assign(new Error(MESSAGES.revokedOnWeb), { revoked: true });
     }
     return res;
@@ -357,7 +400,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
   }
 
   return {
-    link, status, unlink, createWebUser, createChurchAdmin, pushSongs,
+    link, status, unlink, createWebUser, createChurchAdmin, renewLicense, licenseExpiresAt, pushSongs,
     pullPlans, createPlan, pushPlan, deletePlan, getPlan,
     serverOffset: () => serverOffsetMs,
   };

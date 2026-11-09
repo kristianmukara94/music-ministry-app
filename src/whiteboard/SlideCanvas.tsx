@@ -85,15 +85,18 @@ function TextBoxView({ box }: { box: WhiteboardTextBox }) {
 /**
  * One slide, drawn from its design. The same component draws the library thumbnails, the editor preview and the
  * projector, so a slide looks the same wherever it appears. Every size is a share of the slide's width.
- * `hiddenBox` leaves one text box out, for the editor to draw while its words are typed in place.
+ * `hiddenBox` leaves one text box out, for the editor to draw while its words are typed in place. `hideTitle` is the projector's Title switch
+ * turned off: the title goes, unless the slide has nothing else to show.
  */
-export function SlideCanvas({ slide, className = '', hiddenBox = null }: {
+export function SlideCanvas({ slide, className = '', hiddenBox = null, hideTitle = false }: {
   slide: { title: string; content: string; design: WhiteboardDesign };
   className?: string;
   hiddenBox?: number | null;
+  hideTitle?: boolean;
 }) {
   const d = slide.design;
   const items = parseSlideContent(slide.content);
+  const titleDropped = hideTitle && (items.length > 0 || d.verses.length > 0 || d.boxes.length > 0 || Boolean(d.bgImage));
   const family = TEXT_FONTS[d.fontFamily as keyof typeof TEXT_FONTS]?.css;
   const body: CSSProperties = {
     fontFamily: family,
@@ -137,7 +140,7 @@ export function SlideCanvas({ slide, className = '', hiddenBox = null }: {
           />
         ))}
       <div className="relative flex min-h-0 flex-1 flex-col justify-start" style={{ padding: '7%' }}>
-        {d.titleVisible && slide.title && (
+        {d.titleVisible && !titleDropped && slide.title && (
           <div
             data-part="title"
             className="leading-[1.1]"

@@ -136,7 +136,7 @@ export function createLinkingApi({ sql, transaction, secret, now = () => new Dat
     const at = now().toISOString();
     await sql`UPDATE device_tokens SET last_seen_at = ${at} WHERE device_id = ${device.device_id}`;
     const rows = await sql`
-      SELECT c.name AS church_name, u.display_name AS admin_name
+      SELECT c.name AS church_name, c.license_expires_at, u.display_name AS admin_name
       FROM churches c LEFT JOIN users u ON u.id = ${device.user_id}
       WHERE c.id = ${device.church_id}`;
     return json(200, {
@@ -144,6 +144,7 @@ export function createLinkingApi({ sql, transaction, secret, now = () => new Dat
       adminName: rows[0]?.admin_name ?? null,
       deviceLabel: device.device_name,
       lastSeenAt: at,
+      licenseExpiresAt: rows[0]?.license_expires_at ? new Date(rows[0].license_expires_at).toISOString() : null,
     });
   });
 

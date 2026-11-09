@@ -212,6 +212,24 @@ test('a web site that points its own domain at this laptop gets nothing', async 
   }
 });
 
+test('an expired license refuses the page, the stream and control, on both viewers', async () => {
+  for (const role of ['primary', 'secondary']) {
+    let expired = true;
+    const server = createRemoteViewServer({ distDir: makeDist(), role, isExpired: () => expired, onControl: () => assert.fail('control must not run') });
+    const port = await startOn(server);
+    try {
+      for (const target of ['/', '/remote', '/api/remote/status', '/api/remote/stream']) {
+        assert.equal(await requestAs(port, `127.0.0.1:${port}`, target), 403, `${role} ${target}`);
+      }
+      assert.equal((await request(port, { method: 'POST', path: '/api/remote/control', body: { action: 'next' } })).status, 403);
+      expired = false;
+      assert.equal(await requestAs(port, `127.0.0.1:${port}`, '/api/remote/status'), 200, 'a renewal opens it again');
+    } finally {
+      await server.stop();
+    }
+  }
+});
+
 test('one phone cannot hold open any number of live pages', async () => {
   const server = createRemoteViewServer({ distDir: makeDist() });
   const port = await startOn(server);

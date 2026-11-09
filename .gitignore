@@ -10,6 +10,9 @@ out/
 .cer
 .vercel/
 /tools/setup-key-generator
+/tools/ChurchKeyGen/bin
+/tools/ChurchKeyGen/obj
+/tools/ChurchKeyGen/publish
 
 # The display-matrix addon is built from src/native by tools/build-native.mjs, never committed.
 electron/display-matrix.node

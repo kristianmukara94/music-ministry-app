@@ -238,6 +238,16 @@ contextBridge.exposeInMainWorld('apcc', {
     createChurchAdmin: ({ setupKey, churchName, username, displayName, deviceLabel }) =>
       ipcRenderer.invoke('cloud:create-church-admin', { setupKey, churchName, username, displayName, deviceLabel }),
     defaultLabel: () => ipcRenderer.invoke('cloud:defaultLabel'),
+    renewLicense: (setupKey) => ipcRenderer.invoke('cloud:renew-license', { setupKey }),
+  },
+
+  license: {
+    get: () => ipcRenderer.invoke('license:get'),
+    onChanged: (callback) => {
+      const handler = (_event, status) => callback(status);
+      ipcRenderer.on('license:changed', handler);
+      return () => ipcRenderer.removeListener('license:changed', handler);
+    },
   },
 
   remoteView: {

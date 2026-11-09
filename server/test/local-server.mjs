@@ -14,7 +14,7 @@ import { createAdminApi } from '../lib/admin.js';
 import { tagFromQuery } from '../lib/db.js';
 import { createLinkingApi } from '../lib/linking.js';
 import { createDeviceUsersApi } from '../lib/device-users.js';
-import { createChurchSetupApi } from '../lib/church-setup.js';
+import { createChurchRenewApi, createChurchSetupApi } from '../lib/church-setup.js';
 import { createPlanEditingApi } from '../lib/plan-editing.js';
 import { createSongsSyncApi } from '../lib/songs-sync.js';
 import { createPlanSyncApi } from '../lib/plan-sync.js';
@@ -92,6 +92,7 @@ const routes = {
   'devices-list': linking.list,
   'device-users-create': deviceUsers,
   'setup-church-admin': churchSetup,
+  'church-renew': createChurchRenewApi({ sql, transaction, secret: LOCAL_SECRET }),
   'plan-get': planEditing.getPlan,
   'plan-save': planEditing.savePlan,
   'songs-list': planEditing.listSongs,

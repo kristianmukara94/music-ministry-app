@@ -36,6 +36,7 @@ export function PwSlideFace({
   background = null,
   slideFont,
   slideScale,
+  hideTitle = false,
 }: {
   slide: PwSlide;
   segmentName: string;
@@ -50,6 +51,8 @@ export function PwSlideFace({
   slideFont?: string;
   /** The operator's slide text size, as a share of normal (0.7 to 1.5). Undefined keeps the normal size. */
   slideScale?: number;
+  /** The operator's Title switch is off: no label or segment name above the text. A title card keeps its title, which is all that card says. */
+  hideTitle?: boolean;
 }) {
   const position = total > 1 ? `${index + 1} / ${total}` : '';
   // The colour is painted only when the type is Colour. With a picture or a video selected, the slide must not paint over the layer behind it,
@@ -91,7 +94,7 @@ export function PwSlideFace({
           {slide.subtitle && <p className="mt-[1.125cqw] text-[2.2cqw] tracking-wide text-muted">{slide.subtitle}</p>}
         </div>
         <div className="absolute top-[2.813cqw] left-[6cqw] right-[6cqw] z-10 flex items-center justify-between">
-          <span className="text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{segmentName}</span>
+          <span className="text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{!hideTitle && segmentName}</span>
         </div>
         <div className="absolute bottom-[2.813cqw] left-[6cqw] right-[6cqw] z-10 flex items-center justify-between">
           <span className="text-[1.6cqw] text-muted">{footer}</span>
@@ -107,7 +110,7 @@ export function PwSlideFace({
         {layers}
         {/* The panel tint lifts a prayer off a plain background; a picture or a video is shown as it is, without it. */}
         {!background?.media && <div className="absolute inset-0 bg-panel" />}
-        <div className="absolute top-[3.938cqw] left-[6cqw] text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{slideLine(slide.label, charsPerLine(0.88, 1.6 * 19.2))}</div>
+        {!hideTitle && <div className="absolute top-[3.938cqw] left-[6cqw] text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{slideLine(slide.label, charsPerLine(0.88, 1.6 * 19.2))}</div>}
         {/* Full size, at the slide's top: the shared top for normal slides, the centred top for a short one (see shared/text-area.js). */}
         <p
           className={`absolute inset-x-[6cqw] font-serif text-[5cqw] whitespace-pre-line ${slide.placeholder ? 'text-muted italic' : 'font-semibold'}`}
@@ -130,8 +133,8 @@ export function PwSlideFace({
   return (
     <div data-theme="default" className={rootClass} style={colorStyle}>
       {layers}
-      <div className="absolute top-[3.938cqw] left-[6cqw] text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{slideLine(slide.label, charsPerLine(0.88, 1.6 * 19.2))}</div>
-      <div className="absolute top-[3.938cqw] right-[6cqw] text-[1.6cqw] text-muted">{segmentName}</div>
+      {!hideTitle && <div className="absolute top-[3.938cqw] left-[6cqw] text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{slideLine(slide.label, charsPerLine(0.88, 1.6 * 19.2))}</div>}
+      {!hideTitle && <div className="absolute top-[3.938cqw] right-[6cqw] text-[1.6cqw] text-muted">{segmentName}</div>}
       {/* Lyrics: the same rule as the prayer, at the slide's top. */}
       <p className="absolute inset-x-[6cqw] font-serif text-[5cqw] font-semibold whitespace-pre-line" style={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slide.align ?? 'center', lineHeight: LINEUP_LINE_HEIGHT, fontFamily: slideFont, fontSize: scaledSize('5cqw', slideScale) }}>
         {slideText(slide.text, charsPerLine(0.88, 5 * 19.2))}

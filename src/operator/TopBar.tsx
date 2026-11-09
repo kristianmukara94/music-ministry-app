@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { CircleStop, Eye, House, Megaphone, Moon, MonitorPlay, PauseCircle, PlayCircle, type LucideIcon } from 'lucide-react';
 import { dispatch, useLive } from '../live/store';
+import { LICENSE_LOCKED_TIP, useProjectionLocked } from '../live/license';
 import { useT } from '../i18n/strings';
 import { setUi, useUi } from '../state/ui';
 import { liveCommands } from './actions';
@@ -84,14 +85,17 @@ function ControlButton({
 function MasterSwitch({ on, label, title, onClick }: { on: boolean; label: string; title: string; onClick: () => void }) {
   const t = useT();
   const state = on ? t('status.live') : t('status.off');
+  // Only the way on is closed. A switch that is live can always be turned off.
+  const locked = useProjectionLocked() && !on;
   return (
     <button
       type="button"
       role="switch"
       aria-checked={on}
-      title={title}
+      title={locked ? LICENSE_LOCKED_TIP : title}
       onClick={onClick}
-      className={`${BASE} ${NO_DRAG} rounded-full border px-3.5 py-1.5 tracking-wide ${
+      disabled={locked}
+      className={`${BASE} ${NO_DRAG} rounded-full border px-3.5 py-1.5 tracking-wide ${locked ? DISABLED : ''} ${
         on
           ? 'border-ok/50 bg-ok/15 text-ok hover:bg-ok/25'
           : 'border-danger/50 bg-danger/15 text-danger hover:bg-danger/25'
@@ -146,6 +150,7 @@ export function TopBar() {
   const liveKind = projector.live.kind;
   const previewOpen = useUi((s) => s.previewOpen);
   const promptChoice = useUi((s) => s.projectorPromptChoice);
+  const lowerLocked = useProjectionLocked() && lowerThird.live === null;
 
   // In a narrower window the overlay toggles drop to a second row. The divider that groups the two clusters would then be left hanging
   // at the end of the first row, so it is shown only while both clusters share a row.
@@ -217,8 +222,9 @@ export function TopBar() {
             icon={MonitorPlay}
             label={t('top.lowerThird')}
             tone={TOGGLE}
-            title={lowerThird.live !== null || lowerThird.staged !== null ? undefined : t('top.tipOpenLowerThird')}
+            title={lowerLocked ? LICENSE_LOCKED_TIP : lowerThird.live !== null || lowerThird.staged !== null ? undefined : t('top.tipOpenLowerThird')}
             active={lowerThird.live !== null}
+            disabled={lowerLocked}
             onClick={() =>
               lowerThird.live !== null || lowerThird.staged !== null ? dispatch({ type: 'lowerThird/toggle' }) : setUi({ view: 'media' })
             }

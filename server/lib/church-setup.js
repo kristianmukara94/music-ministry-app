@@ -4,6 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { displayCode, hashToken, normaliseSetupKey, temporaryPassword } from './auth.js';
 import { ApiError, insertUser } from './admin.js';
+import { bearerToken, deviceFrom } from './device.js';
 import { checkDeviceLabel, issueDeviceToken } from './linking.js';
 import { checkChurchName, checkDisplayName, checkUsername } from './rules.js';
 import { clientAddress } from './client-address.js';
@@ -12,6 +13,8 @@ import { hit } from './rate-limit.js';
 export const SETUP_LIMIT = { requests: 5, windowMs: 10 * 60 * 1000 };
 // One message for every key that cannot be used: malformed, unknown, already used, or expired. So a caller cannot tell them apart.
 export const KEY_MESSAGE = 'That setup key is not valid or has already been used.';
+export const PERPETUAL_MESSAGE = 'This church already has a perpetual license. Timed keys cannot be applied to perpetual accounts.';
+const NOT_LINKED = 'This laptop is not linked to a church. Link it again.';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -41,6 +44,65 @@ async function freeDisplayCode(tx) {
     if (!taken.length) return code;
   }
   throw new Error('no free display code');
+}
+
+/**
+ * The end date after a renewal of a timed license. A perpetual key (no days, or 0) makes it perpetual. Time on a license still running is added
+ * to its end, so renewing early loses nothing. An expired license starts from now.
+ */
+function renewedExpiry(days, current, at) {
+  if (!(days > 0)) return null;
+  return licenseExpiry(days, new Date(current) > at ? new Date(current) : at);
+}
+
+/**
+ * Renews a church's license from a linked laptop, using a one-time setup key. The church comes from the device token, never from the request.
+ * The linking admin must still be active. Any failure rolls back, so the key stays usable.
+ */
+export function createChurchRenewApi({ sql, transaction, secret, now = () => new Date() }) {
+  return async function renewChurch(event) {
+    try {
+      if (event.httpMethod !== 'POST') return json(405, { error: 'Use POST.' }, { Allow: 'POST' });
+      const token = bearerToken(event.headers);
+      if (!token) return json(401, { error: NOT_LINKED });
+      // Limited per laptop, by a keyed hash of its token, so a linked laptop cannot be used to guess keys quickly.
+      const gate = await hit(sql, `renew:${hashToken(token, secret)}`, SETUP_LIMIT.requests, SETUP_LIMIT.windowMs / 1000, now());
+      if (!gate.allowed) {
+        return json(429, { error: 'Too many attempts. Wait ten minutes and try again.' }, { 'Retry-After': String(gate.retryAfterSeconds) });
+      }
+      const device = await deviceFrom({ sql, secret }, token);
+      if (!device) return json(401, { error: NOT_LINKED });
+      const key = normaliseSetupKey(parseJson(event)?.setupKey);
+      if (!key) throw new ApiError(400, KEY_MESSAGE);
+
+      const licenseExpiresAt = await transaction(async (tx) => {
+        const linked = device.user_id ? await tx`SELECT role, disabled FROM users WHERE id = ${device.user_id} AND church_id = ${device.church_id} FOR UPDATE` : [];
+        if (!linked.length || linked[0].role !== 'admin' || linked[0].disabled) throw new ApiError(403, 'Only an active admin can renew the license from this laptop.');
+
+        const keyHash = hashToken(key, secret);
+        const rows = await tx`SELECT expires_at, used_at, license_days FROM setup_keys WHERE key_hash = ${keyHash} FOR UPDATE`;
+        const row = rows[0];
+        if (!row || row.used_at || new Date(row.expires_at) <= now()) throw new ApiError(400, KEY_MESSAGE);
+
+        // Locked, so two renewals at once both count.
+        const church = await tx`SELECT license_expires_at FROM churches WHERE id = ${device.church_id} FOR UPDATE`;
+        const current = church[0]?.license_expires_at ?? null;
+        // Thrown inside the transaction, so the key stays unused and can go to another church.
+        if (current === null && row.license_days > 0) throw new ApiError(400, PERPETUAL_MESSAGE);
+        const next = renewedExpiry(row.license_days, current, now());
+        await tx`UPDATE churches SET license_expires_at = ${next} WHERE id = ${device.church_id}`;
+        // The key's row is the record of the renewal: when it was used, and by which church.
+        await tx`UPDATE setup_keys SET used_at = ${now().toISOString()}, church_id = ${device.church_id} WHERE key_hash = ${keyHash}`;
+        return next;
+      });
+      return json(200, { ok: true, licenseExpiresAt });
+    } catch (err) {
+      if (err instanceof ApiError) return json(err.status, { error: err.message });
+      // Logs the kind of error only: never the key or the token.
+      console.error(`[church-renew] ${err.name}`);
+      return json(500, { error: 'Something went wrong. Try again.' });
+    }
+  };
 }
 
 export function createChurchSetupApi({ sql, transaction, secret, now = () => new Date() }) {
@@ -73,7 +135,8 @@ export function createChurchSetupApi({ sql, transaction, secret, now = () => new
 
         const churchId = randomUUID();
         const code = await freeDisplayCode(tx);
-        await tx`INSERT INTO churches (id, display_code, name) VALUES (${churchId}, ${code}, ${churchName})`;
+        const licenseExpiresAt = licenseExpiry(row.license_days, now());
+        await tx`INSERT INTO churches (id, display_code, name, license_expires_at) VALUES (${churchId}, ${code}, ${churchName}, ${licenseExpiresAt})`;
         await tx`INSERT INTO audit_log (church_id, actor_user_id, action) VALUES (${churchId}, NULL, 'church.created')`;
         const admin = await insertUser(tx, {
           churchId,
@@ -86,7 +149,7 @@ export function createChurchSetupApi({ sql, transaction, secret, now = () => new
         });
         const token = await issueDeviceToken(tx, { churchId, userId: admin.id, label: deviceLabel, secret, now });
         await tx`UPDATE setup_keys SET used_at = ${now().toISOString()}, church_id = ${churchId} WHERE key_hash = ${keyHash}`;
-        return { token, code, licenseExpiresAt: licenseExpiry(row.license_days, now()) };
+        return { token, code, licenseExpiresAt };
       });
 
       // The raw token and the password leave the server in this one response only.
