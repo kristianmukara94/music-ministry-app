@@ -41,6 +41,17 @@ jobs:
       - name: Increment Patch Version
         shell: bash
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull origin main --rebase
+
+          # A re-run starts from the pushed commit, so an earlier attempt's release commit only shows up after the pull. That version is already
+          # bumped and tagged, and bumping again would fail, so the build goes ahead on it.
+          if git log -1 --format=%s | grep -q '^chore: release v'; then
+            echo "Already bumped by an earlier attempt: $(git log -1 --format=%s). Skipping the bump."
+            exit 0
+          fi
+
           LATEST_TAG=$(git describe --tags --abbrev=0)
           LATEST=${LATEST_TAG#v}
           CURRENT=$(node -p "require('./package.json').version")
@@ -56,9 +67,6 @@ jobs:
           IFS=. read -r MAJOR MINOR PATCH <<< "$LATEST"
           NEW="$MAJOR.$MINOR.$((PATCH + 1))"
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull origin main --rebase
           npm version "$NEW" --no-git-tag-version
           git add package.json package-lock.json
           git commit -m "chore: release v$NEW [skip ci]"
