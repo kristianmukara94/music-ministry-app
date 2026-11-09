@@ -13,6 +13,11 @@ export const SETUP_LIMIT = { requests: 5, windowMs: 10 * 60 * 1000 };
 // One message for every key that cannot be used: malformed, unknown, already used, or expired. So a caller cannot tell them apart.
 export const KEY_MESSAGE = 'That setup key is not valid or has already been used.';
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** When the licence ends, as an ISO string, or null when it is perpetual (license_days is null or 0). */
+const licenseExpiry = (days, from) => (days > 0 ? new Date(from.getTime() + days * DAY_MS).toISOString() : null);
+
 const json = (statusCode, body, extraHeaders = {}) => ({
   statusCode,
   headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extraHeaders },
@@ -62,7 +67,7 @@ export function createChurchSetupApi({ sql, transaction, secret, now = () => new
       const temporary = temporaryPassword();
       const created = await transaction(async (tx) => {
         const keyHash = hashToken(key, secret);
-        const rows = await tx`SELECT expires_at, used_at FROM setup_keys WHERE key_hash = ${keyHash} FOR UPDATE`;
+        const rows = await tx`SELECT expires_at, used_at, license_days FROM setup_keys WHERE key_hash = ${keyHash} FOR UPDATE`;
         const row = rows[0];
         if (!row || row.used_at || new Date(row.expires_at) <= now()) throw new ApiError(400, KEY_MESSAGE);
 
@@ -81,7 +86,7 @@ export function createChurchSetupApi({ sql, transaction, secret, now = () => new
         });
         const token = await issueDeviceToken(tx, { churchId, userId: admin.id, label: deviceLabel, secret, now });
         await tx`UPDATE setup_keys SET used_at = ${now().toISOString()}, church_id = ${churchId} WHERE key_hash = ${keyHash}`;
-        return { token, code };
+        return { token, code, licenseExpiresAt: licenseExpiry(row.license_days, now()) };
       });
 
       // The raw token and the password leave the server in this one response only.
@@ -93,6 +98,7 @@ export function createChurchSetupApi({ sql, transaction, secret, now = () => new
         displayName,
         deviceLabel,
         temporaryPassword: temporary,
+        licenseExpiresAt: created.licenseExpiresAt,
       });
     } catch (err) {
       if (err instanceof ApiError) return json(err.status, { error: err.message });
