@@ -277,6 +277,56 @@ export function tabCounts(plans) {
   };
 }
 
+/** A day as YYYY-MM-DD on the reader's own calendar, not in UTC, so a plan does not turn Past hours before the day ends. */
+export function localDate(now = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** Whether a plan's date is 'upcoming' or 'past'. A plan dated today is still upcoming. Both are YYYY-MM-DD, so they compare as text. */
+export const planTiming = (isoDate, today) => (isoDate >= today ? 'upcoming' : 'past');
+
+/** The list's layout. Anything else, such as a blank or an old stored value, is the list. */
+export const viewModeOf = (value) => (value === 'grid' ? 'grid' : 'list');
+
+const byName = (a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }) || a.id.localeCompare(b.id);
+const SORTERS = {
+  'date-desc': (a, b) => b.liturgical_date.localeCompare(a.liturgical_date) || byName(a, b),
+  'updated-desc': (a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at) || byName(a, b),
+  'title-asc': byName,
+};
+export const DEFAULT_SORT = 'date-desc';
+
+/** A sorted copy of the plans. An order this does not know is the default. */
+export const sortPlans = (plans, order = DEFAULT_SORT) => [...plans].sort(SORTERS[order] ?? SORTERS[DEFAULT_SORT]);
+
+const COPY_SUFFIX = ' (copy)';
+const MAX_PLAN_NAME = 120;
+
+/** The name of a copy, kept within the longest name a plan can have. */
+export const copyName = (name) => `${name.slice(0, MAX_PLAN_NAME - COPY_SUFFIX.length).trimEnd()}${COPY_SUFFIX}`;
+
+/** The plan-create body for a copy of a plan (as plan-get returns it) under a new id. A plan with no type copies as the Mass plan it opens as. */
+export const duplicateRequest = (plan, id) => ({
+  id,
+  name: copyName(plan.name),
+  date: plan.date,
+  kind: plan.kind === 'pw' ? 'pw' : 'mass',
+  items: plan.items,
+});
+
+/**
+ * The lines of a plan's setlist, in the editor's order: { label, title, key } for each place holding a song or typed text. `filled` is what
+ * massFromItems or praiseFromItems returned for the plan, `rows` the same rows, and `songs` the songs plan-get sent. Notes are not included.
+ */
+export function setlistEntries({ segments, extra = [] }, rows, songs, nameOf = (row) => row.name) {
+  const entry = (label, { songId, text }) => {
+    if (songId) return { label, title: titleOf(songs, songId), key: songs.find((s) => s.id === songId)?.key ?? '' };
+    return text ? { label, title: text, key: '' } : null;
+  };
+  return [...rows.map((row) => entry(nameOf(row), segments[idOf(row)] ?? {})), ...extra.map((item) => entry('Also in this plan', item))].filter(Boolean);
+}
+
 /** The rows the list shows: the chosen tab, then the search text matched against the name. */
 export function visiblePlans(plans, { tab = 'all', query = '' } = {}) {
   const q = query.trim().toLowerCase();

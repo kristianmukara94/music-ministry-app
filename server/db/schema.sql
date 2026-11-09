@@ -28,7 +28,10 @@ CREATE TABLE plans (
   name          TEXT NOT NULL,
   liturgical_date DATE NOT NULL,
   body          JSONB NOT NULL,
-  updated_at    TIMESTAMPTZ NOT NULL
+  updated_at    TIMESTAMPTZ NOT NULL,
+  -- When a church laptop last held this version: set by a laptop's create, push or pull, and cleared by a web create or save.
+  -- A database created before it needs server/db/migrations/2026-11-09-plans-synced-at.sql, run before the server that reads it is deployed.
+  synced_at     TIMESTAMPTZ
 );
 CREATE INDEX plans_church ON plans (church_id, liturgical_date);
 

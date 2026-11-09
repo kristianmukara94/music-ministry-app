@@ -799,3 +799,372 @@ textarea::placeholder {
     min-width: 0;
   }
 }
+
+/* Plans page: the search hint, the layout switch, the plan cards in list or grid, the badges and the ··· menu. */
+.shortcut-hint {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid var(--border-input);
+  border-radius: 4px;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+.view-toggle {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-control);
+  background: var(--input-bg);
+}
+
+.view-toggle button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.view-toggle button:hover {
+  color: var(--heading);
+}
+
+.view-toggle button[aria-pressed='true'] {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.plan-list-status {
+  min-height: 20px;
+  margin: -8px 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--muted);
+}
+
+.plan-list-status.is-error {
+  color: var(--danger);
+}
+
+.plan-list {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.plan-list:focus {
+  outline: 0;
+}
+
+.plan-list.is-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+
+.plan-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 230px 44px;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 16px 18px 16px 22px;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.plan-card:last-child {
+  border-bottom: 0;
+}
+
+.plan-card:hover {
+  background: var(--primary-wash);
+}
+
+.plan-list.is-grid .plan-card {
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: start;
+  align-content: start;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.plan-list.is-grid .plan-card:hover {
+  border-color: var(--primary);
+}
+
+.plan-list.is-grid .plan-card-date {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.plan-card-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--input-bg);
+  color: var(--eyebrow);
+}
+
+.plan-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.plan-card-link {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--heading);
+  overflow-wrap: anywhere;
+}
+
+/* The whole card opens the plan. The ··· button sits above this, so a link never wraps a button. */
+.plan-card-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.plan-card-link:focus-visible {
+  outline: 0;
+}
+
+.plan-card-link:focus-visible::after {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.plan-card-updated {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.plan-card-date {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.plan-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.plan-badge,
+.badge-pill {
+  padding: 2px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.plan-badge.is-kind {
+  border-color: var(--gold-edge);
+  background: var(--gold-wash);
+  color: var(--eyebrow);
+}
+
+.plan-badge.is-upcoming {
+  border-color: var(--primary);
+  background: var(--primary-wash);
+  color: var(--heading);
+}
+
+.plan-badge.is-past {
+  border-color: var(--border-input);
+  color: var(--muted);
+}
+
+.badge-pill.badge-synced {
+  border-color: var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--pill-text);
+}
+
+.plan-menu-button {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.plan-menu-button:hover,
+.plan-menu-button[aria-expanded='true'] {
+  background: var(--border);
+  color: var(--heading);
+}
+
+.plan-menu {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  width: 220px;
+  padding: 6px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(8, 12, 20, 0.7);
+}
+
+.plan-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-menu button:hover:not(:disabled),
+.plan-menu button:focus-visible {
+  background: var(--primary-wash);
+  color: var(--heading);
+}
+
+.plan-menu button:focus-visible {
+  outline-offset: -2px;
+}
+
+.plan-menu button.is-danger,
+.plan-menu button.is-danger:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.plan-menu hr {
+  width: 100%;
+  margin: 6px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+button.danger {
+  height: 42px;
+  padding: 0 16px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+button.danger:hover:not(:disabled) {
+  background: rgba(252, 165, 165, 0.12);
+}
+
+.setlist-print {
+  display: none;
+}
+
+@media (max-width: 820px), (pointer: coarse) {
+  .shortcut-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .plan-list:not(.is-grid) .plan-card {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    padding: 14px 12px 14px 16px;
+  }
+  .plan-list:not(.is-grid) .plan-card-date {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+/* The setlist, printed or saved as a PDF on white paper. Only while a setlist is being exported, so printing the Plans page itself still works. */
+@media print {
+  @page {
+    margin: 18mm;
+  }
+  body.is-printing-setlist {
+    background: #fff;
+    color: #000;
+  }
+  body.is-printing-setlist .shell,
+  body.is-printing-setlist .plan-menu,
+  body.is-printing-setlist dialog {
+    display: none !important;
+  }
+  body.is-printing-setlist .setlist-print {
+    display: block;
+    color: #000;
+  }
+  .setlist-print .setlist-eyebrow {
+    margin: 0 0 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .setlist-print h1 {
+    margin: 0;
+    font-family: var(--font-serif);
+    font-size: 26px;
+  }
+  .setlist-print .setlist-when {
+    margin: 6px 0 20px;
+    font-size: 13px;
+  }
+  .setlist-print table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .setlist-print th,
+  .setlist-print td {
+    padding: 7px 8px;
+    border-bottom: 1px solid #999;
+    text-align: left;
+    vertical-align: top;
+  }
+  .setlist-print tr {
+    break-inside: avoid;
+  }
+}

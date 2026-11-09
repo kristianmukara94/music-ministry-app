@@ -7,7 +7,7 @@ import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { createPlanSyncApi, CREATE_LIMIT, NOT_SAVED, PUSH_LIMIT } from '../lib/plan-sync.js';
+import { createPlanSyncApi, markPulled, CREATE_LIMIT, NOT_SAVED, PUSH_LIMIT } from '../lib/plan-sync.js';
 import { createPlanEditingApi } from '../lib/plan-editing.js';
 import { createApi } from '../lib/handlers.js';
 import { hashPassword, hashToken } from '../lib/auth.js';
@@ -515,4 +515,80 @@ test('a laptop push keeps the language and Mass time set on the web, which the l
   const after = (await serverRow(id)).body;
   assert.equal(after.language, 'CEB');
   assert.equal(after.massTime, '08:00');
+});
+
+// ---- When a laptop last held a plan ----
+
+const syncedAt = async (id) => {
+  const value = (await pg.query('SELECT synced_at FROM plans WHERE id = $1', [id])).rows[0].synced_at;
+  return value ? new Date(value).toISOString() : null;
+};
+const CLOCK = '2026-10-27T12:00:00.000Z';
+const listed = async (cookie, id) => JSON.parse((await web().plans({ httpMethod: 'GET', headers: { cookie } })).body).plans.find((p) => p.id === id);
+
+test('a plan made on the web is not synced, and one made by a laptop is', async () => {
+  const cookie = await cookieFor('planner');
+  const onWeb = randomUUID();
+  const onLaptop = randomUUID();
+  assert.equal((await sync().createPlan({ httpMethod: 'POST', headers: { cookie }, body: JSON.stringify(body({ id: onWeb })) })).statusCode, 201);
+  assert.equal((await sync().createPlan({ httpMethod: 'POST', headers: headers(laptopA), body: JSON.stringify(body({ id: onLaptop })) })).statusCode, 201);
+  assert.equal(await syncedAt(onWeb), null);
+  assert.equal(await syncedAt(onLaptop), CLOCK);
+});
+
+test('an accepted push marks the plan synced, and a stale push does not', async () => {
+  const id = await plantPlan(CHURCH_A);
+  const stale = await sync().pushPlans(pushReq(laptopA, [body({ id, baseUpdatedAt: '2026-10-27T09:00:00.000Z' })]));
+  assert.equal(JSON.parse(stale.body).results[0].status, 'conflict');
+  assert.equal(await syncedAt(id), null);
+  const fresh = await sync().pushPlans(pushReq(laptopA, [body({ id, baseUpdatedAt: '2026-10-27T10:00:00.000Z' })]));
+  assert.equal(JSON.parse(fresh.body).results[0].status, 'accepted');
+  assert.equal(await syncedAt(id), CLOCK);
+});
+
+test('a save on the web clears the mark, the list says so, and a laptop pull sets it again', async () => {
+  const id = await plantPlan(CHURCH_A);
+  await sync().pushPlans(pushReq(laptopA, [body({ id, baseUpdatedAt: '2026-10-27T10:00:00.000Z' })]));
+  const cookie = await cookieFor('planner');
+  assert.equal((await listed(cookie, id)).synced_at, CLOCK);
+  clock = new Date('2026-10-27T13:00:00Z');
+  const saved = await editing().savePlan({ httpMethod: 'POST', headers: { cookie }, body: JSON.stringify({ id, baseUpdatedAt: CLOCK, items: [item(1, 1)] }) });
+  assert.equal(saved.statusCode, 200);
+  assert.equal((await listed(cookie, id)).synced_at, null);
+  clock = new Date('2026-10-27T14:00:00Z');
+  assert.equal((await sync().pullPlans(pullReq({ headers: headers(laptopA) }))).statusCode, 200);
+  assert.equal((await listed(cookie, id)).synced_at, '2026-10-27T14:00:00.000Z');
+});
+
+test('a pull changes no updated time, so the laptop cursors do not move', async () => {
+  const id = await plantPlan(CHURCH_A);
+  await sync().pullPlans(pullReq({ headers: headers(laptopA) }));
+  assert.equal(new Date((await serverRow(id)).updated_at).toISOString(), '2026-10-27T10:00:00.000Z');
+});
+
+test("a person pulling on the web marks nothing, and a laptop's pull marks only its own church", async () => {
+  const mine = await plantPlan(CHURCH_A);
+  const theirs = await plantPlan(CHURCH_B);
+  const cookie = await cookieFor('planner');
+  await sync().pullPlans(pullReq({ headers: { cookie } }));
+  assert.equal(await syncedAt(mine), null);
+  await sync().pullPlans(pullReq({ headers: headers(laptopA) }));
+  assert.equal(await syncedAt(mine), CLOCK);
+  assert.equal(await syncedAt(theirs), null);
+});
+
+test('a plan saved on the web after a pull page was read is not marked by that page', async () => {
+  const id = await plantPlan(CHURCH_A);
+  await pg.query('UPDATE plans SET updated_at = $1 WHERE id = $2', ['2026-10-27T11:00:00.000Z', id]);
+  await markPulled(sql, CHURCH_A, [{ id, updatedAt: '2026-10-27T10:00:00.000Z' }], CLOCK);
+  assert.equal(await syncedAt(id), null);
+});
+
+test('the synced_at migration adds the column to an older database and is safe to run twice', async () => {
+  const migration = fs.readFileSync(path.join(here, '..', 'db', 'migrations', '2026-11-09-plans-synced-at.sql'), 'utf8');
+  await pg.exec('ALTER TABLE plans DROP COLUMN synced_at;');
+  await pg.exec(migration);
+  await pg.exec(migration);
+  const columns = (await pg.query("SELECT is_nullable FROM information_schema.columns WHERE table_name = 'plans' AND column_name = 'synced_at'")).rows;
+  assert.deepEqual(columns, [{ is_nullable: 'YES' }]);
 });

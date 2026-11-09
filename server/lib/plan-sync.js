@@ -211,6 +211,17 @@ export async function pullPlans(sql, churchId, cursor) {
   return { plans: page.map(planOut), cursor: page.length ? cursorOf(page[page.length - 1]) : cursor ?? null, more };
 }
 
+/**
+ * Records that a laptop has received a page of pulled plans. A plan saved on the web after the page was read is newer than the page, so it
+ * stays unsynced. `plans` is the page, oldest first.
+ */
+export async function markPulled(sql, churchId, plans, at) {
+  if (!plans.length) return;
+  await sql`
+    UPDATE plans SET synced_at = ${at}
+    WHERE church_id = ${churchId} AND id = ANY(${plans.map((p) => p.id)}::uuid[]) AND updated_at <= ${plans[plans.length - 1].updatedAt}::timestamptz`;
+}
+
 /** Pushes one plan in its own transaction. Returns accepted, conflict (with the server's version) or error (a plain message). */
 export async function pushOnePlan({ sql, transaction, churchId, userId, input, songIds, now }) {
   const id = typeof input?.id === 'string' ? input.id.toLowerCase() : '';
@@ -250,7 +261,7 @@ export async function pushOnePlan({ sql, transaction, churchId, userId, input, s
       // The language and Mass time are set on the web; a laptop push keeps them.
       await tx`
         UPDATE plans SET name = ${fields.name}, liturgical_date = ${fields.date},
-          body = ${JSON.stringify({ kind: fields.kind, ...planDetails(row.body), items: kept })}::jsonb, updated_at = ${at}
+          body = ${JSON.stringify({ kind: fields.kind, ...planDetails(row.body), items: kept })}::jsonb, updated_at = ${at}, synced_at = ${at}
         WHERE id = ${id} AND church_id = ${churchId}`;
       return { id, status: 'accepted', updatedAt: at };
     });
@@ -309,11 +320,11 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
       if (!linked.length || linked[0].disabled || !EDITING_ROLES.includes(linked[0].role)) {
         return { response: json(403, { error: 'Only a planner or admin can create plans from this laptop.' }) };
       }
-      return { churchId: device.church_id, userId: device.user_id, key: `device:${hashToken(token, secret)}` };
+      return { churchId: device.church_id, userId: device.user_id, key: `device:${hashToken(token, secret)}`, fromLaptop: true };
     }
     const gate = await webEditor(event, 'POST');
     if (gate.response) return { response: gate.response };
-    return { churchId: gate.who.churchId, userId: gate.who.userId, key: `user:${gate.who.userId}` };
+    return { churchId: gate.who.churchId, userId: gate.who.userId, key: `user:${gate.who.userId}`, fromLaptop: false };
   }
 
   /**
@@ -341,8 +352,8 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
         const existing = await tx`SELECT id FROM plans WHERE id = ${id}`;
         if (existing.length) throw new ApiError(409, NOT_SAVED);
         await tx`
-          INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at)
-          VALUES (${id}, ${churchId}, ${fields.name}, ${fields.date}, ${JSON.stringify({ kind: fields.kind, items })}::jsonb, ${at})`;
+          INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at, synced_at)
+          VALUES (${id}, ${churchId}, ${fields.name}, ${fields.date}, ${JSON.stringify({ kind: fields.kind, items })}::jsonb, ${at}, ${maker.fromLaptop ? at : null})`;
         await tx`INSERT INTO audit_log (church_id, actor_user_id, action, target_plan_id) VALUES (${churchId}, ${userId}, 'plan.created', ${id})`;
       });
     } catch (err) {
@@ -411,7 +422,9 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
     const who = await reader(event);
     if (!who) return json(401, { error: 'Sign in first.' });
     const cursor = event.queryStringParameters?.cursor || null;
-    return json(200, await pullPlans(sql, who.churchId, cursor));
+    const page = await pullPlans(sql, who.churchId, cursor);
+    if (who.source === 'device') await markPulled(sql, who.churchId, page.plans, now().toISOString());
+    return json(200, page);
   });
 
   /**

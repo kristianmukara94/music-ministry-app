@@ -203,7 +203,7 @@ export function createApi({ sql, secret, now = () => new Date() }) {
     // Every signed-in role can list the church's plans. The body is not sent, so the list stays light. `kind` says which editor
     // a plan opens in, and is read from the body without sending it.
     const rows = await sql`
-      SELECT id, name, liturgical_date, updated_at, body->>'kind' AS kind FROM plans
+      SELECT id, name, liturgical_date, updated_at, synced_at, body->>'kind' AS kind FROM plans
       WHERE church_id = ${session.churchId} AND COALESCE(body->>'deleted', '') <> 'true'
       ORDER BY liturgical_date, name, id`;
     const plans = rows.map((r) => ({
@@ -211,6 +211,7 @@ export function createApi({ sql, secret, now = () => new Date() }) {
       name: r.name,
       liturgical_date: dateText(r.liturgical_date),
       updated_at: new Date(r.updated_at).toISOString(),
+      synced_at: r.synced_at ? new Date(r.synced_at).toISOString() : null,
       kind: r.kind ?? null,
     }));
     return json(200, plans.length ? { plans } : { plans, message: 'No plans yet. Plans are created on the church laptop and appear here after sync.' });

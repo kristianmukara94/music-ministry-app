@@ -95,7 +95,7 @@ test('the list does not send the plan body: only the list fields are in each ent
   const cookie = await cookieFor('planner', 'K7QM-4XD2');
   const plans = JSON.parse((await web().plans(event({ cookie }))).body).plans;
   for (const plan of plans) {
-    assert.deepEqual(Object.keys(plan).sort(), ['id', 'kind', 'liturgical_date', 'name', 'updated_at']);
+    assert.deepEqual(Object.keys(plan).sort(), ['id', 'kind', 'liturgical_date', 'name', 'synced_at', 'updated_at']);
   }
   assert.equal(JSON.stringify(plans).includes('segments'), false, 'no segments in the list');
 });

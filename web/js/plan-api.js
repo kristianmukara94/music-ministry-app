@@ -46,6 +46,9 @@ export const savePlan = (payload) => request('plan-save', { method: 'POST', body
 /** Creates a plan with the UUID the browser made. Returns { plan } or throws the server's plain message. */
 export const createPlan = (plan) => request('plan-create', { method: 'POST', body: plan });
 
+/** Deletes a plan for everyone. The laptops learn of it on their next pull. */
+export const deletePlan = (id) => request('plan-delete', { method: 'POST', body: { id } });
+
 /** The church's linked laptops, its recent sync activity, and whether this user may link or unlink (canManage). */
 export const listDevices = () => request('devices-list');
 
