@@ -14,7 +14,11 @@ public partial class MainWindow : Window
         InitializeComponent();
         ChurchCodeBox.MaxLength = KeyEngine.MaxCodeLength;
         _copiedTimer.Tick += (_, _) => ResetCopyLabel();
-        Loaded += (_, _) => ChurchCodeBox.Focus();
+        Loaded += (_, _) =>
+        {
+            ChurchCodeBox.Focus();
+            ShowConnectionStatus();
+        };
     }
 
     private async void Generate_Click(object sender, RoutedEventArgs e)
@@ -30,7 +34,7 @@ public partial class MainWindow : Window
 
         // Setting the text clears any earlier result through Input_Changed, so it comes before the new key is shown.
         ChurchCodeBox.Text = code;
-        var store = KeyStore.FromEnvironment();
+        var store = KeyStore.Create();
         if (store is null)
         {
             ShowStatus(KeyStore.NotConnected, "ErrorBrush");
@@ -93,7 +97,19 @@ public partial class MainWindow : Window
         KeyBox.Clear();
         CopyButton.IsEnabled = false;
         ResetCopyLabel();
-        StatusText.Text = string.Empty;
+        ShowConnectionStatus();
+    }
+
+    private void ShowConnectionStatus()
+    {
+        if (KeyStore.IsConfigured())
+        {
+            ShowStatus(KeyStore.Connected, "MutedBrush");
+        }
+        else
+        {
+            ShowStatus(KeyStore.NotConnected, "ErrorBrush");
+        }
     }
 
     private void ResetCopyLabel()

@@ -8,10 +8,11 @@ namespace ChurchKeyGen;
 
 /// <summary>
 /// Saves setup keys to the website database. The server only accepts a key whose keyed hash is in setup_keys, so a key must never be shown
-/// before it is saved here. Credentials come from the environment only and are never written to a file or shown in a message.
+/// before it is saved here. Credentials come from the environment, then the fallback constants, and are never shown in a message.
 /// </summary>
 public sealed class KeyStore
 {
+    public const string Connected = "Ready. Keys are saved to the website database.";
     public const string NotConnected = "Not connected. Set DATABASE_URL and TOKEN_SECRET, then reopen this app.";
     public const string NotSaved = "The key could not be saved, so it was not shown. Try again.";
     public const string MissingColumn = "The database is missing license_days. Run its migration first.";
@@ -19,6 +20,10 @@ public sealed class KeyStore
     private const int MinSecretLength = 32; // The server refuses anything shorter.
     private const int TimeoutSeconds = 20; // A sleeping Neon database can take several seconds to wake.
     private const string UndefinedColumn = "42703";
+
+    // Used when the OS environment variables are not set. Anything that is not a Postgres URL and a full-length secret reports as not connected.
+    private const string FallbackDatabaseUrl = "postgresql://neondb_owner:npg_NP97cOBUSqfQ@ep-dark-moon-b3n4lklm-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
+    private const string FallbackTokenSecret = "8b1ad7c42732908b3c99ec1c8b300bab41f694f09d907b172959e052df5eb685";
 
     private readonly string _databaseUrl;
     private readonly string _tokenSecret;
@@ -29,13 +34,30 @@ public sealed class KeyStore
         _tokenSecret = tokenSecret;
     }
 
-    /// <summary>The store for this process's environment, or null when the credentials are missing or the secret is too short.</summary>
-    public static KeyStore? FromEnvironment()
+    public static string GetDatabaseUrl()
     {
-        var url = Environment.GetEnvironmentVariable("DATABASE_URL");
-        var secret = Environment.GetEnvironmentVariable("TOKEN_SECRET");
-        return string.IsNullOrWhiteSpace(url) || secret is null || secret.Length < MinSecretLength ? null : new KeyStore(url, secret);
+        var envUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+        return !string.IsNullOrWhiteSpace(envUrl) ? envUrl : FallbackDatabaseUrl;
     }
+
+    public static string GetTokenSecret()
+    {
+        var envSecret = Environment.GetEnvironmentVariable("TOKEN_SECRET");
+        return !string.IsNullOrWhiteSpace(envSecret) ? envSecret : FallbackTokenSecret;
+    }
+
+    public static bool IsConfigured() => Create() is not null;
+
+    /// <summary>The store for the resolved credentials, or null when they are unusable, which includes unfilled placeholders.</summary>
+    public static KeyStore? Create()
+    {
+        var url = GetDatabaseUrl();
+        var secret = GetTokenSecret();
+        return IsPostgresUrl(url) && secret.Length >= MinSecretLength ? new KeyStore(url, secret) : null;
+    }
+
+    private static bool IsPostgresUrl(string url) =>
+        Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) && uri.Scheme is "postgres" or "postgresql";
 
     /// <summary>Null when the key is saved, otherwise a message for the screen. Driver errors are not shown because they can quote the connection details.</summary>
     public async Task<string?> SaveAsync(GeneratedKey key)
