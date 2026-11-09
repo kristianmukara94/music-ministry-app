@@ -20,3 +20,5 @@ electron/display-matrix.node
 src/native/build/
 .vercel
 .env*
+/tools/ChurchKeyGen
+/tools
