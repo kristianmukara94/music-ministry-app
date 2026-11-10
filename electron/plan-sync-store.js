@@ -22,6 +22,7 @@ const LAPTOP_BLOCKS = ['introductory', 'word', 'eucharist', 'communion', 'conclu
 const SEGMENT_TYPE = { song: 'song', reading: 'scripture', rite: 'prayer' };
 const DEFAULT_GROUP_NAMES = Object.fromEntries(DEFAULT_TEMPLATE.groups.map((g) => [g.key, g.name]));
 const DEFAULT_SEGMENT_NAMES = Object.fromEntries(DEFAULT_TEMPLATE.segments.map((s) => [s.key, s.name]));
+const DEFAULT_SEGMENT_CONTENT = Object.fromEntries(DEFAULT_TEMPLATE.segments.map((s) => [s.key, s.content]));
 export const HOLD_MESSAGE = 'Some items in this plan cannot be shown on this laptop yet, so the plan is not sent.';
 
 const holdKey = (uuid) => `hold:${uuid}`;
@@ -69,6 +70,15 @@ export function sameMassRow(row, item, date, hymnByUuid, noteIdOf = () => null) 
   if (fresh.module === 'notes') return noteSource(row.sourceId)?.id === Number(fresh.sourceId);
   if (fresh.sourceId !== row.sourceId) return false;
   return row.module !== 'custom' || fresh.label === row.label;
+}
+
+/**
+ * The segment a praise item belongs to. The website records the step on each item (slotId). An item without one says it in its key: a
+ * segment's songs are numbered after the segment's key ("worship.1", "worship.2"), on the laptop and on the website alike.
+ */
+export function praiseSegmentKeyOf(item) {
+  if (typeof item.slotId === 'string' && item.slotId !== '') return item.slotId;
+  return String(item.key).replace(/(\.\d+)+$/, '');
 }
 
 /** The praise segment's laptop fields for a new praise item from the server, or null when there is none to make. */
@@ -257,8 +267,11 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
   function contentFor(row, items, planUuid) {
     const first = items[0];
     if (first.kind === 'song') {
-      const hymnIds = items.map((i) => (i.songId ? hymnByUuid(i.songId)?.id : null)).filter((id) => id !== null && id !== undefined);
-      const local = row?.content?.kind === 'song' ? row.content : {};
+      // A segment holds a song once, as it does when songs are added on the laptop.
+      const hymnIds = [...new Set(items.map((i) => (i.songId ? hymnByUuid(i.songId)?.id : null)).filter((id) => id !== null && id !== undefined))];
+      // A segment new to the laptop starts as the lineup's own slot of that key does (Worship takes three songs), so it is the same card as one made here.
+      const template = DEFAULT_SEGMENT_CONTENT[row?.key ?? first.key];
+      const local = row?.content?.kind === 'song' ? row.content : template?.kind === 'song' ? template : {};
       return { kind: 'song', hymnIds, maxSongs: Math.max(local.maxSongs ?? 1, hymnIds.length, 1), category: local.category ?? null };
     }
     // Only a known reading name can be a lectionary slot. Anything else, such as a reference, would be refused when the plan is sent.
@@ -272,7 +285,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
   function nameFor(row, items) {
     if (row?.id) return row.name;
     const first = items[0];
-    const templated = DEFAULT_SEGMENT_NAMES[first.key];
+    const templated = DEFAULT_SEGMENT_NAMES[row?.key ?? first.key];
     if (templated) return templated;
     if (first.kind === 'song') return (first.songId && hymnByUuid(first.songId)?.title) || 'Song';
     if (first.kind === 'reading') return first.text || 'Scripture';
@@ -301,12 +314,25 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
       id = Number(run('INSERT INTO pw_sessions (name, liturgical_date, groups, uuid, updated_at) VALUES (?, ?, ?, ?, ?)',
         sp.name, sp.date, JSON.stringify(groupsWith([], sp.items)), sp.id, sp.updatedAt).lastInsertRowid);
     }
-    const localEntries = praiseEntries(segmentRows(id), hymnUuidOf);
+    const rows = segmentRows(id);
+    const localEntries = praiseEntries(rows, hymnUuidOf);
     const byKey = new Map(localEntries.map((e) => [e.key, e]));
+    const bySegmentKey = new Map(rows.map((r) => [r.key, r]));
+    // One new segment for each segment key the server's songs name, so the songs of one step arrive as one card.
+    const newSongSegments = new Map();
     const resolve = (item) => {
       const kept = byKey.get(item.key);
       if (kept && praiseItemFits(kept.row, item)) return kept.row;
-      return praiseRowFrom(item, hymnByUuid);
+      const fresh = praiseRowFrom(item, hymnByUuid);
+      if (!fresh || item.kind !== 'song') return fresh;
+      // A song joins the segment it is for: the card the laptop already has under that key, or one new card for all of that step's songs. The
+      // website gives a step's first song the step's own key and numbers the rest ("worship", "worship.2"), and the laptop numbers them all
+      // ("worship.1"), so the keys alone do not match once either side has changed the songs.
+      const segmentKey = praiseSegmentKeyOf(item);
+      const home = bySegmentKey.get(segmentKey);
+      if (home && praiseItemFits(home, item)) return home;
+      if (!newSongSegments.has(segmentKey)) newSongSegments.set(segmentKey, { id: null, key: segmentKey });
+      return newSongSegments.get(segmentKey);
     };
     const { entries, unresolved } = mergeEntries(localEntries, sp.items, resolve);
     // A segment that several server items point at (a segment with several songs) is written once, with all its songs.
@@ -324,7 +350,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
       const values = kept
         ? { key: row.key, group: row.group, name: row.name, type: row.type, minutes: row.minutes, content: row.content,
             leader: row.leader, arrangement: row.arrangement, cues: row.cues, notes: row.notes }
-        : { key: owned ? row.key : items[0].key,
+        : { key: row.key ?? items[0].key,
             group: items[0].group,
             name: owned ? row.name : nameFor(row, items),
             type: SEGMENT_TYPE[items[0].kind],

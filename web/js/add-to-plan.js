@@ -5,6 +5,7 @@ import { MASS_PLAN, PRAISE_PLAN } from './sample-data.js';
 import { slotName } from './mass-language.js';
 import { defaultSongStep, itemsWithSong, savePayload, shortDate, songSteps } from './plan-model.js';
 
+// `praise` is the earlier Praise & Worship editor's template, for the plans it laid out. Every other one is read as the laptop's lineup.
 const TEMPLATES = { mass: MASS_PLAN, praise: PRAISE_PLAN };
 
 const dialog = document.getElementById('add-plan-dialog');

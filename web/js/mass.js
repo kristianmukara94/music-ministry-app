@@ -2,7 +2,8 @@
 // drawer that fills the selected row. The structure comes from the template and mass-slots.js. What
 // is chosen, typed and noted comes from the saved plan on the server, and Save sends the whole plan in one request. Any row can hold any song
 // from the church's list, typed text and Content Hub entries, and more than one of them. A rite also takes an optional note for the operator.
-import { LANGUAGE_CODE, MASS_PLAN } from './sample-data.js';
+// Songs are chosen in the song picker, which opens on Holy Mass and on the row's own category.
+import { MASS_PLAN } from './sample-data.js';
 import { SLOT_COUNT } from './mass-slots.js';
 import { MASS_LANGUAGES, languageName, massLanguageOf, sectionName, slotName } from './mass-language.js';
 import { isMassTime, massTimesFor, timeLabel } from './mass-schedule.js';
@@ -11,8 +12,9 @@ import { guard } from './auth.js';
 import { getPlan, listSongs, savePlan } from './plan-api.js';
 import { usedHubIds } from './content-hub.js';
 import { entryListHtml, entrySummaryHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
+import { openSongPicker } from './song-picker.js';
+import { pickerCategoryLabel } from './lineup-templates.js';
 import {
-  NO_SONGS,
   describeEntries,
   VIEW_ONLY,
   dateLabel,
@@ -22,7 +24,6 @@ import {
   savePayload,
   songsForEditor,
   saveButton,
-  songOptions,
   slotEntries,
   statusText,
   withEntry,
@@ -66,9 +67,6 @@ function fresh(saved) {
   return {
     sel: FIRST_ROW,
     mode: 'list',
-    // Every song is offered in every slot. This narrows the list to the slot's usual category, when the planner wants that.
-    categoryOnly: false,
-    query: '',
     segments: saved?.segments ?? {},
     notes: saved?.notes ?? {},
     extra: saved?.extra ?? [],
@@ -255,17 +253,9 @@ function addBody(cur) {
             </div>`;
   const panel = list
     ? `
-              <div style="display: flex; flex-direction: column; gap: 12px">
-                <label style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg)">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                  <input id="song-search" type="search" aria-label="Search songs" placeholder="Search all songs" value="${esc(state.query)}" ${DISABLED(canEdit)} style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 14px">
-                </label>
-                ${cur.category ? `<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px">
-                  <span style="font-size: 13px; color: var(--text)">${state.categoryOnly ? 'Category: ' + esc(cur.category) : 'All songs'}</span>
-                  <button type="button" data-action="toggle-category" style="height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--focus);font-size:13px;font-weight:600;cursor:pointer">${state.categoryOnly ? 'Show all songs' : 'Only ' + esc(cur.category)}</button>
-                </div>` : ''}
-                <div id="song-options" style="display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 12px; overflow: hidden"></div>
-                <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">The list comes from the church laptop. Add or edit songs in the desktop app.</p>
+              <div class="picker-open">
+                <button type="button" data-action="open-picker" ${DISABLED(canEdit)} class="btn-primary">Add song</button>
+                <p>Opens the song list on Holy Mass${cur.pickerCategory ? `, at ${esc(pickerCategoryLabel('mass', cur.pickerCategory))}` : ''}. Praise &amp; Worship songs are under their own tab. The list comes from the church laptop.</p>
               </div>`
     : `
               <div style="display: flex; flex-direction: column; gap: 12px">
@@ -303,37 +293,27 @@ function renderDrawer() {
           <h2 class="section-title" style="font-size: 24px">${esc(cur.name)}</h2>
           <span style="font-size: 13px; color: var(--text)">${esc(subOf(cur))}</span>
         </div>${entryListHtml(cur.entries, cur.id, canEdit)}${addBody(cur)}${cur.kind === 'rite' ? riteNoteBody(cur) : ''}`;
-  renderOptions();
 }
 
-/** The songs offered for the selected step: every song, or only its category when asked, narrowed by the search box. */
-function renderOptions() {
-  const box = document.getElementById('song-options');
-  if (!box) return;
-  const picker = songs.filter((s) => !s.removed);
-  if (picker.length === 0) {
-    box.innerHTML = `<div style="padding: 18px 14px; font-size: 13px; color: var(--muted); background: var(--input-bg)">${esc(NO_SONGS)}</div>`;
-    return;
-  }
-  const cur = stepOf(state.sel);
-  const shown = songOptions(picker, { category: cur.category, allSongs: !state.categoryOnly, query: state.query });
-  if (shown.length === 0) {
-    const message = state.query.trim() ? 'No songs match the search. Clear it, or type text.' : 'No songs in this category yet. Show all songs, or type text.';
-    box.innerHTML = `<div style="padding: 18px 14px; font-size: 13px; color: var(--muted); background: var(--input-bg)">${message}</div>`;
-    return;
-  }
-  box.innerHTML = shown.map((song) => {
-    const chosen = cur.entries.some((entry) => entry.songId === song.id);
-    const key = song.key ? ` · Key ${esc(song.key)}` : '';
-    return `
-                    <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--input-bg)">
-                      <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
-                        <span style="font-size: 14px; font-weight: 700">${esc(song.title)}</span>
-                        <span style="font-size: 12px; color: var(--muted)">${esc(song.category)} · ${LANGUAGE_CODE[song.language] ?? esc(song.language)}${key}</span>
-                      </span>
-                      <button type="button" data-song="${esc(song.id)}" aria-pressed="${chosen}" ${DISABLED(canEdit)} class="${chosen ? 'btn-chosen' : BTN_QUIET}" style="height:34px;padding:0 14px;font-size:13px;font-weight:700">${chosen ? 'Added' : 'Add'}</button>
-                    </div>`;
-  }).join('');
+/**
+ * Opens the song picker for the selected row, on the Holy Mass tab and the row's own category (the Kyrie row opens on Kyrie). Add puts a song
+ * at the end of the row; pressing Added takes it out again.
+ */
+function openPicker() {
+  const id = state.sel;
+  const cur = stepOf(id);
+  openSongPicker({
+    songs: songs.filter((s) => !s.removed),
+    serviceType: 'mass',
+    category: cur.pickerCategory || 'all',
+    slotName: cur.name,
+    canEdit,
+    chosenIds: () => new Set(slotEntries(state.segments[id]).map((entry) => entry.songId).filter(Boolean)),
+    onToggle: (songId) => {
+      const at = slotEntries(state.segments[id]).findIndex((entry) => entry.songId === songId);
+      changeSegments(at >= 0 ? withoutEntry(state.segments, id, at) : withEntry(state.segments, id, { songId, contentType: 'song' }));
+    },
+  });
 }
 
 function render() {
@@ -421,13 +401,15 @@ document.querySelector('main').addEventListener('click', (event) => {
   if (!target || target.disabled) return;
   if (target.dataset.pick) {
     state.sel = target.dataset.pick;
-    state.query = '';
     state.noteSaved = false;
-    state.mode = stepOf(state.sel).kind === 'song' ? 'list' : 'text';
+    const picked = stepOf(state.sel);
+    state.mode = picked.kind === 'song' ? 'list' : 'text';
     renderSteps();
     renderDrawer();
     // On a phone the drawer sits below the steps, so bring it into view.
     if (window.matchMedia('(max-width: 820px)').matches) document.getElementById('drawer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Choose on an empty song row goes straight to the song list, already on that row's category.
+    if (picked.kind === 'song' && !picked.value) openPicker();
   } else if (target.dataset.lang) {
     if (target.dataset.lang === state.language) return;
     setDetail({ language: target.dataset.lang });
@@ -440,17 +422,12 @@ document.querySelector('main').addEventListener('click', (event) => {
   } else if (target.dataset.mode) {
     state.mode = target.dataset.mode;
     renderDrawer();
-  } else if (target.dataset.song) {
-    // Add puts the song at the end of the row; pressing Added takes it out again.
-    const at = slotEntries(state.segments[state.sel]).findIndex((entry) => entry.songId === target.dataset.song);
-    changeSegments(at >= 0 ? withoutEntry(state.segments, state.sel, at) : withEntry(state.segments, state.sel, { songId: target.dataset.song, contentType: 'song' }));
+  } else if (target.dataset.action === 'open-picker') {
+    openPicker();
   } else if (target.dataset.removeEntry !== undefined) {
     changeSegments(withoutEntry(state.segments, target.dataset.for, Number(target.dataset.removeEntry)));
   } else if (target.dataset.hub) {
     openHub(target.dataset.hub);
-  } else if (target.dataset.action === 'toggle-category') {
-    state.categoryOnly = !state.categoryOnly;
-    renderDrawer();
   } else if (target.dataset.action === 'use-text') {
     const text = document.getElementById('typed-text').value.trim();
     if (text) changeSegments(withEntry(state.segments, state.sel, { text }));
@@ -505,12 +482,6 @@ document.getElementById('language').addEventListener('keydown', (event) => {
 document.getElementById('drawer').addEventListener('change', (event) => {
   if (event.target.dataset.role !== 'entry-key') return;
   changeSegments(withEntryKey(state.segments, event.target.dataset.for, Number(event.target.dataset.index), event.target.value));
-});
-
-document.getElementById('drawer').addEventListener('input', (event) => {
-  if (event.target.id !== 'song-search') return;
-  state.query = event.target.value;
-  renderOptions();
 });
 
 const user = await guard();

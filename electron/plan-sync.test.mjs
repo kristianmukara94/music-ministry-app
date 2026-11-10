@@ -839,3 +839,90 @@ test('a plan with an impossible date is never sent; a blank name is sent with a 
   assert.equal(payload('2026-11-15', '  ').name, 'Untitled Plan');
   assert.equal(payload('2026-11-15', ' Sunday ').name, 'Sunday');
 });
+
+// ---- The Praise & Worship lineup, shared with the website ----
+
+const HYMN_C = '33333333-3333-4333-8333-333333333333';
+
+test("a Praise & Worship plan made on the website arrives as the laptop's own lineup, with a step's songs on one card, and round-trips", async () => {
+  const webModel = await import('../web/js/plan-model.js');
+  const { DEFAULT_TEMPLATE, groupOrdered } = await import('../shared/pw.js');
+  const segs = webModel.praiseSegments(webModel.PRAISE_TEMPLATE);
+  for (const [uuid, title] of [[HYMN_A, 'Praise to the Lord'], [HYMN_B, 'Be Thou My Vision'], [HYMN_C, 'Here I Am to Worship']]) await seedServerSong(uuid, title);
+  const l = laptop();
+  for (const [uuid, title] of [[HYMN_A, 'Praise to the Lord'], [HYMN_B, 'Be Thou My Vision'], [HYMN_C, 'Here I Am to Worship']]) seedHymn(l.db, uuid, title);
+  const hymnId = (uuid) => l.db.prepare('SELECT id FROM hymns WHERE uuid = ?').get(uuid).id;
+
+  // The website fills Joyful Song with one song and Worship with two, and saves the plan as its editor does.
+  let segments = webModel.withEntry({}, 'joyful_song', { songId: HYMN_A });
+  segments = webModel.withEntry(webModel.withEntry(segments, 'worship', { songId: HYMN_B }), 'worship', { songId: HYMN_C });
+  const items = webModel.praiseToItems({ segments, notes: {}, extra: [], present: new Set() }, segs);
+  const created = await serverCreate(laptopToken, { kind: 'pw', name: 'Prayer Night', items });
+
+  const status = await l.engine.runOnce();
+  assert.equal(status.counts.held ?? 0, 0);
+  const session = l.db.prepare('SELECT id, groups FROM pw_sessions WHERE uuid = ?').get(created.id);
+  assert.deepEqual(JSON.parse(session.groups), DEFAULT_TEMPLATE.groups);
+  const rows = () => l.db.prepare('SELECT * FROM pw_segments WHERE session_id = ? ORDER BY display_order').all(session.id);
+  const lineup = groupOrdered(DEFAULT_TEMPLATE.segments, DEFAULT_TEMPLATE.groups);
+  assert.deepEqual(
+    rows().map((r) => [r.segment_key, r.group_key, r.name, r.type, r.minutes]),
+    lineup.map((t) => [t.key, t.group, t.name, t.type, t.minutes]),
+    'the twelve cards of the laptop lineup, in order',
+  );
+  const content = (key) => JSON.parse(rows().find((r) => r.segment_key === key).content_ref);
+  assert.deepEqual(content('joyful_song'), { kind: 'song', hymnIds: [hymnId(HYMN_A)], maxSongs: 1, category: null });
+  assert.deepEqual(content('worship'), { kind: 'song', hymnIds: [hymnId(HYMN_B), hymnId(HYMN_C)], maxSongs: 3, category: null }, 'both Worship songs are on the Worship card');
+  // Every card starts as the laptop's own template has it.
+  for (const t of lineup.filter((s) => !['joyful_song', 'worship'].includes(s.key))) assert.deepEqual(content(t.key), t.content, t.key);
+
+  // The operator names a leader and the laptop sends the plan. The website still reads both songs under Worship.
+  serverNow = new Date(T2);
+  l.db.prepare("UPDATE pw_segments SET leader = 'Ana' WHERE session_id = ? AND segment_key = 'worship'").run(session.id);
+  l.db.prepare('UPDATE pw_sessions SET updated_at = ? WHERE id = ?').run(T2, session.id);
+  await l.engine.runOnce();
+  const pushed = (await serverRow(created.id)).body.items;
+  assert.deepEqual(pushed.map((i) => webModel.praiseFromItems([i], segs).extra.length), pushed.map(() => 0), 'every item still belongs to a slot of the lineup');
+  const onWeb = webModel.praiseFromItems(pushed, segs);
+  assert.deepEqual(webModel.slotEntries(onWeb.segments.worship).map((e) => e.songId), [HYMN_B, HYMN_C]);
+  assert.deepEqual(webModel.slotEntries(onWeb.segments.joyful_song).map((e) => e.songId), [HYMN_A]);
+  assert.equal(webModel.praiseRow(segs.find((s) => s.id === 'gospel_acclamation'), onWeb, []).value, '', 'the lectionary slot is still its own default');
+
+  // The website swaps the second Worship song and saves. The laptop keeps one Worship card, and the leader stays.
+  const at = webModel.slotEntries(onWeb.segments.worship).findIndex((e) => e.songId === HYMN_C);
+  const swapped = { ...onWeb, segments: webModel.withEntry(webModel.withoutEntry(onWeb.segments, 'worship', at), 'worship', { songId: HYMN_A }) };
+  serverNow = new Date(T3);
+  await serverEdit(laptopToken, created.id, { name: 'Prayer Night', items: webModel.praiseToItems(swapped, segs) });
+  serverNow = new Date('2026-10-27T13:00:00.000Z');
+  await l.engine.runOnce();
+  assert.equal(rows().length, 12, 'no extra card is made for the new song');
+  assert.deepEqual(content('worship').hymnIds, [hymnId(HYMN_B), hymnId(HYMN_A)]);
+  assert.equal(rows().find((r) => r.segment_key === 'worship').leader, 'Ana');
+});
+
+test('a second laptop pulling a plan the first one sent gets the same cards, not one card for each song', async () => {
+  await seedServerSong(HYMN_A, 'Praise to the Lord');
+  await seedServerSong(HYMN_B, 'Be Thou My Vision');
+  // As the first laptop sends a Worship card with two songs: each song numbered after the card's key.
+  const created = await serverCreate(laptopToken, {
+    kind: 'pw',
+    items: [
+      { key: 'worship.1', group: 'praise', order: 1, kind: 'song', songId: HYMN_A, minutes: 15 },
+      { key: 'worship.2', group: 'praise', order: 2, kind: 'song', songId: HYMN_B },
+      { key: 'custom_abc123', group: 'praise', order: 3, kind: 'rite', minutes: 5 },
+    ],
+  });
+  const l = laptop();
+  seedHymn(l.db, HYMN_A, 'Praise to the Lord');
+  seedHymn(l.db, HYMN_B, 'Be Thou My Vision');
+  await l.engine.runOnce();
+  const session = l.db.prepare('SELECT id FROM pw_sessions WHERE uuid = ?').get(created.id);
+  const rows = l.db.prepare('SELECT segment_key, name, type, minutes, content_ref FROM pw_segments WHERE session_id = ? ORDER BY display_order').all(session.id);
+  assert.deepEqual(rows.map((r) => [r.segment_key, r.name, r.type, r.minutes]), [['worship', 'Worship', 'song', 15], ['custom_abc123', 'Prayer', 'prayer', 5]]);
+  assert.equal(JSON.parse(rows[0].content_ref).hymnIds.length, 2);
+  // Sent back, the songs keep the keys they came with.
+  serverNow = new Date(T2);
+  l.db.prepare('UPDATE pw_sessions SET name = ?, updated_at = ? WHERE id = ?').run('Night, renamed', T2, session.id);
+  await l.engine.runOnce();
+  assert.deepEqual((await serverRow(created.id)).body.items.map((i) => i.key), ['worship.1', 'worship.2', 'custom_abc123']);
+});

@@ -18,6 +18,7 @@ import {
   planTiming,
   praiseFromItems,
   praiseSegments,
+  praiseTemplateFor,
   savePayload,
   setlistEntries,
   shortDate,
@@ -243,7 +244,8 @@ function duplicatePlan(plan) {
 /** What the setlist holds: the filled places of the plan, named as its editor names them. */
 function setlistOf(plan, songs) {
   if (plan.kind === 'pw') {
-    const segments = praiseSegments(PRAISE_PLAN);
+    // The laptop's lineup, or the earlier editor's layout for a plan it laid out: the same choice the editor makes.
+    const segments = praiseSegments(praiseTemplateFor(plan.items, PRAISE_PLAN));
     return setlistEntries(praiseFromItems(plan.items, segments), segments, songs);
   }
   const rows = massRows(MASS_PLAN);

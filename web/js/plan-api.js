@@ -37,8 +37,18 @@ export const listPlans = () => request('plans');
 /** One plan with its structure, and whether this user may edit it. */
 export const getPlan = (id) => request('plan-get', { query: `?id=${encodeURIComponent(id)}` });
 
-/** The church's songs, for the song picker. An empty list is a normal answer. */
-export const listSongs = () => request('songs-list');
+/**
+ * The church's songs, for the song picker. An empty list is a normal answer. With no filter it is the whole list, which the editors load once and
+ * narrow on the page. `serviceType` ('mass' or 'praise_worship') and `category` (a picker category such as 'joyful', see lineup-templates.js) ask
+ * the server for one part of it.
+ */
+export function listSongs({ serviceType, category } = {}) {
+  const params = new URLSearchParams();
+  if (serviceType) params.set('serviceType', serviceType);
+  if (category) params.set('category', category);
+  const query = params.toString();
+  return request('songs-list', query ? { query: `?${query}` } : {});
+}
 
 /** Which of the church's plans use each song: { usage: { songId: [planId, …] } }. */
 export const songUsage = () => request('song-usage');

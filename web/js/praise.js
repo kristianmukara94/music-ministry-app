@@ -1,31 +1,36 @@
-// Praise & Worship editor: the segments with their minute steppers, the readiness panel, and the printed setlist. Changing a segment's minutes
-// updates the section totals, the total time, the time bars and the readiness checks without redrawing the list, so what is being typed in an open
-// panel stays. Any segment takes any song from the church's list, typed text and Content Hub entries, and more than one of them, through the panel that
-// opens under it. The segments and the minutes come from the saved plan on the server. Every value written into markup goes through esc().
-import { LANGUAGE_CODE, PRAISE_PLAN } from './sample-data.js';
+// Praise & Worship editor: the segments with their minute steppers, the readiness panel, and the printed setlist. The segments are the church
+// laptop's own lineup (lineup-templates.js): the same twelve slots, keys and groups, so a plan fills the same slots on both. A plan the website's
+// earlier editor laid out keeps that layout. Changing a segment's minutes updates the section totals, the total time, the time bars and the
+// readiness checks without redrawing the list, so what is being typed in an open panel stays. Any segment takes any song from the church's list,
+// typed text and Content Hub entries, and more than one of them, through the panel that opens under it. Songs are chosen in the song picker, which
+// opens on Praise & Worship and on the segment's own category. The minutes and what is chosen come from the saved plan on the server. Every value
+// written into markup goes through esc().
+import { PRAISE_PLAN } from './sample-data.js';
 import { esc, mountSidebar } from './shell.js';
 import { guard } from './auth.js';
 import { getPlan, listSongs, savePlan } from './plan-api.js';
 import { usedHubIds } from './content-hub.js';
 import { entryListHtml, entrySummaryHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
+import { openSongPicker } from './song-picker.js';
+import { pickerCategoryLabel } from './lineup-templates.js';
 import {
   CONTENT_TYPES,
   MAX_MINUTES,
   MIN_MINUTES,
-  NO_SONGS,
+  PRAISE_TEMPLATE,
   VIEW_ONLY,
   dateLabel,
   durationLabel,
   praiseBreakdown,
   praiseFromItems,
   praiseRow,
+  praiseTemplateFor,
   praiseToItems,
   savePayload,
   setlistEntries,
   songsForEditor,
   praiseSegments,
   saveButton,
-  songOptions,
   slotEntries,
   statusText,
   withChoice,
@@ -37,7 +42,9 @@ import {
 mountSidebar();
 
 const planId = new URLSearchParams(location.search).get('id');
-const SEGMENTS = praiseSegments(PRAISE_PLAN);
+// The laptop's lineup, until a plan the earlier editor laid out is loaded (see load).
+let TEMPLATE = PRAISE_TEMPLATE;
+let SEGMENTS = praiseSegments(TEMPLATE);
 
 let plan = null;
 let canEdit = false;
@@ -49,11 +56,12 @@ function fresh(saved) {
     segments: saved?.segments ?? {},
     notes: saved?.notes ?? {},
     extra: saved?.extra ?? [],
+    // The segments the saved plan has an item for, so a card taken out on the laptop is not put back by a save here.
+    present: saved?.present ?? new Set(),
     contentHubItems: structuredClone(plan?.contentHubItems ?? []),
     open: null,
     // 'list' or 'text': which way of adding the open panel shows.
     panelMode: 'list',
-    query: '',
     dirty: false,
     // Counts the changes made, so a change made while a save is running is not marked as saved.
     edits: 0,
@@ -67,7 +75,7 @@ const FIELD_LABEL = 'display:flex;flex-direction:column;gap:6px;font-size:13px;f
 const FIELD_INPUT = 'height:44px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;font-weight:400;outline:0';
 
 const rowOf = (id) => praiseRow(SEGMENTS.find((s) => s.id === id), state, songs);
-const compute = () => praiseBreakdown(PRAISE_PLAN, SEGMENTS, state, songs);
+const compute = () => praiseBreakdown(TEMPLATE, SEGMENTS, state, songs);
 const setlist = () => setlistEntries(state, SEGMENTS, songs);
 
 function markEdited() {
@@ -110,10 +118,10 @@ function panelFor(row) {
   const tab = (mode, label, on) => `<button type="button" role="tab" data-panel-mode="${mode}" aria-selected="${on}" class="panel-tab${on ? ' is-on' : ''}">${label}</button>`;
   const adder = list
     ? `
-            <label style="display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg)">
-              <input data-role="panel-search" type="search" aria-label="Search songs" placeholder="Search all songs" value="${esc(state.query)}" ${DISABLED(canEdit)} style="flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font-size:14px">
-            </label>
-            <div data-role="panel-options" style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:12px;overflow:hidden">${optionsFor(row)}</div>`
+            <div class="picker-open">
+              <button type="button" data-add-song="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-primary">Add song</button>
+              <p>Opens the song list on Praise &amp; Worship${row.pickerCategory ? `, at ${esc(pickerCategoryLabel('praise_worship', row.pickerCategory))}` : ''}. Holy Mass songs are under their own tab.</p>
+            </div>`
     : row.kind === 'reading'
       ? `
             <label style="${FIELD_LABEL}">
@@ -151,29 +159,31 @@ function panelFor(row) {
           </div>`;
 }
 
-/** The songs offered in a segment's panel: the church's list, narrowed by the search box. */
-function optionsFor(row) {
-  const picker = songs.filter((s) => !s.removed);
-  if (picker.length === 0) return `<div style="padding:18px 14px;font-size:13px;color:var(--muted);background:var(--input-bg)">${esc(NO_SONGS)}</div>`;
-  const shown = songOptions(picker, { query: state.query });
-  if (shown.length === 0) return `<div style="padding:18px 14px;font-size:13px;color:var(--muted);background:var(--input-bg)">No songs match the search.</div>`;
-  return shown.map((song) => {
-    const chosen = row.entries.some((entry) => entry.songId === song.id);
-    const key = song.key ? ` · Key ${esc(song.key)}` : '';
-    return `
-            <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--input-bg)">
-              <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
-                <span style="font-size:14px;font-weight:700">${esc(song.title)}</span>
-                <span style="font-size:12px;color:var(--muted)">${esc(LANGUAGE_CODE[song.language] ?? song.language)}${key}</span>
-              </span>
-              <button type="button" data-song="${esc(song.id)}" data-for="${esc(row.id)}" aria-pressed="${chosen}" ${DISABLED(canEdit)} class="${chosen ? 'btn-chosen' : 'btn-quiet'}" style="height:34px;padding:0 14px;font-size:13px;font-weight:700">${chosen ? 'Added' : 'Add'}</button>
-            </div>`;
-  }).join('');
+/**
+ * Opens the song picker for a segment, on the Praise & Worship tab and the segment's own category (Joyful Song opens on Joyful / Fast Praise).
+ * Add puts a song at the end of the segment; pressing Added takes it out again. A key belongs to the song it was chosen for.
+ */
+function openPicker(id) {
+  const row = rowOf(id);
+  openSongPicker({
+    songs: songs.filter((s) => !s.removed),
+    serviceType: 'praise_worship',
+    category: row.pickerCategory || 'all',
+    slotName: row.name,
+    canEdit,
+    chosenIds: () => new Set(slotEntries(state.segments[id]).map((entry) => entry.songId).filter(Boolean)),
+    onToggle: (songId) => {
+      const at = slotEntries(state.segments[id]).findIndex((entry) => entry.songId === songId);
+      state.segments = at >= 0 ? withoutEntry(state.segments, id, at) : withEntry(state.segments, id, { songId, contentType: 'song' });
+      markEdited();
+      render();
+    },
+  });
 }
 
 /** What a step shows once it is filled: each song with its key badge, a reading's tag, or a Content Hub or typed item. */
 function contentHtml(row) {
-  if (!row.value) return row.kind === 'rite' ? '' : 'Nothing chosen yet';
+  if (!row.value) return row.kind === 'rite' ? '' : esc(row.emptyLabel ?? 'Nothing chosen yet');
   if (row.kind === 'reading' && row.entries.length === 1 && row.entries[0].source === 'text') return `<span class="content-tag">${esc(row.tag)}</span>`;
   return entrySummaryHtml(row.entries);
 }
@@ -181,7 +191,7 @@ function contentHtml(row) {
 function renderSegments(view) {
   document.getElementById('segments').innerHTML = view.sections.map((section) => {
     const rows = section.rows.map((r) => {
-      const sub = r.kind === 'song' ? 'Song · ' + r.hint : r.kind === 'reading' ? 'Reading · ' + r.hint : r.hint;
+      const sub = [r.kind === 'song' ? 'Song' : r.kind === 'reading' ? 'Reading' : '', r.hint].filter(Boolean).join(' · ');
       const valueStyle = r.kind === 'rite' && !r.value ? 'display:none' : r.value ? 'display:flex;flex-direction:column;align-items:flex-start;gap:6px;color:var(--text);font-weight:600' : 'color:var(--muted)';
       const btnLabel = r.value ? 'Change' : r.kind === 'rite' ? 'Add' : 'Choose';
       const needs = (r.kind === 'song' || r.kind === 'reading') && !r.value && !r.optional;
@@ -189,7 +199,7 @@ function renderSegments(view) {
       const open = state.open === r.id;
       return `
               <div class="editor-row" style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 18px; border-bottom: 1px solid var(--border)">
-                <span style="flex: none; width: 28px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--muted)">${esc(r.id.padStart(2, '0'))}</span>
+                <span style="flex: none; width: 28px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--muted)">${String(r.n).padStart(2, '0')}</span>
                 <span style="flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; gap: 3px">
                   <span style="font-size: 15px; font-weight: 700">${esc(r.name)}</span>
                   <span style="font-size: 12px; color: var(--muted)">${esc(sub)}</span>
@@ -206,15 +216,31 @@ function renderSegments(view) {
     return `
           <div style="border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden">
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; background: var(--input-bg); border-bottom: 1px solid var(--border)">
-              <h2 class="section-title sentence-case">${esc(section.title)}</h2>
+              <h2 class="section-title${section.title === section.title.toUpperCase() ? ' sentence-case' : ''}">${esc(section.title)}</h2>
               <span data-section-minutes="${section.group}" style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted)">${section.minutes} min</span>
             </div>${rows}
           </div>`;
   }).join('');
 }
 
+/** The time bars, one for each section of the plan's template. Built once for a template, so the fills keep sliding when the minutes change. */
+function renderBars(view) {
+  const box = document.getElementById('section-bars');
+  const layout = view.sections.map((section) => section.group).join('|');
+  if (box.dataset.layout === layout) return;
+  box.dataset.layout = layout;
+  // The earlier editor's section titles are in capitals; here they read as a sentence.
+  const titleOf = (title) => (title === title.toUpperCase() ? title.charAt(0) + title.slice(1).toLowerCase() : title);
+  box.innerHTML = view.sections.map((section) => `
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 13px"><span>${esc(titleOf(section.title))}</span><span id="bar-label-${esc(section.group)}" style="flex: none; font-family: 'JetBrains Mono', monospace; font-size: 12px"></span></div>
+            <div style="height: 8px; border-radius: 99px; background: var(--border); overflow: hidden"><span id="bar-fill-${esc(section.group)}" class="time-bar-fill"></span></div>
+          </div>`).join('');
+}
+
 /** Updates the readiness panel in place, so the bars slide to their new length. */
 function renderReadiness(view) {
+  renderBars(view);
   const okCount = view.checks.filter((c) => c.ok).length;
   const left = view.checks.length - okCount;
   document.getElementById('readiness-headline').textContent = left === 0 ? 'Ready to sync' : `${left} thing${left === 1 ? '' : 's'} to finish`;
@@ -325,6 +351,9 @@ async function load() {
     plan = saved.plan;
     canEdit = saved.canEdit;
     songs = songsForEditor(list.songs, saved.songs);
+    // A plan the earlier editor laid out opens in that layout; every other plan opens in the laptop's lineup.
+    TEMPLATE = praiseTemplateFor(plan.items, PRAISE_PLAN);
+    SEGMENTS = praiseSegments(TEMPLATE);
     state = fresh(praiseFromItems(plan.items, SEGMENTS));
   } catch (err) {
     if (plan) state.error = err.message;
@@ -392,9 +421,13 @@ document.querySelector('main').addEventListener('click', (event) => {
     if (button.disabled) document.querySelector(`[data-step="${CSS.escape(id)}"][data-delta="${-delta}"]`)?.focus();
   } else if (button.dataset.open) {
     state.open = state.open === button.dataset.open ? null : button.dataset.open;
-    state.query = '';
-    if (state.open) state.panelMode = rowOf(state.open).kind === 'song' ? 'list' : 'text';
+    const opened = state.open ? rowOf(state.open) : null;
+    if (opened) state.panelMode = opened.kind === 'song' ? 'list' : 'text';
     render();
+    // Choose on an empty song segment goes straight to the song list, already on that segment's category.
+    if (opened && opened.kind === 'song' && !opened.value) openPicker(opened.id);
+  } else if (button.dataset.addSong) {
+    openPicker(button.dataset.addSong);
   } else if (button.dataset.panelMode) {
     state.panelMode = button.dataset.panelMode;
     render();
@@ -409,12 +442,6 @@ document.querySelector('main').addEventListener('click', (event) => {
   } else if (button.dataset.close) {
     state.open = null;
     render();
-  } else if (button.dataset.song) {
-    // Add puts the song at the end of the segment; pressing Added takes it out again. A key belongs to the song it was chosen for.
-    const at = slotEntries(state.segments[button.dataset.for]).findIndex((entry) => entry.songId === button.dataset.song);
-    state.segments = at >= 0 ? withoutEntry(state.segments, button.dataset.for, at) : withEntry(state.segments, button.dataset.for, { songId: button.dataset.song, contentType: 'song' });
-    markEdited();
-    render();
   } else if (button.dataset.useRef) {
     if (applyOpenPanel()) render();
   } else if (button.dataset.saveNote) {
@@ -427,13 +454,6 @@ document.querySelector('main').addEventListener('click', (event) => {
   } else if (button.id === 'save') {
     void save();
   }
-});
-
-document.querySelector('main').addEventListener('input', (event) => {
-  if (event.target.dataset.role !== 'panel-search') return;
-  state.query = event.target.value;
-  const box = document.querySelector('[data-role="panel-options"]');
-  if (state.open && box) box.innerHTML = optionsFor(rowOf(state.open));
 });
 
 document.querySelector('main').addEventListener('change', (event) => {

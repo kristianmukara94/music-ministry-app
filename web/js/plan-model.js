@@ -3,6 +3,7 @@
 // The template's sample values are never used as data.
 
 import { LEGACY_STEP_SLOT, MASS_SECTIONS, MASS_SLOTS, slotOfNumber } from './mass-slots.js';
+import { PW_LINEUP, PW_SEGMENT_KEYS, pickerCategoryForName, pickerCategoryLabel, serviceTypeOfPlanKind } from './lineup-templates.js';
 
 export const MIN_MINUTES = 1;
 export const MAX_MINUTES = 60;
@@ -49,6 +50,8 @@ export function massSections(template) {
       name: slot.name,
       kind: slot.kind === 'text' ? 'slot-text' : slot.kind,
       category: slot.category ?? '',
+      // The song picker opens on this category for the slot.
+      pickerCategory: pickerCategoryForName('mass', slot.category) ?? '',
       group: slot.group,
       optional: false,
       hint: '',
@@ -56,7 +59,7 @@ export function massSections(template) {
     }));
     const others = steps
       .filter((step) => section.groups.includes(step.group) && !slotByStep.get(String(step.n)))
-      .map((step) => ({ ...step, id: String(step.n), slot: null, legacyKey: null }));
+      .map((step) => ({ ...step, id: String(step.n), slot: null, legacyKey: null, pickerCategory: pickerCategoryForName('mass', step.category) ?? '' }));
     return { ...section, rows: [...slots, ...others] };
   });
 }
@@ -64,18 +67,86 @@ export function massSections(template) {
 /** Every row of the editor, in order. */
 export const massRows = (template) => massSections(template).flatMap((section) => section.rows);
 
-/** The Praise & Worship segments from the template: id, name, kind, default minutes and hint. */
+// ---- The Praise & Worship lineup ----
+// A plan is laid out as the church laptop lays it out: the twelve slots of the shared lineup (lineup-templates.js), under the laptop's own
+// segment keys and in its three groups, so a plan made on either side fills the same slots on the other. A plan saved by the website's
+// earlier editor has other steps, numbered 1 to 12, and still opens in that layout (see isLegacyPraisePlan).
+
+/** What the website calls each of the laptop's slot types. */
+const WEB_KIND = { prayer: 'rite', song: 'song', scripture: 'reading' };
+
+function lineupRow(slot) {
+  const row = { id: slot.key, name: slot.name, kind: WEB_KIND[slot.type], minutes: slot.minutes, hint: '', optional: false };
+  if (slot.type === 'prayer') row.hint = 'Prayer';
+  if (slot.type === 'song') {
+    row.pickerCategory = slot.pickerCategory ?? '';
+    row.maxSongs = slot.maxSongs ?? 1;
+    row.hint = [pickerCategoryLabel('praise_worship', slot.pickerCategory), row.maxSongs > 1 ? `up to ${row.maxSongs} songs` : ''].filter(Boolean).join(' · ');
+  }
+  if (slot.type === 'scripture') {
+    // The laptop shows a title slide, or the day's reading, when the slot is left as it is. So it never counts as unfilled.
+    row.optional = true;
+    row.hint = slot.readingType ? 'Lectionary by default' : 'Title slide by default';
+    // What the row says while nothing is chosen for it here.
+    row.emptyLabel = slot.readingType ? 'From the lectionary, on the church laptop' : 'Title slide';
+    // The reading's name is what tells the laptop to fill the slot from the lectionary, so it goes with the empty slot.
+    if (slot.readingType) row.defaultText = slot.readingType;
+  }
+  return row;
+}
+
+/** The Praise & Worship editor's template: the laptop's lineup, group by group. `targetMinutes` is the length the time bars are read against. */
+export const PRAISE_TEMPLATE = {
+  targetMinutes: 90,
+  speakerSegment: null,
+  sections: PW_LINEUP.groups.map((group) => ({
+    title: group.name,
+    group: group.key,
+    rows: PW_LINEUP.segments.filter((slot) => slot.group === group.key).map(lineupRow),
+  })),
+};
+
+/** The segment an item belongs to: the step the website recorded, or its key without the number of a further item ("worship.2"). */
+const segmentIdOf = (item) => String(item?.slotId ?? item?.key ?? '').replace(/(\.\d+)+$/, '');
+const LEGACY_SEGMENT = /^([1-9]|1[0-2])$/;
+
+/**
+ * Whether a Praise & Worship plan was laid out by the website's earlier editor: it has a step numbered 1 to 12 and none of the lineup's
+ * slots. Such a plan keeps its layout, so nothing in it moves. A new plan, and any plan from the laptop's lineup, is not one.
+ */
+export function isLegacyPraisePlan(items = []) {
+  let legacy = false;
+  for (const item of items) {
+    const id = segmentIdOf(item);
+    if (PW_SEGMENT_KEYS.includes(id)) return false;
+    if (LEGACY_SEGMENT.test(id)) legacy = true;
+  }
+  return legacy;
+}
+
+/** The template a Praise & Worship plan opens in: the lineup, or `legacy` (the earlier editor's template) for a plan that editor laid out. */
+export const praiseTemplateFor = (items, legacy) => (legacy && isLegacyPraisePlan(items) ? legacy : PRAISE_TEMPLATE);
+
+/** The group a template section's segments are saved in: its own, or the earlier editor's by section order. */
+const sectionGroup = (section, index) => section.group ?? PRAISE_GROUPS[index];
+
+/**
+ * The Praise & Worship segments from the template: id, name, kind, default minutes and hint. `n` is the number shown. A lineup segment also
+ * has the song picker category it opens on. A row is a lineup row (an object) or the earlier editor's [id, name, kind, minutes, value, hint].
+ */
 export function praiseSegments(template) {
+  let n = 0;
   return template.sections.flatMap((section, index) =>
-    section.rows.map(([id, name, kind, minutes, , hint]) => ({
-      id,
-      name,
-      kind,
-      defaultMinutes: minutes,
-      hint: hint || '',
-      optional: hint === 'Optional',
-      group: PRAISE_GROUPS[index],
-    })),
+    section.rows.map((row) => {
+      n += 1;
+      const group = sectionGroup(section, index);
+      if (!Array.isArray(row)) {
+        const { minutes, ...rest } = row;
+        return { ...rest, n, defaultMinutes: minutes, group };
+      }
+      const [id, name, kind, minutes, , hint] = row;
+      return { id, n, name, kind, defaultMinutes: minutes, hint: hint || '', optional: hint === 'Optional', group };
+    }),
   );
 }
 
@@ -108,6 +179,7 @@ export function withChoice(segments, id, patch) {
 // ---- What a step holds ----
 // A step's first item lives on the segment itself, as it always has; any more are in `segment.more`, in order. An entry is
 // { key?, songId?, text?, keyTransposed?, contentType?, contentHubId?, title?, durationMinutes?, note? }.
+const MAX_KEY = 20;
 const ENTRY_FIELDS = ['key', 'songId', 'text', 'keyTransposed', 'contentType', 'contentHubId', 'title', 'durationMinutes'];
 const pickEntry = (source, fields = ENTRY_FIELDS) => Object.fromEntries(fields.filter((f) => source?.[f] !== undefined && source[f] !== null && source[f] !== '').map((f) => [f, source[f]]));
 const holdsContent = (entry) => Boolean(entry?.songId || entry?.text || entry?.contentHubId);
@@ -187,9 +259,11 @@ const entryKind = (entry, fallback) => (entry.songId ? 'song' : entry.contentHub
 
 /** The next key free for another item in a step: "s16.2", "s16.3" … */
 function nextKey(base, used) {
+  // A key is at most 20 characters on the server, so a long segment key gives up its last letters to the number. The item still names its step (slotId).
+  const keyFor = (n) => `${base.slice(0, MAX_KEY - String(n).length - 1)}.${n}`;
   let n = 2;
-  while (used.has(`${base}.${n}`)) n += 1;
-  const key = `${base}.${n}`;
+  while (used.has(keyFor(n))) n += 1;
+  const key = keyFor(n);
   used.add(key);
   return key;
 }
@@ -303,12 +377,19 @@ export function praiseFromItems(items, segs) {
   const segments = {};
   const notes = {};
   const extra = [];
-  for (const item of items) {
-    const id = segmentOf(item);
+  // The segments the saved plan has an item for. A card taken out of the lineup on the laptop has none, and is not sent back (praiseToItems).
+  const present = new Set();
+  const defaults = new Map(segs.filter((s) => s.defaultText).map((s) => [s.id, s.defaultText]));
+  for (const saved of items) {
+    const id = segmentOf(saved);
     if (id === null) {
-      extra.push(item);
+      extra.push(saved);
       continue;
     }
+    present.add(id);
+    // A slot's own default (the reading the laptop fills it from) is how an empty slot is saved. It is not something chosen for it.
+    const isDefault = defaults.has(id) && !saved.songId && !saved.contentHubId && saved.text === defaults.get(id);
+    const item = isDefault ? { ...saved, text: undefined, contentType: undefined } : saved;
     if (holdsContent(segments[id]) && holdsContent(item)) {
       const more = { ...pickEntry(item), ...(item.note ? { note: item.note } : {}), kind: item.kind };
       segments[id] = { ...segments[id], more: [...(segments[id].more ?? []), more] };
@@ -320,18 +401,23 @@ export function praiseFromItems(items, segs) {
     if (Object.keys(seg).length) segments[id] = { ...segments[id], ...seg };
     if (item.note && !notes[id]) notes[id] = item.note;
   }
-  return { segments, notes, extra };
+  return { segments, notes, extra, present };
 }
 
 /** The items the server takes, for a Praise & Worship plan: every segment, with its minutes on its first item, then the items the editor does not show. */
-export function praiseToItems({ segments, notes, extra, contentHubItems = [] }, segs) {
+export function praiseToItems({ segments, notes, extra, present, contentHubItems = [] }, segs) {
   const used = new Set(extra.map((item) => item.key));
   for (const seg of segs) for (const entry of slotEntries(segments[seg.id])) if (entry.key) used.add(entry.key);
+  // A plan that came with items but none for a segment had that card taken out on the laptop. It stays out unless something is put in it here.
+  const takenOut = (seg) => Boolean(present?.size) && !present.has(seg.id);
   const items = segs.flatMap((seg) => {
     const current = segments[seg.id] ?? {};
     const stepKind = seg.kind === 'reading' ? 'reading' : seg.kind === 'rite' ? 'rite' : 'song';
     const entries = slotEntries(current);
-    return (entries.length ? entries : [{}]).map((entry, index) => {
+    if (entries.length === 0 && takenOut(seg) && current.minutes === undefined && !(notes[seg.id] ?? '').trim()) return [];
+    // An empty slot goes with its default, so the laptop fills it as its own lineup does.
+    const empty = seg.defaultText ? { text: seg.defaultText } : {};
+    return (entries.length ? entries : [empty]).map((entry, index) => {
       const first = index === 0;
       const kind = entryKind(entry, first ? stepKind : (entry.kind ?? 'rite'));
       const key = entry.key ?? (first ? seg.id : nextKey(seg.id, used));
@@ -393,15 +479,17 @@ export function praiseRow(seg, { segments, notes, contentHubItems = [] }, songs)
 export function praiseBreakdown(template, segs, state, songs) {
   const target = template.targetMinutes;
   const sections = template.sections.map((section, index) => {
-    const rows = section.rows.map(([id]) => praiseRow(segs.find((seg) => seg.id === id), state, songs));
+    const group = sectionGroup(section, index);
+    const rows = segs.filter((seg) => seg.group === group).map((seg) => praiseRow(seg, state, songs));
     const minutes = rows.reduce((sum, row) => sum + row.minutes, 0);
-    return { group: PRAISE_GROUPS[index], title: section.title, rows, minutes, percent: Math.min(100, Math.round((minutes / target) * 100)) };
+    return { group, title: section.title, rows, minutes, percent: Math.min(100, Math.round((minutes / target) * 100)) };
   });
   const rows = sections.flatMap((section) => section.rows);
   const total = rows.reduce((sum, row) => sum + row.minutes, 0);
   const songRows = rows.filter((row) => row.kind === 'song');
   const missing = rows.filter((row) => (row.kind === 'song' || row.kind === 'reading') && !row.value && !row.optional).map((row) => row.name);
   const over = total - target;
+  // Only the earlier editor's template has a teaching step whose note names the speaker. The laptop's lineup has none, so no check.
   const speaker = Boolean((state.notes[template.speakerSegment] ?? '').trim());
   const checks = [
     {
@@ -414,19 +502,24 @@ export function praiseBreakdown(template, segs, state, songs) {
       text: over <= 0 ? `Fits the ${target} minute slot (${durationLabel(total)})` : `Runs ${over} min over the ${target} minute slot`,
       sub: '',
     },
-    {
-      ok: speaker,
-      text: speaker ? 'Speaker is noted' : 'Speaker is not confirmed',
-      sub: speaker ? '' : `Add a note on step ${template.speakerSegment}`,
-    },
+    ...(template.speakerSegment
+      ? [{
+          ok: speaker,
+          text: speaker ? 'Speaker is noted' : 'Speaker is not confirmed',
+          sub: speaker ? '' : `Add a note on step ${template.speakerSegment}`,
+        }]
+      : []),
   ];
   return { sections, total, songsTotal: songRows.length, songsDone: songRows.filter((row) => row.value).length, checks };
 }
 
-/** A saved plan read the way its editor reads it. `templates` is { mass, praise }. */
+/**
+ * A saved plan read the way its editor reads it. `templates` is { mass, praise }: `praise` is the earlier Praise & Worship editor's
+ * template, for the plans it laid out. Every other Praise & Worship plan is read as the laptop's lineup.
+ */
 function readPlan(plan, templates) {
   if (plan.kind === 'pw') {
-    const rows = praiseSegments(templates.praise);
+    const rows = praiseSegments(praiseTemplateFor(plan.items, templates.praise));
     return { rows, filled: praiseFromItems(plan.items, rows), toItems: (state) => praiseToItems(state, rows) };
   }
   const rows = massRows(templates.mass);
@@ -436,9 +529,12 @@ function readPlan(plan, templates) {
 /** The steps of a saved plan that can hold a song: { id, row, filled, hasSong, matches }. `matches` is a step of the song's own category. */
 export function songSteps(plan, templates, songId, category = '') {
   const { rows, filled } = readPlan(plan, templates);
+  // A step is the song's own when it asks for the song's category by name, or for the picker category that name belongs to.
+  const pill = pickerCategoryForName(serviceTypeOfPlanKind(plan.kind), category);
+  const matches = (row) => Boolean(category) && (row.category === category || (Boolean(pill) && row.pickerCategory === pill));
   return rows.filter((row) => row.kind === 'song').map((row) => {
     const entries = slotEntries(filled.segments[idOf(row)]);
-    return { id: idOf(row), row, filled: entries.length, hasSong: entries.some((entry) => entry.songId === songId), matches: Boolean(category) && row.category === category };
+    return { id: idOf(row), row, filled: entries.length, hasSong: entries.some((entry) => entry.songId === songId), matches: matches(row) };
   });
 }
 

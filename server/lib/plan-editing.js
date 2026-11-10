@@ -6,6 +6,7 @@ import { ApiError } from './admin.js';
 import { sessionFrom } from './session.js';
 import { EDITING_ROLES } from './rules.js';
 import { checkContentHubItems, checkHubReferences, checkItems, checkPlanDetails, dateText, hubOf, planOut } from './plan-sync.js';
+import { pickerFilterOf } from '../../shared/lineup-templates.js';
 
 export { dateText };
 export const MIN_MINUTES = 1;
@@ -74,14 +75,26 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
     return json(200, { plan, songs, canEdit: EDITING_ROLES.includes(gate.who.role) });
   });
 
-  /** The church's songs for the picker. Removed songs are left out. Songs come from the laptop; this only reads them. */
+  /**
+   * The church's songs for the picker. Removed songs are left out. Songs come from the laptop; this only reads them.
+   *
+   * Two optional query parameters narrow the list the way the picker's tabs and category buttons do (shared/lineup-templates.js):
+   * `serviceType` is 'mass' or 'praise_worship', and lists that service's songs and the General ones, which are sung in both; `category` is a
+   * picker category ('joyful', 'kyrie' …) or a song category's own name. With neither, the whole list is returned, as it always was.
+   */
   const listSongs = safely(async (event) => {
     const gate = await signedIn(event, 'GET');
     if (gate.response) return gate.response;
+    const query = event.queryStringParameters ?? {};
+    const filter = pickerFilterOf(query.serviceType, typeof query.category === 'string' ? query.category.slice(0, 60) : undefined);
+    if (!filter) throw new ApiError(400, 'Choose Holy Mass or Praise & Worship.');
     // Only this church's songs, and only those not removed. The last update counts removals too, since a removal is a change to the list.
     const rows = await sql`
       SELECT id, title, category, scope, language, musical_key FROM songs
-      WHERE church_id = ${gate.who.churchId} AND removed_at IS NULL ORDER BY lower(title), id`;
+      WHERE church_id = ${gate.who.churchId} AND removed_at IS NULL
+        AND (${filter.scopes}::text[] IS NULL OR scope = ANY(${filter.scopes}::text[]))
+        AND (${filter.names}::text[] IS NULL OR lower(btrim(category)) = ANY(${filter.names}::text[]))
+      ORDER BY lower(title), id`;
     const [last] = await sql`SELECT MAX(updated_at) AS last FROM songs WHERE church_id = ${gate.who.churchId}`;
     return json(200, {
       songs: rows.map((r) => ({ id: r.id, title: r.title, category: r.category, scope: r.scope, language: r.language, key: r.musical_key })),

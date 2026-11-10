@@ -7,12 +7,9 @@ import { createPlan } from './plan-api.js';
 import { languageName } from './mass-language.js';
 import { massTimesFor } from './mass-schedule.js';
 import { MASS_SECTIONS, MASS_SLOTS } from './mass-slots.js';
-import { canCreatePlans, checkNewPlan, dateShortcut, editorPathFor, newPlanRequest, shortDate, suggestPlanName } from './plan-model.js';
-import { PRAISE_PLAN } from './sample-data.js';
+import { PRAISE_TEMPLATE, canCreatePlans, checkNewPlan, dateShortcut, editorPathFor, newPlanRequest, shortDate, suggestPlanName } from './plan-model.js';
 
 mountSidebar();
-
-const titleCase = (text) => text.toLowerCase().replace(/(^|\s)(?!and\b)\w/g, (c) => c.toUpperCase());
 
 /** What the preview says about each template. The parts and their counts come from the lists the editors are built from. */
 const TEMPLATES = {
@@ -24,7 +21,8 @@ const TEMPLATES = {
   pw: {
     label: 'Praise & Worship Night',
     unit: 'segments',
-    parts: PRAISE_PLAN.sections.map((section) => ({ title: titleCase(section.title), count: section.rows.length })),
+    // A new plan is laid out as the church laptop's lineup: Opening, Praise & Worship, Word & Offering.
+    parts: PRAISE_TEMPLATE.sections.map((section) => ({ title: section.title, count: section.rows.length })),
   },
 };
 

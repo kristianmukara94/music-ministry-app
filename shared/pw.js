@@ -2,6 +2,7 @@ import { normalizeSplit } from './prayer-split.js';
 import { PRAYER_MAX_PX, pageTops, prayerSlidesFor } from './prayer-slides.js';
 import { LINEUP_PRAYER_FIT, prayerPages } from './prayer-fit.js';
 import { lyricPagesFor } from './lyric-area.js';
+import { PW_LINEUP } from './lineup-templates.js';
 
 // Praise & Worship: the lineup model, shared by the main process (validation, seeding) and the renderer
 // (planner, live console). Plain JS with no React, so both sides run the same rules. Types live in pw.d.ts.
@@ -34,29 +35,28 @@ export const MAX_SEGMENTS = 40;
  * here as data. Components read them from the session, never from this constant.
  */
 export const DEFAULT_TEMPLATE = {
-  name: 'Praise & Worship Night',
-  groups: [
-    { key: 'opening', name: 'Opening' },
-    { key: 'praise', name: 'Praise & Worship' },
-    { key: 'word', name: 'Word & Offering' },
-  ],
-  segments: [
-    { key: 'prayer_authority', group: 'opening', name: 'Prayer to Take Authority', type: 'prayer', minutes: 3, content: { kind: 'prayer', noteId: null } },
-    { key: 'consecration_mary', group: 'opening', name: 'Consecration to Mary, Our Lady of Nazareth', type: 'prayer', minutes: 3, content: { kind: 'prayer', noteId: null } },
-    { key: 'marian_song', group: 'opening', name: 'Marian Song', type: 'song', minutes: 5, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: null } },
-    // The title slide is the default. The slot can also hold a song, so `types` lists both.
-    { key: 'bible_enthronement', group: 'opening', name: 'Bible Enthronement', type: 'scripture', types: ['scripture', 'song'], minutes: 4, content: { kind: 'title' } },
-    { key: 'joyful_song', group: 'praise', name: 'Joyful Song', type: 'song', minutes: 8, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: null } },
-    { key: 'worship', group: 'praise', name: 'Worship', type: 'song', minutes: 15, content: { kind: 'song', hymnIds: [], maxSongs: 3, category: null } },
-    { key: 'repentance', group: 'praise', name: 'Repentance', type: 'song', minutes: 8, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: null } },
-    { key: 'holy_spirit', group: 'praise', name: 'Holy Spirit', type: 'song', minutes: 8, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: null } },
-    // The slot fills from the lectionary by default. A song from the library replaces that reading for the session.
-    { key: 'gospel_acclamation', group: 'word', name: 'Gospel Acclamation', type: 'scripture', types: ['scripture', 'song'], minutes: 3, content: { kind: 'lectionary', readingType: GOSPEL_ACCLAMATION } },
-    { key: 'offertory', group: 'word', name: 'Offertory', type: 'song', minutes: 6, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: 'Offertory' } },
-    { key: 'thanksgiving', group: 'word', name: 'Thanksgiving', type: 'song', minutes: 6, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: null } },
-    { key: 'finale', group: 'word', name: 'Finale', type: 'song', minutes: 5, content: { kind: 'song', hymnIds: [], maxSongs: 1, category: null } },
-  ],
+  name: PW_LINEUP.name,
+  groups: PW_LINEUP.groups.map((group) => ({ ...group })),
+  // The slots, their names, keys, groups and minutes are the shared lineup's (shared/lineup-templates.js), which the website builds its
+  // editor from too. Here each one gets the empty content it starts with.
+  segments: PW_LINEUP.segments.map((slot) => ({
+    key: slot.key,
+    group: slot.group,
+    name: slot.name,
+    type: slot.type,
+    // Bible Enthronement (a title slide by default) and Gospel Acclamation (the lectionary by default) can also hold a song, so `types` lists both.
+    ...(slot.types ? { types: [...slot.types] } : {}),
+    minutes: slot.minutes,
+    content: templateContent(slot),
+  })),
 };
+
+/** The empty content a lineup slot starts with: no prayer, no songs, a title slide, or the lectionary reading the slot names. */
+function templateContent(slot) {
+  if (slot.type === 'prayer') return { kind: 'prayer', noteId: null };
+  if (slot.type === 'song') return { kind: 'song', hymnIds: [], maxSongs: slot.maxSongs ?? 1, category: slot.legacyCategory ?? null };
+  return slot.readingType ? { kind: 'lectionary', readingType: slot.readingType } : { kind: 'title' };
+}
 
 /** A template segment as a fresh session segment: no leader, default cues, no notes or arrangement. */
 export function segmentFromTemplate(t) {
