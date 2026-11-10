@@ -5,6 +5,8 @@ import { ADD_LABELS, labelFor, type AddLabel, type LiveHotEditor } from './useLi
 import type { Stanza } from '../lyrics/types';
 
 export const SMALL_BTN = 'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-bold tracking-wide uppercase transition disabled:cursor-wait disabled:opacity-50';
+/** Delete slide: a destructive secondary action, quiet until hovered. A slide that cannot be deleted shows a plain not-allowed cursor. */
+export const DELETE_BTN = `${SMALL_BTN} border-fg/15 bg-panel-2 text-fg/85 hover:border-danger hover:bg-danger/10 hover:text-danger disabled:!cursor-not-allowed disabled:hover:border-fg/15 disabled:hover:bg-panel-2 disabled:hover:text-fg/85 [&>svg]:text-danger`;
 const FIELD = 'w-full rounded-md border border-fg/15 bg-panel px-2 py-1.5 text-sm leading-snug text-fg outline-none focus:border-accent';
 
 /** Ctrl or Cmd + Enter saves, Escape cancels, inside an edit box. */

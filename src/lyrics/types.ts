@@ -90,6 +90,10 @@ export interface SetlistEntry {
   composer: string;
   category: HymnCategory;
   language: HymnLanguage;
+  /** The musical key as written. Empty when not set. */
+  musicalKey?: string;
+  /** How many stanzas the song has, for the setlist's rough running time. */
+  stanzaCount?: number;
 }
 
 /** A lyrics file read in the main process. Nothing is saved until the operator saves the hymn. */

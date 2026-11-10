@@ -8,6 +8,10 @@ interface Props {
   t: PlannerT;
   /** The date the form starts on: the coming Sunday. */
   initialDate: string;
+  /** The name the form starts with: the liturgical day's name when the day was picked on the calendar. */
+  initialName?: string;
+  /** The order the form starts from: Weekday for a weekday picked on the calendar. */
+  initialTemplate?: NewPlanTemplate;
   /** Makes the plan. Resolves true when it was made, so the form can clear itself. */
   onCreate: (input: { name: string; liturgicalDate: string; template: NewPlanTemplate }) => Promise<boolean>;
 }
@@ -17,10 +21,10 @@ interface Props {
  * from the Hymn Library. Weekday fills the sung parts of the Ordinary with their Mass Order texts. Either way the plan is the 17 numbered
  * slots, with nothing among the additional items.
  */
-export function NewPlanForm({ t, initialDate, onCreate }: Props) {
-  const [name, setName] = useState('');
+export function NewPlanForm({ t, initialDate, initialName = '', initialTemplate = 'standard', onCreate }: Props) {
+  const [name, setName] = useState(initialName.slice(0, 120));
   const [date, setDate] = useState(initialDate);
-  const [template, setTemplate] = useState<NewPlanTemplate>('standard');
+  const [template, setTemplate] = useState<NewPlanTemplate>(initialTemplate);
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: FormEvent) => {

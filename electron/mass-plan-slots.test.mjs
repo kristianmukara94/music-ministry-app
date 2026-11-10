@@ -139,6 +139,24 @@ test('the slot column and the templates table are added by the migration, and ar
   assert.deepEqual(db.prepare('SELECT * FROM mass_plan_templates').all(), []);
 });
 
+test('the plan list counts each plan\'s items and names the slots they fill, for the planner calendar', () => {
+  const { plans, hymn, plan } = setup();
+  const empty = plans.createPlan({ name: 'Weekday', liturgicalDate: '2026-11-10' });
+  plans.savePlan(plan.id, [
+    item('introductory', 'entrance', hymn('Entrance song')),
+    item('introductory', 'gloria', hymn('Gloria')),
+    { block: 'introductory', module: 'custom', sourceId: 'Greeting', label: 'Greeting' },
+  ]);
+  const list = plans.listPlans();
+  const saved = list.find((p) => p.id === plan.id);
+  assert.equal(saved.itemCount, 3);
+  assert.deepEqual([...saved.filledSlots].sort(), ['entrance', 'gloria']);
+  assert.equal('slotList' in saved, false);
+  const none = list.find((p) => p.id === empty.id);
+  assert.equal(none.itemCount, 0);
+  assert.deepEqual(none.filledSlots, []);
+});
+
 test('a plan keeps the language it is celebrated in: English unless made or set otherwise, and only EN, TL or CEB', () => {
   const { plans, plan } = setup();
   assert.equal(plan.language, 'EN');

@@ -6,14 +6,14 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { NOTES_SLOT_MIGRATIONS, PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, createNotesService } = await import('./notes.js');
+const { NOTES_COPY_MIGRATIONS, NOTES_SLOT_MIGRATIONS, PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, createNotesService } = await import('./notes.js');
 const { splitFingerprint } = await import('../shared/prayer-split.js');
 
 const BODY = 'Lord, hear our prayer.\nGrant us your peace.\nAmen.\n\nHoly Spirit, fill this place.';
 
 function notesDb() {
   const db = new DatabaseSync(':memory:');
-  for (const sqlText of [...PRAYER_NOTES_MIGRATIONS, ...PRAYER_NOTES_SPLIT_MIGRATIONS, ...NOTES_SLOT_MIGRATIONS]) db.exec(sqlText);
+  for (const sqlText of [...PRAYER_NOTES_MIGRATIONS, ...PRAYER_NOTES_SPLIT_MIGRATIONS, ...NOTES_SLOT_MIGRATIONS, ...NOTES_COPY_MIGRATIONS]) db.exec(sqlText);
   return db;
 }
 
@@ -55,7 +55,7 @@ test('a note saved before the split column existed reads as one slide', () => {
   const db = new DatabaseSync(':memory:');
   for (const sqlText of PRAYER_NOTES_MIGRATIONS) db.exec(sqlText);
   db.prepare("INSERT INTO notes (title, category, body, display) VALUES ('Old prayer', 'Community Prayer', ?, 'full')").run(BODY);
-  for (const sqlText of [...PRAYER_NOTES_SPLIT_MIGRATIONS, ...NOTES_SLOT_MIGRATIONS]) db.exec(sqlText);
+  for (const sqlText of [...PRAYER_NOTES_SPLIT_MIGRATIONS, ...NOTES_SLOT_MIGRATIONS, ...NOTES_COPY_MIGRATIONS]) db.exec(sqlText);
   const [note] = createNotesService(db).list();
   assert.equal(note.split, null);
   assert.equal(note.body, BODY);

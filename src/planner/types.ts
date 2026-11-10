@@ -40,6 +40,10 @@ export interface PlanSummary {
   /** The language the Mass is celebrated in: its Bible translation, Mass Order words and reading endings. */
   language: MassLanguage;
   createdAt: string;
+  /** How many items the plan holds. Absent from a source that does not count them. */
+  itemCount?: number;
+  /** The ids of the Holy Mass slots the plan fills, for the calendar's ready / draft mark. */
+  filledSlots?: string[];
 }
 
 export interface PlanDetail {

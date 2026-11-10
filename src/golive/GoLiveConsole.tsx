@@ -5,7 +5,7 @@ import { useLive } from '../live/store';
 import { loadPlanToQueue } from '../planner/plan-api';
 import type { PlanSummary } from '../planner/types';
 import { LiveView } from '../praise-worship/LiveView';
-import { goLive } from '../praise-worship/live';
+import { endSession, goLive } from '../praise-worship/live';
 import { flushSave, initPw, openSession, usePw } from '../praise-worship/store';
 import type { PwSessionSummary } from '../praise-worship/types';
 import { formatIsoDay } from '../state/region';
@@ -13,8 +13,8 @@ import { setUi, useUi } from '../state/ui';
 import { useRegion } from '../state/useRegion';
 import { GoLivePrepare } from './GoLiveHub';
 import { MassLiveView } from './MassLiveView';
-import { goLiveMassAt, whenLive } from './massLive';
-import { onAirLabel, projectorState } from './onAir';
+import { endMassSession, goLiveMassAt, whenLive } from './massLive';
+import { onAirLabel, projectorState, runOnAir } from './onAir';
 import { useGoLiveT } from './strings';
 import { EdidLockBadge } from './EdidLockBadge';
 import { WatchdogBadge } from './WatchdogBadge';
@@ -28,6 +28,9 @@ const SELECT =
   'h-10 min-w-0 rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 disabled:opacity-50';
 const BTN_GO =
   'inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-ok bg-ok px-5 text-sm font-extrabold text-canvas shadow-md transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ok/60 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40';
+/** Go Live once the picked session or plan is on air: the same place and size, red, with a breathing dot. A click ends it, after a confirm. */
+const BTN_LIVE =
+  'inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-danger/60 bg-danger/15 px-5 text-sm font-extrabold tracking-[0.18em] text-danger uppercase shadow-[0_0_14px_color-mix(in_oklab,var(--color-danger)_35%,transparent)] transition hover:bg-danger/25 focus-visible:ring-2 focus-visible:ring-danger/60 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40';
 const TAB = (on: boolean) =>
   `inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold uppercase tracking-wide transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none ${
     on ? 'bg-accent text-on-accent' : 'text-fg/70 hover:bg-fg/10 hover:text-fg'
@@ -159,6 +162,15 @@ export function GoLiveConsole() {
       if (resume >= 0) await goLiveMassAt(resume, massPlan.name);
     });
 
+  // The picked session or plan is the one on air: Go Live turns into the red Live button. The views' On air badges read the same runOnAir.
+  const pickedOnAir = tab === 'pw' ? runOnAir(live, 'pw', pickedPw) : tab === 'mass' && runOnAir(live, 'mass', pickedMass);
+  const endPicked = () => {
+    const name = (tab === 'pw' ? pwSession?.name : massPlan?.name) ?? '';
+    if (!window.confirm(t('confirmEndLive', { name }))) return;
+    if (tab === 'pw') endSession();
+    else endMassSession();
+  };
+
   const projector = projectorState(live);
   const onAir = onAirLabel(live.projector.live);
   const pillWord = projector === 'on' ? t('projectorOnPill') : projector === 'black' ? t('projectorBlackPill') : t('projectorOffPill');
@@ -248,15 +260,22 @@ export function GoLiveConsole() {
                 </select>
               </label>
             )}
-            <button
-              type="button"
-              className={BTN_GO}
-              disabled={busy || (tab === 'pw' ? !pwSession : !massPlan)}
-              onClick={() => void (tab === 'pw' ? goLivePw() : goLiveMass())}
-            >
-              {busy ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Play size={16} aria-hidden fill="currentColor" />}
-              {busy ? t('goLiveBusy') : t('goLive')}
-            </button>
+            {pickedOnAir && !busy ? (
+              <button type="button" className={BTN_LIVE} title={t('liveEndTip')} aria-label={t('liveEndTip')} onClick={endPicked}>
+                <span aria-hidden className="size-2.5 animate-pulse rounded-full bg-danger shadow-[0_0_6px_var(--color-danger)]" />
+                {t('liveEnd')}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={BTN_GO}
+                disabled={busy || (tab === 'pw' ? !pwSession : !massPlan)}
+                onClick={() => void (tab === 'pw' ? goLivePw() : goLiveMass())}
+              >
+                {busy ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Play size={16} aria-hidden fill="currentColor" />}
+                {busy ? t('goLiveBusy') : t('goLive')}
+              </button>
+            )}
           </div>
           )}
         </div>

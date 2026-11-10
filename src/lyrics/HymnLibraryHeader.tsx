@@ -102,7 +102,8 @@ export function HymnLibraryHeader({
             }`}
           >
             {x.icon}
-            {x.label}
+            {/* In the narrow three-column layout (xl to 2xl) the tabs show their icons only; the label stays for screen readers and the tooltip. */}
+            <span className="xl:max-2xl:sr-only">{x.label}</span>
           </button>
         ))}
       </div>

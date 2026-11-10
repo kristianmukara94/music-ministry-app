@@ -38,3 +38,17 @@ export function setlistOnAir(projector: LiveState['projector'] | null | undefine
 export function goLiveOffActions(projector: LiveState['projector'] | null | undefined): LiveAction[];
 
 export function lyricsPositionLabel(projector: LiveState['projector'] | null | undefined): string | null;
+
+export function goLiveNowActions(args: { hymn: StanzaSource; band?: unknown; bandStageOnly?: boolean }): LiveAction[] | null;
+
+export function goLiveNowCutsRun(projector: LiveState['projector'] | null | undefined): boolean;
+
+export type SectionKind = 'Verse' | 'Chorus' | 'Bridge' | 'Outro' | 'Tag';
+
+export function sectionChip(stanzaType: string): { label: string; kind: SectionKind };
+
+export const SECONDS_PER_STANZA: number;
+
+export function estimateSongSeconds(stanzaCount: number | null | undefined): number;
+
+export function formatDuration(seconds: number): string;

@@ -169,9 +169,13 @@ const MAX_TEMPLATES = 100;
 /** Plan data access. Pure: takes a database handle. */
 export function createMassPlanService(db) {
   const q = {
+    // Each plan with how many items it holds and the slots they fill, so the planner's calendar can mark a day ready or draft without
+    // reading every plan.
     plans: db.prepare(`
-      SELECT id, name, liturgical_date AS liturgicalDate, language, created_at AS createdAt
-      FROM mass_plans ORDER BY liturgical_date DESC, id DESC`),
+      SELECT p.id, p.name, p.liturgical_date AS liturgicalDate, p.language, p.created_at AS createdAt,
+        (SELECT COUNT(*) FROM mass_plan_items i WHERE i.plan_id = p.id) AS itemCount,
+        (SELECT GROUP_CONCAT(i.slot) FROM mass_plan_items i WHERE i.plan_id = p.id AND i.slot IS NOT NULL) AS slotList
+      FROM mass_plans p ORDER BY p.liturgical_date DESC, p.id DESC`),
     plan: db.prepare('SELECT id, name, liturgical_date AS liturgicalDate, language FROM mass_plans WHERE id = ?'),
     insertPlan: db.prepare('INSERT INTO mass_plans (name, liturgical_date, language) VALUES (?, ?, ?)'),
     setLanguage: db.prepare('UPDATE mass_plans SET language = ? WHERE id = ?'),
@@ -258,7 +262,9 @@ export function createMassPlanService(db) {
    * The items as rows, checked: a known block and source kind, a source id of a usable length, a label, and a slot that is one of the 17 (or
    * none). A slot holds one item. `sources` is false for a template, which may name a song that is deleted later; a plan refuses a missing one.
    */
-  const checkedItems = (list, { sources }) => {
+  // `kept` names the plan's saved items (module|sourceId). One whose source was deleted after it was added stays, shown as missing, so a later
+  // save (an on-air edit, a reorder) never fails over a row the operator did not touch. A newly added item must still exist.
+  const checkedItems = (list, { sources, kept = null }) => {
     if (list.length > MAX_ITEMS) throw new Error(`A plan can hold at most ${MAX_ITEMS} items.`);
     const counts = Object.fromEntries(PLAN_BLOCKS.map((b) => [b, 0]));
     const slots = new Set();
@@ -272,7 +278,7 @@ export function createMassPlanService(db) {
       if (item.module === 'lectionary' && sourceId.split('|')[1] === GOSPEL_ACCLAMATION) {
         throw new Error('The Gospel Acclamation is for Praise & Worship. It cannot be added to a Holy Mass plan.');
       }
-      if (sources) requireSource(item.module, sourceId);
+      if (sources && !kept?.has(`${item.module}|${sourceId}`)) requireSource(item.module, sourceId);
       const slot = item.slot == null || item.slot === '' ? null : String(item.slot);
       if (slot !== null) {
         if (!isSlotId(slot)) throw new Error('Unknown Holy Mass slot.');
@@ -287,7 +293,7 @@ export function createMassPlanService(db) {
 
   return {
     listPlans() {
-      return q.plans.all();
+      return q.plans.all().map(({ slotList, ...plan }) => ({ ...plan, filledSlots: slotList ? String(slotList).split(',') : [] }));
     },
 
     createPlan(input = {}) {
@@ -350,7 +356,8 @@ export function createMassPlanService(db) {
     /** Replaces the plan's items. Each block's order is the order of the items sent for it. */
     savePlan(id, items) {
       requirePlan(id);
-      const rows = checkedItems(Array.isArray(items) ? items : [], { sources: true });
+      const kept = new Set(q.items.all(id).map((r) => `${r.module}|${r.sourceId}`));
+      const rows = checkedItems(Array.isArray(items) ? items : [], { sources: true, kept });
 
       db.transaction(() => {
         q.clearItems.run(id);

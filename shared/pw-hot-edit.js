@@ -48,6 +48,37 @@ export function arrangementWithInsert(arrangement, hymnId, afterSectionId, occur
   return { ...arrangement, [key]: next };
 }
 
+/**
+ * The card's arrangement with this appearance of a stanza taken out, for Delete slide on a song's slide. Only the card's order changes: the
+ * song keeps the stanza. A card that sings the song in its stored order gets an order of its own, the stored one without this appearance.
+ * Null when the stanza is not in the order, or when it is the song's last one on the card (an empty order would mean "sing them all").
+ */
+export function arrangementWithout(arrangement, hymn, sectionId, occurrence) {
+  const ids = hymn.stanzas.map((s) => String(s.id));
+  const own = arrangement?.[String(hymn.id)];
+  const listed = Array.isArray(own) ? own.filter((id) => ids.includes(id)) : [];
+  const order = listed.length ? listed : ids;
+  let seen = 0;
+  const at = order.findIndex((id) => id === String(sectionId) && ++seen === Math.max(1, occurrence));
+  if (at < 0 || order.length <= 1) return null;
+  return { ...(arrangement ?? {}), [String(hymn.id)]: [...order.slice(0, at), ...order.slice(at + 1)] };
+}
+
+/** `pages` without page `index`. Null when there is no such page, or it is the only one: an item keeps at least one slide. */
+export function pagesWithout(pages, index) {
+  if (pages.length <= 1 || index < 0 || index >= pages.length) return null;
+  return pages.filter((_, i) => i !== index);
+}
+
+/**
+ * The slide to show once the slides from `at` were taken out and `remaining` slides are left: the one that moved up into `at` (the next
+ * slide), or the new last slide when the last one went.
+ */
+export function slideAfterDelete(at, remaining) {
+  if (remaining <= 0) return 0;
+  return Math.max(0, Math.min(at, remaining - 1));
+}
+
 /** The step of a stanza's first page, searching from `from` onward, or null when it is not in the deck. */
 export function findStanzaStep(steps, hymnId, sectionId, from = 0) {
   for (let i = Math.max(0, from); i < steps.length; i += 1) {

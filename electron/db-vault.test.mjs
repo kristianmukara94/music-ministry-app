@@ -12,12 +12,12 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { NOTES_SLOT_MIGRATIONS, NOTE_SEALED_FIELDS, PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, createNotesService } = await import('./notes.js');
+const { NOTES_COPY_MIGRATIONS, NOTES_SLOT_MIGRATIONS, NOTE_SEALED_FIELDS, PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, createNotesService } = await import('./notes.js');
 const { DB_CRYPTO_MIGRATIONS, VAULT_MESSAGES, VaultLockedError, createDbVault } = await import('./db-vault.js');
 const { SEALED_PREFIX, isSealed } = await import('./db-crypto.js');
 
 const PASS = 'Assumption of Mary 1952';
-const MIGRATIONS = [...PRAYER_NOTES_MIGRATIONS, ...PRAYER_NOTES_SPLIT_MIGRATIONS, ...NOTES_SLOT_MIGRATIONS, ...DB_CRYPTO_MIGRATIONS];
+const MIGRATIONS = [...PRAYER_NOTES_MIGRATIONS, ...PRAYER_NOTES_SPLIT_MIGRATIONS, ...NOTES_SLOT_MIGRATIONS, ...NOTES_COPY_MIGRATIONS, ...DB_CRYPTO_MIGRATIONS];
 
 function notesDb(file = ':memory:') {
   const db = new DatabaseSync(file);

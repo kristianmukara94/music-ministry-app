@@ -15,13 +15,17 @@ const read = (rel) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.met
 test('the New plan form offers the two 17-slot templates and nothing of the 31-step Ordinary', () => {
   const form = read('src/planner/NewPlanForm.tsx');
   assert.match(form, /NEW_PLAN_TEMPLATES\.map/);
-  assert.match(form, /useState<NewPlanTemplate>\('standard'\)/, 'Standard Sunday is the default');
+  // Standard Sunday is the default; only a weekday picked on the planner's calendar starts the form on Weekday.
+  assert.match(form, /initialTemplate = 'standard'/, 'Standard Sunday is the default');
+  assert.match(form, /useState<NewPlanTemplate>\(initialTemplate\)/);
   const templates = read('src/planner/templates.ts');
   assert.match(templates, /export const NEW_PLAN_TEMPLATES: NewPlanTemplate\[\] = \['standard', 'weekday'\];/);
   for (const gone of ['seasonItems', 'SEASONS', 'stepSourceId', 'MASS_FLOW']) assert.doesNotMatch(templates, new RegExp(gone), `${gone} is gone`);
   const planner = read('src/planner/MassPlanner.tsx');
   assert.doesNotMatch(planner, /seasonItems|setSeason|SEASON_KEY/);
-  assert.match(planner, /<NewPlanForm t=\{t\} initialDate=\{upcomingSunday\(\)\} onCreate=\{createPlan\} \/>/);
+  // A plan is made only from the planner's calendar: the editor has no New plan form of its own.
+  assert.doesNotMatch(planner, /<NewPlanForm\b|newPlanDraft/);
+  assert.match(read('src/planner/PlannerView.tsx'), /await createMassPlan\(\{ name: name\.slice\(0, 120\), liturgicalDate: iso, template: templateFor\(iso\) \}, lang\)/);
   assert.match(planner, /const fills = builtInItems\(template, lang\);\s+if \(fills\.length > 0\) await api\.save\(created\.id, fills\);/, 'Standard Sunday stores nothing; Weekday stores its slots');
   for (const key of ['season_blank', 'season_advent', 'season_lent', 'season_ordinary', 'seasonLabel', 'seasonGloriaOmitted']) {
     assert.equal(plannerT('en', key), key, `${key} is no longer a label`);

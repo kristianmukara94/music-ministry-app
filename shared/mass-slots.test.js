@@ -191,8 +191,8 @@ test('the planner shows the four parts of the Mass as collapsible, with a number
   const planner = read('src/planner/MassPlanner.tsx');
   assert.match(planner, /<HolyMassPlan\b/);
   assert.match(planner, /<MassTemplates\b/);
-  assert.match(planner, /\{t\('templates'\)\}/, 'the Templates button sits beside New plan');
-  assert.ok(planner.indexOf("t('newPlan')") < planner.indexOf("t('templates')"));
+  assert.match(planner, /\{t\('templates'\)\}/, 'the Templates button sits in the toolbar');
+  assert.ok(planner.indexOf("t('backToCalendar')") < planner.indexOf("t('templates')"));
 });
 
 test('the picker is a combobox filtered by the Holy Mass scope and the slot\'s song category', () => {

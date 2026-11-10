@@ -16,7 +16,7 @@ const { PLAN_SYNC_MIGRATIONS } = await import('./plan-sync-schema.js');
 const { LECTIONARY_MIGRATIONS } = await import('./lectionary.js');
 const { MEDIA_MIGRATIONS } = await import('./media.js');
 const { BIBLE_MIGRATIONS } = await import('./bible-seed.js');
-const { NOTES_SLOT_MIGRATIONS, PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, createNotesService } = await import('./notes.js');
+const { NOTES_COPY_MIGRATIONS, NOTES_SLOT_MIGRATIONS, PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, createNotesService } = await import('./notes.js');
 const { dividedNote, noteSource, noteSourceId } = await import('../shared/notes.js');
 const { insertIntoMassFlow } = await import('../shared/flow-insert.js');
 
@@ -37,7 +37,7 @@ function setup() {
   for (const sql of [...LYRICS_MIGRATIONS, ...LYRICS_STYLE_MIGRATIONS, ...HYMN_DELETE_MIGRATIONS, ...MASS_PLAN_MIGRATIONS, ...PLAN_LANGUAGE_MIGRATIONS, ...PLAN_BIBLE_MIGRATIONS,
     ...PLAN_CUSTOM_MIGRATIONS, ...PLAN_NOTES_MIGRATIONS, ...PW_MIGRATIONS, ...PLAN_COMMUNION_MIGRATIONS, ...SONG_CATEGORY_MIGRATIONS, ...SONG_SCOPE_MIGRATIONS, ...SONG_CATEGORY_MODE_MIGRATIONS,
     ...MASS_SLOT_MIGRATIONS, ...TRANSFER_MIGRATIONS, ...PLAN_SYNC_MIGRATIONS, ...LECTIONARY_MIGRATIONS, ...MEDIA_MIGRATIONS, ...BIBLE_MIGRATIONS,
-    ...PRAYER_NOTES_MIGRATIONS, ...PRAYER_NOTES_SPLIT_MIGRATIONS, ...NOTES_SLOT_MIGRATIONS]) {
+    ...PRAYER_NOTES_MIGRATIONS, ...PRAYER_NOTES_SPLIT_MIGRATIONS, ...NOTES_SLOT_MIGRATIONS, ...NOTES_COPY_MIGRATIONS]) {
     db.exec(sql);
   }
   db.exec('CREATE TABLE IF NOT EXISTS announcement_slides (id INTEGER PRIMARY KEY)');
@@ -75,14 +75,18 @@ test('two rows can play different slides of one entry, beside the whole entry', 
   );
 });
 
-test('an entry deleted from the Hub marks its partial rows stale, and a plan cannot be saved pointing at it', () => {
+test('an entry deleted from the Hub marks its partial rows stale; the plan still saves with them, but cannot newly add it', () => {
   const { notes, plans, plan } = setup();
   const note = novena(notes);
   const row = { block: 'word', module: 'notes', sourceId: noteSourceId(note.id, [1, 2]), label: 'Novena', slot: null };
   plans.savePlan(plan.id, [row]);
   notes.remove(note.id);
   assert.equal(plans.getPlan(plan.id).items[0].stale, true);
-  assert.throws(() => plans.savePlan(plan.id, [row]), /no longer exists/);
+  // A later save (an on-air edit, a reorder) keeps the row it already had, still marked missing.
+  plans.savePlan(plan.id, [row]);
+  assert.equal(plans.getPlan(plan.id).items[0].stale, true);
+  // Other slides of the gone entry are a new row, and are refused.
+  assert.throws(() => plans.savePlan(plan.id, [row, { ...row, sourceId: noteSourceId(note.id, [3]) }]), /no longer exists/);
 });
 
 test('a source id that names no note is refused', () => {

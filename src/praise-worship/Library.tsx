@@ -13,6 +13,7 @@ import { LibrarySearchContainer, type LibrarySearchHandle } from './LibrarySearc
 import type { LibraryRow as Row } from './SongSearchResultCard';
 import type { QuickLive } from './useQuickLiveController';
 import { QuickCuePanel } from './QuickCuePanel';
+import { isGoLiveCopy } from '../notes/slideCopies';
 
 type LibTab = 'song' | 'prayer' | 'scripture';
 const TABS: { id: LibTab; key: string }[] = [
@@ -139,8 +140,9 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
       });
     }
     if (tab === 'prayer') {
+      // The library offers Hub entries only: a card's own Go Live copy stays on that card.
       return prayers
-        .filter((p) => !q || `${p.title} ${p.body}`.toLowerCase().includes(q))
+        .filter((p) => !isGoLiveCopy(p) && (!q || `${p.title} ${p.body}`.toLowerCase().includes(q)))
         .map((p): Row => ({
           key: `prayer-${p.id}`,
           tickable: true,

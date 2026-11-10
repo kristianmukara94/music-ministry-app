@@ -1,7 +1,25 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { stanzaFrame } from './frames';
-import { ArrowDown, ArrowUp, Check, GripVertical, ListMusic, Music, Pencil, Play, Plus, Search, Trash2, Type } from 'lucide-react';
-import { firstSungStanza, goLiveOffActions, lyricsOnAir, presentSongStanzaActions, setlistOnAir, setlistStanzaFrame, type SetlistPlace } from '../../shared/lyrics-live.js';
+import { ArrowDown, ArrowUp, Check, Clock, GripVertical, ListMusic, Loader2, Music, Pencil, Play, Plus, Search, Trash2, Type, Zap } from 'lucide-react';
+import {
+  estimateSongSeconds,
+  firstSungStanza,
+  formatDuration,
+  goLiveNowActions,
+  goLiveNowCutsRun,
+  goLiveOffActions,
+  lyricsOnAir,
+  presentSongStanzaActions,
+  sectionChip,
+  setlistOnAir,
+  setlistStanzaFrame,
+  type SectionKind,
+  type SetlistPlace,
+} from '../../shared/lyrics-live.js';
+import { liveLyrics } from '../live/liveSongEdits';
+import { useProjectionLocked } from '../live/license';
+import { quickLiveBand } from '../praise-worship/useQuickLiveController';
+import { LiveOutputCard, LiveStatusBadge } from './LiveOutputCard';
 import { clampTranspose, filterSetlist, transposeId } from '../../shared/setlist-tools.js';
 import { LiveQuickControls } from './LiveQuickControls';
 import { KeyStepper } from './KeyStepper';
@@ -25,27 +43,29 @@ import type { Hymn, HymnSummary, Setlist, SetlistEntry } from './types';
 const api = bridge.lyrics;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-/** The short label on a section pill: V1, V2, C, B, O or T. Anything unrecognised shows its first two letters. */
-function sectionPill(stanzaType: string): string {
-  const m = /^(Verse|Chorus|Bridge|Outro|Tag)\s*(\d*)$/.exec(stanzaType);
-  if (!m) return stanzaType.slice(0, 2).toUpperCase();
-  const letter: Record<string, string> = { Verse: 'V', Chorus: 'C', Bridge: 'B', Outro: 'O', Tag: 'T' };
-  return `${letter[m[1]]}${m[1] === 'Verse' ? m[2] : ''}`;
-}
-
-/** The section kind of a stanza, such as Verse or Chorus, used for its colour. */
-function sectionKind(stanzaType: string): string {
-  return /^(Verse|Chorus|Bridge|Outro|Tag)/.exec(stanzaType)?.[1] ?? 'Tag';
-}
-
-/** A colour per section kind, so verses, the chorus, bridges and outros are easy to tell apart at a glance. */
-const SECTION_TONE: Record<string, string> = {
-  Verse: 'border-info/40 bg-info/10 text-info hover:bg-info/20',
-  Chorus: 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/20',
-  Bridge: 'border-warn/40 bg-warn/10 text-warn hover:bg-warn/20',
-  Outro: 'border-ok/40 bg-ok/10 text-ok hover:bg-ok/20',
+/**
+ * A colour per section kind, so verses, the chorus, bridges and outros are easy to tell apart at a glance: verses blue, the chorus gold, bridges
+ * purple and outros emerald. The labels (V1, C, C2, B, OUT) come from sectionChip in shared/lyrics-live.js.
+ */
+const SECTION_TONE: Record<SectionKind, string> = {
+  Verse: 'border-info/50 bg-info/10 text-info hover:bg-info/20',
+  Chorus: 'border-accent/50 bg-accent/10 text-accent hover:bg-accent/20',
+  // No theme token is purple, so the bridge takes a violet tint with the theme's own text colour, readable in the light themes too.
+  Bridge: 'border-violet-500/60 bg-violet-500/15 text-fg hover:bg-violet-500/25',
+  Outro: 'border-ok/50 bg-ok/10 text-ok hover:bg-ok/20',
   Tag: 'border-fg/15 bg-panel-2 text-fg/80 hover:bg-panel',
 };
+
+/** How long the GO LIVE NOW button stays armed for its second press, when Holy Mass or Praise & Worship is on the projector. */
+const GO_NOW_ARM_MS = 1500;
+/** How long a GO LIVE NOW notice stays beside its song. */
+const GO_NOW_NOTICE_MS = 4000;
+
+/** A setlist row's number as the booth reads it: #01, #02 … */
+const rowNumber = (index: number) => `#${String(index + 1).padStart(2, '0')}`;
+
+/** The glass panel every column sits on. */
+const PANEL = 'flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-xl shadow-black/30 backdrop-blur-md';
 
 /** Today's date in local time (toISOString would give yesterday's date before 08:00 in Manila). */
 const todayIso = () => {
@@ -121,6 +141,86 @@ export function SongLyrics() {
   const modalOpen = adding !== null || editing !== null;
   const inSetlist = new Set(entries.map((e) => e.hymnId));
   const liveFromSetlist = setlistOnAir(projector, setlistId);
+  const projectionLocked = useProjectionLocked();
+
+  // Ctrl + F (Cmd + F) jumps to the library search, as in the Praise & Worship Library. Ctrl + K stays the app's command palette.
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f' && searchRef.current) {
+        e.preventDefault();
+        searchRef.current.focus();
+        searchRef.current.select();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // GO LIVE NOW: the song being read (its button shows a spinner), the song armed for a second press, and a short notice beside a song.
+  const [goNowPending, setGoNowPending] = useState<number | null>(null);
+  const [goNowArmed, setGoNowArmed] = useState<number | null>(null);
+  const [goNowNotice, setGoNowNotice] = useState<{ hymnId: number; text: string; tone: 'warn' | 'danger' } | null>(null);
+  const goNowTimers = useRef<{ arm?: number; notice?: number }>({});
+  useEffect(() => () => {
+    window.clearTimeout(goNowTimers.current.arm);
+    window.clearTimeout(goNowTimers.current.notice);
+  }, []);
+  // A song GO LIVE NOW already read from the session copy. The cue panel opens on it as it is, rather than reading the library again.
+  const preloaded = useRef<Hymn | null>(null);
+
+  const goNowSay = (hymnId: number, text: string, tone: 'warn' | 'danger') => {
+    setGoNowNotice({ hymnId, text, tone });
+    window.clearTimeout(goNowTimers.current.notice);
+    goNowTimers.current.notice = window.setTimeout(() => setGoNowNotice(null), GO_NOW_NOTICE_MS);
+  };
+
+  /**
+   * GO LIVE NOW on a library song: its first sung verse goes straight to the projector, and a lower third naming it goes up with it, without the
+   * song being added to a setlist. Go Live is armed, so every stanza chip after it goes straight out too, and the song opens in Live Cues.
+   *
+   * Copy-on-write: the song is read through liveLyrics (the stored song plus this run's on-air edits) and nothing is written to Song Lyrics.
+   * When Holy Mass or Praise & Worship is on the projector, the first press only arms the button; a second press (or Shift + click) cuts in.
+   */
+  const handleGoLiveNow = async (summary: HymnSummary, force = false) => {
+    if (goNowPending !== null) return;
+    window.clearTimeout(goNowTimers.current.arm);
+    if (!force && goNowArmed !== summary.id && goLiveNowCutsRun(useLive.getState().state.projector)) {
+      setGoNowArmed(summary.id);
+      goNowTimers.current.arm = window.setTimeout(() => setGoNowArmed(null), GO_NOW_ARM_MS);
+      return;
+    }
+    setGoNowArmed(null);
+    setGoNowPending(summary.id);
+    setError(null);
+    try {
+      const song = await liveLyrics.getHymn(summary.id);
+      if (!song || song.deletedAt) {
+        goNowSay(summary.id, t('goLiveNowGone', { title: summary.title }), 'danger');
+        return;
+      }
+      const actions = goLiveNowActions({ hymn: song, band: quickLiveBand(song), bandStageOnly: projectionLocked });
+      if (!actions) {
+        goNowSay(summary.id, t('goLiveNowEmpty', { title: song.title }), 'warn');
+        return;
+      }
+      // The song is not from the queue or a setlist row, so its takes are direct projections and its frames carry no setlist place.
+      openedFromQueue.current = false;
+      hymnFromQueue.current = false;
+      openOnLoad.current = null;
+      preloaded.current = song;
+      setUi({ lyricsGoLive: true });
+      actions.forEach(dispatch);
+      setSelected(null);
+      setFocusedId(song.id);
+      setQueueRequest((n) => n + 1);
+      if (!useLive.getState().state.outputs.projector) goNowSay(song.id, t('goLiveNowOutputOff'), 'warn');
+    } catch (err) {
+      goNowSay(summary.id, errorText(err), 'danger');
+    } finally {
+      setGoNowPending(null);
+    }
+  };
 
   // A hymn opened from the Service Queue. Its cues load even if it is not in this setlist.
   const [focusedId, setFocusedId] = useState<number | null>(null);
@@ -172,6 +272,15 @@ export function SongLyrics() {
     hymnFromQueue.current = openedFromQueue.current;
     if (activeHymnId == null) {
       setHymn(null);
+      return;
+    }
+    // GO LIVE NOW already read this song from the session copy and put its first verse on air: open it as it is, cued on that verse.
+    const pre = preloaded.current;
+    if (pre && pre.id === activeHymnId) {
+      preloaded.current = null;
+      hymnFromQueue.current = false;
+      setHymn(pre);
+      setCue(firstSungStanza(pre.stanzas));
       return;
     }
     api
@@ -478,12 +587,18 @@ export function SongLyrics() {
   const rowOnAir = (entry: SetlistEntry, index: number) =>
     onAir !== null && onAir.hymnId === entry.hymnId && (onAir.setlistId === setlistId ? onAir.songIndex === index : onAir.setlistId === null);
 
+  // The setlist's rough running time, from each song's stanza count. Deleted songs are left out.
+  const setlistSeconds = entries.reduce((sum, e) => sum + (e.deleted ? 0 : estimateSongSeconds(e.stanzaCount)), 0);
+
   return (
     <div className="flex flex-1 flex-col">
-      <header className="px-5 pt-5 pb-4">
-        <div className="text-sm font-semibold tracking-wider text-accent uppercase">{t('eyebrow')}</div>
-        <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{t('title')}</h1>
-        <p className="mt-1 text-sm text-fg/70">{t('subtitle')}</p>
+      <header className="flex flex-wrap items-end justify-between gap-4 px-5 pt-5 pb-4">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold tracking-wider text-accent uppercase">{t('eyebrow')}</div>
+          <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{t('title')}</h1>
+          <p className="mt-1 text-sm text-fg/70">{t('subtitle')}</p>
+        </div>
+        <LiveStatusBadge t={t} />
       </header>
 
       {(error ?? filter.error) && (
@@ -492,9 +607,9 @@ export function SongLyrics() {
         </div>
       )}
 
-      <div className="grid min-h-0 grid-cols-1 gap-5 px-5 pb-5 xl:flex-1 xl:grid-cols-[380px_minmax(0,1fr)_minmax(0,1.1fr)]">
+      <div className="grid min-h-0 grid-cols-1 gap-5 px-5 pb-5 xl:flex-1 xl:grid-cols-[320px_minmax(0,1fr)_minmax(0,1.1fr)] 2xl:grid-cols-[400px_minmax(0,1fr)_minmax(0,1.1fr)]">
         {/* ── Library ── */}
-        <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-[10px] border border-line bg-panel">
+        <section className={PANEL}>
           <div className="flex flex-col gap-3 border-b border-line p-4">
             <HymnLibraryHeader tab={libraryTab} onTab={setLibraryTab} count={hymns.length} onAdd={setAdding} t={t} />
             {libraryTab === 'library' && (
@@ -502,12 +617,19 @@ export function SongLyrics() {
             <label className="relative">
               <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" aria-hidden />
               <input
+                ref={searchRef}
                 type="search"
                 value={query}
                 onChange={(e) => filter.setQuery(e.target.value)}
                 placeholder={t('search')}
-                className="h-10 w-full rounded-md border border-fg/15 bg-panel-2 pr-3 pl-9 text-sm outline-none focus:border-accent"
+                aria-keyshortcuts="Control+F"
+                title={t('searchShortcut')}
+                className="peer h-10 w-full rounded-md border border-fg/15 bg-panel-2 pr-20 pl-9 text-sm outline-none focus:border-accent"
               />
+              <span aria-hidden className="pointer-events-none absolute top-1/2 right-2.5 flex -translate-y-1/2 gap-0.5 peer-focus:opacity-0">
+                <span className="kbd">Ctrl</span>
+                <span className="kbd">F</span>
+              </span>
             </label>
             <SongFilterBar filter={filter} t={t} />
             </>
@@ -520,38 +642,41 @@ export function SongLyrics() {
             </div>
           ) : (
           <>
-          <ul ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-2">
+          <ul ref={listRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
             {hymns.length === 0 && <li className="p-4 text-sm text-fg/60">{t('noHymns')}</li>}
-            {hymns.map((h) => (
+            {hymns.map((h) => {
+              const songLive = onAir !== null && !onAir.blackout && onAir.hymnId === h.id;
+              const armed = goNowArmed === h.id;
+              const pending = goNowPending === h.id;
+              const notice = goNowNotice?.hymnId === h.id ? goNowNotice : null;
+              return (
               <li
                 key={h.id}
                 draggable
                 onDragStart={() => { dragRef.current = { kind: 'library', hymnId: h.id }; }}
                 onDragEnd={() => { dragRef.current = null; setDropAt(null); }}
-                onDoubleClick={() => setlistId != null && addToSetlist(h.id)}
+                onDoubleClick={(e) => setlistId != null && !(e.target as HTMLElement).closest('button') && addToSetlist(h.id)}
                 title={setlistId != null ? t('dblAddHint') : undefined}
-                className="group flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-fg/[0.06]"
+                className={`group rounded-lg border p-2.5 transition ${
+                  songLive ? 'border-danger/60 bg-danger/10 ring-1 ring-danger/40' : 'border-line bg-panel-2/60 hover:border-fg/20 hover:bg-panel-2'
+                }`}
               >
-                <Music size={14} className="shrink-0 cursor-grab text-faint" aria-hidden />
+                <div className="flex items-start gap-2">
+                <Music size={14} className="mt-1 shrink-0 cursor-grab text-faint" aria-hidden />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate text-sm font-semibold text-fg">{h.title}</span>
+                    <span className="truncate text-sm font-bold text-fg">{h.title}</span>
                     {inSetlist.has(h.id) && <Check size={13} className="shrink-0 text-ok" aria-label={t('inSetlist')} />}
+                    {songLive && <span aria-label={t('live')} title={t('live')} className="size-2 shrink-0 animate-pulse rounded-full bg-danger" />}
                   </div>
-                  <div className="truncate text-[11px] text-fg/60">
-                    {[h.composer, h.musicalKey, t(`cat_${h.category}`), t(`lang_${h.language}`), t('stanzaCount', { n: h.stanzaCount })].filter(Boolean).join(' · ')}
+                  {h.composer && <div className="truncate text-[11px] text-fg/60">{h.composer}</div>}
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-fg/65">
+                    {h.musicalKey && <span className="font-mono font-bold text-accent">{t('keyMeta', { key: h.musicalKey })}</span>}
+                    <span>{t(`lang_${h.language}`)}</span>
+                    <span className="rounded border border-fg/15 bg-fg/[0.06] px-1.5 py-px text-[10px] font-semibold text-fg/80">{h.songCategory || t(`cat_${h.category}`)}</span>
+                    <span className="tabular-nums">{t('stanzaCount', { n: h.stanzaCount })}</span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => addToSetlist(h.id)}
-                  disabled={setlistId == null}
-                  aria-label={`${t('addToSetlist')}: ${h.title}`}
-                  title={t('addToSetlist')}
-                  className="grid size-7 shrink-0 place-items-center rounded text-muted hover:bg-canvas hover:text-accent disabled:opacity-30"
-                >
-                  <Plus size={14} aria-hidden />
-                </button>
                 <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                   <button
                     type="button"
@@ -572,8 +697,43 @@ export function SongLyrics() {
                     <Trash2 size={13} aria-hidden />
                   </button>
                 </div>
+                </div>
+                {/* The action pair: + ADD puts the song at the end of the open setlist; GO LIVE NOW projects it at once, no setlist needed. */}
+                <div className="mt-2 flex items-center gap-2 pl-[22px]">
+                  <button
+                    type="button"
+                    onClick={() => addToSetlist(h.id)}
+                    disabled={setlistId == null}
+                    aria-label={`${t('addToSetlist')}: ${h.title}`}
+                    title={t('addToSetlist')}
+                    className="flex h-8 shrink-0 items-center gap-1 rounded-md border border-fg/20 bg-panel px-3 text-[11px] font-bold tracking-wider text-fg/85 uppercase transition hover:border-accent hover:text-accent focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    <Plus size={13} strokeWidth={2.5} aria-hidden /> {t('addShort')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => void handleGoLiveNow(h, e.shiftKey)}
+                    disabled={goNowPending !== null && !pending}
+                    aria-busy={pending}
+                    aria-label={`${armed ? t('goLiveNowConfirm') : t('goLiveNow')}: ${h.title}`}
+                    title={armed ? t('goLiveNowConfirmHint') : t('goLiveNowHint')}
+                    data-go-live-now
+                    className={`flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md border px-3 text-[11px] font-extrabold tracking-wider whitespace-nowrap uppercase shadow-md transition-all focus-visible:ring-2 focus-visible:ring-danger/70 focus-visible:ring-offset-1 focus-visible:ring-offset-canvas focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${
+                      armed ? 'animate-pulse border-warn bg-warn text-black' : 'border-danger/60 bg-crimson/95 text-white hover:bg-crimson hover:brightness-125 active:scale-[0.98]'
+                    }`}
+                  >
+                    {pending ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <Zap size={13} fill="currentColor" aria-hidden />}
+                    <span className="truncate">{armed ? t('goLiveNowConfirm') : t('goLiveNow')}</span>
+                  </button>
+                </div>
+                {notice && (
+                  <p role="status" className={`mt-2 pl-[22px] text-[11px] font-semibold ${notice.tone === 'danger' ? 'text-danger' : 'text-warn'}`}>
+                    {notice.text}
+                  </p>
+                )}
               </li>
-            ))}
+              );
+            })}
           </ul>
           <RecentlyDeleted onRestored={() => void reloadHymns()} />
           </>
@@ -581,19 +741,28 @@ export function SongLyrics() {
         </section>
 
         {/* ── Sunday setlist ── */}
-        <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-[10px] border border-line bg-panel">
+        <section className={PANEL}>
           <div className="flex flex-col gap-3 border-b border-line p-4">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <ListMusic size={16} aria-hidden />
               <span className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('setlistTitle')}</span>
               {setlistId != null && <span className="rounded-full bg-fg/10 px-2 py-px font-mono text-[10px] font-bold text-fg/70 tabular-nums">{entries.length}</span>}
+              {setlistSeconds > 0 && (
+                <span
+                  aria-label={t('setlistDuration', { time: formatDuration(setlistSeconds) })}
+                  title={`${t('setlistDuration', { time: formatDuration(setlistSeconds) })}. ${t('durationHint')}`}
+                  className="hidden shrink-0 items-center gap-1 font-mono text-[10px] whitespace-nowrap text-muted tabular-nums sm:flex"
+                >
+                  <Clock size={11} aria-hidden /> ≈{formatDuration(setlistSeconds)}
+                </span>
+              )}
               {goLive ? (
                 <button
                   type="button"
                   onClick={toggleGoLive}
                   aria-pressed
                   title={liveFromSetlist ? t('onAirHint') : t('armedHint')}
-                  className="ml-auto flex h-8 items-center gap-1.5 rounded-md border border-danger bg-danger px-2.5 text-[11px] font-extrabold tracking-wider text-white uppercase shadow-md transition hover:brightness-110"
+                  className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-danger bg-danger px-2.5 whitespace-nowrap text-[11px] font-extrabold tracking-wider text-white uppercase shadow-md transition hover:brightness-110"
                 >
                   <span aria-hidden className={`size-2 rounded-full bg-white ${liveFromSetlist ? 'animate-pulse' : 'opacity-70'}`} />
                   {t('onAir')}
@@ -604,7 +773,7 @@ export function SongLyrics() {
                   onClick={toggleGoLive}
                   aria-pressed={false}
                   title={t('goLiveHint')}
-                  className="ml-auto flex h-8 items-center gap-1.5 rounded-md border border-ok bg-ok px-2.5 text-[11px] font-extrabold tracking-wider text-canvas uppercase shadow-md transition hover:brightness-110"
+                  className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-ok bg-ok px-2.5 whitespace-nowrap text-[11px] font-extrabold tracking-wider text-canvas uppercase shadow-md transition hover:brightness-110"
                 >
                   <Play size={12} fill="currentColor" aria-hidden /> {t('goLive')}
                 </button>
@@ -612,7 +781,7 @@ export function SongLyrics() {
               <button
                 type="button"
                 onClick={() => setNewSetlist((open) => !open)}
-                className="h-8 rounded-md border border-fg/15 bg-panel-2 px-2.5 text-[11px] font-semibold tracking-wide uppercase transition hover:bg-fg/10"
+                className="h-8 shrink-0 rounded-md border border-fg/15 bg-panel-2 px-2.5 text-[11px] font-semibold tracking-wide whitespace-nowrap uppercase transition hover:bg-fg/10"
               >
                 {newSetlist ? t('cancel') : t('newSetlist')}
               </button>
@@ -719,8 +888,10 @@ export function SongLyrics() {
                   className={`group flex items-center gap-2 rounded-lg border-t-2 border-l-[3px] px-2 py-2 transition ${
                     dropAt === i ? 'border-t-accent' : 'border-t-transparent'
                   } ${
-                    goLive && rowOnAir(entry, i)
-                      ? 'border-l-danger bg-gradient-to-r from-danger/20 to-danger/5 ring-1 ring-danger/50'
+                    rowOnAir(entry, i)
+                      ? goLive
+                        ? 'border-l-danger bg-gradient-to-r from-danger/20 to-danger/5 ring-2 ring-danger/60'
+                        : 'border-l-ok bg-gradient-to-r from-ok/15 to-ok/5 ring-2 ring-ok/50'
                       : selected === i
                         ? 'border-l-accent bg-gradient-to-r from-accent/20 to-accent/5'
                         : 'border-l-transparent hover:bg-fg/[0.06]'
@@ -729,8 +900,8 @@ export function SongLyrics() {
                   <span aria-hidden title={t('dragHandle')} className="-mr-1 shrink-0 cursor-grab text-fg/35 transition group-hover:text-fg/70 active:cursor-grabbing">
                     <GripVertical size={14} />
                   </span>
-                  <span className="w-6 shrink-0 text-center font-mono text-xs text-fg/50">
-                    {rowOnAir(entry, i) ? <span className={`mx-auto block size-2 animate-pulse rounded-full ${goLive ? 'bg-danger' : 'bg-ok'}`} title={t('live')} /> : i + 1}
+                  <span className="w-8 shrink-0 text-center font-mono text-xs font-bold text-fg/50 tabular-nums">
+                    {rowOnAir(entry, i) ? <span className={`mx-auto block size-2.5 animate-pulse rounded-full ${goLive ? 'bg-danger' : 'bg-ok'}`} title={t('live')} /> : rowNumber(i)}
                   </span>
                   <button
                     type="button"
@@ -742,9 +913,18 @@ export function SongLyrics() {
                   >
                     <div className={`truncate text-sm font-semibold ${selected === i ? 'text-accent' : 'text-fg'}`}>{entry.title}</div>
                     {entry.deleted && <div className="text-[11px] text-danger">{t('deletedHymnStatus')}</div>}
-                    <div className="truncate text-[11px] text-muted">{[entry.composer, t(`cat_${entry.category}`)].filter(Boolean).join(' · ')}</div>
+                    <div className="flex min-w-0 items-center gap-2 text-[11px] text-muted">
+                      {entry.musicalKey && <span className="shrink-0 font-mono font-bold text-accent">{t('keyMeta', { key: entry.musicalKey })}</span>}
+                      <span className="truncate">{[entry.composer, t(`cat_${entry.category}`)].filter(Boolean).join(' · ')}</span>
+                      {!entry.deleted && estimateSongSeconds(entry.stanzaCount) > 0 && (
+                        <span title={t('durationHint')} className="ml-auto flex shrink-0 items-center gap-1 font-mono tabular-nums">
+                          <Clock size={10} aria-hidden /> {formatDuration(estimateSongSeconds(entry.stanzaCount))}
+                        </span>
+                      )}
+                    </div>
                   </button>
-                  <div className="flex shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  {/* The move arrows take no room until the row is hovered or one of them has focus, so the title keeps the width in a narrow column. */}
+                  <div className="flex w-0 shrink-0 overflow-hidden opacity-0 transition-opacity group-hover:w-auto group-hover:opacity-100 focus-within:w-auto focus-within:opacity-100">
                     <button type="button" onClick={() => moveEntry(i, -1)} disabled={i === 0} aria-label={t('moveUp')} title={t('moveUp')} className="grid size-7 place-items-center rounded text-fg/60 hover:text-fg disabled:opacity-30">
                       <ArrowUp size={13} aria-hidden />
                     </button>
@@ -774,15 +954,24 @@ export function SongLyrics() {
         </section>
 
         {/* ── Live cue controller ── */}
-        <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-[10px] border border-line bg-panel xl:min-h-0">
-          <div className="shrink-0 border-b border-line p-4">
-            <span className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('cuesTitle')}</span>
+        <section className={`${PANEL} xl:min-h-0`}>
+          {/* Now Playing: the open song, its key (with the stepper) and its category and language. */}
+          <div className={`shrink-0 border-b border-line p-4 ${hymn && onAir?.hymnId === hymn.id && !onAir.blackout ? 'bg-gradient-to-r from-danger/15 to-transparent' : ''}`}>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('cuesTitle')}</span>
+              {hymn && (
+                <span className="text-[10px] font-bold tracking-wider text-muted uppercase">
+                  · {focusedId !== null && !hymnFromQueue.current ? t('fromLibrary') : t('nowPlaying')}
+                </span>
+              )}
+            </div>
             {hymn ? (
               <>
-                <h2 className="mt-1 text-2xl font-bold tracking-tight">{hymn.title}</h2>
+                {/* The key signature is the stepper's badge below: it shows the key as transposed for this setlist. */}
+                <h2 className="mt-1 min-w-0 truncate text-2xl font-bold tracking-tight">{hymn.title}</h2>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
                   <KeyStepper musicalKey={hymn.musicalKey} semitones={transpose[keyId] ?? 0} onChange={setTranspose} t={t} />
-                  <span>{[hymn.composer, t(`cat_${hymn.category}`), t(`lang_${hymn.language}`)].filter(Boolean).join(' · ')}</span>
+                  <span>{[hymn.composer, hymn.songCategory || t(`cat_${hymn.category}`), t(`lang_${hymn.language}`)].filter(Boolean).join(' · ')}</span>
                 </div>
               </>
             ) : (
@@ -790,16 +979,15 @@ export function SongLyrics() {
             )}
           </div>
 
-          {/* Blackout, Clear text and the Lower 3rd: always at hand, with their keys while Go Live is armed. */}
-          <LiveQuickControls hymn={hymn} keys={goLive && !modalOpen} t={t} />
-
-          {hymn ? (
+          {hymn && (
             <>
               {!direct && <p className="shrink-0 border-b border-line bg-fg/[0.03] px-3 py-2 text-[11px] text-muted">{t('stageMode')}</p>}
               {/* Section pills: in Go Live one press takes a whole section live; otherwise it is staged. Keys 1 to 9 press them too, and
-                  each of the first nine wears its number. */}
+                  each of the first nine wears its number. Verses are blue, the chorus gold, bridges purple and outros emerald. */}
               <div role="toolbar" aria-label="Sections" className="flex shrink-0 flex-wrap gap-x-3 gap-y-2.5 border-b border-line px-3 pt-4 pb-3">
-                {hymn.stanzas.map((stanza, i) => (
+                {hymn.stanzas.map((stanza, i) => {
+                  const chip = sectionChip(stanza.stanzaType);
+                  return (
                   <button
                     key={stanza.id}
                     type="button"
@@ -807,27 +995,37 @@ export function SongLyrics() {
                     aria-label={`${direct ? 'Take live' : 'Stage'}: ${stanza.stanzaType}`}
                     aria-keyshortcuts={i < 9 ? String(i + 1) : undefined}
                     title={i < 9 ? `${stanza.stanzaType} (${i + 1})` : stanza.stanzaType}
-                    className={`relative rounded-full border px-2.5 py-1 font-mono text-[11px] font-bold transition-colors ${SECTION_TONE[sectionKind(stanza.stanzaType)]} ${
-                      isLive(i) ? 'ring-2 ring-accent' : cue === i ? 'ring-2 ring-fg/40' : ''
+                    className={`relative min-w-11 rounded-full border px-3 py-1.5 font-mono text-xs font-extrabold transition-colors ${SECTION_TONE[chip.kind]} ${
+                      isLive(i) ? 'ring-2 ring-danger shadow-[0_0_10px_color-mix(in_oklab,var(--color-danger)_45%,transparent)]' : cue === i ? 'ring-2 ring-fg/40' : ''
                     }`}
                   >
-                    {sectionPill(stanza.stanzaType)}
+                    {chip.label}
                     {/* The hotkey badge sits on a solid canvas disc, so it reads over every chip colour, live, selected or not. */}
                     {i < 9 && (
                       <span
                         aria-hidden
                         data-hotkey-badge
                         className={`pointer-events-none absolute -top-2 -right-2 grid size-4 place-items-center rounded-full border bg-canvas font-mono text-[9px] leading-none font-bold tabular-nums shadow-sm ${
-                          isLive(i) ? 'border-accent text-accent' : cue === i ? 'border-fg/50 text-fg' : 'border-fg/25 text-fg/60'
+                          isLive(i) ? 'border-danger text-danger' : cue === i ? 'border-fg/50 text-fg' : 'border-fg/25 text-fg/60'
                         }`}
                       >
                         {i + 1}
                       </span>
                     )}
                   </button>
-                ))}
+                  );
+                })}
               </div>
+            </>
+          )}
 
+          {/* The emergency bar (Blackout, Clear text, the Lower 3rd, text size), always at hand, with its keys while Go Live is armed. */}
+          <LiveQuickControls hymn={hymn} keys={goLive && !modalOpen} t={t} />
+          {/* Exactly what the congregation's projector shows now. */}
+          <LiveOutputCard t={t} />
+
+          {hymn ? (
+            <>
               {/* Fixed top: the Style button. Its open state is kept for the session, as in the Text Slide editor. */}
               <div className="flex shrink-0 items-center border-b border-line p-3">
                 <button

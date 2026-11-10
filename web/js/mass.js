@@ -9,11 +9,10 @@ import { MASS_LANGUAGES, languageName, massLanguageOf, sectionName, slotName } f
 import { isMassTime, massTimesFor, timeLabel } from './mass-schedule.js';
 import { esc, mountSidebar } from './shell.js';
 import { guard } from './auth.js';
-import { getPlan, listSongs, savePlan } from './plan-api.js';
+import { getPlan, listSongs, savePlan, watchSongList } from './plan-api.js';
 import { usedHubIds } from './content-hub.js';
 import { entryListHtml, entrySummaryHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
-import { openSongPicker } from './song-picker.js';
-import { pickerCategoryLabel } from './lineup-templates.js';
+import { mountSongPicker, resetSongPickers } from './song-picker.js';
 import {
   describeEntries,
   VIEW_ONLY,
@@ -60,6 +59,14 @@ function writeCollapsed(groups) {
 let plan = null;
 let canEdit = false;
 let songs = [];
+// The songs the saved plan refers to, removed ones included, so a fresh song list still names them.
+let planSongs = [];
+// A song saved on the church laptop while this plan is open shows here when the page is next looked at, without a reload.
+const songWatch = watchSongList((list) => {
+  if (!plan) return;
+  songs = songsForEditor(list.songs, planSongs);
+  renderKeepingDraft();
+});
 let collapsed = readCollapsed();
 let state = fresh(null);
 
@@ -253,10 +260,7 @@ function addBody(cur) {
             </div>`;
   const panel = list
     ? `
-              <div class="picker-open">
-                <button type="button" data-action="open-picker" ${DISABLED(canEdit)} class="btn-primary">Add song</button>
-                <p>Opens the song list on Holy Mass${cur.pickerCategory ? `, at ${esc(pickerCategoryLabel('mass', cur.pickerCategory))}` : ''}. Praise &amp; Worship songs are under their own tab. The list comes from the church laptop.</p>
-              </div>`
+              <div data-inline-picker="${esc(cur.id)}"></div>`
     : `
               <div style="display: flex; flex-direction: column; gap: 12px">
                 <label style="display: flex; flex-direction: column; gap: 8px">
@@ -293,20 +297,23 @@ function renderDrawer() {
           <h2 class="section-title" style="font-size: 24px">${esc(cur.name)}</h2>
           <span style="font-size: 13px; color: var(--text)">${esc(subOf(cur))}</span>
         </div>${entryListHtml(cur.entries, cur.id, canEdit)}${addBody(cur)}${cur.kind === 'rite' ? riteNoteBody(cur) : ''}`;
+  mountPicker();
 }
 
 /**
- * Opens the song picker for the selected row, on the Holy Mass tab and the row's own category (the Kyrie row opens on Kyrie). Add puts a song
- * at the end of the row; pressing Added takes it out again.
+ * Draws the song picker into the drawer for the selected row, on the Holy Mass tab and the row's own category (the Kyrie row opens on Kyrie).
+ * Add puts a song at the end of the row; pressing Added takes it out again.
  */
-function openPicker() {
+function mountPicker() {
   const id = state.sel;
+  const root = id ? document.querySelector(`[data-inline-picker="${CSS.escape(id)}"]`) : null;
+  if (!root) return;
   const cur = stepOf(id);
-  openSongPicker({
+  mountSongPicker(root, {
+    key: `mass:${id}`,
     songs: songs.filter((s) => !s.removed),
     serviceType: 'mass',
     category: cur.pickerCategory || 'all',
-    slotName: cur.name,
     canEdit,
     chosenIds: () => new Set(slotEntries(state.segments[id]).map((entry) => entry.songId).filter(Boolean)),
     onToggle: (songId) => {
@@ -369,7 +376,10 @@ async function load() {
     plan = saved.plan;
     canEdit = saved.canEdit;
     songs = songsForEditor(list.songs, saved.songs);
+    planSongs = saved.songs;
+    songWatch.seen(list);
     state = fresh({ ...massFromItems(plan.items, ROWS), language: plan.language, massTime: plan.massTime });
+    resetSongPickers();
   } catch (err) {
     if (plan) state.error = err.message;
     else state = { ...fresh(null), error: err.message };
@@ -408,8 +418,8 @@ document.querySelector('main').addEventListener('click', (event) => {
     renderDrawer();
     // On a phone the drawer sits below the steps, so bring it into view.
     if (window.matchMedia('(max-width: 820px)').matches) document.getElementById('drawer').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    // Choose on an empty song row goes straight to the song list, already on that row's category.
-    if (picked.kind === 'song' && !picked.value) openPicker();
+    // A song row's drawer opens on its song list, already on the row's category (see mountPicker).
+    void songWatch.check();
   } else if (target.dataset.lang) {
     if (target.dataset.lang === state.language) return;
     setDetail({ language: target.dataset.lang });
@@ -422,8 +432,6 @@ document.querySelector('main').addEventListener('click', (event) => {
   } else if (target.dataset.mode) {
     state.mode = target.dataset.mode;
     renderDrawer();
-  } else if (target.dataset.action === 'open-picker') {
-    openPicker();
   } else if (target.dataset.removeEntry !== undefined) {
     changeSegments(withoutEntry(state.segments, target.dataset.for, Number(target.dataset.removeEntry)));
   } else if (target.dataset.hub) {

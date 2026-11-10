@@ -6,6 +6,7 @@ import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
 import { slideFramesOf } from '../notes/present';
 import type { Note } from '../notes/types';
+import { isCopyFor, massCopyOwner } from '../notes/slideCopies';
 import { replaceRowInFlow } from '../planner/plan-api';
 import { massShowing, prayerIdOf, prayerSlidesOf, showWithin, whenLive } from './massLive';
 
@@ -17,32 +18,13 @@ import { massShowing, prayerIdOf, prayerSlidesOf, showWithin, whenLive } from '.
  * slide by slide, is fitted to the screen, and a one-slide item becomes a multi-slide one when a slide is added. Later edits change the copy.
  */
 
-/** The copies made here, by note id, so a second edit changes the copy instead of copying it again. Per laptop; losing it only costs a copy. */
-const COPIES_KEY = 'apccmma.massSlideCopies';
-
-function copies(): Set<number> {
-  try {
-    const list: unknown = JSON.parse(localStorage.getItem(COPIES_KEY) ?? '[]');
-    return new Set(Array.isArray(list) ? list.filter((id): id is number => Number.isSafeInteger(id)) : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function rememberCopy(id: number) {
-  try {
-    const known = copies();
-    known.add(id);
-    localStorage.setItem(COPIES_KEY, JSON.stringify([...known].slice(-1000)));
-  } catch {
-    // Without storage, the next edit makes another copy: nothing on screen is lost.
-  }
-}
-
-/** Whether the row plays a copy made here, whole (not a pick of its slides). */
-function isOwnCopy(item: QueueItem, note: Note | null): note is Note {
+/**
+ * Whether the row plays this plan's own copy, whole (not a pick of its slides). Anything else, a Hub entry, another plan's copy (a plan made
+ * from this one) or a pick of a copy's slides, is copied first, so it is left exactly as it is.
+ */
+function isOwnCopy(item: QueueItem, note: Note | null, owner: string): note is Note {
   const source = item.module === 'notes' ? noteSource(item.sourceId) : null;
-  return Boolean(source && source.slides === null && note?.id === source.id && copies().has(source.id));
+  return Boolean(source && source.slides === null && note?.id === source.id && isCopyFor(note, owner));
 }
 
 /**
@@ -121,21 +103,27 @@ export async function saveItemSlides({ index, item, note, pages, showPage, inPla
   const { body, split } = composeSlides(pages);
   if (!body.trim()) throw new Error('A slide needs some words.');
   if (body.length > MAX_NOTE_BODY) throw new Error(`This item is too long to save: keep it under ${MAX_NOTE_BODY} characters.`);
-  const own = isOwnCopy(item, note);
+  const planId = useLive.getState().state.queuePlanId;
+  if (planId == null) throw new Error('No Holy Mass plan is loaded in the queue.');
+  const owner = massCopyOwner(planId);
+  const own = isOwnCopy(item, note, owner);
   const title = (note?.title ?? item.label).trim().slice(0, MAX_NOTE_TITLE) || 'Holy Mass';
-  const saved = await bridge.notes.save({
-    ...(own ? { id: note.id } : {}),
-    title,
-    category: categoryOf(item, note),
-    body,
-    display: 'full',
-    style: note?.style ?? null,
-    split,
-    slot: item.slot ?? null,
-  });
+  // saveCopy only ever makes a new copy or changes this plan's own: the Hub entry, the Lectionary and the Mass text are read, never written.
+  const saved = await bridge.notes.saveCopy(
+    {
+      ...(own ? { id: note.id } : {}),
+      title,
+      category: categoryOf(item, note),
+      body,
+      display: 'full',
+      style: note?.style ?? null,
+      split,
+      slot: item.slot ?? null,
+    },
+    owner,
+  );
   let at = index;
   if (!own) {
-    rememberCopy(saved.id);
     at = await replaceRowInFlow(index, { module: 'notes', sourceId: String(saved.id), label: saved.title });
     // The slide goes up once the queue the main process holds plays the copy, so stepping on from it walks the copy.
     await whenLive((s) => s.queue[at]?.module === 'notes' && noteSource(s.queue[at].sourceId)?.id === saved.id);

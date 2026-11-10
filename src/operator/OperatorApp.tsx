@@ -14,8 +14,7 @@ import { RosaryDeck } from '../rosary/RosaryDeck';
 import { MediaLibrary } from '../media/MediaLibrary';
 import { NotesPrayersView } from '../notes/NotesPrayersView';
 import { UnifiedDeckView } from '../whiteboard/UnifiedDeckView';
-import { MassPlanner } from '../planner/MassPlanner';
-import { PraiseWorship } from '../praise-worship/PraiseWorship';
+import { PlannerView } from '../planner/PlannerView';
 import { GoLiveConsole } from '../golive/GoLiveConsole';
 import { Settings } from '../settings/Settings';
 import { EulaGate } from '../components/EulaModal';
@@ -215,8 +214,8 @@ export function OperatorApp() {
           {view === 'bible' && <BibleDeck />}
           {view === 'rosary' && <RosaryDeck />}
           {view === 'media' && <MediaLibrary />}
-          {view === 'planner' && <MassPlanner />}
-          {view === 'praiseWorship' && <PraiseWorship />}
+          {/* One Planner for both views, so moving between a Mass plan and a Praise & Worship plan keeps it mounted. */}
+          {(view === 'planner' || view === 'praiseWorship') && <PlannerView />}
           {view === 'goLive' && <GoLiveConsole />}
           {view === 'settings' && <Settings />}
           {view === 'notes' && <NotesPrayersView />}

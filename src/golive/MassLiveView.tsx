@@ -4,6 +4,7 @@ import { SlidePreview } from '../announcements/TextSlideModal';
 import { lowerThirdOf, stagePrayer } from '../notes/present';
 import type { Note } from '../notes/types';
 import { useNotesById } from '../notes/useNotes';
+import { isGoLiveCopy } from '../notes/slideCopies';
 import { screenPagesOf } from '../../shared/prayer-screen.js';
 import { sanitizeTextStyle } from '../../shared/text-style.js';
 import type { MassSlot } from '../../shared/mass-slots.js';
@@ -33,7 +34,7 @@ import { BLOCKS } from '../planner/types';
 import { useT } from '../i18n/strings';
 import { setUi } from '../state/ui';
 import { blackoutOverMass, slotTitleShown, welcomeOverMass, type QueueItem } from '../../shared/live.js';
-import { endMassSession, frameAt, goLiveMassAt, goWithin, massShowing, playMassAt, slotNameAt, stepMass, stepsOf, useHymnOf, useMassClock, useNoteOf } from './massLive';
+import { endMassSession, frameAt, goLiveMassAt, goWithin, massShowing, noteRowOffScreen, playMassAt, slotNameAt, stepMass, stepsOf, useHymnOf, useMassClock, useNoteOf } from './massLive';
 import { LiveStageCanvas, type StageChipGroup } from '../components/LiveStageCanvas';
 import { useGoLiveT } from './strings';
 import { InFlowSlidePickerModal } from './InFlowSlidePickerModal';
@@ -156,7 +157,8 @@ const HUB_SECTIONS: { id: NoteSection; icon: string; label: GoLiveKey }[] = [
 /** The Hub's entries by section, each sorted by title. A section follows from the entry's category, as it does in the Hub. */
 export function hubMenuSections(notes: Iterable<Note>): Record<NoteSection, Note[]> {
   const out: Record<NoteSection, Note[]> = { prayers: [], massFlow: [], announcements: [] };
-  for (const note of notes) out[sectionOfCategory(note.category)].push(note);
+  // Hub entries only: a plan's own Go Live copies are not offered to other plans.
+  for (const note of notes) if (!isGoLiveCopy(note)) out[sectionOfCategory(note.category)].push(note);
   for (const list of Object.values(out)) list.sort((a, b) => a.title.localeCompare(b.title));
   return out;
 }
@@ -331,6 +333,9 @@ function MassLineup({
   const tPlan = usePlannerT();
   // The note row opened under itself, by the note it plays (a note is in the Mass once), so rows put in above it do not move it.
   const [openRow, setOpenRow] = useState<string | null>(null);
+  // Picking a note row opens its drawer; any other move of the selection (Next, Back, a hotkey) closes it, so a drawer never lingers once
+  // the flow has moved on.
+  useEffect(() => setOpenRow(null), [cursor]);
   const noteOf = (item: QueueItem) => (item.module === 'notes' ? notes.get(noteSource(item.sourceId)?.id ?? NaN) : undefined);
   const blockTitle = (block: string) => {
     const def = BLOCKS.find((b) => b.id === block);
@@ -398,8 +403,12 @@ function MassLineup({
               <div className="group relative">
                 <button
                   type="button"
-                  // A note's row opens under itself: a private note is read there, a prayer is staged or taken live there.
-                  onClick={() => (isNote ? setOpenRow(opened ? null : item.sourceId) : onPick(i))}
+                  // Picking a row selects it and plays it, as a Praise & Worship lineup row does; a note's row then opens under itself, where a
+                  // private note is read and a prayer can be staged again. Picking the row already selected only opens or closes its drawer.
+                  onClick={() => {
+                    if (isNote && current) return setOpenRow(opened ? null : item.sourceId);
+                    onPick(i);
+                  }}
                   disabled={busy || item.stale}
                   aria-current={current ? 'step' : undefined}
                   aria-expanded={isNote ? opened : undefined}
@@ -529,7 +538,8 @@ export function MassLiveView({ planName }: { planName: string | null }) {
 
   const queue = live.queue;
   const cursor = live.queueCursor;
-  // The Mass has the screen, with the projector window open or not (the TV and phones, or the app alone).
+  // The Mass has the screen, with the projector window open or not (the TV and phones, or the app alone). The console bar's Live button reads the
+  // same answer (runOnAir in onAir.ts is massShowing for the Mass).
   const onAir = massShowing(live);
   // The welcome screen or Blackout is up over the Mass: the Mass keeps its place, and the slide it covers waits staged under it.
   const covered = welcomeOverMass(live) || blackoutOverMass(live);
@@ -599,7 +609,9 @@ export function MassLiveView({ planName }: { planName: string | null }) {
     return def ? tPlan(def.titleKey as Parameters<typeof tPlan>[0]) : '';
   };
   // The slides of the item the console shows, on screen or staged and ready, so its chips are there before it goes up too.
-  const steps = item ? stepsOf(frame, hymn) : null;
+  // A lower-third or private note row leaves the slide before it on screen: that slide is not this row's, so it has no chips or editor here.
+  const offScreenNote = noteRowOffScreen(live, frame);
+  const steps = item && !offScreenNote ? stepsOf(frame, hymn) : null;
   // Next and Back step inside the item only while it is on screen; from a staged item they move through the queue.
   const liveSteps = onAir ? steps : null;
   const nextInItem = steps && steps.index + 1 < steps.count ? frameAt(frame, steps.index + 1, hymn, slotNameAt(live), note) : null;
@@ -810,7 +822,7 @@ export function MassLiveView({ planName }: { planName: string | null }) {
                   onEditHandled={() => setEditRequest(null)}
                   onShow={(step) => void run(() => goWithin(step))}
                 />
-              ) : (
+              ) : offScreenNote ? null : (
                 // Every other item (a Mass part, reading, psalm, prayer, typed response or passage) is edited in this plan's own copy of it.
                 <MassSlideHotEdit
                   t={tp}

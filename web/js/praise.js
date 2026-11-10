@@ -8,11 +8,10 @@
 import { PRAISE_PLAN } from './sample-data.js';
 import { esc, mountSidebar } from './shell.js';
 import { guard } from './auth.js';
-import { getPlan, listSongs, savePlan } from './plan-api.js';
+import { getPlan, listSongs, savePlan, watchSongList } from './plan-api.js';
 import { usedHubIds } from './content-hub.js';
 import { entryListHtml, entrySummaryHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
-import { openSongPicker } from './song-picker.js';
-import { pickerCategoryLabel } from './lineup-templates.js';
+import { mountSongPicker, resetSongPickers } from './song-picker.js';
 import {
   CONTENT_TYPES,
   MAX_MINUTES,
@@ -49,6 +48,14 @@ let SEGMENTS = praiseSegments(TEMPLATE);
 let plan = null;
 let canEdit = false;
 let songs = [];
+// The songs the saved plan refers to, removed ones included, so a fresh song list still names them.
+let planSongs = [];
+// A song saved on the church laptop while this plan is open shows here when the page is next looked at, without a reload.
+const songWatch = watchSongList((list) => {
+  if (!plan) return;
+  songs = songsForEditor(list.songs, planSongs);
+  renderKeepingField();
+});
 let state = fresh(null);
 
 function fresh(saved) {
@@ -118,10 +125,7 @@ function panelFor(row) {
   const tab = (mode, label, on) => `<button type="button" role="tab" data-panel-mode="${mode}" aria-selected="${on}" class="panel-tab${on ? ' is-on' : ''}">${label}</button>`;
   const adder = list
     ? `
-            <div class="picker-open">
-              <button type="button" data-add-song="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-primary">Add song</button>
-              <p>Opens the song list on Praise &amp; Worship${row.pickerCategory ? `, at ${esc(pickerCategoryLabel('praise_worship', row.pickerCategory))}` : ''}. Holy Mass songs are under their own tab.</p>
-            </div>`
+            <div data-inline-picker="${esc(row.id)}"></div>`
     : row.kind === 'reading'
       ? `
             <label style="${FIELD_LABEL}">
@@ -160,16 +164,19 @@ function panelFor(row) {
 }
 
 /**
- * Opens the song picker for a segment, on the Praise & Worship tab and the segment's own category (Joyful Song opens on Joyful / Fast Praise).
- * Add puts a song at the end of the segment; pressing Added takes it out again. A key belongs to the song it was chosen for.
+ * Draws the song picker into the open segment's panel, on the Praise & Worship tab and the segment's own category (Joyful Song opens on
+ * Joyful / Fast Praise). Add puts a song at the end of the segment; pressing Added takes it out again. A key belongs to the song it was chosen for.
  */
-function openPicker(id) {
+function mountPicker() {
+  const id = state.open;
+  const root = id ? document.querySelector(`[data-inline-picker="${CSS.escape(id)}"]`) : null;
+  if (!root) return;
   const row = rowOf(id);
-  openSongPicker({
+  mountSongPicker(root, {
+    key: `pw:${id}`,
     songs: songs.filter((s) => !s.removed),
     serviceType: 'praise_worship',
     category: row.pickerCategory || 'all',
-    slotName: row.name,
     canEdit,
     chosenIds: () => new Set(slotEntries(state.segments[id]).map((entry) => entry.songId).filter(Boolean)),
     onToggle: (songId) => {
@@ -221,6 +228,7 @@ function renderSegments(view) {
             </div>${rows}
           </div>`;
   }).join('');
+  mountPicker();
 }
 
 /** The time bars, one for each section of the plan's template. Built once for a template, so the fills keep sliding when the minutes change. */
@@ -351,10 +359,13 @@ async function load() {
     plan = saved.plan;
     canEdit = saved.canEdit;
     songs = songsForEditor(list.songs, saved.songs);
+    planSongs = saved.songs;
+    songWatch.seen(list);
     // A plan the earlier editor laid out opens in that layout; every other plan opens in the laptop's lineup.
     TEMPLATE = praiseTemplateFor(plan.items, PRAISE_PLAN);
     SEGMENTS = praiseSegments(TEMPLATE);
     state = fresh(praiseFromItems(plan.items, SEGMENTS));
+    resetSongPickers();
   } catch (err) {
     if (plan) state.error = err.message;
     else state = { ...fresh(null), error: err.message };
@@ -423,11 +434,9 @@ document.querySelector('main').addEventListener('click', (event) => {
     state.open = state.open === button.dataset.open ? null : button.dataset.open;
     const opened = state.open ? rowOf(state.open) : null;
     if (opened) state.panelMode = opened.kind === 'song' ? 'list' : 'text';
+    // A song segment opens on its song list, already on the segment's category (see mountPicker).
     render();
-    // Choose on an empty song segment goes straight to the song list, already on that segment's category.
-    if (opened && opened.kind === 'song' && !opened.value) openPicker(opened.id);
-  } else if (button.dataset.addSong) {
-    openPicker(button.dataset.addSong);
+    if (opened) void songWatch.check();
   } else if (button.dataset.panelMode) {
     state.panelMode = button.dataset.panelMode;
     render();

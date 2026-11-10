@@ -7,7 +7,7 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { NOTES_SLOT_MIGRATIONS, PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, createNotesService, setupNotes } = await import('./notes.js');
+const { NOTES_COPY_MIGRATIONS, NOTES_SLOT_MIGRATIONS, PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, createNotesService, setupNotes } = await import('./notes.js');
 const { ipcMain } = await import('electron');
 const { SLOT_IDS } = await import('../shared/mass-slots.js');
 
@@ -15,7 +15,7 @@ const SLOT = SLOT_IDS[4];
 
 function notesDb() {
   const db = new DatabaseSync(':memory:');
-  for (const sqlText of [...PRAYER_NOTES_MIGRATIONS, ...PRAYER_NOTES_SPLIT_MIGRATIONS, ...NOTES_SLOT_MIGRATIONS]) db.exec(sqlText);
+  for (const sqlText of [...PRAYER_NOTES_MIGRATIONS, ...PRAYER_NOTES_SPLIT_MIGRATIONS, ...NOTES_SLOT_MIGRATIONS, ...NOTES_COPY_MIGRATIONS]) db.exec(sqlText);
   return db;
 }
 const prayer = (extra = {}) => ({ title: 'Mass Intentions', category: 'Mass Intention', body: 'For the souls of the faithful departed.', display: 'full', style: null, ...extra });
@@ -48,7 +48,7 @@ test('a note saved before the slot column existed reads with no slot', () => {
   const db = new DatabaseSync(':memory:');
   for (const sqlText of [...PRAYER_NOTES_MIGRATIONS, ...PRAYER_NOTES_SPLIT_MIGRATIONS]) db.exec(sqlText);
   db.prepare("INSERT INTO notes (title, category, body, display) VALUES ('Old', 'Liturgical Cue', 'Ring the bell', 'operator')").run();
-  for (const sqlText of NOTES_SLOT_MIGRATIONS) db.exec(sqlText);
+  for (const sqlText of [...NOTES_SLOT_MIGRATIONS, ...NOTES_COPY_MIGRATIONS]) db.exec(sqlText);
   const [note] = createNotesService(db).list();
   assert.equal(note.slot, null);
   assert.equal(note.display, 'operator');

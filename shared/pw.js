@@ -435,18 +435,52 @@ function readingSlides(segment, reading, titleFirst) {
  * start. A deck plays its pictures as they are, with no title slide: the PowerPoint has its own. Pictures that are gone are skipped.
  */
 function chainSlides(segment, resolved, scale) {
+  return chainOf(segment).flatMap((item, i) => chainItemSlides(segment, item, resolved.more?.[i] ?? {}, scale));
+}
+
+/** The slides of one chained item. `entry` is what it resolved to (see chainSlides). */
+function chainItemSlides(segment, item, entry, scale) {
   const title = { kind: 'title', label: segment.name, subtitle: '' };
-  return chainOf(segment).flatMap((item, i) => {
-    const entry = resolved.more?.[i] ?? {};
-    if (item.kind === 'pictures') {
-      return (entry.pictures ?? []).filter((p) => p?.src).map((p) => ({ kind: 'picture', label: p.title || segment.name, src: p.src }));
+  if (item.kind === 'pictures') {
+    return (entry.pictures ?? []).filter((p) => p?.src).map((p) => ({ kind: 'picture', label: p.title || segment.name, src: p.src }));
+  }
+  if (item.kind === 'prayer') {
+    const titleSlide = segment.cues.titleFirst ? { ...title, subtitle: entry.prayer?.title ?? '' } : null;
+    return prayerSlides(segment, entry.prayer ?? null, scale, titleSlide);
+  }
+  return readingSlides(segment, entry.reading ?? null, segment.cues.titleFirst);
+}
+
+/**
+ * Where each slide of a card comes from, in the same order as slidesFor (same arguments): `{ item, source, title, page }`. `item` is 'head'
+ * (the card's first item), 'songs', a chain index (0, 1 …) or 'card' (the title slide a card with nothing else shows). `source` is what the
+ * item is: 'prayer', 'reading', 'title', 'song' or 'pictures'. `title` marks a title slide. `page` numbers an item's text slides from 0 (a
+ * prayer's or a reading's pages, the words the live editor changes), and is null for any other slide. Go Live's Edit slide on air and Add
+ * slide read it to know which part of the card a slide belongs to.
+ */
+export function slideOriginsFor(segment, resolved = {}, options = {}) {
+  const band = options.band ?? null;
+  const scale = options.scale ?? 1;
+  const c = segment.content;
+  const title = { kind: 'title', label: segment.name, subtitle: '' };
+  const titleFirst = segment.cues.titleFirst;
+  const out = [];
+  const tag = (slides, item, source) => {
+    let page = 0;
+    for (const slide of slides) {
+      const text = slide.kind === 'prayer';
+      out.push({ item, source, title: slide.kind === 'title', page: text ? page : null });
+      if (text) page += 1;
     }
-    if (item.kind === 'prayer') {
-      const titleSlide = segment.cues.titleFirst ? { ...title, subtitle: entry.prayer?.title ?? '' } : null;
-      return prayerSlides(segment, entry.prayer ?? null, scale, titleSlide);
-    }
-    return readingSlides(segment, entry.reading ?? null, segment.cues.titleFirst);
+  };
+  if (c.kind === 'prayer') tag(prayerSlides(segment, resolved.prayer, scale, titleFirst ? title : null), 'head', 'prayer');
+  else if (c.kind === 'lectionary') tag(readingSlides(segment, resolved.reading, titleFirst), 'head', 'reading');
+  else if (c.kind === 'title') tag([title], 'head', 'title');
+  tag(songSlides(segment, resolved.hymns ?? [], { band, scale, withTitle: c.kind === 'song' && titleFirst }), 'songs', 'song');
+  chainOf(segment).forEach((item, i) => {
+    tag(chainItemSlides(segment, item, resolved.more?.[i] ?? {}, scale), i, item.kind === 'lectionary' ? 'reading' : item.kind);
   });
+  return out.length ? out : [{ item: 'card', source: 'title', title: true, page: null }];
 }
 
 /**

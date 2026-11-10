@@ -50,6 +50,43 @@ export function listSongs({ serviceType, category } = {}) {
   return request('songs-list', query ? { query: `?${query}` } : {});
 }
 
+/**
+ * Keeps an open editor's song list current. Songs come from the church laptop, which sends its list a few seconds after a song is saved there,
+ * so a song added while a plan is open here would otherwise only show after a reload. The list is read again when the page comes back into
+ * view (the operator switching from the laptop or another tab) and when `check()` is called, at most once every `minGapMs`. `onList(list)` is
+ * called only when the server says the list changed since the last read (its `lastUpdatedAt`). `seen(list)` records the list the page loaded.
+ */
+export function watchSongList(onList, { minGapMs = 10 * 1000 } = {}) {
+  let stamp;
+  let lastRead = 0;
+  let reading = null;
+  const check = () => {
+    if (reading || document.visibilityState !== 'visible' || Date.now() - lastRead < minGapMs) return reading;
+    lastRead = Date.now();
+    reading = listSongs()
+      .then((list) => {
+        if (stamp !== undefined && list.lastUpdatedAt === stamp) return;
+        stamp = list.lastUpdatedAt;
+        onList(list);
+      })
+      // A failed read leaves the list as it is; the next look tries again.
+      .catch(() => undefined)
+      .finally(() => {
+        reading = null;
+      });
+    return reading;
+  };
+  document.addEventListener('visibilitychange', check);
+  window.addEventListener('focus', check);
+  return {
+    check,
+    seen(list) {
+      stamp = list?.lastUpdatedAt;
+      lastRead = Date.now();
+    },
+  };
+}
+
 /** Which of the church's plans use each song: { usage: { songId: [planId, …] } }. */
 export const songUsage = () => request('song-usage');
 

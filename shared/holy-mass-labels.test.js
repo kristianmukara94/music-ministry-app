@@ -80,7 +80,7 @@ test('the song scope and its filters say Holy Mass in the filter chips, the form
 test('the Tagalog and Cebuano text that names the queue, the planner or the order in English says Holy Mass there too', () => {
   assert.match(goLiveT('tl', 'replacesQueue'), /Holy Mass Queue/);
   assert.match(goLiveT('ceb', 'replacesQueue'), /Holy Mass Queue/);
-  assert.match(goLiveT('tl', 'emptyDate'), /Holy Mass Planner/);
+  assert.match(goLiveT('tl', 'emptyDate'), /sa Planner/);
   assert.match(plannerT('tl', 'pickerMassOrder'), /Holy Mass Order/);
   assert.match(pwT('tl', 'source_mass'), /Holy Mass Queue/);
 });

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pencil, Plus } from 'lucide-react';
-import { arrangementWithInsert, findStanzaStep, lyricAt, occurrenceOf } from '../../shared/pw-hot-edit.js';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { arrangementWithInsert, arrangementWithout, findStanzaStep, lyricAt, occurrenceOf } from '../../shared/pw-hot-edit.js';
 import type { Hymn } from '../lyrics/types';
+import { useDeleteSlideKey } from '../components/useDeleteSlideKey';
 import { jumpTo, liveDeck, type LiveStep } from './live';
 import { updateSegment, usePw } from './store';
 import type { PwT } from './strings';
-import { SMALL_BTN, StanzaAddBox, StanzaEditBox } from './HotEditForms';
+import { DELETE_BTN, SMALL_BTN, StanzaAddBox, StanzaEditBox } from './HotEditForms';
+import { CardSlideHotEdit } from './CardSlideHotEdit';
+import { deleteSongStep } from './lineupSlideCopy';
 import { useLiveHotEditor } from './useLiveHotEditor';
 
 /** How long Add and show waits for the lineup to read the saved song back before it gives up on showing the new slide. */
@@ -43,7 +46,8 @@ interface Props {
 /**
  * Editing the lineup's songs while the lineup is on air: the words of a slide's stanza, and a new stanza after the slide on screen.
  *
- * A change is saved to the song, as in the Quick Live cue panel. The song watch then redraws the slide on screen with the new words, in place:
+ * A change is kept for this service only, as in the Quick Live cue panel (live/liveSongEdits): Song Lyrics is never written from air. The
+ * song watch then redraws the slide on screen with the new words, in place:
  * the same slide stays up, with no transition, and the background video, its shade and the lower third carry on. The lineup's own copy of the
  * song is left for that watch to refresh, so the watch can still see what changed.
  *
@@ -63,11 +67,15 @@ export function LineupHotEdit({ t, segmentIndex, steps, onAir, editRequest, onEd
   });
   const onAirSlide = lyricAt(steps, onAir);
 
-  // A double-click on a lyric chip opens that slide's stanza for editing.
+  // Any other slide (a prayer, a reading, a title, a picture) is edited by the card editor, which a double-click on its chip opens too.
+  const [cardRequest, setCardRequest] = useState<number | null>(null);
+
+  // A double-click on a lyric chip opens that slide's stanza for editing; on any other chip, that slide in the card editor.
   useEffect(() => {
     if (editRequest === null) return;
     onEditHandled();
     if (lyricAt(steps, editRequest)) open(editRequest, 'edit');
+    else setCardRequest(editRequest);
   }, [editRequest]);
 
   // Once the target is set and its song is at hand, the editor opens on the stanza.
@@ -116,9 +124,44 @@ export function LineupHotEdit({ t, segmentIndex, steps, onAir, editRequest, onEd
 
   const editingStanza = hot.editing && hymn ? hymn.stanzas[hot.editing.index] : null;
 
+  // Delete slide on a song's slide takes the stanza out of this card's order of the song only (see deleteSongStep). Song Lyrics is not written.
+  const [deleteMsg, setDeleteMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  useEffect(() => setDeleteMsg(null), [segmentIndex]);
+  useEffect(() => {
+    if (!deleteMsg) return;
+    const timer = window.setTimeout(() => setDeleteMsg(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [deleteMsg]);
+  const onAirSegment = usePw((s) => s.session?.segments[segmentIndex]);
+  const onAirHymn = onAirSlide ? hymns[onAirSlide.hymnId] : undefined;
+  const lastStanza = Boolean(
+    onAirSlide && onAirHymn && onAirSegment && !arrangementWithout(onAirSegment.arrangement, onAirHymn, onAirSlide.sectionId, occurrenceOf(steps, onAir)),
+  );
+  const deleteStanza = () => {
+    if (!onAirSlide || hot.busy) return;
+    hot.cancel();
+    const refusal = deleteSongStep(segmentIndex, steps, onAir);
+    setDeleteMsg(refusal ? { text: t(refusal), ok: false } : { text: t('deleteSlideDone', { name: onAirSlide.label }), ok: true });
+  };
+  useDeleteSlideKey(onAirSlide && !hot.busy ? deleteStanza : null);
+
+  const card = (
+    <CardSlideHotEdit
+      t={t}
+      segmentIndex={segmentIndex}
+      steps={steps}
+      onAir={onAir}
+      showButtons={!onAirSlide}
+      editRequest={cardRequest}
+      onEditHandled={() => setCardRequest(null)}
+    />
+  );
+
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
+      {card}
+      {/* A song's slide on screen: the song editor's buttons. On any other slide, the card editor above has them. */}
+      <div className={`flex flex-wrap items-center gap-2 ${onAirSlide ? '' : 'hidden'}`}>
         <button
           type="button"
           disabled={!onAirSlide || hot.busy}
@@ -139,11 +182,27 @@ export function LineupHotEdit({ t, segmentIndex, steps, onAir, editRequest, onEd
           <Plus size={14} aria-hidden />
           {t('addSlide')}
         </button>
+        <button
+          type="button"
+          disabled={!onAirSlide || hot.busy || lastStanza}
+          onClick={deleteStanza}
+          aria-keyshortcuts="Delete Backspace"
+          title={!onAirSlide ? t('lineupEditOnlySongs') : lastStanza ? t('deleteSlideLastStanza') : t('deleteStanzaTip', { name: onAirSlide.label })}
+          className={DELETE_BTN}
+        >
+          <Trash2 size={13} aria-hidden />
+          {t('deleteSlide')}
+        </button>
         <span className="text-[11px] text-muted">{t('lineupEditHint')}</span>
       </div>
       {hot.error && (
         <p role="alert" className="text-xs text-danger">
           {hot.error}
+        </p>
+      )}
+      {deleteMsg && (
+        <p role={deleteMsg.ok ? 'status' : 'alert'} className={`text-xs ${deleteMsg.ok ? 'text-ok' : 'text-danger'}`}>
+          {deleteMsg.text}
         </p>
       )}
       {editingStanza && slide && hot.editing && (

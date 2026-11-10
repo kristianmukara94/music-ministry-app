@@ -177,6 +177,30 @@ test('each song slot opens the picker on its own category, and the title and lec
   assert.equal(view.songsTotal, 8);
 });
 
+test('a plan in the earlier layout opens each song step on its category too: Opening praise song on Joyful / Fast Praise', () => {
+  assert.deepEqual(
+    SEGS.filter((s) => s.kind === 'song').map((s) => [s.name, s.pickerCategory]),
+    [['Opening praise song', 'joyful'], ['Praise set', 'joyful'], ['Worship song', 'worship'], ['Response song', ''], ['Offering song', 'offertory'], ['Closing song', 'finale']],
+  );
+  assert.ok(SEGS.filter((s) => s.kind !== 'song').every((s) => s.pickerCategory === undefined), 'only song steps have a category');
+});
+
+test('the song list is drawn inside the step panel, opened on the step’s tab and category, with no button to open it first', () => {
+  const picker = read('web/js/song-picker.js');
+  assert.match(picker, /export function mountSongPicker\(root,/);
+  assert.doesNotMatch(picker, /showModal|createElement\('dialog'\)/, 'no dialog');
+  assert.match(picker, /Show all songs \(\$\{inTab\}\)/, 'an empty category offers every song of the tab');
+  for (const [file, type] of [['web/js/praise.js', 'praise_worship'], ['web/js/mass.js', 'mass']]) {
+    const page = read(file);
+    assert.match(page, /data-inline-picker=/, `${file} has the picker in its panel`);
+    assert.match(page, new RegExp(`serviceType: '${type}',\\s*category: \\w+\\.pickerCategory \\|\\| 'all'`), `${file} opens on its tab and the step's category`);
+    assert.doesNotMatch(page, /data-add-song|open-picker|openSongPicker/, `${file} has no Add song button`);
+    // A song saved on the laptop while the plan is open shows without a reload.
+    assert.match(page, /const songWatch = watchSongList\(/, `${file} reads the song list again`);
+    assert.match(page, /songWatch\.seen\(list\)/, `${file} records the list it loaded`);
+  }
+});
+
 test("a new plan saves as the laptop's lineup: its keys and groups, and the reading name that fills the Gospel Acclamation from the lectionary", () => {
   const items = model.praiseToItems({ segments: {}, notes: {}, extra: [], present: new Set() }, LINEUP_SEGS);
   assert.deepEqual(items.map((i) => i.key), lineup.PW_SEGMENT_KEYS);

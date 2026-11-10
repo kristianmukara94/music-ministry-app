@@ -181,6 +181,13 @@ export const PRAYER_FIT_LINES: number;
 export function fitsPrayerSlide(text: string): boolean;
 export function prayerPages(text: string): string[];
 /** `band` is the lower third on screen, if any: the lyric and prayer pages leave room for it. */
+export interface PwSlideOrigin {
+  item: 'head' | 'songs' | 'card' | number;
+  source: 'prayer' | 'reading' | 'title' | 'song' | 'pictures';
+  title: boolean;
+  page: number | null;
+}
+export function slideOriginsFor(segment: PwSegment, resolved?: PwResolved, options?: { band?: import('./live.js').LowerThird | null; scale?: number }): PwSlideOrigin[];
 export function slidesFor(segment: PwSegment, resolved?: PwResolved, options?: { band?: import('./live.js').LowerThird | null; scale?: number }): PwSlide[];
 export function step(counts: number[], pos: PwPosition, delta: 1 | -1): PwPosition | null;
 export function visibleSlideIndexes(count: number, liveIndex: number | null | undefined): number[];

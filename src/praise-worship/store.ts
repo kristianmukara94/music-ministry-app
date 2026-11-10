@@ -5,6 +5,7 @@ import { addLineupCard, chainAssignment, chainOf, groupOrdered, newLineupCard, r
 import type { LibraryDragBatch } from '../../shared/pw-attach.js';
 import { arrangementWithSplit } from '../../shared/pw-hot-edit.js';
 import { bridge } from '../live/bridge';
+import { liveLyrics } from '../live/liveSongEdits';
 import type { Hymn } from '../lyrics/types';
 import type { Note } from '../notes/types';
 import type { LectionaryDay } from '../lectionary/types';
@@ -87,7 +88,7 @@ export const errorText = (err: unknown) => (err instanceof Error ? err.message.r
 async function songChanged(id: number) {
   if (usePw.getState().hymns[id]) {
     try {
-      const fresh = await bridge.lyrics.getHymn(id);
+      const fresh = await liveLyrics.getHymn(id);
       setPw((s) => ({ hymns: withHymn(s.hymns, id, hymnAfterChange(fresh)) }));
     } catch {
       // Left as it was. The next change, or a restart, reads it again.
@@ -95,14 +96,14 @@ async function songChanged(id: number) {
   }
   setPw((s) => ({ libraryRevision: s.libraryRevision + 1 }));
 }
-bridge.lyrics.onChanged((id) => void songChanged(id));
+liveLyrics.onChanged((id) => void songChanged(id));
 
 /** Loads the hymns these segments use and are not cached yet. */
 async function loadHymns(segments: PwSegment[]) {
   const have = usePw.getState().hymns;
   const ids = [...new Set(segments.flatMap((s) => s.content.hymnIds))].filter((id) => !have[id]);
   if (ids.length === 0) return;
-  const loaded = await Promise.all(ids.map((id) => bridge.lyrics.getHymn(id)));
+  const loaded = await Promise.all(ids.map((id) => liveLyrics.getHymn(id)));
   setPw((s) => ({ hymns: { ...s.hymns, ...Object.fromEntries(loaded.filter((h): h is Hymn => Boolean(h)).map((h) => [h.id, h])) } }));
 }
 
@@ -164,10 +165,22 @@ export async function openSession(id: number) {
   await showSession(await api.getSession(id));
 }
 
+/** Makes a session and opens it. Resolves to the new session, so the Planner can mark it as the plan it has open. */
 export async function createSession(input: { name: string; liturgicalDate: string; templateId?: number }) {
   const session = await api.createSession(input);
   setPw({ sessions: await api.listSessions(), selected: 0 });
   await showSession(session);
+  return session;
+}
+
+/** Reads the session list again, for the Planner's calendar. Leaves the open session as it is. */
+export async function refreshSessions() {
+  setPw({ sessions: await api.listSessions() });
+}
+
+/** A saved session, read without opening it: the Planner's calendar counts its ready slots. */
+export function readSession(id: number) {
+  return api.getSession(id);
 }
 
 export async function deleteSession(id: number) {

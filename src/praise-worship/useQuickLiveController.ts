@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { bridge } from '../live/bridge';
+import { liveLyrics } from '../live/liveSongEdits';
 import { dispatch, useLive } from '../live/store';
 import { stanzaFrame } from '../lyrics/frames';
 import type { Hymn } from '../lyrics/types';
@@ -112,7 +113,7 @@ export function useQuickLiveController() {
     async (hymnId: number, title: string, alreadyLive: boolean): Promise<boolean> => {
       setPendingId(hymnId);
       try {
-        const [hymn, windowOpen] = await Promise.all([bridge.lyrics.getHymn(hymnId), bridge.quickLive.projectorOpen().catch(() => null)]);
+        const [hymn, windowOpen] = await Promise.all([liveLyrics.getHymn(hymnId), bridge.quickLive.projectorOpen().catch(() => null)]);
         if (!hymn || hymn.deletedAt) {
           say({ hymnId, kind: 'failed', text: `"${title}" is not in the library any more.` });
           return false;
@@ -172,9 +173,9 @@ export function useQuickLiveController() {
 
   // A song edited while its cues are listed: the list follows the edit, and the stanza on screen is refreshed by the live-song watch.
   useEffect(() => {
-    return bridge.lyrics.onChanged((id) => {
+    return liveLyrics.onChanged((id) => {
       if (cueRef.current?.id !== id) return;
-      bridge.lyrics
+      liveLyrics
         .getHymn(id)
         .then((fresh) => fresh && !fresh.deletedAt && setCue(fresh))
         .catch(() => undefined);

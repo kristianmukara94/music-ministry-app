@@ -482,6 +482,7 @@ const offlineNotes: NotesApi = {
   list: async () => [],
   get: async () => null,
   save: async () => offlineError(),
+  saveCopy: async () => offlineError(),
   remove: async () => offlineError(),
   onChanged: () => () => {},
 };

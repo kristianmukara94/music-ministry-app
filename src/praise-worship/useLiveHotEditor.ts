@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
-import { bridge } from '../live/bridge';
-import type { Hymn, Stanza } from '../lyrics/types';
+import { setLiveStanzas, type LiveStanza } from '../live/liveSongEdits';
+import type { Hymn } from '../lyrics/types';
 import { splitAtMidpoint } from '../../shared/pw-hot-edit.js';
 import { smartBreakParts } from '../utils/textOptimizer';
 import { applySplitToSession } from './store';
@@ -19,29 +19,24 @@ export interface HotAdd {
   text: string;
 }
 
-/** The song's stanzas as tagged lyrics ([Verse 1], [Chorus] …), the form the song is saved in. */
-function tagged(stanzas: Pick<Stanza, 'stanzaType' | 'lyricsText'>[]): string {
-  return stanzas.map((s) => `[${s.stanzaType}]\n${s.lyricsText.trim()}`).join('\n\n');
-}
-
 /** The next free verse number, so a new verse is never named like an old one. */
-function nextVerse(stanzas: Pick<Stanza, 'stanzaType'>[]): number {
+function nextVerse(stanzas: Pick<LiveStanza, 'stanzaType'>[]): number {
   const numbers = stanzas.map((s) => Number(/^Verse\s*(\d+)$/i.exec(s.stanzaType)?.[1] ?? 0));
   return Math.max(0, ...numbers) + 1;
 }
 
 /** The label for a new stanza: a numbered verse, or the section name. */
-export const labelFor = (label: AddLabel, stanzas: Pick<Stanza, 'stanzaType'>[]) => (label === 'Verse' ? `Verse ${nextVerse(stanzas)}` : label);
+export const labelFor = (label: AddLabel, stanzas: Pick<LiveStanza, 'stanzaType'>[]) => (label === 'Verse' ? `Verse ${nextVerse(stanzas)}` : label);
 
 /** Lines that would start a new section, which an edit must not slip into a stanza's words. */
 const SECTION_LINE = /^\s*\[[^\]]+\]\s*$/m;
 
 /**
  * Edits the song on the projector while it is on air: change the words of one stanza, or add a stanza after the one on screen. The change is
- * saved to the song in Song Lyrics, so it is kept for next time. The song watch then swaps the new words onto the projector in place: the
- * same stanza stays up, with no transition, and the background video and the lower third carry on untouched.
+ * kept for this run of the app only (see live/liveSongEdits): Song Lyrics is never written from air. The song watch then swaps the new words
+ * onto the projector in place: the same stanza stays up, with no transition, and the background video and the lower third carry on untouched.
  *
- * `onSaved` gets the song as saved, so the cue panel can list the new stanzas at once.
+ * `onSaved` gets the song as Go Live now plays it, so the cue panel can list the new stanzas at once.
  */
 export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => void) {
   const [editing, setEditing] = useState<HotEdit | null>(null);
@@ -49,18 +44,15 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /** Saves a new list of stanzas. Resolves to the saved song, or null when it was refused (the reason is in `error`). */
+  /** Keeps a new list of stanzas for this run. Resolves to the song as it now plays, or null when it was refused (the reason is in `error`). */
   const saveStanzas = useCallback(
-    async (stanzas: Pick<Stanza, 'stanzaType' | 'lyricsText'>[]): Promise<Hymn | null> => {
+    async (stanzas: LiveStanza[]): Promise<Hymn | null> => {
       if (!hymn) return null;
       setBusy(true);
       setError(null);
       try {
-        // Only the words change. The song keeps its stored details, scope and song category, so its filing and Mass slot stay put, and a song
-        // saved before a song category was required can still be edited on air.
-        await bridge.lyrics.editLyrics(hymn.id, tagged(stanzas));
-        const fresh = await bridge.lyrics.getHymn(hymn.id);
-        if (!fresh) throw new Error('The song could not be read back after saving.');
+        // Only the words change, and only on air: the song in Song Lyrics keeps its stanzas, details and filing.
+        const fresh = await setLiveStanzas(hymn, stanzas);
         onSaved(fresh);
         return fresh;
       } catch (err) {
@@ -99,7 +91,7 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
       setEditing(null);
       return true;
     }
-    const next = hymn.stanzas.map((s, i) => (i === editing.index ? { stanzaType: s.stanzaType, lyricsText: editing.text } : s));
+    const next = hymn.stanzas.map((s, i) => (i === editing.index ? { id: s.id, stanzaType: s.stanzaType, lyricsText: editing.text } : s));
     const saved = await saveStanzas(next);
     if (saved) setEditing(null);
     return Boolean(saved);
@@ -109,29 +101,20 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
   const wordsOf = (index: number) => (editing?.index === index ? editing.text : hymn?.stanzas[index]?.lyricsText ?? '');
 
   /**
-   * Replaces a stanza with `parts`, stanzas that follow each other under its label. Each cut is one split in the library, the rest of the words
-   * split again at the next stanza, so every lineup that sings the song in its own order gets each new part in turn. Resolves to the number of
-   * parts saved, or 0 when nothing was (the reason is in `error`). A failure part way keeps the cuts already saved: the words are all there.
+   * Replaces a stanza with `parts`, stanzas that follow each other under its label, for this run only. The first part keeps the stanza's id
+   * and each later part goes straight after the one before it, in the song and in every card of the open lineup that sings it in its own
+   * order. Resolves to the number of parts made, or 0 when none were (the reason is in `error`). Song Lyrics is not written.
    */
   const splitInto = async (index: number, parts: string[]): Promise<number> => {
-    if (!hymn?.stanzas[index] || parts.length < 2) return 0;
-    setBusy(true);
-    setError(null);
-    try {
-      for (let k = 0; k < parts.length - 1; k += 1) {
-        const result = await bridge.lyrics.splitStanza(hymn.id, index + k, [parts[k], parts.slice(k + 1).join('\n')]);
-        if (result.firstId !== null && result.secondId !== null) applySplitToSession(hymn.id, result.firstId, result.secondId);
-      }
-      setEditing(null);
-      return parts.length;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      return 0;
-    } finally {
-      const fresh = await bridge.lyrics.getHymn(hymn.id).catch(() => null);
-      if (fresh) onSaved(fresh);
-      setBusy(false);
-    }
+    const stanza = hymn?.stanzas[index];
+    if (!hymn || !stanza || parts.length < 2) return 0;
+    const pieces: LiveStanza[] = parts.map((lyricsText, k) => ({ ...(k === 0 ? { id: stanza.id } : {}), stanzaType: stanza.stanzaType, lyricsText }));
+    const saved = await saveStanzas([...hymn.stanzas.slice(0, index), ...pieces, ...hymn.stanzas.slice(index + 1)]);
+    if (!saved) return 0;
+    const ids = saved.stanzas.slice(index, index + parts.length).map((s) => s.id);
+    for (let k = 1; k < ids.length; k += 1) applySplitToSession(hymn.id, ids[k - 1], ids[k]);
+    setEditing(null);
+    return parts.length;
   };
 
   /** Splits a stanza into two at its middle (see splitAtMidpoint), for a stanza too long for one slide. Resolves to the number of parts saved. */
@@ -183,6 +166,17 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
     return at < saved.stanzas.length ? at : saved.stanzas.length - 1;
   };
 
+  /**
+   * Takes stanza `index` out of the song for this run only (Delete slide on a Holy Mass song). The song's only stanza stays. Resolves true
+   * once it is gone from what Go Live plays; Song Lyrics keeps it.
+   */
+  const commitDelete = async (index: number): Promise<boolean> => {
+    if (!hymn?.stanzas[index] || hymn.stanzas.length <= 1) return false;
+    setEditing(null);
+    setAdding(null);
+    return Boolean(await saveStanzas(hymn.stanzas.filter((_, i) => i !== index)));
+  };
+
   const cancel = () => {
     setEditing(null);
     setAdding(null);
@@ -206,6 +200,7 @@ export function useLiveHotEditor(hymn: Hymn | null, onSaved: (fresh: Hymn) => vo
     startAdd,
     changeAdd: (patch: Partial<HotAdd>) => setAdding((a) => (a ? { ...a, ...patch } : a)),
     commitAdd,
+    commitDelete,
     cancel,
   };
 }

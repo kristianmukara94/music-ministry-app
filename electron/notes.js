@@ -33,7 +33,14 @@ export const PRAYER_NOTES_SPLIT_MIGRATIONS = ['ALTER TABLE notes ADD COLUMN spli
  */
 export const NOTES_SLOT_MIGRATIONS = ['ALTER TABLE notes ADD COLUMN slot TEXT'];
 
-const SELECT = 'SELECT id, title, category, body, display, style, split, slot FROM notes';
+/**
+ * Who a Go Live copy belongs to: `mass:<plan id>` or `pw:<lineup id>:<card key>`. NULL for every Liturgical Content Hub entry. Go Live's Edit
+ * slide on air, Add slide and Delete slide write only through saveCopy, which makes a new copy or changes one with the same owner, so a live
+ * service can never change or remove a Hub entry. The Hub and the pickers leave copies out.
+ */
+export const NOTES_COPY_MIGRATIONS = ['ALTER TABLE notes ADD COLUMN copy_owner TEXT'];
+
+const SELECT = 'SELECT id, title, category, body, display, style, split, slot, copy_owner FROM notes';
 
 /**
  * The category whose body is sealed when the parish turns Mass intention privacy on (electron/db-vault.js). Only the body: the title is
@@ -82,6 +89,7 @@ function toNote(row, cipher) {
     style: parseTextStyle(row.style),
     split: sealed ? null : parseSplit(row.split, body),
     slot: row.slot ?? null,
+    copyOwner: row.copy_owner ?? null,
     sealed,
   };
 }
@@ -101,6 +109,14 @@ export function createNotesService(db, { vault = null } = {}) {
     UPDATE notes SET title = @title, category = @category, body = @body, display = @display,
       style = @style, split = @split, slot = CASE WHEN @keepSlot = 1 THEN slot ELSE @slot END, updated_at = datetime('now')
     WHERE id = @id`);
+  const insertCopy = db.prepare(`
+    INSERT INTO notes (title, category, body, display, style, split, slot, copy_owner)
+    VALUES (@title, @category, @body, @display, @style, @split, @slot, @owner)`);
+  // Only a copy with this owner: a Hub entry (owner NULL) or another plan's copy never matches, so it is never written here.
+  const updateCopy = db.prepare(`
+    UPDATE notes SET title = @title, category = @category, body = @body, display = @display,
+      style = @style, split = @split, slot = CASE WHEN @keepSlot = 1 THEN slot ELSE @slot END, updated_at = datetime('now')
+    WHERE id = @id AND copy_owner = @owner`);
   const remove = db.prepare('DELETE FROM notes WHERE id = ?');
   const storedBody = db.prepare('SELECT body FROM notes WHERE id = ?');
 
@@ -157,6 +173,28 @@ export function createNotesService(db, { vault = null } = {}) {
       });
     },
 
+    /**
+     * Saves Go Live's own copy for `owner` (see NOTES_COPY_MIGRATIONS): a new copy when `input.id` is unset, otherwise that copy, only when it
+     * has this owner. Throws for any other note, so a Hub entry, the Lectionary's words or another plan's copy are never changed from here.
+     */
+    saveCopy(input = {}, owner) {
+      const key = typeof owner === 'string' ? owner.trim() : '';
+      if (!key || key.length > 200) throw new Error('A Go Live copy needs the plan or card it belongs to.');
+      const note = cleanNote(input);
+      return immediateTransaction(db, () => {
+        if (input.id == null) {
+          const cipher = writeCipher(note, null);
+          const { lastInsertRowid } = insertCopy.run({ ...bind(note, cipher), owner: key });
+          return toNote(get.get(Number(lastInsertRowid)), cipher ?? readCipher());
+        }
+        const id = Number(input.id);
+        const cipher = writeCipher(note, id);
+        const changed = updateCopy.run({ ...bind(note, cipher), keepSlot: note.slot === undefined ? 1 : 0, id, owner: key }).changes;
+        if (changed === 0) throw new Error('Go Live only changes its own copy of an item, and that copy is not this plan’s.');
+        return toNote(get.get(id), cipher ?? readCipher());
+      });
+    },
+
     remove: (id) => remove.run(Number(id)).changes > 0,
   };
 }
@@ -178,6 +216,11 @@ export function setupNotes(db, { vault = null, onChanged = () => {} } = {}) {
   ipcMain.handle('notes:get', (_event, id) => service.get(id));
   ipcMain.handle('notes:save', (_event, input) => {
     const saved = service.save(input);
+    changed(saved.id, false);
+    return saved;
+  });
+  ipcMain.handle('notes:saveCopy', (_event, input, owner) => {
+    const saved = service.saveCopy(input, owner);
     changed(saved.id, false);
     return saved;
   });

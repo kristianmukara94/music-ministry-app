@@ -168,6 +168,8 @@ contextBridge.exposeInMainWorld('apcc', {
     list: () => ipcRenderer.invoke('notes:list'),
     get: (id) => ipcRenderer.invoke('notes:get', id),
     save: (input) => ipcRenderer.invoke('notes:save', input),
+    /** Go Live's own copy of an item for `owner` (a plan or a lineup card); never changes a Liturgical Content Hub entry. */
+    saveCopy: (input, owner) => ipcRenderer.invoke('notes:saveCopy', input, owner),
     remove: (id) => ipcRenderer.invoke('notes:delete', id),
     /** Runs `callback({ id, removed })` whenever a note is saved or deleted, in any window. Returns the unsubscribe. */
     onChanged: (callback) => {

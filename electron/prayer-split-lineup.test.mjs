@@ -7,7 +7,7 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { NOTES_SLOT_MIGRATIONS, PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, createNotesService } = await import('./notes.js');
+const { NOTES_COPY_MIGRATIONS, NOTES_SLOT_MIGRATIONS, PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, createNotesService } = await import('./notes.js');
 const { DEFAULT_TEMPLATE, segmentFromTemplate, slidesFor } = await import('../shared/pw.js');
 const { prayerSlidesFor } = await import('../shared/prayer-slides.js');
 
@@ -26,7 +26,7 @@ const lineupFor = (note) => slidesFor({ ...segment, cues: { ...segment.cues, tit
 
 function notesDb() {
   const db = new DatabaseSync(':memory:');
-  for (const sqlText of [...PRAYER_NOTES_MIGRATIONS, ...PRAYER_NOTES_SPLIT_MIGRATIONS, ...NOTES_SLOT_MIGRATIONS]) db.exec(sqlText);
+  for (const sqlText of [...PRAYER_NOTES_MIGRATIONS, ...PRAYER_NOTES_SPLIT_MIGRATIONS, ...NOTES_SLOT_MIGRATIONS, ...NOTES_COPY_MIGRATIONS]) db.exec(sqlText);
   return db;
 }
 

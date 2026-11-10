@@ -620,6 +620,51 @@
 .live-breathe {
   animation: breathe-live 2.4s ease-in-out infinite;
 }
+
+/*
+ * The Planner's liturgical calendar, its day popover and its Create a plan dialog: dark glass for the booth's high-resolution displays,
+ * with white and gold dates. On a light theme the same roles take light values, so the calendar stays legible there too.
+ */
+.planner-cal {
+  --cal-surface: #121212;
+  --cal-cell: rgb(255 255 255 / 0.035);
+  --cal-cell-hover: rgb(255 255 255 / 0.07);
+  --cal-border: #1e1e1e;
+  --cal-border-hover: #3a3a3a;
+  --cal-badge: rgb(255 255 255 / 0.06);
+  --cal-date: #ffffff;
+  --cal-gold: #e5a93c;
+  --cal-on-gold: #121212;
+  --cal-text: #f2f2f2;
+  --cal-muted: #b8b8b8;
+}
+:is([data-theme="light"], [data-theme="ice-blue"], [data-theme="mint"], [data-theme="sage"], [data-theme="linen"], [data-theme="shell"]) .planner-cal {
+  --cal-surface: #ffffff;
+  --cal-cell: rgb(0 0 0 / 0.025);
+  --cal-cell-hover: rgb(0 0 0 / 0.05);
+  --cal-border: rgb(0 0 0 / 0.14);
+  --cal-border-hover: rgb(0 0 0 / 0.3);
+  --cal-badge: rgb(0 0 0 / 0.04);
+  --cal-date: #141414;
+  --cal-gold: #8a5a00;
+  --cal-on-gold: #ffffff;
+  --cal-text: #1a1a1a;
+  --cal-muted: #4a4a4a;
+}
+
+/* The Planner's switch between its calendar and its plan editor. */
+@keyframes planner-view-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.planner-view-in {
+  animation: planner-view-in 180ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .planner-view-in {
+    animation: none;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .live-breathe {
     animation: none;

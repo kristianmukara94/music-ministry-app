@@ -134,6 +134,15 @@ const sectionGroup = (section, index) => section.group ?? PRAISE_GROUPS[index];
  * The Praise & Worship segments from the template: id, name, kind, default minutes and hint. `n` is the number shown. A lineup segment also
  * has the song picker category it opens on. A row is a lineup row (an object) or the earlier editor's [id, name, kind, minutes, value, hint].
  */
+// The song picker category each song step of the website's earlier Praise & Worship layout opens on (sample-data.js PRAISE_PLAN). Its steps
+// carry no category of their own, so without this they all opened on every song.
+const LEGACY_PICKER_CATEGORY = { 2: 'joyful', 3: 'joyful', 5: 'worship', 10: 'offertory', 11: 'finale' };
+
+/** The picker category an earlier-layout song step opens on: its own, else the one its name or hint names ("Fast praise"), else none. */
+function legacyPickerCategory(id, name, hint) {
+  return LEGACY_PICKER_CATEGORY[id] ?? pickerCategoryForName('praise_worship', name) ?? pickerCategoryForName('praise_worship', hint) ?? '';
+}
+
 export function praiseSegments(template) {
   let n = 0;
   return template.sections.flatMap((section, index) =>
@@ -145,7 +154,8 @@ export function praiseSegments(template) {
         return { ...rest, n, defaultMinutes: minutes, group };
       }
       const [id, name, kind, minutes, , hint] = row;
-      return { id, n, name, kind, defaultMinutes: minutes, hint: hint || '', optional: hint === 'Optional', group };
+      const pickerCategory = kind === 'song' ? legacyPickerCategory(id, name, hint) : '';
+      return { id, n, name, kind, defaultMinutes: minutes, hint: hint || '', optional: hint === 'Optional', group, ...(kind === 'song' ? { pickerCategory } : {}) };
     }),
   );
 }

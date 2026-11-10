@@ -18,6 +18,7 @@ import { useLive } from '../live/store';
 import { useUi } from '../state/ui';
 import type { Note, NoteDisplay, NoteInput } from './types';
 import { useNotesChanged } from './useNotes';
+import { isGoLiveCopy } from './slideCopies';
 import { slotById } from '../../shared/mass-slots.js';
 import { AddSlotNotePrayerModal } from '../golive/AddSlotNotePrayerModal';
 import { useGoLiveT } from '../golive/strings';
@@ -116,7 +117,8 @@ export function NotesPrayersView() {
     api
       .list()
       .then((list) => {
-        setNotes(list);
+        // The Hub shows its own entries only. Go Live's per-plan copies stay in their plans and are never listed or edited here.
+        setNotes(list.filter((n) => !isGoLiveCopy(n)));
         if (preferId !== undefined) setSelectedId(preferId);
       })
       .catch((err) => setError(errorText(err)));

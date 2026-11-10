@@ -89,14 +89,16 @@ test('psalm stanzas and intentions are a slide each: a blank line or a --- line 
   assert.equal(responsePagesOf(intentions).join(' '), intentions.replace(/\s+/g, ' '));
 });
 
-test('the planner auto-fills on opening a plan and from its button, and Go Live loads plans with the day\'s readings', () => {
+test('the planner auto-fills empty reading slots on opening a plan, with no button, and Go Live loads plans with the day\'s readings', () => {
   const api = read('src/planner/plan-api.ts');
   assert.match(api, /export async function autoPopulateDailyReadings\(items: PlanItem\[\], planDate: string/);
   assert.match(api, /export async function loadPlanToQueue\(planId: number\): Promise<void> \{\s+const \{ items \} = await fillDailyReadings\(planId\);/);
   const planner = read('src/planner/MassPlanner.tsx');
   assert.match(planner, /return fillDailyReadings\(planId\)\.then/, 'a plan opened or created fills its empty slots');
-  assert.match(planner, /onClick=\{\(\) => void autoFill\(\)\}/);
-  assert.match(planner, /<Zap size=\{14\} aria-hidden \/> \{t\('autoFill'\)\}/);
+  assert.match(planner, /const \{ bible, out \} = await readingsFor\(plan\.items, plan\.liturgicalDate, plan\.language\);/, 'opening a plan drafts and places the day\'s readings');
+  assert.match(planner, /if \(out\.slots\.filled\.length > 0 \|\| out\.slots\.moved\.length > 0\)/, 'only a plan that gained a reading is saved');
+  // Auto-Fill Readings, New plan and Push to Queue left the toolbar: plans are made from the calendar and fill on opening.
+  assert.doesNotMatch(planner, /t\('autoFill'\)|t\('newPlan'\)|t\('loadQueue'\)|<NewPlanForm\b/);
 });
 
 test('a reading played in place stays in the Go Live console, and the psalm and prayers keep their response pinned', () => {

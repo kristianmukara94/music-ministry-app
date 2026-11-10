@@ -296,7 +296,9 @@ function reduce(s, a) {
       const source = a.source ?? 'DIRECT_DECK';
       const ended = source === 'DIRECT_DECK' ? endQueueSelection(s) : {};
       if (source !== 'PW_SESSION') Object.assign(ended, endPwAir(s));
-      if (p.live.kind === 'blackout') return { ...s, ...ended, projector: { ...p, beforeBlackout: p.staged } };
+      // Under Blackout the slide waits behind it, but the take still names who has the screen: a Holy Mass started under Blackout is on air,
+      // covered, as one that was blacked out after it started.
+      if (p.live.kind === 'blackout') return { ...s, ...ended, projector: { ...p, beforeBlackout: p.staged, source } };
       return { ...s, ...ended, projector: { ...p, live: p.staged, source } };
     }
 

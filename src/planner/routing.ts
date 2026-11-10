@@ -1,6 +1,7 @@
 import { isAnyOutputLive } from '../../shared/live.js';
 import type { Frame, QueueItem } from '../../shared/live.js';
 import { bridge } from '../live/bridge';
+import { liveLyrics } from '../live/liveSongEdits';
 import { dispatch, useLive } from '../live/store';
 import { turnOnProjectorAndGo } from '../live/startup';
 import { massPartFrame } from '../liturgy/massOrder';
@@ -30,7 +31,7 @@ export interface PlayOptions {
  * or has no stanzas.
  */
 async function stageSong(item: QueueItem): Promise<boolean> {
-  const hymn = await bridge.lyrics.getHymn(Number(item.sourceId));
+  const hymn = await liveLyrics.getHymn(Number(item.sourceId));
   const frame = hymn && !hymn.deletedAt && hymn.stanzas.length > 0 ? songTitleFrame(hymn, slotById(item.slot)?.name) : null;
   if (!frame) return false;
   dispatch({ type: 'projector/stage', frame });
@@ -162,13 +163,11 @@ export async function takeQueueItem(item: QueueItem, index: number, opts: PlayOp
   if (item.module === 'notes') {
     const source = noteSource(item.sourceId);
     const note = source ? await bridge.notes.get(source.id) : null;
-    if (note?.display === 'full') {
-      dispatch({ type: 'queue/cursor', index });
-      takePrayer(note, 'MASS_QUEUE', 0, source?.slides);
-    } else if (note) {
-      // A lower-third note goes to the lower third, not the projector, so it does not move the CURRENT selection.
-      takePrayer(note);
-    }
+    // Every note row becomes the CURRENT selection when it is played, as a Praise & Worship lineup row does, so Next walks on past it. A
+    // lower-third note goes to the lower third and a private note shows nothing; the slide on screen stays up under either.
+    if (note) dispatch({ type: 'queue/cursor', index });
+    if (note?.display === 'full') takePrayer(note, 'MASS_QUEUE', 0, source?.slides);
+    else if (note) takePrayer(note);
     return;
   }
   if (await openQueueItem(item, index, opts)) dispatch({ type: 'projector/take', source: 'MASS_QUEUE' });

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, Info, ListMusic, Play, Plus, Search, Send, Trash2, Zap } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Info, ListMusic, Play, Plus, Search, Trash2 } from 'lucide-react';
+import { calendarDayOf } from '../../shared/liturgical-calendar.js';
 import { clearSlot, moveToSlot, placeInSlot, additionalIn, slotById } from '../../shared/mass-slots.js';
 import { withAllReadings } from '../../shared/daily-readings.js';
 import { MASS_LANGUAGES, bibleOf, massLanguageOf, otherBibles, slotLabel, uiLangOf } from '../../shared/mass-language.js';
@@ -16,6 +17,7 @@ import { withPartNames } from '../../shared/mass-order-text.js';
 import { noteCategoryLabel, noteSource, sectionOfCategory } from '../../shared/notes.js';
 import { useNotesById, useNotesChanged } from '../notes/useNotes';
 import type { Note } from '../notes/types';
+import { isGoLiveCopy } from '../notes/slideCopies';
 import { sundayCycle } from '../liturgy/lectionary';
 import { deckRow, decksOf } from '../../shared/flow-insert.js';
 import { formatRuns, formatSourceId, parsePassageInput, stripHits } from '../../shared/bible-ref.js';
@@ -33,7 +35,6 @@ import type { PickedItem } from './MassItemSelect';
 import { usePlannerT, type PlannerT } from './strings';
 import type { PlannerKey } from '../../shared/planner-i18n.js';
 import { builtInItems, type NewPlanTemplate } from './templates';
-import { NewPlanForm } from './NewPlanForm';
 import { songCategoryOf, stepFor, type MassStep } from '../../shared/mass-flow.js';
 import { overlayLyricsItems } from '../../shared/hymn-cache.js';
 import { type LibraryItem, type LiturgicalBlock, type MassLanguage, type NoteKind, type PlanItem, type PlanSummary, type SourceModule } from './types';
@@ -117,7 +118,20 @@ const upcomingSunday = () => {
   return isoOf(new Date(today.getFullYear(), today.getMonth(), today.getDate() + ((7 - today.getDay()) % 7)));
 };
 
-/** Library rows for one tab, filtered by the search box. */
+/** Today as "YYYY-MM-DD" in the parish's time zone, so the calendar's Today is the parish's day, not the laptop's. */
+export const todayIn = (timeZone: string) => {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  } catch {
+    return isoOf(new Date());
+  }
+};
+/** The order a new plan for a day starts from: Standard Sunday on a Sunday or solemnity, Weekday on any other day. */
+export const templateFor = (iso: string): NewPlanTemplate => {
+  const { rank } = calendarDayOf(iso);
+  return rank === 'sunday' || rank === 'solemnity' ? 'standard' : 'weekday';
+};
+
 /** The library rows for one tab. Exported so the Go Live hub can search with the planner's own search. */
 export async function loadLibrary(
   tab: SourceModule,
@@ -230,9 +244,10 @@ export async function loadLibrary(
       return [];
     case 'notes': {
       // Everything saved in Notes & Prayers, wherever it was written: prayers and intentions, and private operator notes.
+      // Go Live's per-plan copies are not offered: each belongs to the plan it was made in.
       const notes = await bridge.notes.list();
       return notes
-        .filter((n) => match(`${n.title} ${n.category} ${noteCategoryLabel(n.category)} ${n.body}`))
+        .filter((n) => !isGoLiveCopy(n) && match(`${n.title} ${n.category} ${noteCategoryLabel(n.category)} ${n.body}`))
         .map((n): LibraryItem => ({
           module: 'notes',
           sourceId: String(n.id),
@@ -244,7 +259,28 @@ export async function loadLibrary(
   }
 }
 
-export function MassPlanner() {
+/**
+ * Makes a Holy Mass plan: a new plan is celebrated in the app's language until the operator picks another. Standard Sunday stores nothing
+ * (its slots are empty); Weekday fills its slots. Opening the plan in the editor fills the day's readings (see the plan effect below).
+ */
+export async function createMassPlan({ name, liturgicalDate, template }: { name: string; liturgicalDate: string; template: NewPlanTemplate }, lang: Lang) {
+  const created = await api.create({ name, liturgicalDate, language: massLanguageOf(lang) });
+  const fills = builtInItems(template, lang);
+  if (fills.length > 0) await api.save(created.id, fills);
+  return created;
+}
+
+interface MassPlannerProps {
+  /** The plan open in the editor. The Planner holds it, so its calendar and tabs know which plan is open. */
+  planId: number | null;
+  /** Another plan was picked or made here, or the open plan was deleted (null). */
+  onPlanChange: (id: number | null) => void;
+  /** Back to Calendar. */
+  onShowCalendar: () => void;
+}
+
+/** The Holy Mass plan editor: the library on the left, the plan on the right. The Planner (PlannerView) holds it, under its calendar. */
+export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlannerProps) {
   const t = usePlannerT();
   const lang = useUi((s) => s.lang);
   const region = useRegion();
@@ -258,7 +294,6 @@ export function MassPlanner() {
   const [translations, setTranslations] = useState<Translation[]>([]);
 
   const [plans, setPlans] = useState<PlanSummary[]>([]);
-  const [planId, setPlanId] = useState<number | null>(null);
   const [items, setItems] = useState<PlanItem[]>([]);
   // The plan's own choice for the slot title banner on its slides: true, false, or null to follow the projector setting.
   const [slotTitle, setSlotTitle] = useState<boolean | null>(null);
@@ -269,7 +304,6 @@ export function MassPlanner() {
   const [lyricsRevision, setLyricsRevision] = useState(0);
   // The current title and deleted state of each song in the plan, from the library.
   const [hymnNow, setHymnNow] = useState<Record<number, { title?: string; deleted: boolean }>>({});
-  const [creating, setCreating] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   // Bumped when a note is saved or deleted in any window, so the Notes & Prayers tab is read again without a reload.
   const [notesRevision, setNotesRevision] = useState(0);
@@ -306,19 +340,21 @@ export function MassPlanner() {
   const dragRef = useRef<DragSource | null>(null);
   const fail = (err: unknown) => setError(errorText(err));
 
-  /** Reloads the plan list and selects `prefer`, or the first plan when it is null. */
+  /** Reloads the plan list and opens `prefer`, when given. */
   const reloadPlans = (prefer: number | null) =>
     api.list().then((list) => {
       setPlans(list);
-      setPlanId(prefer ?? list[0]?.id ?? null);
+      if (prefer != null) onPlanChange(prefer);
     }).catch(fail);
 
+  // The plan list, for the editor's plan picker. Which plan is open is the Planner's: from its calendar, or a plan the Go Live hub asked for.
   useEffect(() => {
-    // A plan the Go Live hub asked to open is taken once, here. Otherwise the first plan is shown, as before.
-    const requested = useUi.getState().pendingMassPlanId;
-    if (requested != null) setUi({ pendingMassPlanId: null });
-    void reloadPlans(requested);
+    void reloadPlans(null);
   }, []);
+  // A plan made on the Planner's calendar while the editor stayed mounted is not in the list yet: read it again.
+  useEffect(() => {
+    if (planId != null && plans.length > 0 && !plans.some((p) => p.id === planId)) void reloadPlans(null);
+  }, [planId]);
 
   useEffect(() => {
     setNotice(null);
@@ -327,8 +363,10 @@ export function MassPlanner() {
       return;
     }
     let cancelled = false;
-    // The plan opens as saved. A plan with no readings yet takes the day's readings from the built-in Ordo and the offline Bible, in its
-    // language; any other plan takes the day's psalm and prayers into its empty slots 4 and 6.
+    // The plan opens as saved, then every empty scripture slot (First Reading, psalm, Second Reading, Gospel, Prayer of the Faithful) takes
+    // the day's reading from the Lectionary, drafted from the built-in Ordo and the offline Bible in the plan's language where nothing is
+    // saved yet. A slot holding the operator's own choice is kept. This replaces the old Auto-Fill Readings button: a plan made from the
+    // calendar opens with its readings in place.
     api.get(planId).then(async (plan) => {
       if (cancelled) return;
       setItems(plan.items);
@@ -336,18 +374,23 @@ export function MassPlanner() {
       // The Lectionary and the library's readings follow the plan's date, so switching tabs shows its readings.
       setReadingDate(plan.liturgicalDate);
       setUi({ lectionaryDate: plan.liturgicalDate });
-      if (!plan.items.some((it) => it.module === 'lectionary')) {
+      try {
         const { bible, out } = await readingsFor(plan.items, plan.liturgicalDate, plan.language);
-        if (cancelled || out.placed.length === 0) return;
-        await api.save(planId, out.items);
-        const stored = (await api.get(planId)).items;
         if (bible.saved.length > 0) notifyLectionaryChanged();
         if (cancelled) return;
-        setItems(stored);
-        syncQueueIfLoaded(planId, stored);
-        setNotice(fillNotice(plan.liturgicalDate, plan.language, bible, out.placed, [], []));
-        return;
+        if (out.slots.filled.length > 0 || out.slots.moved.length > 0) {
+          await api.save(planId, out.items);
+          const stored = (await api.get(planId)).items;
+          if (cancelled) return;
+          setItems(stored);
+          syncQueueIfLoaded(planId, stored);
+          setNotice(fillNotice(plan.liturgicalDate, plan.language, bible, out.placed, [], out.missing));
+          return;
+        }
+      } catch {
+        // No Bible or Lectionary for the day: the plan still opens, with the psalm and prayers filled below where they can be.
       }
+      if (cancelled) return;
       return fillDailyReadings(planId).then(({ items: filled, filled: slots }) => {
         if (cancelled || slots.length === 0) return;
         setItems(filled);
@@ -480,33 +523,6 @@ export function MassPlanner() {
       kept.length > 0 && t('autoFillKept', { slots: slotNames(kept, planLang) }),
       missing.length > 0 && t('autoFillMissingParts', { date: shownDate, parts: missing.join(', ') }),
     ].filter(Boolean).join(' ');
-  };
-
-  /**
-   * ⚡ Auto-Fill Readings: the day's readings for the plan's date, in the plan's language (see readingsFor). Parts with nothing in the
-   * Lectionary are drafted from the offline Bible first. A slot holding the operator's own choice (a sung psalm, a prayer from Notes & Prayers)
-   * is replaced only once they confirm. Songs, notes and the other slots are never touched.
-   */
-  const autoFill = async () => {
-    if (planId == null || !currentPlan) return;
-    setError(null);
-    setNotice(null);
-    try {
-      const { liturgicalDate: date, language } = currentPlan;
-      const first = await readingsFor(items, date, language);
-      const own = first.out.slots.kept;
-      const replace = own.length > 0 && window.confirm(t('autoFillReplace', { slots: slotNames(own, planLang), date: formatIsoDay(date, region) }));
-      const out = replace ? withAllReadings(items, date, first.day, { replace: true }) : first.out;
-      // The plan is saved before the Lectionary change is announced, so the re-read that follows finds it saved.
-      if (JSON.stringify(out.items) !== JSON.stringify(items) && !(await persist(out.items))) return;
-      if (first.bible.saved.length > 0) notifyLectionaryChanged();
-      const lines = fillNotice(date, language, first.bible, out.placed, replace ? [] : own, out.missing);
-      // With no reading at all for the date, there is nothing to fill: that is shown as a problem to fix in the Lectionary.
-      if (out.placed.length === 0) setError(lines);
-      else setNotice(lines);
-    } catch (err) {
-      fail(err);
-    }
   };
 
   /**
@@ -666,34 +682,15 @@ export function MassPlanner() {
     }
   };
 
-  /** Loads the plan into the Service Queue and records which plan is active, so a restart can restore it. */
-  const loadToQueue = () => {
-    dispatch({ type: 'queue/set', items: queueFromPlan(named(items)), planId });
-    setNotice(t('loadedNotice', { n: items.length }));
-  };
-
-  /** Makes a plan from the New plan form. Standard Sunday stores nothing (its slots are empty); Weekday fills its slots. */
-  const createPlan = async ({ name, liturgicalDate, template }: { name: string; liturgicalDate: string; template: NewPlanTemplate }) => {
-    setError(null);
-    try {
-      // A new plan is celebrated in the app's language until the operator picks another.
-      const created = await api.create({ name, liturgicalDate, language: massLanguageOf(lang) });
-      const fills = builtInItems(template, lang);
-      if (fills.length > 0) await api.save(created.id, fills);
-      setCreating(false);
-      await reloadPlans(created.id);
-      return true;
-    } catch (err) {
-      fail(err);
-      return false;
-    }
-  };
+  /** Back to the calendar. The Planner reads its plan lists again, so each day's status is current. */
+  const showCalendar = () => onShowCalendar();
 
   const deletePlan = async () => {
     if (planId == null || !window.confirm(t('confirmDeletePlan'))) return;
     try {
       await api.deletePlan(planId);
       await reloadPlans(null);
+      onPlanChange(null);
     } catch (err) {
       fail(err);
     }
@@ -846,19 +843,13 @@ export function MassPlanner() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="px-5 pt-5 pb-4">
-        <div className="text-sm font-semibold tracking-wider text-accent uppercase">{t('eyebrow')}</div>
-        <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{t('title')}</h1>
-        <p className="mt-1 text-sm text-fg/70">{t('subtitle')}</p>
-      </header>
-
       {(error || notice) && (
         <div role={error ? 'alert' : 'status'} className={`mx-5 mb-4 rounded-lg border px-4 py-2 text-sm ${error ? 'border-danger/50 bg-danger/10 text-danger' : 'border-ok/50 bg-ok/10 text-ok'}`}>
           {error ?? notice}
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 items-start gap-5 px-5 pb-6 xl:grid-cols-[400px_minmax(0,1fr)]">
+      <div key="editor" className="planner-view-in grid min-h-0 flex-1 grid-cols-1 items-start gap-5 px-5 pb-6 xl:grid-cols-[400px_minmax(0,1fr)]">
         {/* ── Left: library browser ── */}
         <section className="flex min-h-[480px] flex-col overflow-hidden rounded-[10px] border border-line bg-panel xl:sticky xl:top-5 xl:max-h-[calc(100vh-9rem)]">
           <div className="flex flex-col gap-3 border-b border-line p-4">
@@ -1004,13 +995,20 @@ export function MassPlanner() {
         {/* ── Right: the plan ── */}
         <section className="flex min-w-0 flex-col gap-4">
           <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-[10px] border border-line bg-panel p-3 shadow-lg shadow-black/20">
+            <button
+              type="button"
+              onClick={showCalendar}
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border border-accent/60 bg-accent/10 px-3 text-xs font-bold tracking-wide text-accent transition hover:bg-accent hover:text-on-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+            >
+              <ArrowLeft size={14} aria-hidden /> {t('backToCalendar')}
+            </button>
             <ListMusic size={16} aria-hidden className="text-accent" />
             {plans.length > 0 ? (
               <select
                 value={planId ?? ''}
-                onChange={(e) => setPlanId(Number(e.target.value))}
+                onChange={(e) => onPlanChange(Number(e.target.value))}
                 aria-label={t('title')}
-                className="h-10 min-w-0 flex-1 rounded-md border border-fg/15 bg-panel-2 px-2 text-sm text-fg outline-none focus:border-accent"
+                className="h-10 min-w-[14rem] flex-1 rounded-md border border-fg/15 bg-panel-2 px-2 text-sm text-fg outline-none focus:border-accent"
               >
                 {plans.map((p) => (
                   <option key={p.id} value={p.id}>{formatIsoDay(p.liturgicalDate, region)} · {p.name}</option>
@@ -1048,9 +1046,6 @@ export function MassPlanner() {
                 <option value="hide">{t('slotTitleHide')}</option>
               </select>
             )}
-            <button type="button" onClick={() => setCreating((open) => !open)} className="h-10 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs font-semibold tracking-wide uppercase text-fg/85 transition hover:bg-fg/10 hover:text-fg">
-              {creating ? t('cancel') : t('newPlan')}
-            </button>
             <div className="relative">
               <button
                 type="button"
@@ -1066,35 +1061,16 @@ export function MassPlanner() {
                 <MassTemplates t={t} lang={lang} items={items} onApply={applyTemplate} onError={setError} onNotice={setNotice} onClose={() => setTemplatesOpen(false)} />
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => void autoFill()}
-              disabled={currentPlan == null}
-              title={currentPlan ? t('autoFillTip', { date: formatIsoDay(currentPlan.liturgicalDate, region) }) : undefined}
-              className="flex h-10 items-center gap-1.5 rounded-md border border-accent/50 bg-accent/10 px-3 text-xs font-semibold tracking-wide uppercase text-accent transition hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Zap size={14} aria-hidden /> {t('autoFill')}
-            </button>
             {planId != null && (
-              <button type="button" onClick={deletePlan} aria-label={t('deletePlan')} title={t('deletePlan')} className="grid size-10 place-items-center rounded-md border border-fg/15 bg-panel-2 text-fg/60 transition hover:border-danger/60 hover:text-danger">
+              <button type="button" onClick={deletePlan} aria-label={t('deletePlan')} title={t('deletePlan')} className="ml-auto grid size-10 place-items-center rounded-md border border-fg/15 bg-panel-2 text-fg/60 transition hover:border-danger/60 hover:text-danger">
                 <Trash2 size={14} aria-hidden />
               </button>
             )}
-            <button
-              type="button"
-              onClick={loadToQueue}
-              disabled={items.length === 0}
-              className="ml-auto flex h-10 items-center gap-2 rounded-md border border-accent bg-accent px-4 text-xs font-extrabold tracking-wider uppercase text-on-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Send size={14} aria-hidden /> {t('loadQueue')}
-            </button>
           </div>
 
           {currentPlan && cycle && (
             <p className="px-1 text-xs text-fg/60">{t('planLine', { name: currentPlan.name, cycle, n: items.length })}</p>
           )}
-
-          {creating && <NewPlanForm t={t} initialDate={upcomingSunday()} onCreate={createPlan} />}
 
           {planId == null ? (
             <p className="rounded-[10px] border-2 border-dashed border-fg/20 p-8 text-center text-sm text-fg/60">{t('createFirst')}</p>

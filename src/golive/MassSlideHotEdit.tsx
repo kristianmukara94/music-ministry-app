@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Pencil, Plus } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import type { Frame, QueueItem } from '../../shared/live.js';
+import { pagesWithout, slideAfterDelete } from '../../shared/pw-hot-edit.js';
 import type { PwT } from '../praise-worship/strings';
-import { editKeys, SMALL_BTN } from '../praise-worship/HotEditForms';
+import { DELETE_BTN, editKeys, SMALL_BTN } from '../praise-worship/HotEditForms';
+import { useDeleteSlideKey } from '../components/useDeleteSlideKey';
 import type { Note } from '../notes/types';
 import { errorText } from '../whiteboard/errors';
 import { MAX_NOTE_BODY, saveItemSlides, slideIndexOf, slidePagesOf, slidesTooLong } from './massSlideCopy';
@@ -35,6 +37,7 @@ export function MassSlideHotEdit({ t, item, index, frame, note, onAir, editReque
   const [adding, setAdding] = useState<{ after: number; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
   const pages = item.stale ? null : slidePagesOf(frame, note);
   const current = slideIndexOf(frame);
 
@@ -43,7 +46,15 @@ export function MassSlideHotEdit({ t, item, index, frame, note, onAir, editReque
     setEditing(null);
     setAdding(null);
     setError(null);
+    setDone(null);
   }, [item.id]);
+
+  // A confirmation fades on its own.
+  useEffect(() => {
+    if (!done) return;
+    const timer = window.setTimeout(() => setDone(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [done]);
 
   // A double-click on a slide chip opens that slide.
   useEffect(() => {
@@ -104,8 +115,30 @@ export function MassSlideHotEdit({ t, item, index, frame, note, onAir, editReque
     void save(next, show ? at : current, false, () => setAdding(null));
   };
 
+  /**
+   * Delete slide, on the slide on screen (or staged): it leaves this plan's copy of the item, and the slide that followed it takes its place,
+   * or the one before it when it was the last. An item's only slide stays, with a note saying why.
+   */
+  const deleteSlide = () => {
+    if (!pages || busy) return;
+    const next = pagesWithout(pages, current);
+    if (!next) {
+      setDone(null);
+      setError(t('deleteSlideLast'));
+      return;
+    }
+    setEditing(null);
+    setAdding(null);
+    const name = t('slideName', { n: current + 1 });
+    void save(next, slideAfterDelete(current, next.length), false, () => setDone(t('deleteSlideDone', { name })));
+  };
+
   const canEdit = pages !== null && !busy;
+  const canDelete = canEdit && pages.length > 1;
   const editingLive = onAir && editing?.page === current;
+
+  // Delete and Backspace delete the slide on screen, as the button does. An item with no words to change leaves the key alone.
+  useDeleteSlideKey(pages && !busy ? deleteSlide : null);
 
   return (
     <div className="flex flex-col gap-2">
@@ -130,11 +163,27 @@ export function MassSlideHotEdit({ t, item, index, frame, note, onAir, editReque
           <Plus size={14} aria-hidden />
           {t('addSlide')}
         </button>
+        <button
+          type="button"
+          disabled={!canDelete}
+          onClick={deleteSlide}
+          aria-keyshortcuts="Delete Backspace"
+          title={!pages ? t('slideEditNone') : pages.length <= 1 ? t('deleteSlideLast') : t('deleteSlideTip', { name: t('slideName', { n: current + 1 }) })}
+          className={DELETE_BTN}
+        >
+          <Trash2 size={13} aria-hidden />
+          {t('deleteSlide')}
+        </button>
         <span className="text-[11px] text-muted">{t('slideEditHint')}</span>
       </div>
       {error && (
         <p role="alert" className="text-xs text-danger">
           {error}
+        </p>
+      )}
+      {done && (
+        <p role="status" className="text-xs text-ok">
+          {done}
         </p>
       )}
       {editing && pages && (

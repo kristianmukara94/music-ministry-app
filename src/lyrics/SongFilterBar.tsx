@@ -5,7 +5,8 @@ import type { LyT } from './strings';
 import type { SongFilter } from './useSongFilter';
 import type { HymnLanguage } from './types';
 
-const SELECT = 'h-9 w-full rounded-md border border-fg/15 bg-panel-2 px-2 text-xs text-fg outline-none focus:border-accent';
+const PILL =
+  'h-7 min-w-10 rounded-full border px-3 font-mono text-[11px] font-bold tracking-wider transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none';
 
 /**
  * The library's filter bar: scope and song category (the category list is grouped by scope), the language, a live count of the songs shown,
@@ -27,14 +28,27 @@ export function SongFilterBar({ filter, t }: { filter: SongFilter; t: LyT }) {
         onSongCategory={filter.setSongCategory}
         categories={filter.categories}
       />
-      <select value={filter.language} onChange={(e) => filter.setLanguage(e.target.value as HymnLanguage | '')} className={SELECT} aria-label={t('fieldLanguage')}>
-        <option value="">{t('allLanguages')}</option>
-        {LANGUAGES.map((l: string) => (
-          <option key={l} value={l}>
-            {t(`lang_${l}` as 'lang_EN')}
-          </option>
-        ))}
-      </select>
+      {/* Language pills: one press filters to that language, and All lifts it. The full name is the tooltip and the accessible name. */}
+      <div role="radiogroup" aria-label={t('fieldLanguage')} className="flex items-center gap-1.5">
+        {(['', ...LANGUAGES] as (HymnLanguage | '')[]).map((l) => {
+          const on = filter.language === l;
+          const name = l ? t(`lang_${l}` as 'lang_EN') : t('allLanguages');
+          return (
+            <button
+              key={l || 'all'}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              aria-label={name}
+              title={name}
+              onClick={() => filter.setLanguage(l)}
+              className={`${PILL} ${on ? 'border-accent bg-accent text-on-accent shadow-sm' : 'border-fg/15 bg-panel-2 text-fg/75 hover:border-accent/60 hover:text-fg'}`}
+            >
+              {l || t('allLanguagesShort')}
+            </button>
+          );
+        })}
+      </div>
       <div className="flex min-h-7 items-center justify-between gap-2">
         <span
           role="status"

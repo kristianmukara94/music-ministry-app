@@ -3,6 +3,7 @@ import type { TextStyle } from '../../shared/text-style';
 import { parseSourceId } from '../../shared/bible-ref.js';
 import { bibleT } from '../../shared/bible-i18n.js';
 import { bridge } from '../live/bridge';
+import { liveLyrics } from '../live/liveSongEdits';
 import { readingPagesOf } from '../lectionary/pages';
 import { hasResponse } from '../../shared/daily-readings.js';
 import { loadPassage, scriptureSlides } from '../bible/projection';
@@ -32,7 +33,7 @@ export async function previewFor(module: SourceModule, sourceId: string, lang: L
     }
 
     case 'lyrics': {
-      const hymn = await bridge.lyrics.getHymn(Number(sourceId));
+      const hymn = await liveLyrics.getHymn(Number(sourceId));
       if (!hymn) return null;
       return { pages: hymn.stanzas.map((stanza) => stanza.lyricsText), style: hymn.style ?? null };
     }

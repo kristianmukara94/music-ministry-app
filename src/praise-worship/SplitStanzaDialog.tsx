@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Scissors, X } from 'lucide-react';
-import { bridge } from '../live/bridge';
+import { liveLyrics } from '../live/liveSongEdits';
 import { useLive } from '../live/store';
 import type { Hymn } from '../lyrics/types';
 import { StanzaEditBox } from './HotEditForms';
@@ -10,7 +10,8 @@ import { useLiveHotEditor } from './useLiveHotEditor';
 /**
  * Splitting a stanza that is cut off on the slide. It opens in the operator window when the "Text cut off" badge is pressed on the mirror or
  * a preview (in this window or the mirror's own), with the stanza's words in the edit box: Auto-split at midpoint makes it two slides, or the
- * words can be changed and saved. Either way the song is saved in Song Lyrics, and the slide on screen and the cue lists take the change.
+ * words can be changed and saved. Either way the change is for this service only (live/liveSongEdits), so Song Lyrics keeps the song as it
+ * is, and the slide on screen and the cue lists take the change.
  */
 export function SplitStanzaDialog() {
   const t = usePwT();
@@ -31,7 +32,7 @@ export function SplitStanzaDialog() {
     setDone(0);
     setFailed(null);
     setHymn(null);
-    bridge.lyrics
+    liveLyrics
       .getHymn(request.hymnId)
       .then((loaded) => {
         if (!loaded || loaded.deletedAt) setFailed('This song is not in the library any more.');

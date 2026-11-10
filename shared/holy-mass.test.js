@@ -36,7 +36,8 @@ test('the Mass tab, the song scope, the queue tag and the sidebar section read H
   assert.equal(plT('en', 'module_mass_order'), 'Holy Mass');
   assert.match(read('src/planner/ServiceQueue.tsx'), /mass_order: \{ label: 'HOLY MASS'/);
   assert.match(read('src/golive/MassLiveView.tsx'), /mass_order: 'Holy Mass',/);
-  assert.match(read('src/i18n/strings.ts'), /'nav\.planner': 'Holy Mass Planner',/);
+  // The sidebar's one Planner holds the Holy Mass and Praise & Worship plans.
+  assert.match(read('src/i18n/strings.ts'), /'nav\.planner': 'Planner',/);
 });
 
 test('only the labels changed: the saved identifiers (tab id, scope value, module name) are the ones existing files and sessions use', () => {
@@ -109,7 +110,8 @@ test('leaving Quick Live replaces its band with the lineup segment\'s, or takes 
 test('live editing is open while the Holy Mass is on air: nothing in the editor or its panels checks for it', () => {
   const hot = read('src/praise-worship/useLiveHotEditor.ts');
   assert.doesNotMatch(hot, /locked|HOLY_MASS_LOCKED|useHolyMassOnAir/);
-  assert.match(hot, /await bridge\.lyrics\.editLyrics\(hymn\.id, tagged\(stanzas\)\);/, 'an edit is saved to the song');
+  assert.match(hot, /await setLiveStanzas\(hymn, stanzas\)/, 'an edit is kept for this run of the app');
+  assert.doesNotMatch(hot, /bridge\.lyrics/, 'Song Lyrics is never written from air');
   for (const file of ['src/praise-worship/QuickCuePanel.tsx', 'src/praise-worship/LineupHotEdit.tsx', 'src/praise-worship/SplitStanzaDialog.tsx', 'src/praise-worship/LiveView.tsx']) {
     assert.doesNotMatch(read(file), /hot\.locked|holyMassOnAir|holyMassLocked/, `${file} no longer hides its controls`);
   }
@@ -142,6 +144,28 @@ test('every Holy Mass item that is not a song has Edit slide on air and Add slid
   assert.match(copy, /display: 'full'/, 'the copy is a full-screen slide');
   assert.match(copy, /replaceRowInFlow\(index, \{ module: 'notes'/, 'the copy takes the item’s row in this plan');
   assert.doesNotMatch(copy, /bridge\.(lectionary|massOrder)\.\w*(save|set|update)/, 'the shared source text is never written');
+  assert.match(copy, /bridge\.notes\.saveCopy\(/, 'notes are written only through the copy-only channel');
+  assert.doesNotMatch(copy, /bridge\.notes\.(save|remove)\(/, 'never the Hub’s own save or delete');
+  assert.match(copy, /isCopyFor\(note, owner\)/, 'only this plan’s own copy is changed in place');
+});
+
+test('Go Live never writes the Liturgical Content Hub, the Lectionary or Song Lyrics', () => {
+  const files = [
+    'src/golive/MassSlideHotEdit.tsx', 'src/golive/MassHotEdit.tsx', 'src/golive/massSlideCopy.ts', 'src/praise-worship/LineupHotEdit.tsx',
+    'src/praise-worship/CardSlideHotEdit.tsx', 'src/praise-worship/lineupSlideCopy.ts', 'src/praise-worship/useLiveHotEditor.ts',
+    'src/praise-worship/SplitStanzaDialog.tsx', 'src/praise-worship/QuickCuePanel.tsx',
+  ];
+  for (const file of files) {
+    const source = read(file);
+    assert.doesNotMatch(source, /bridge\.notes\.(save|remove)\(/, `${file} never saves or deletes a Hub entry`);
+    assert.doesNotMatch(source, /bridge\.lyrics\.(editLyrics|editHymn|splitStanza|deleteHymn|saveHymn)/, `${file} never writes Song Lyrics`);
+    assert.doesNotMatch(source, /bridge\.lectionary\.(save|set|update|delete)/, `${file} never writes the Lectionary`);
+  }
+  // The Hub and the pickers leave Go Live's copies out, and still read the notes table itself.
+  assert.match(read('src/notes/NotesPrayersView.tsx'), /list\.filter\(\(n\) => !isGoLiveCopy\(n\)\)/);
+  assert.match(read('src/golive/MassLiveView.tsx'), /if \(!isGoLiveCopy\(note\)\)/);
+  assert.match(read('src/planner/MassPlanner.tsx'), /!isGoLiveCopy\(n\) && match\(/);
+  assert.match(read('src/praise-worship/Library.tsx'), /!isGoLiveCopy\(p\)/);
 });
 
 test('the slides of an edited item become one note with a break between each, so a one-slide item can grow to two', () => {
@@ -205,7 +229,10 @@ test('a Holy Mass song shows its section chips with the projector window closed,
   assert.match(live, /if \(massShowing\(state\)\) \{\s+const frame = state\.projector\.live;/, 'Next steps through the song in every mode');
   const view = read('src/golive/MassLiveView.tsx');
   assert.match(view, /const onAir = massShowing\(live\);/);
-  assert.match(view, /const steps = item \? stepsOf\(frame, hymn\) : null;/, 'the chips come from the slide the console shows, on screen or staged');
+  assert.match(view, /const steps = item && !offScreenNote \? stepsOf\(frame, hymn\) : null;/, 'the chips come from the slide the console shows, on screen or staged');
+  // A lower-third or private note row leaves the slide before it up: that slide's chips are not the row's, and Next walks on through the Mass.
+  assert.match(view, /const offScreenNote = noteRowOffScreen\(live, frame\);/);
+  assert.match(live, /const steps = noteRowOffScreen\(state, frame\) \? null : stepsOf\(frame, hymn\);/);
   assert.match(view, /onSelect=\{\(i\) => void run\(\(\) => goWithin\(i, frame\)\)\}/, 'a chip on a staged song puts that section on screen');
   // Grouped as in Praise & Worship: the title card's chip alone, then the song's sections under its title.
   assert.match(view, /\{ key: 'title', label: null, chips: chips\.filter\(\(chip\) => chip\.index === 0\) \}/);
@@ -330,4 +357,29 @@ test('Next, Back and a section jump lift Blackout from over the Holy Mass onto t
   assert.equal(run(welcomeDark, { type: 'projector/take', source: 'MASS_QUEUE' }, { type: 'projector/blackout' }).projector.live, slide);
   const live = read('src/golive/massLive.ts');
   assert.match(live, /dispatch\(\{ type: 'projector\/take', source: 'MASS_QUEUE' \}\);\s+if \(blackedOut\) dispatch\(\{ type: 'projector\/blackout' \}\);/);
+});
+
+test('a Holy Mass started under Blackout is on air, covered, so its badge and the console bar read Live, not Off air', () => {
+  const slide = { kind: 'text', text: 'In the name of the Father' };
+  // Blackout came up over a plain deck, then the operator pressed Go Live on the Mass.
+  const dark = run(
+    initialLiveState(),
+    { type: 'output/set', output: 'projector', on: true },
+    { type: 'projector/show', frame: { kind: 'announcements', lang: 'en' }, source: 'DIRECT_DECK' },
+    { type: 'projector/blackout' },
+    { type: 'queue/set', planId: 7, items: [{ module: 'notes', sourceId: '1', label: 'A' }] },
+    { type: 'queue/cursor', index: 0 },
+    { type: 'projector/stage', frame: slide },
+    { type: 'projector/take', source: 'MASS_QUEUE' },
+  );
+  assert.equal(dark.projector.source, 'MASS_QUEUE', 'the take names who has the screen, even under Blackout');
+  assert.equal(dark.queueCursor, 0);
+  assert.equal(blackoutOverMass(dark), true);
+  // Lifting Blackout shows the Mass slide.
+  assert.equal(run(dark, { type: 'projector/blackout' }).projector.live, slide);
+  // The console bar and both views read one answer.
+  assert.match(read('src/golive/onAir.ts'), /if \(run === 'mass'\) return massShowing\(state\)/);
+  assert.match(read('src/praise-worship/LiveView.tsx'), /const onAir = runOnAir\(live, 'pw', session\.id\);/);
+  assert.match(read('src/golive/GoLiveConsole.tsx'), /runOnAir\(live, 'pw', pickedPw\)/);
+  for (const lang of ['en', 'tl', 'ceb']) assert.notEqual(goT(lang, 'liveEnd'), 'liveEnd');
 });

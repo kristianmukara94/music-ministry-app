@@ -19,6 +19,7 @@ import { LineupHotEdit } from './LineupHotEdit';
 import { LiveStageCanvas, type StageChipGroup } from '../components/LiveStageCanvas';
 import { subIndexChip } from '../../shared/stage-chips.js';
 import { DetachMonitorButton } from '../components/DetachMonitorButton';
+import { runOnAir } from '../golive/onAir';
 import { setPwState, usePw } from './store';
 import { setGoLiveFocused, useFocusEscape } from './useGoLiveFocus';
 import { usePwT, type PwT } from './strings';
@@ -189,6 +190,8 @@ export function LiveView() {
   const covered = welcomeOverPw(live) || blackoutOverPw(live);
   const atStart = !covered && segmentIndex === 0 && at.slide === 0;
   const atEnd = !covered && segmentIndex === deck.length - 1 && at.slide === steps.length - 1;
+  // The On air badge: the same answer as the Go Live console bar's Live button.
+  const onAir = runOnAir(live, 'pw', session.id);
 
   return (
     <div className="flex flex-col gap-5">
@@ -196,11 +199,11 @@ export function LiveView() {
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-[10px] border border-line bg-panel px-4 py-3">
         <span
           className={`inline-flex min-h-9 items-center gap-2 rounded-full border px-4 text-sm font-extrabold tracking-[0.18em] uppercase ${
-            pw.onAir ? 'border-danger/60 bg-danger/15 text-danger' : 'border-fg/20 bg-fg/[0.06] text-fg/60'
+            onAir ? 'border-danger/60 bg-danger/15 text-danger' : 'border-fg/20 bg-fg/[0.06] text-fg/60'
           }`}
         >
-          <span aria-hidden className={`size-2 rounded-full ${pw.onAir ? 'animate-pulse bg-danger' : 'bg-fg/50'}`} />
-          {pw.onAir ? t('liveBadge') : t('offAir')}
+          <span aria-hidden className={`size-2 rounded-full ${onAir ? 'animate-pulse bg-danger' : 'bg-fg/50'}`} />
+          {onAir ? t('liveBadge') : t('offAir')}
         </span>
         <span className="flex items-baseline gap-2">
           <span className="text-xs text-fg/60">{t('sessionTime')}</span>

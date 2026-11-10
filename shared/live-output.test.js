@@ -133,11 +133,11 @@ test('an edit to the words on screen swaps them in place: the same song and stan
 
 // ---- Editing the song on air ----
 
-test('the cue panel edits and adds stanzas through the song, keeping its filing, and the projector follows the edit in place', () => {
+test('the cue panel edits and adds stanzas for this service only, and the projector follows the edit in place', () => {
   const hot = read('src/praise-worship/useLiveHotEditor.ts');
-  // Only the words are sent: the service writes the song's own details, scope, song category and Mass slot back (see editLyrics).
-  assert.match(hot, /await bridge\.lyrics\.editLyrics\(hymn\.id, tagged\(stanzas\)\);/);
-  assert.doesNotMatch(hot, /bridge\.lyrics\.editHymn|category: hymn\./, 'the editor never sends filing of its own');
+  // The words are kept for this run of the app (live/liveSongEdits): Song Lyrics is never written from air.
+  assert.match(hot, /await setLiveStanzas\(hymn, stanzas\)/);
+  assert.doesNotMatch(hot, /bridge\.lyrics|category: hymn\./, 'the editor never writes the song or its filing');
   assert.match(hot, /const at = after === null \? hymn\.stanzas\.length : Math\.min\(after \+ 1, hymn\.stanzas\.length\);/, 'a new stanza goes after the one on screen');
   assert.match(hot, /SECTION_LINE = \/\^\\s\*\\\[\[\^\\\]\]\+\\\]\\s\*\$\/m/, 'a bracket line cannot slip a new section into a stanza');
   const panel = read('src/praise-worship/QuickCuePanel.tsx');

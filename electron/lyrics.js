@@ -172,7 +172,8 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
     insertSetlist: db.prepare('INSERT INTO setlists (name, date) VALUES (?, ?)'),
     deleteSetlist: db.prepare('DELETE FROM setlists WHERE id = ?'),
     entries: db.prepare(`
-      SELECT si.position, h.id AS hymnId, h.title, h.composer, h.category, h.language, h.deleted_at IS NOT NULL AS deleted
+      SELECT si.position, h.id AS hymnId, h.title, h.composer, h.category, h.language, h.musical_key AS musicalKey, h.deleted_at IS NOT NULL AS deleted,
+             (SELECT COUNT(*) FROM hymn_stanzas s WHERE s.hymn_id = h.id) AS stanzaCount
       FROM setlist_items si
       JOIN hymns h ON h.id = si.hymn_id
       WHERE si.setlist_id = ?

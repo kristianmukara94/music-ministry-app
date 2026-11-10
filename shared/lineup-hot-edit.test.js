@@ -162,7 +162,7 @@ test('the Live panel wires double-click and the editor; the editor saves through
   assert.match(editor, /if \(index !== null\) jumpTo\(segmentIndex, index\);/, 'Add and show goes to the new slide');
   // The song watch compares the on-air slide against the lineup's copy, so updating that copy first would hide the change from it.
   assert.doesNotMatch(editor, /withHymn|setState\(\(s\) => \(\{ hymns/);
-  assert.match(read('src/live/liveSongs.ts'), /const pwSlide = pwSlideFor\(id\);[\s\S]{0,120}?hymn = await bridge\.lyrics\.getHymn\(id\);/, 'the watch reads the on-air slide before the new song arrives');
+  assert.match(read('src/live/liveSongs.ts'), /const pwSlide = pwSlideFor\(id\);[\s\S]{0,120}?hymn = await liveLyrics\.getHymn\(id\);/, 'the watch reads the on-air slide before the new song arrives');
 });
 
 test('an edited lineup slide on the projector is the same slide: its words change in place with no transition', () => {

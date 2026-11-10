@@ -10,7 +10,7 @@ import { findSlideIndex } from '../../shared/lyric-area.js';
 import type { Frame } from '../../shared/live.js';
 import { frameFor, liveDeck } from '../praise-worship/live';
 import { usePw } from '../praise-worship/store';
-import { bridge } from './bridge';
+import { liveLyrics } from './liveSongEdits';
 import { useLiveNotice } from './liveNotice';
 import { dispatch, useLive } from './store';
 
@@ -63,7 +63,7 @@ async function songChanged(id: number) {
 
   let hymn: Hymn | null;
   try {
-    hymn = await bridge.lyrics.getHymn(id);
+    hymn = await liveLyrics.getHymn(id);
   } catch {
     return;
   }
@@ -86,7 +86,7 @@ async function songChanged(id: number) {
 
 /** Starts listening for song edits. Returns the function that stops listening. */
 export function startLiveSongWatch(): () => void {
-  return bridge.lyrics.onChanged((id) => void songChanged(id));
+  return liveLyrics.onChanged((id) => void songChanged(id));
 }
 
 /**

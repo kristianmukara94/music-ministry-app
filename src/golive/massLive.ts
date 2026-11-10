@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { bridge } from '../live/bridge';
+import { liveLyrics } from '../live/liveSongEdits';
 import { dispatch, useLive } from '../live/store';
 import { stanzaFrame } from '../lyrics/frames';
 import type { Hymn } from '../lyrics/types';
@@ -100,10 +101,19 @@ export function slotNameAt(state: LiveState): string | null {
 /** The song behind a lyrics frame or a title card, read fresh from the library, so an edit made a moment ago is used. */
 async function hymnOf(frame: Frame): Promise<Hymn | null> {
   const id = songIdOf(frame);
-  return id == null ? null : bridge.lyrics.getHymn(id);
+  return id == null ? null : liveLyrics.getHymn(id);
 }
 
 /** The prayer behind a prayer's slide, read fresh from Notes & Prayers. Null for anything else, or a prayer that was deleted. */
+/**
+ * Whether the Mass row at `cursor` is a note that is not the slide `frame` shows: a lower-third or private note, which leaves the slide before
+ * it on screen. Next and Back then move on through the order of Mass instead of through that slide's slides.
+ */
+export function noteRowOffScreen(state: LiveState, frame: Frame): boolean {
+  const item = state.queue[state.queueCursor];
+  return item?.module === 'notes' && noteSource(item.sourceId)?.id !== prayerIdOf(frame);
+}
+
 async function noteOf(frame: Frame): Promise<Note | null> {
   const id = prayerIdOf(frame);
   return id == null ? null : bridge.notes.get(id).catch(() => null);
@@ -144,14 +154,14 @@ export function useHymnOf(frame: Frame): Hymn | null {
   const id = songIdOf(frame);
   const [hymn, setHymn] = useState<Hymn | null>(null);
   const [revision, setRevision] = useState(0);
-  useEffect(() => (id == null ? undefined : bridge.lyrics.onChanged((changed) => changed === id && setRevision((n) => n + 1))), [id]);
+  useEffect(() => (id == null ? undefined : liveLyrics.onChanged((changed) => changed === id && setRevision((n) => n + 1))), [id]);
   useEffect(() => {
     if (id == null) {
       setHymn(null);
       return;
     }
     let alive = true;
-    bridge.lyrics
+    liveLyrics
       .getHymn(id)
       .then((h) => {
         if (alive) setHymn(h);
@@ -211,7 +221,7 @@ export function stanzasTooLong(hymn: Hymn): { position: number; label: string }[
     const key = `${state.queuePlanId}|${state.queueCursor}|${id}`;
     if (key === checked) return;
     checked = key;
-    void bridge.lyrics
+    void liveLyrics
       .getHymn(id)
       .then((hymn) => {
         const long = hymn && !hymn.deletedAt ? stanzasTooLong(hymn) : [];
@@ -274,7 +284,7 @@ export async function stepMass(delta: 1 | -1): Promise<void> {
   if (massShowing(state)) {
     const frame = state.projector.live;
     const hymn = await hymnOf(frame);
-    const steps = stepsOf(frame, hymn);
+    const steps = noteRowOffScreen(state, frame) ? null : stepsOf(frame, hymn);
     const target = steps ? steps.index + delta : -1;
     const next = steps && target >= 0 && target < steps.count ? frameAt(frame, target, hymn, slotNameAt(state), await noteOf(frame)) : null;
     if (next) {
