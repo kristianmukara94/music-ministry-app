@@ -43,7 +43,7 @@ export function LowerThirdDeck() {
     : null;
 
   const show = () => {
-    if (value) dispatch({ type: 'lowerThird/show', value });
+    if (value) dispatch({ type: 'lowerThird/show', value, manual: true });
   };
   const clear = () => dispatch({ type: 'lowerThird/clear' });
   const toggle = () => {

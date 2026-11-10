@@ -12,7 +12,7 @@ import type { RosaryApi } from '../rosary/types';
 import type { LyricsApi } from '../lyrics/types';
 import type { LectionaryApi } from '../lectionary/types';
 import type { MediaApi, ThumbnailJob } from '../media/types';
-import type { PlansApi } from '../planner/types';
+import type { CalendarApi, PlansApi } from '../planner/types';
 import type { NotesApi } from '../notes/types';
 import type { MassOrderEntry, MassOrderLang } from '../../shared/mass-order-text';
 import type { PwApi } from '../praise-worship/types';
@@ -281,6 +281,7 @@ interface ElectronApi {
   rosary: RosaryApi;
   media: MediaApi;
   plans: PlansApi;
+  calendar: CalendarApi;
   pw: PwApi;
   notes: NotesApi;
   massOrder: MassOrderApi;
@@ -462,6 +463,13 @@ const offlinePlans: PlansApi = {
   getTemplate: async () => offlineError(),
   saveTemplate: async () => offlineError(),
   deleteTemplate: async () => offlineError(),
+};
+
+/** Browser preview has no database: every day shows its Ordo name, and a day's own title cannot be saved. */
+const offlineCalendar: CalendarApi = {
+  getDayNotes: async () => ({}),
+  saveDayNote: async () => offlineError(),
+  deleteDayNote: async () => offlineError(),
 };
 
 /** Browser preview has no database, so Praise & Worship lists nothing and cannot save. */
@@ -908,6 +916,7 @@ function createBrowserBridge(): LiveBridge {
     rosary: offlineRosary,
     media: offlineMedia,
     plans: offlinePlans,
+    calendar: offlineCalendar,
     pw: offlinePw,
     notes: offlineNotes,
     massOrder: offlineMassOrder,

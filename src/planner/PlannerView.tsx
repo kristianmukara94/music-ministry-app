@@ -11,7 +11,7 @@ import { createSession, errorText, flushSave, openSession, readSession, refreshS
 import { MassPlanner, createMassPlan, templateFor, todayIn } from './MassPlanner';
 import { PlannerCalendarView, type CalendarMonth, type PlanKind, type PlanRef, type PwProgress } from './PlannerCalendarView';
 import { usePlannerT } from './strings';
-import type { PlanSummary } from './types';
+import type { DayNotes, PlanSummary } from './types';
 
 const monthOfIso = (iso: string): CalendarMonth => ({ year: Number(iso.slice(0, 4)), month: Number(iso.slice(5, 7)) - 1 });
 
@@ -47,6 +47,7 @@ export function PlannerView() {
   const pwSessionId = usePw((s) => s.sessionId);
   const pwFocused = usePw((s) => s.isGoLiveFocused);
   const [massPlans, setMassPlans] = useState<PlanSummary[]>([]);
+  const [dayNotes, setDayNotes] = useState<DayNotes>({});
   const [pwProgress, setPwProgress] = useState<ReadonlyMap<number, PwProgress>>(new Map());
   const [error, setError] = useState<string | null>(null);
 
@@ -59,6 +60,18 @@ export function PlannerView() {
   const reloadLists = useCallback(() => {
     bridge.plans.list().then(setMassPlans).catch((err) => setError(errorText(err)));
     refreshSessions().catch((err) => setError(errorText(err)));
+    bridge.calendar.getDayNotes().then(setDayNotes).catch((err) => setError(errorText(err)));
+  }, []);
+
+  /** Sets a day's own title, or with a blank one restores its Ordo name. Rejects with the reason it could not be kept. */
+  const saveDayNote = useCallback(async (iso: string, note: string) => {
+    const kept = note.trim() ? await bridge.calendar.saveDayNote(iso, note) : (await bridge.calendar.deleteDayNote(iso), null);
+    setDayNotes((prev) => {
+      const next = { ...prev };
+      if (kept) next[iso] = kept;
+      else delete next[iso];
+      return next;
+    });
   }, []);
   useEffect(reloadLists, [reloadLists]);
 
@@ -235,6 +248,8 @@ export function PlannerView() {
             selectedDate={selectedDate}
             massPlans={massPlans}
             pwSessions={sessions}
+            dayNotes={dayNotes}
+            onSaveDayNote={saveDayNote}
             pwProgress={pwProgress}
             pwSlotCount={DEFAULT_TEMPLATE.segments.length}
             onOpen={(plan) => void openPlan(plan)}

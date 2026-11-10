@@ -99,7 +99,8 @@ export type Frame =
   | { kind: 'welcome'; lang: Lang }
   | { kind: 'announcements'; lang: Lang }
   /** `labels`, when set, is the title each slide shows in place of `title`: a slide cut into parts shows its place, "Sanctus (1/2)". */
-  | { kind: 'deck'; title: string; slides: SlideLine[][]; index: number; passage?: PassageMark; style?: TextStyle | null; labels?: string[] }
+  /** `key` names what the slides came from (a Lectionary reading's is readingKey's), so its module can tell it is on screen. */
+  | { kind: 'deck'; title: string; slides: SlideLine[][]; index: number; passage?: PassageMark; style?: TextStyle | null; labels?: string[]; key?: string }
   /** `notes` are the presenter's cues (for a PDF page, the page's text). Only the operator's windows show them. */
   /** `deck` lists the slides this picture belongs to (a PowerPoint's slides), so Next, Previous and Jump can move through them. */
   | { kind: 'image'; title: string; src: string; notes?: string; deck?: ImageDeck }
@@ -108,7 +109,7 @@ export type Frame =
   | { kind: 'text'; title: string; headline?: string; text: string; bg: string | null; notes?: string; style?: TextStyle | null; page?: { index: number; total: number }; key?: string; top?: number; centred?: boolean }
   | { kind: 'lyrics'; title: string; label: string; text: string; style?: TextStyle | null; key?: string; song?: { hymnId: number; position: number; count: number }; setlist?: { id: number; index: number; count: number } }
   /** Responsorial psalm: the congregation response stays pinned while the verses change. */
-  | { kind: 'psalm'; title: string; response: string; pages: string[]; index: number; style?: TextStyle | null }
+  | { kind: 'psalm'; title: string; response: string; pages: string[]; index: number; style?: TextStyle | null; key?: string }
   /**
    * One step of the Rosary Guide. `text` is the meditation on an announcement step and the prayer
    * on a prayer step. `bead` lights the Hail Mary indicator (1 to 10) and is null otherwise.
@@ -276,10 +277,14 @@ export type LiveAction =
   | { type: 'display/mode'; value: DisplayState['mode'] }
   | { type: 'display/live'; value: boolean }
   | { type: 'display/show'; frame: Frame }
-  | { type: 'lowerThird/show'; value: LowerThird }
+  /**
+   * Without `manual` (Go Live, Take Live, a slide's cue) it never turns the lower third on: it stages `value`, or replaces a band already on air.
+   * `manual` is the operator's own Show: it takes `value` live and sets the choice to On.
+   */
+  | { type: 'lowerThird/show'; value: LowerThird; manual?: boolean }
   | { type: 'lowerThird/clear' }
   | { type: 'lowerThird/toggle' }
-  /** Go Live: shows `value` (or the staged one) on the lower third and sets the operator's choice to On. */
+  /** Stages `value` without showing it: the Lower 3rd toggle takes it live. */
   | { type: 'lowerThird/stage'; value: LowerThird }
   | { type: 'settings/projector'; value: Partial<ProjectorSettings> }
   | { type: 'settings/welcome'; value: Partial<WelcomeSettings> }

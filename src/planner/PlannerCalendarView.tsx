@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Church, Guitar, Loader2, Plus, X } from 'lucide-react';
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Church, Guitar, Loader2, PenLine, Plus, RotateCcw, X } from 'lucide-react';
 import { calendarDayOf, monthDedicationKey, monthGrid, planStatusOf, requiredSlotsFor, seasonsOfMonth, shortDayName, type LiturgicalColor } from '../../shared/liturgical-calendar.js';
 import type { Season } from '../../shared/liturgical-season.js';
 import { ordoDay } from '../services/lectionaryService';
 import type { PwSessionSummary } from '../praise-worship/types';
 import type { PlannerT } from './strings';
-import type { PlanSummary } from './types';
+import type { DayNotes, PlanSummary } from './types';
 
 /** The two kinds of plan the Planner holds. */
 export type PlanKind = 'mass' | 'pw';
@@ -63,6 +63,18 @@ const SEASON_DOT: Record<Season, LiturgicalColor> = {
 const LOCALE: Record<string, string> = { en: 'en-US', tl: 'fil-PH', ceb: 'ceb-PH' };
 /** Badges shown in one day's cell; the rest are counted as "+n more" and listed by the day's popover. */
 const MAX_BADGES = 3;
+/** The longest day title: the main process keeps no more (MAX_DAY_NOTE in electron/calendar-notes.js). */
+const MAX_NOTE = 120;
+
+/**
+ * A day title's size and clamp, by its length: the longer the title, the smaller its type and the more lines it may take, so a title of
+ * up to MAX_NOTE characters stays inside the cell's body and never pushes the badges out. The cell's tooltip carries the whole title.
+ */
+function dayTitleFit(length: number): string {
+  if (length > 50) return 'text-[10px] leading-[1.15] line-clamp-3';
+  if (length > 30) return 'text-[11px] leading-tight line-clamp-2';
+  return 'text-xs leading-tight line-clamp-2';
+}
 
 // The calendar's own surface: the colours are set on .planner-cal in styles.css (dark glass, or light on a light theme).
 const SURFACE = 'bg-[var(--cal-surface)]';
@@ -92,6 +104,10 @@ interface Props {
   selectedDate: string | null;
   massPlans: PlanSummary[];
   pwSessions: PwSessionSummary[];
+  /** The parish's own day titles ("Youth Sunday"), shown in place of the Ordo name. A day without one shows its Ordo name. */
+  dayNotes: DayNotes;
+  /** Sets a day's own title; a blank one restores its Ordo name. Rejects with the reason it could not be kept. */
+  onSaveDayNote: (iso: string, note: string) => Promise<void>;
   /** Each Praise & Worship session's ready slots, once read. */
   pwProgress: ReadonlyMap<number, PwProgress>;
   /** Slots in the built-in Praise & Worship lineup a new session starts from. */
@@ -108,7 +124,7 @@ interface Props {
  * Praise & Worship session saved for it. Picking a day with one plan opens it; a day with several asks which; a day with none offers to
  * create a Holy Mass or a Praise & Worship plan.
  */
-export function PlannerCalendarView({ t, lang, today, month, onMonthChange, selectedDate, massPlans, pwSessions, pwProgress, pwSlotCount, onOpen, onCreate }: Props) {
+export function PlannerCalendarView({ t, lang, today, month, onMonthChange, selectedDate, massPlans, pwSessions, dayNotes, onSaveDayNote, pwProgress, pwSlotCount, onOpen, onCreate }: Props) {
   const locale = LOCALE[lang] ?? 'en-US';
   const weeks = useMemo(() => monthGrid(month.year, month.month), [month.year, month.month]);
   const seasons = useMemo(() => seasonsOfMonth(month.year, month.month), [month.year, month.month]);
@@ -128,6 +144,13 @@ export function PlannerCalendarView({ t, lang, today, month, onMonthChange, sele
   const [popover, setPopover] = useState<{ iso: string; top: number; left: number } | null>(null);
   // The day the Create a plan dialog is open for.
   const [createFor, setCreateFor] = useState<string | null>(null);
+  // The day whose own title is being edited.
+  const [noteFor, setNoteFor] = useState<string | null>(null);
+  /** The parish's own title for the day, or null when it shows its Ordo name. */
+  const customNoteOf = (iso: string) => {
+    const note = dayNotes[iso];
+    return note && note.trim() !== '' ? note : null;
+  };
 
   const monthName = new Intl.DateTimeFormat(locale, { month: 'long' }).format(new Date(month.year, month.month, 1));
   const weekdayNames = weeks[0].map((iso) => new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(new Date(`${iso}T12:00:00`)));
@@ -268,7 +291,14 @@ export function PlannerCalendarView({ t, lang, today, month, onMonthChange, sele
                   const isToday = iso === today;
                   const selected = iso === selectedDate;
                   const festive = day.rank !== 'weekday';
-                  const name = day.rank === 'weekday' ? shortDayName(day.name) : day.name;
+                  // The parish's own title replaces the Ordo name in the cell; the Ordo name stays in the tooltip and the label.
+                  const defaultOrdoTitle = day.rank === 'weekday' ? shortDayName(day.name) : day.name;
+                  const customNote = customNoteOf(iso);
+                  const isOverridden = customNote !== null;
+                  const displayTitle = customNote ?? defaultOrdoTitle;
+                  const dayLabel = isOverridden ? `${customNote} (${t('calNoteOrdo', { name: day.name })})` : day.name;
+                  // The hover tooltip carries the whole title, however the cell clamps it, and the Ordo name under a parish title.
+                  const dayTooltip = isOverridden ? `${customNote}\n${t('calNoteOrdo', { name: day.name })}` : day.name;
                   const planNames = plansOn(iso).map((p) => p.name).join(', ');
                   return (
                     <div
@@ -286,12 +316,14 @@ export function PlannerCalendarView({ t, lang, today, month, onMonthChange, sele
                         type="button"
                         onClick={(e) => pickDay(iso, e.currentTarget)}
                         aria-haspopup={count > 1 ? 'menu' : count === 0 ? 'dialog' : undefined}
-                        aria-label={`${longDate(iso)}: ${day.name}. ${t(`color_${day.color}`)}. ${count === 0 ? t('calNoPlan') : planNames}`}
+                        aria-label={`${longDate(iso)}: ${dayLabel}. ${t(`color_${day.color}`)}. ${count === 0 ? t('calNoPlan') : planNames}`}
+                        title={dayTooltip}
                         className="absolute inset-0 z-0 rounded-lg focus-visible:ring-2 focus-visible:ring-[var(--cal-gold)] focus-visible:outline-none"
                       />
                       {/* The liturgical colour: a bold ribbon down the cell's left edge. */}
                       <span aria-hidden className={`pointer-events-none absolute inset-y-0 left-0 w-1 ${COLOR_SWATCH[day.color]}`} />
-                      <div className="pointer-events-none relative flex items-start gap-1.5 pt-2 pr-2 pl-3">
+                      {/* Header: the date, the rank and the edit pencil. Body: the title, clamped. Footer: the badges, pinned to the cell's foot. */}
+                      <div className="pointer-events-none relative flex flex-none items-start gap-1.5 pt-2 pr-2 pl-3">
                         <span
                           className={`grid size-8 shrink-0 place-items-center rounded-full font-mono text-lg leading-none font-black tabular-nums ${
                             isToday
@@ -303,25 +335,45 @@ export function PlannerCalendarView({ t, lang, today, month, onMonthChange, sele
                         >
                           {Number(iso.slice(8))}
                         </span>
-                        {(day.rank === 'solemnity' || day.rank === 'feast') && (
-                          <span
-                            className={`mt-1 ml-auto truncate rounded-full border px-2 py-0.5 text-[10px] font-extrabold tracking-wider uppercase ${
-                              day.rank === 'solemnity'
-                                ? `border-[var(--cal-gold)]/70 bg-[var(--cal-gold)]/20 ${GOLD}`
-                                : `border-[var(--cal-border-hover)] bg-[var(--cal-badge)] ${TEXT}`
+                        <div className="mt-1 ml-auto flex min-w-0 items-center gap-1">
+                          {(day.rank === 'solemnity' || day.rank === 'feast') && (
+                            <span
+                              className={`truncate rounded-full border px-2 py-0.5 text-[10px] font-extrabold tracking-wider uppercase ${
+                                day.rank === 'solemnity'
+                                  ? `border-[var(--cal-gold)]/70 bg-[var(--cal-gold)]/20 ${GOLD}`
+                                  : `border-[var(--cal-border-hover)] bg-[var(--cal-badge)] ${TEXT}`
+                              }`}
+                            >
+                              {t(`calRank_${day.rank}`)}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setNoteFor(iso)}
+                            aria-haspopup="dialog"
+                            aria-label={`${t('calNoteEdit')}: ${longDate(iso)}`}
+                            title={t('calNoteEdit')}
+                            className={`pointer-events-auto z-10 grid size-6 shrink-0 place-items-center rounded-full border transition hover:border-[var(--cal-gold)] hover:text-[var(--cal-gold)] focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--cal-gold)] focus-visible:outline-none ${
+                              isOverridden
+                                ? `border-[var(--cal-gold)]/70 bg-[var(--cal-gold)]/15 ${GOLD}`
+                                : `border-[var(--cal-border-hover)] ${TEXT} opacity-0 group-focus-within:opacity-100 group-hover:opacity-100`
                             }`}
                           >
-                            {t(`calRank_${day.rank}`)}
-                          </span>
-                        )}
+                            <PenLine size={12} aria-hidden />
+                          </button>
+                        </div>
                       </div>
-                      <p
-                        title={day.name}
-                        className={`pointer-events-none relative line-clamp-3 px-3 pt-1 text-[12.5px] leading-snug ${festive ? `font-bold ${TEXT}` : `font-medium ${MUTED}`}`}
-                      >
-                        {name}
-                      </p>
-                      <div className="pointer-events-none relative mt-auto flex flex-col gap-1 p-1.5 pl-2.5">
+                      <div className="pointer-events-none relative min-h-0 flex-1 overflow-hidden px-3 pt-1">
+                        <p
+                          className={`text-left break-words whitespace-normal [overflow-wrap:anywhere] ${dayTitleFit(displayTitle.length)} ${
+                            isOverridden ? `font-bold ${GOLD}` : festive ? `font-bold ${TEXT}` : `font-medium ${MUTED}`
+                          }`}
+                        >
+                          {isOverridden && <span className="sr-only">{t('calNoteCustom')}: </span>}
+                          {displayTitle}
+                        </p>
+                      </div>
+                      <div className="pointer-events-none relative mt-auto flex flex-none flex-col gap-1 p-1.5 pl-2.5">
                         {badges.slice(0, MAX_BADGES)}
                         {count > MAX_BADGES && <span className={`px-1 text-[11px] font-bold ${MUTED}`}>{t('calMore', { n: count - MAX_BADGES })}</span>}
                         <button
@@ -388,10 +440,25 @@ export function PlannerCalendarView({ t, lang, today, month, onMonthChange, sele
           t={t}
           dateLabel={longDate(createFor)}
           ordoName={days.get(createFor)?.name ?? ordoDay(createFor).name}
+          suggestedName={customNoteOf(createFor) ?? days.get(createFor)?.name ?? ordoDay(createFor).name}
           color={(days.get(createFor) ?? calendarDayOf(createFor)).color}
           pwSlotCount={pwSlotCount}
           onCreate={(kind, name) => onCreate(kind, createFor, name)}
           onClose={() => setCreateFor(null)}
+        />,
+        document.body,
+      )}
+
+      {noteFor && createPortal(
+        <DayNoteDialog
+          key={noteFor}
+          t={t}
+          dateLabel={longDate(noteFor)}
+          ordoName={days.get(noteFor)?.name ?? ordoDay(noteFor).name}
+          current={customNoteOf(noteFor)}
+          color={(days.get(noteFor) ?? calendarDayOf(noteFor)).color}
+          onSave={(note) => onSaveDayNote(noteFor, note)}
+          onClose={() => setNoteFor(null)}
         />,
         document.body,
       )}
@@ -463,12 +530,13 @@ function DayPlansPopover({ t, title, plans, top, left, onOpen, onCreate, onClose
 }
 
 /** Create a plan for a day: a Holy Mass plan (its four parts, with the day's readings) or a Praise & Worship session (the built-in lineup). */
-function CreatePlanDialog({ t, dateLabel, ordoName, color, pwSlotCount, onCreate, onClose }: {
-  t: PlannerT; dateLabel: string; ordoName: string; color: LiturgicalColor; pwSlotCount: number;
+function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlotCount, onCreate, onClose }: {
+  t: PlannerT; dateLabel: string; ordoName: string; suggestedName: string; color: LiturgicalColor; pwSlotCount: number;
   onCreate: (kind: PlanKind, name: string) => Promise<void>; onClose: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
-  const [name, setName] = useState(ordoName.slice(0, 120));
+  // The plan is named after the day's own title when it has one, else its Ordo name.
+  const [name, setName] = useState(suggestedName.slice(0, 120));
   const [busy, setBusy] = useState<PlanKind | null>(null);
   const [error, setError] = useState<string | null>(null);
   // While a plan is being made, Escape and a click outside do nothing: the dialog closes when the editor opens.
@@ -545,6 +613,106 @@ function CreatePlanDialog({ t, dateLabel, ordoName, color, pwSlotCount, onCreate
                 <span className={`block text-base font-extrabold ${GOLD}`}>{busy === 'pw' ? t('createBusy') : t('createPw')}</span>
                 <span className={`mt-0.5 block text-sm ${MUTED}`}>{t('createPwSub', { n: pwSlotCount })}</span>
               </span>
+            </button>
+          </div>
+
+          {error && <p role="alert" className="rounded-lg border border-danger/50 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/** A day's own title: shown on the calendar in place of its Ordo name. Saving a blank title, or Restore, shows the Ordo name again. */
+function DayNoteDialog({ t, dateLabel, ordoName, current, color, onSave, onClose }: {
+  t: PlannerT; dateLabel: string; ordoName: string; current: string | null; color: LiturgicalColor;
+  onSave: (note: string) => Promise<void>; onClose: () => void;
+}) {
+  const panel = useRef<HTMLDivElement>(null);
+  const [note, setNote] = useState(current ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useDismiss(panel, () => {
+    if (!busy) onClose();
+  });
+
+  const save = async (value: string) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onSave(value);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(err));
+      setBusy(false);
+    }
+  };
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    void save(note);
+  };
+
+  const button = 'inline-flex h-10 items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-extrabold transition focus-visible:ring-2 focus-visible:ring-[var(--cal-gold)] focus-visible:outline-none disabled:cursor-wait disabled:opacity-60';
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm">
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="day-note-title"
+        className={`planner-cal relative w-full max-w-lg overflow-hidden rounded-2xl border border-[var(--cal-border-hover)] ${SURFACE} shadow-2xl shadow-black/60`}
+      >
+        <span aria-hidden className={`absolute inset-y-0 left-0 w-1.5 ${COLOR_SWATCH[color]}`} />
+        <form onSubmit={submit} className="flex flex-col gap-4 p-6 pl-7">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <p className={`text-xs font-extrabold tracking-wider uppercase ${GOLD}`}>{t('calNoteTitle')}</p>
+              <h2 id="day-note-title" className="mt-1 text-2xl leading-tight font-extrabold text-[var(--cal-date)]">{dateLabel}</h2>
+              <p className={`mt-1 font-serif text-base italic ${TEXT}`}>{t('calNoteOrdo', { name: ordoName })}</p>
+            </div>
+            <button type="button" onClick={onClose} disabled={busy} aria-label={t('cancel')} title={t('cancel')} className={`${ROUND_BTN} size-9 shrink-0`}>
+              <X size={18} aria-hidden />
+            </button>
+          </div>
+
+          <label className={`flex flex-col gap-1.5 text-xs font-bold tracking-wide uppercase ${MUTED}`}>
+            {t('calNoteLabel')}
+            {/* A wrapping box so a long title can be read whole while it is written. The title is kept as one line (the main process
+                folds line breaks too), so Enter saves and pasted line breaks become spaces. */}
+            <textarea
+              autoFocus
+              rows={3}
+              maxLength={MAX_NOTE}
+              value={note}
+              placeholder={t('calNotePlaceholder')}
+              onChange={(e) => setNote(e.target.value.replace(/[\r\n]+/g, ' '))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  e.currentTarget.form?.requestSubmit();
+                }
+              }}
+              className={`resize-none rounded-lg border border-[var(--cal-border-hover)] bg-[var(--cal-cell)] px-3 py-2.5 text-base leading-snug font-semibold normal-case tracking-normal break-words whitespace-normal [overflow-wrap:anywhere] ${TEXT} outline-none focus:border-[var(--cal-gold)] focus:ring-1 focus:ring-[var(--cal-gold)]`}
+            />
+            <span className="flex items-baseline gap-3 text-xs font-medium normal-case tracking-normal">
+              {t('calNoteHint')}
+              <span aria-hidden className="ml-auto shrink-0 font-mono tabular-nums">{note.length}/{MAX_NOTE}</span>
+            </span>
+          </label>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {current !== null && (
+              <button type="button" onClick={() => void save('')} disabled={busy} className={`${button} border border-[var(--cal-border-hover)] ${TEXT} hover:border-[var(--cal-gold)]`}>
+                <RotateCcw size={15} aria-hidden /> {t('calNoteReset')}
+              </button>
+            )}
+            <button type="button" onClick={onClose} disabled={busy} className={`${button} ml-auto ${MUTED} hover:text-[var(--cal-date)]`}>
+              {t('cancel')}
+            </button>
+            <button type="submit" disabled={busy || (current === null && !note.trim())} className={`${button} bg-[var(--cal-gold)] text-[var(--cal-on-gold)] hover:brightness-110`}>
+              {busy ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Check size={15} strokeWidth={3} aria-hidden />}
+              {busy ? t('calNoteSaving') : t('calNoteSave')}
             </button>
           </div>
 

@@ -69,6 +69,8 @@ function useGlobalHotkeys() {
       }
       // The Rosary Guide handles its own Space, arrow and Enter keys, so the global step does not run too.
       if (ui.view === 'rosary' && [' ', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) return;
+      // The Lectionary's ← and → move its preview (and the screen, when the reading is on it). Clickers' Page Up and Page Down still step here.
+      if (ui.view === 'lectionary' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
 
       // A saved shortcut runs its action. A shortcut still waiting for a key has an empty combo and never matches.
       const combo = comboOf(e);

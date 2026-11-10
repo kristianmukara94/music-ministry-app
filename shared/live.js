@@ -175,9 +175,12 @@ export function applyLook(s) {
   };
 }
 
-// A slide's own cue shows its lower third, unless the operator has turned it Off: then it is only staged, and stays Off until the operator turns it On.
-function showLowerThird(l, value) {
-  if (l.paused || l.choice === 'off') return { ...l, staged: value };
+// The Lower 3rd goes on air only by the operator's hand. A Go Live, Take Live or slide cue (`manual` unset) never turns it on: with nothing on
+// air it only stages the value for the toggle; with a band already on air it replaces it in place, so a Lower 3rd the operator turned on stays
+// on and names what is now live. An explicit show from the operator (`manual`, the Lower Third deck's Show) takes it live and counts as On.
+function showLowerThird(l, value, manual) {
+  if (manual) return l.paused ? { ...l, staged: value, choice: 'on' } : { ...l, staged: value, live: value, choice: 'on' };
+  if (l.paused || l.live === null) return { ...l, staged: value };
   return { ...l, staged: value, live: value };
 }
 
@@ -321,7 +324,7 @@ function reduce(s, a) {
       return { ...s, projector: { ...s.projector, background: NO_BACKGROUND } };
 
     case 'lowerThird/show':
-      return { ...s, lowerThird: showLowerThird(s.lowerThird, a.value) };
+      return { ...s, lowerThird: showLowerThird(s.lowerThird, a.value, a.manual === true) };
 
     // Clearing takes the lower third off the screen but keeps the last value staged, so toggling it on brings it back.
     // Stages a lower third without showing it. The header toggle or lowerThird/toggle takes it live.
@@ -402,7 +405,8 @@ function reduce(s, a) {
       const l = s.lowerThird;
       const paused = a.paused ?? !l.paused;
       if (paused === l.paused) return s;
-      return { ...s, lowerThird: paused ? { ...l, paused } : { ...l, paused, live: l.staged } };
+      // Resume brings back the latest staged band only when one was on air at the pause: resuming never turns an Off Lower 3rd on.
+      return { ...s, lowerThird: paused ? { ...l, paused } : { ...l, paused, live: l.live === null ? null : l.staged } };
     }
 
     // Stop ends everything on the projector, background included.

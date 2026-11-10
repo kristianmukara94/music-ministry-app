@@ -83,6 +83,18 @@ export interface PlansApi {
   deleteTemplate(id: number): Promise<boolean>;
 }
 
+/** The parish's own titles for calendar days, keyed "YYYY-MM-DD". A day without one shows its Ordo name. */
+export type DayNotes = Record<string, string>;
+
+export interface CalendarApi {
+  /** Every day with its own title. */
+  getDayNotes(): Promise<DayNotes>;
+  /** Sets a day's title and returns it as kept (one line, at most 120 characters). A blank title removes it and returns null. */
+  saveDayNote(date: string, note: string): Promise<string | null>;
+  /** Removes a day's title, so it shows its Ordo name again. True when there was one. */
+  deleteDayNote(date: string): Promise<boolean>;
+}
+
 /** The fixed liturgical blocks, in Mass order. Labels are looked up in planner-i18n.js. */
 export const BLOCKS: { id: LiturgicalBlock; titleKey: string; hintKey: string }[] = [
   { id: 'introductory', titleKey: 'block_introductory', hintKey: 'hint_introductory' },

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, Play, Save, Scissors, Sparkles, Trash2, Zap } from 'lucide-react';
 import { bridge } from '../live/bridge';
-import { dispatch } from '../live/store';
+import { dispatch, useLive } from '../live/store';
+import { runOnAir } from '../golive/onAir';
+import type { Frame, LowerThird } from '../../shared/live.js';
 import { setUi, useUi } from '../state/ui';
 import { formatIsoDay, formatIsoWeekday } from '../state/region';
 import { useRegion } from '../state/useRegion';
@@ -14,7 +16,7 @@ import { fontCss } from '../../shared/text-style.js';
 import { autoPaginateText, BREAK, withFitter } from '../announcements/paginate';
 import { SLOT_KEY, useLectT, type LectT } from './strings';
 import { READING_TYPES, type LectionaryDay, type ReadingType } from './types';
-import { readingSlides, RESPONSE_HEIGHT_SHARE } from './pages';
+import { readingKey, readingSlides, RESPONSE_HEIGHT_SHARE } from './pages';
 import { hasResponse } from '../../shared/daily-readings.js';
 import { citationFor, notifyLectionaryChanged, ordoDay, resolveDrafts } from '../services/lectionaryService';
 import { FullReadings } from './FullReadings';
@@ -96,6 +98,21 @@ export function LectionaryDeck() {
   const pages = useMemo(() => readingSlides(slot, master), [slot, master]);
   const current = Math.min(pageIndex, Math.max(pages.length - 1, 0));
   const fail = (err: unknown) => setError(errorText(err));
+
+  // This reading on the projector: the frame on air, or the one waiting behind a blackout, when it carries this date and slot's key. It got
+  // there from this deck or from the Holy Mass queue.
+  const key = readingKey(date, slot);
+  const onScreen = useLive((s) => (s.state.projector.live.kind === 'blackout' ? s.state.projector.beforeBlackout : s.state.projector.live));
+  const liveFrame = onScreen && (onScreen.kind === 'deck' || onScreen.kind === 'psalm') && onScreen.key === key ? onScreen : null;
+  // The Holy Mass queue's current row is this reading, so taking it live keeps the Holy Mass on air rather than ending it.
+  const queueOnIt = useLive((s) => {
+    const row = s.state.queue[s.state.queueCursor];
+    return row?.module === 'lectionary' && row.sourceId === `${date}|${slot}`;
+  });
+  // The Holy Mass or Praise & Worship has the screen with something else, so Take Live asks for a second press before replacing it.
+  const runHasScreen = useLive((s) => runOnAir(s.state, 'mass') || runOnAir(s.state, 'pw'));
+  const needsConfirm = runHasScreen && !liveFrame && !queueOnIt;
+  const canTakeLive = pages.length > 0 && master.trim() !== '' && (!withResponse || response.trim() !== '');
 
   const reloadDay = () => api.getDay(date).then(setDay).catch(fail);
 
@@ -302,25 +319,94 @@ export function LectionaryDeck() {
     if (withResponse && !response.trim()) return setError(t(isPsalm ? 'responseFirst' : 'responseFirstPrayers'));
 
     await save();
-    const title = [dayLabel, t(SLOT_KEY[slot] as Parameters<LectT>[0]), citation].map((s) => s.trim()).filter(Boolean).join(' · ');
-    if (withResponse) {
-      dispatch({ type: 'projector/stage', frame: { kind: 'psalm', title, response: response.trim(), pages, index: 0, style: checked } });
-    } else {
-      // Blank lines stay in as empty reader lines, so the projector keeps the paragraph spacing.
-      const slides = pages.map((page) => page.split('\n').map((text) => ({ role: 'reader' as const, text })));
-      dispatch({ type: 'projector/stage', frame: { kind: 'deck', title, slides, index: 0, style: checked } });
-    }
+    dispatch({ type: 'projector/stage', frame: frameAt(0) });
   };
 
-  /** Sends the staged reading to the projector and the mirror. */
-  const takeLive = () => dispatch({ type: 'projector/take' });
+  /** The reading as the projector shows it, built from what is in the editor now (saved or not), on page `index`. */
+  const frameAt = (index: number): Frame => {
+    const title = [dayLabel, t(SLOT_KEY[slot] as Parameters<LectT>[0]), citation].map((s) => s.trim()).filter(Boolean).join(' · ');
+    if (withResponse) return { kind: 'psalm', key, title, response: response.trim(), pages, index, style: checked };
+    // Blank lines stay in as empty reader lines, so the projector keeps the paragraph spacing.
+    const slides = pages.map((page) => page.split('\n').map((text) => ({ role: 'reader' as const, text })));
+    return { kind: 'deck', key, title, slides, index, style: checked };
+  };
 
-  // Enter takes the staged reading live. Enter inside the editor or a field still types or submits as usual.
+  /** The lower third for the reading: the congregation response (or the reading's name) over its citation. */
+  const readingBand = (): LowerThird => {
+    const cite = citation.trim();
+    const line1 = withResponse && response.trim() ? `℟ ${response.trim()}` : t(SLOT_KEY[slot] as Parameters<LectT>[0]);
+    return { template: 'nameplate', line1, ...(cite ? { line2: cite } : {}) };
+  };
+
+  // The safety press: with the Holy Mass or Praise & Worship showing something else, the first press arms Take Live for 1.5 seconds.
+  const [armed, setArmed] = useState(false);
+  const armTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const disarm = () => {
+    clearTimeout(armTimer.current);
+    setArmed(false);
+  };
+  useEffect(() => disarm, [date, slot]);
+
+  /**
+   * ► TAKE LIVE: puts the slide in the preview straight on the projector. The reading's band (its citation) goes to the lower third only as a
+   * staged value, or in place of a band the operator already has on: TAKE LIVE never turns the Lower 3rd on. It is built from the
+   * editor's text in memory and saves nothing, so the reading in the Lectionary is never changed by showing it. When the Holy Mass queue is on
+   * this reading the take is the queue's, so the Holy Mass stays on air. `bypass` (Shift) skips the safety press.
+   */
+  const takeLive = (bypass = false) => {
+    if (busy || !canTakeLive) return;
+    if (needsConfirm && !bypass && !armed) {
+      setArmed(true);
+      clearTimeout(armTimer.current);
+      armTimer.current = setTimeout(() => setArmed(false), 1500);
+      return;
+    }
+    disarm();
+    setError(null);
+    // Stage then take, so the take names who has the screen (the reducer's show keeps the old source). Under a blackout it waits behind it.
+    dispatch({ type: 'projector/stage', frame: frameAt(current) });
+    dispatch({ type: 'projector/take', source: queueOnIt ? 'MASS_QUEUE' : 'DIRECT_DECK' });
+    dispatch({ type: 'lowerThird/show', value: readingBand() });
+  };
+
+  /**
+   * Picks a slide in the preview. While this reading is on the projector the screen moves with it: the frame on air, with only its page
+   * changed, so text still being edited is not pushed and whoever has the screen (the Holy Mass queue or this deck) keeps it.
+   */
+  const goTo = (index: number) => {
+    const next = Math.min(Math.max(index, 0), Math.max(pages.length - 1, 0));
+    setPageIndex(next);
+    if (!liveFrame) return;
+    const count = liveFrame.kind === 'deck' ? liveFrame.slides.length : liveFrame.pages.length;
+    const page = Math.min(next, count - 1);
+    if (page !== liveFrame.index) dispatch({ type: 'projector/show', frame: { ...liveFrame, index: page } });
+  };
+
+  // A step from elsewhere (a clicker's Page Down, the Go Live console) moves the preview to the page on screen.
+  const livePage = liveFrame?.index;
+  useEffect(() => {
+    if (livePage !== undefined) setPageIndex(livePage);
+  }, [livePage]);
+
+  // Enter (Shift+Enter to skip the safety press) takes the reading live; ← and → move through its slides. Inside the editor or a field the
+  // keys type as usual. The refs keep the listener current without re-binding it.
+  const keys = useRef({ takeLive, goTo, current });
+  keys.current = { takeLive, goTo, current };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Enter' || (e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
-      e.preventDefault();
-      takeLive();
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement;
+      if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      const ui = useUi.getState();
+      if (ui.paletteOpen || ui.capturingHotkey || document.querySelector('[aria-modal="true"]')) return;
+      // A focused button keeps Enter for itself, so Enter on Save or a slot never also projects.
+      if (e.key === 'Enter' && !e.repeat && !target.closest('button, a, summary')) {
+        e.preventDefault();
+        keys.current.takeLive(e.shiftKey);
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        keys.current.goTo(keys.current.current + (e.key === 'ArrowRight' ? 1 : -1));
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -581,7 +667,7 @@ export function LectionaryDeck() {
               </div>
               {pages.length > 1 && (
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => setPageIndex(Math.max(current - 1, 0))} disabled={current === 0} aria-label={t('previous')} className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/15 bg-panel-2 text-fg/80 transition hover:bg-fg/10 disabled:cursor-not-allowed disabled:opacity-40">
+                  <button type="button" onClick={() => goTo(current - 1)} disabled={current === 0} aria-label={t('previous')} className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/15 bg-panel-2 text-fg/80 transition hover:bg-fg/10 disabled:cursor-not-allowed disabled:opacity-40">
                     <ChevronLeft size={14} aria-hidden />
                   </button>
                   <div role="group" aria-label={t('slidesAria')} className="flex flex-1 flex-wrap justify-center gap-1.5">
@@ -589,7 +675,7 @@ export function LectionaryDeck() {
                       <button
                         key={i}
                         type="button"
-                        onClick={() => setPageIndex(i)}
+                        onClick={() => goTo(i)}
                         aria-current={i === current ? 'true' : undefined}
                         className={`grid size-8 place-items-center rounded-md border font-mono text-xs font-bold tabular-nums transition ${
                           i === current ? 'border-accent bg-accent text-on-accent' : 'border-fg/15 bg-panel-2 text-fg/75 hover:border-accent/50 hover:text-accent'
@@ -599,7 +685,7 @@ export function LectionaryDeck() {
                       </button>
                     ))}
                   </div>
-                  <button type="button" onClick={() => setPageIndex(Math.min(current + 1, pages.length - 1))} disabled={current >= pages.length - 1} aria-label={t('next')} className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/15 bg-panel-2 text-fg/80 transition hover:bg-fg/10 disabled:cursor-not-allowed disabled:opacity-40">
+                  <button type="button" onClick={() => goTo(current + 1)} disabled={current >= pages.length - 1} aria-label={t('next')} className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/15 bg-panel-2 text-fg/80 transition hover:bg-fg/10 disabled:cursor-not-allowed disabled:opacity-40">
                     <ChevronRight size={14} aria-hidden />
                   </button>
                 </div>
@@ -626,12 +712,21 @@ export function LectionaryDeck() {
             </button>
             <button
               type="button"
-              onClick={takeLive}
-              disabled={busy}
-              title={t('liveTip')}
-              className="flex h-10 items-center gap-2 rounded-md border border-ok bg-ok px-5 text-xs font-extrabold tracking-wider text-canvas uppercase shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={(e) => takeLive(e.shiftKey)}
+              disabled={busy || !canTakeLive}
+              aria-live="polite"
+              title={
+                !canTakeLive
+                  ? t(pages.length === 0 || !master.trim() ? 'liveNeedsText' : 'liveNeedsResponse')
+                  : needsConfirm
+                    ? t('liveConfirmTip')
+                    : t('liveTip')
+              }
+              className={`flex h-10 items-center gap-2 rounded-md border px-5 text-xs font-extrabold tracking-wider text-canvas uppercase shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none ${
+                armed ? 'animate-pulse border-warn bg-warn' : 'border-ok bg-ok'
+              }`}
             >
-              <Play size={14} fill="currentColor" aria-hidden /> {tAnn('play')}
+              <Play size={14} fill="currentColor" aria-hidden /> {armed ? t('liveConfirm') : tAnn('play')}
             </button>
           </div>
         </section>

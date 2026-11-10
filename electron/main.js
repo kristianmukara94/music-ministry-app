@@ -27,6 +27,7 @@ import { setupWhiteboard } from './whiteboard.js';
 import { setupLectionary } from './lectionary.js';
 import { setupMedia } from './media.js';
 import { setupMassPlans } from './mass-plans.js';
+import { setupCalendarNotes } from './calendar-notes.js';
 import { setupPwSessions } from './pw-sessions.js';
 import { seedBible } from './bible-seed.js';
 import { setupBible } from './bible.js';
@@ -1567,6 +1568,7 @@ app.whenReady().then(() => {
   registerLyricsImport(announcements.convertPdf);
   setupLectionary(announcements.db);
   const planService = setupMassPlans(announcements.db);
+  setupCalendarNotes(announcements.db);
   const pwService = setupPwSessions(announcements.db);
   // Packaged builds copy resources/bible next to the app; in development it is read from the project.
   const bibleDataDir = app.isPackaged

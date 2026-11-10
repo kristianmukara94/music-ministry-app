@@ -64,7 +64,10 @@ export function stagePrayer(note: Note, index = 0, slides?: readonly number[] | 
   else if (note.display === 'lower') dispatch({ type: 'lowerThird/stage', value: lowerThirdOf(note) });
 }
 
-/** Stages and shows a projectable note straight away. Operator-only notes do nothing. `source` says who sent it. */
+/**
+ * Stages and shows a projectable note straight away. Operator-only notes do nothing. `source` says who sent it. A lower-third note does not
+ * turn the Lower 3rd on: it is staged, or replaces a band already on air (see lowerThird/show).
+ */
 export function takePrayer(note: Note, source?: ProjectionSource, index = 0, slides?: readonly number[] | null) {
   if (note.display === 'full') {
     stagePrayer(note, index, slides);

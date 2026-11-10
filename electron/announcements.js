@@ -18,6 +18,7 @@ import { MASS_PLAN_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN
 import { WEB_HUB_MIGRATIONS } from './web-hub-notes.js';
 import { NOTES_COPY_MIGRATIONS, NOTES_SLOT_MIGRATIONS, PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, setupNotes } from './notes.js';
 import { DB_CRYPTO_MIGRATIONS } from './db-vault.js';
+import { CALENDAR_DAY_NOTE_MIGRATIONS } from './calendar-notes.js';
 import { ROSARY_LITANY_MIGRATIONS } from './rosary.js';
 import { BIBLE_MIGRATIONS } from './bible-seed.js';
 import { ROSARY_MIGRATIONS } from './rosary.js';
@@ -153,6 +154,7 @@ const ALL_MIGRATIONS = [
   ...DB_CRYPTO_MIGRATIONS,
   ...WEB_HUB_MIGRATIONS,
   ...NOTES_COPY_MIGRATIONS,
+  ...CALENDAR_DAY_NOTE_MIGRATIONS,
 ];
 
 const SLIDE_SELECT = `

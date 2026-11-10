@@ -151,6 +151,13 @@ contextBridge.exposeInMainWorld('apcc', {
     deleteTemplate: (id) => ipcRenderer.invoke('plans:deleteTemplate', id),
   },
 
+  // The parish's own title for a calendar day, shown in place of its Ordo name.
+  calendar: {
+    getDayNotes: () => ipcRenderer.invoke('calendar:get_day_notes'),
+    saveDayNote: (date, note) => ipcRenderer.invoke('calendar:save_day_note', date, note),
+    deleteDayNote: (date) => ipcRenderer.invoke('calendar:delete_day_note', date),
+  },
+
   pw: {
     listSessions: () => ipcRenderer.invoke('pw:listSessions'),
     createSession: (input) => ipcRenderer.invoke('pw:createSession', input),

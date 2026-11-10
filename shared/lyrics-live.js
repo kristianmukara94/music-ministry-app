@@ -87,8 +87,9 @@ export function lyricsPositionLabel(projector) {
 
 /**
  * The live-state actions for Song Lyrics' GO LIVE NOW: a library song goes straight on air without being in a setlist. Its first sung stanza is
- * staged and taken as a direct projection, and `band` (a lower third naming the song) is shown with it, or only staged when `bandStageOnly` (the
- * licence is locked). A lower third the operator switched off stays off: lowerThird/show then only stages it. Null when the song has no stanza
+ * staged and taken as a direct projection, and `band` (a lower third naming the song) goes with it, or is only staged when `bandStageOnly` (the
+ * licence is locked). GO LIVE NOW never turns the Lower 3rd on: lowerThird/show only stages the band, unless the operator already has a band on
+ * air, which it then replaces. Null when the song has no stanza
  * with words, so the caller says so instead of blanking the screen.
  *
  * Nothing here writes the song: the frame is built from the song as given, which the caller reads from the session copy (liveLyrics).

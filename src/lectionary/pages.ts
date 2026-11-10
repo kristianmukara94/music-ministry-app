@@ -5,6 +5,9 @@ import { autoSplitText, needsSplit, ON_AIR_LIMITS } from '../utils/textOptimizer
 /** Psalm verses and intentions sit below the pinned response, so they get less of the slide's height. Auto-paginate measures them the same way. */
 export const RESPONSE_HEIGHT_SHARE = 0.6;
 
+/** The projector frame key of one day's reading, so the Lectionary can tell its reading is the one on screen however it got there. */
+export const readingKey = (date: string, readingType: string) => `lectionary:${date}|${readingType}`;
+
 /**
  * The slides a saved reading is shown as. A psalm or a Prayer of the Faithful has one slide per stanza or intention, and one too tall for the
  * screen is split again with the projector's own fit test, so no line is cut off. Other readings break at their --- lines, as they always have.

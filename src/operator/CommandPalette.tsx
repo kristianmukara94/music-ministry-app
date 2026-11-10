@@ -25,7 +25,7 @@ export function CommandPalette() {
     ...allMassParts().map((p) => ({ id: `mass-${p.id}`, group: t('palette.project'), label: massPartName(p, lang), run: () => projectMassPart(p.id) })),
     {
       id: 'l3-parish', group: t('palette.project'), label: `${t('top.lowerThird')} · Assumption Parish Church`,
-      run: () => dispatch({ type: 'lowerThird/show', value: { line1: 'Assumption Parish Church', line2: 'Charismatic Music Ministry' } }),
+      run: () => dispatch({ type: 'lowerThird/show', value: { line1: 'Assumption Parish Church', line2: 'Charismatic Music Ministry' }, manual: true }),
     },
   ], [t, lang]);
 

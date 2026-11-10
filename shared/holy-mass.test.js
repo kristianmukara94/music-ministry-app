@@ -75,7 +75,7 @@ test('Go Live starts with the lower third off: a Holy Mass Go Live (band staged,
 
 test('a band the operator already has on stays on through Go Live', () => {
   const other = { template: 'segment', tag: 'Holy Mass', line1: 'Sunday' };
-  const s = run(initialLiveState(), { type: 'lowerThird/show', value: BAND }, { type: 'lowerThird/stage', value: other });
+  const s = run(initialLiveState(), { type: 'lowerThird/show', value: BAND, manual: true }, { type: 'lowerThird/stage', value: other });
   assert.deepEqual(s.lowerThird.live, BAND);
 });
 

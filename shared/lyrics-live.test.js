@@ -162,18 +162,27 @@ test('Song Lyrics wires Go Live: the toggle, direct projection, the quick contro
 
 // ── GO LIVE NOW: a library song straight to the projector, without a setlist ──
 
-test('GO LIVE NOW projects the first sung stanza as a direct take, with no setlist place, and shows the band', () => {
+test('GO LIVE NOW projects the first sung stanza as a direct take, with no setlist place, and only stages the band', () => {
   const band = { template: 'segment', tag: 'Song', line1: 'Song' };
   const blankFirst = { ...hymn, stanzas: [{ stanzaType: 'Intro', lyricsText: '  ' }, ...hymn.stanzas] };
   const actions = goLiveNowActions({ hymn: blankFirst, band });
   assert.deepEqual(actions.map((a) => a.type), ['projector/stage', 'projector/take', 'lowerThird/show']);
+  assert.ok(actions.every((a) => !a.manual), 'GO LIVE NOW is never an operator Show of the lower third');
   assert.equal(actions[0].frame.song.position, 1, 'a blank first stanza is skipped');
   assert.equal(actions[0].frame.setlist, undefined, 'the frame carries no setlist place');
   assert.equal(actions[1].source, 'DIRECT_DECK');
   const s = run(projectorOn(), actions);
   assert.equal(s.projector.live.text, 'one');
-  assert.deepEqual(s.lowerThird.live, band, 'the band goes up with the song');
+  assert.equal(s.lowerThird.live, null, 'the Lower 3rd stays Off');
+  assert.deepEqual(s.lowerThird.staged, band, 'the band waits staged for the operator\'s toggle');
   assert.equal(lyricsOnAir(s.projector).setlistId, null);
+});
+
+test('GO LIVE NOW replaces a band the operator already has on, and it stays on', () => {
+  const band = { template: 'segment', tag: 'Song', line1: 'Song' };
+  const up = run(projectorOn(), [{ type: 'lowerThird/stage', value: { line1: 'Earlier' } }, { type: 'lowerThird/toggle' }]);
+  const s = run(up, goLiveNowActions({ hymn, band }));
+  assert.deepEqual(s.lowerThird.live, band);
 });
 
 test('GO LIVE NOW only stages the band when the licence is locked, or when the operator switched the lower third off', () => {

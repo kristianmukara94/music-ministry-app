@@ -22,7 +22,7 @@ function massLive() {
     // As the Mass Queue does it (src/golive/massLive.ts): stage the slide, then take it.
     { type: 'projector/stage', frame: { ...deck, index: 1 } },
     { type: 'projector/take', source: 'MASS_QUEUE' },
-    { type: 'lowerThird/show', value: { line1: 'Gloria', line2: 'Mass of Creation' } },
+    { type: 'lowerThird/show', value: { line1: 'Gloria', line2: 'Mass of Creation' }, manual: true },
   );
 }
 

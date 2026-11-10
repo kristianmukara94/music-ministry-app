@@ -5,7 +5,7 @@ import { liveLyrics } from '../live/liveSongEdits';
 import { dispatch, useLive } from '../live/store';
 import { turnOnProjectorAndGo } from '../live/startup';
 import { massPartFrame } from '../liturgy/massOrder';
-import { readingSlides } from '../lectionary/pages';
+import { readingKey, readingSlides } from '../lectionary/pages';
 import { hasResponse } from '../../shared/daily-readings.js';
 import { loadPassage, scriptureSlides } from '../bible/projection';
 import { parseSourceId } from '../../shared/bible-ref.js';
@@ -236,11 +236,13 @@ export async function stageReading(date: string, readingType: string): Promise<b
   const pages = readingSlides(readingType, row.rawText);
   const title = [day.seasonInfo, readingType, row.citation].map((s) => s.trim()).filter(Boolean).join(' · ');
   // The psalm and the Prayer of the Faithful keep their response pinned above every stanza or intention.
+  const key = readingKey(date, readingType);
   const frame: Frame =
     hasResponse(readingType)
-      ? { kind: 'psalm', title, response: row.congregationResponse, pages, index: 0, style: row.style }
+      ? { kind: 'psalm', key, title, response: row.congregationResponse, pages, index: 0, style: row.style }
       : {
           kind: 'deck',
+          key,
           title,
           // Blank lines stay in as empty reader lines, so paragraph spacing survives.
           slides: pages.map((page) => page.split('\n').map((text) => ({ role: 'reader' as const, text }))),
