@@ -277,6 +277,37 @@ async function removeNow(index: number): Promise<PlanItem> {
   return out.removed;
 }
 
+/**
+ * Puts `row` in place of the queue row at `index`, in the plan loaded in the Service Queue: same place, same block, same slot. Used by Go
+ * Live's Edit slide on air and Add slide, which swap an item for this plan's own copy of it. CURRENT stays on the row. The projector is not
+ * touched here; the caller puts the new slide up. Resolves to the row's index in the saved plan.
+ */
+export function replaceRowInFlow(index: number, row: Pick<PlanItem, 'module' | 'sourceId' | 'label'>): Promise<number> {
+  const run = inserting.then(() => replaceRowNow(index, row));
+  inserting = run.catch(() => undefined);
+  return run;
+}
+
+async function replaceRowNow(index: number, row: Pick<PlanItem, 'module' | 'sourceId' | 'label'>): Promise<number> {
+  const live = useLive.getState().state;
+  const planId = live.queuePlanId;
+  if (planId == null) throw new Error('No Holy Mass plan is loaded in the queue.');
+  const plan = await api.get(planId);
+  // The row is found by what it plays, so a queue out of step with the plan changes the row the operator is on.
+  const at = followCursor(live.queue, queueFromPlan(plan.items), index);
+  const old = at >= 0 ? plan.items[at] : undefined;
+  if (!old) throw new Error('That row is not in the plan any more.');
+  const replaced: PlanItem = { block: old.block, slot: old.slot ?? null, module: row.module, sourceId: row.sourceId, label: row.label };
+  await api.save(planId, plan.items.map((it, i) => (i === at ? replaced : it)));
+  const saved = (await api.get(planId)).items;
+  const next = queueFromPlan(saved);
+  // The database keeps the rows in block order, so the row stays where it was; it is looked up anyway, by what it now plays.
+  const found = saved.findIndex((it, i) => it.module === row.module && it.sourceId === row.sourceId && (i === at || it.block === old.block));
+  const cursor = found >= 0 ? found : at;
+  dispatch({ type: 'queue/set', items: next, planId, cursor: live.queuePlanId === planId && live.queueCursor === index ? cursor : followCursor(live.queue, next, live.queueCursor) });
+  return cursor;
+}
+
 /** Plays queue row `index` once the main process has taken the queue change `next`, so the row played is the new one, not the old. */
 async function playWhenQueued(next: ReturnType<typeof queueFromPlan>, index: number): Promise<void> {
   const want = next[index]?.id;

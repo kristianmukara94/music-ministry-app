@@ -131,6 +131,21 @@ export function dividedNote(text) {
 }
 
 /**
+ * A list of slides as one note: each slide's words, with a slide break between them (Go Live's Edit slide on air and Add slide for a Holy
+ * Mass item that is not a song). A slide left empty is dropped, and a `---` line typed inside a slide starts another. Returns { body, split };
+ * the split is stamped with the body it was made for, as a saved one is, so the slides can be counted before it is saved.
+ */
+export function slidesNote(pages) {
+  const { body, split } = dividedNote(
+    (pages ?? [])
+      .map((page) => String(page ?? '').replace(/\r\n?/g, '\n').trim())
+      .filter(Boolean)
+      .join('\n---\n'),
+  );
+  return { body, split: stampSplit(split, body) };
+}
+
+/**
  * The inverse of dividedNote: a saved note's text with a `---` line after each manual slide break, so the editor shows the breaks the way
  * they are typed. An automatic split, no split, or a split made for an earlier version of the text gives the text as it is.
  */

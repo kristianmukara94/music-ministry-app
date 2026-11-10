@@ -26,6 +26,7 @@ import { clock } from '../praise-worship/LiveView';
 import { useNow } from '../operator/useNow';
 import { songTitleFrame } from '../../shared/stage-plan-row.js';
 import { MassHotEdit } from './MassHotEdit';
+import { MassSlideHotEdit } from './MassSlideHotEdit';
 import { usePwT } from '../praise-worship/strings';
 import { usePlannerT } from '../planner/strings';
 import { BLOCKS } from '../planner/types';
@@ -797,17 +798,31 @@ export function MassLiveView({ planName }: { planName: string | null }) {
               onSelect={(i) => void run(() => goWithin(i, frame))}
               chipLabel={(chip) => t('massSlideLabel', { label: chip.name, n: chip.index + 1, total: steps?.count ?? 1 })}
               disabled={busy}
-              onChipDoubleClick={isSong ? (i) => setEditRequest(i) : undefined}
+              onChipDoubleClick={(i) => setEditRequest(i)}
               noChips={<p className="text-sm text-muted">{t('massOneSlide')}</p>}
             >
-              <MassHotEdit
-                t={tp}
-                hymn={isSong ? hymn : null}
-                onAir={isSong && liveSteps ? liveSteps.index : null}
-                editRequest={editRequest}
-                onEditHandled={() => setEditRequest(null)}
-                onShow={(step) => void run(() => goWithin(step))}
-              />
+              {isSong || item.module === 'lyrics' ? (
+                <MassHotEdit
+                  t={tp}
+                  hymn={isSong ? hymn : null}
+                  onAir={isSong && liveSteps ? liveSteps.index : null}
+                  editRequest={editRequest}
+                  onEditHandled={() => setEditRequest(null)}
+                  onShow={(step) => void run(() => goWithin(step))}
+                />
+              ) : (
+                // Every other item (a Mass part, reading, psalm, prayer, typed response or passage) is edited in this plan's own copy of it.
+                <MassSlideHotEdit
+                  t={tp}
+                  item={item}
+                  index={cursor}
+                  frame={frame}
+                  note={note}
+                  onAir={onAir && !covered}
+                  editRequest={editRequest}
+                  onEditHandled={() => setEditRequest(null)}
+                />
+              )}
             </LiveStageCanvas>
           ) : (
             <div className="flex flex-col items-start gap-3">

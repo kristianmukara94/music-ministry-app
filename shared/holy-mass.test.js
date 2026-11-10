@@ -10,6 +10,8 @@ import { controlAction } from './remote-view.js';
 import { goLiveT as goT } from './golive-i18n.js';
 import { lyT } from './lyrics-i18n.js';
 import { plannerT as plT } from './planner-i18n.js';
+import { slidesNote } from './notes.js';
+import { screenPagesOf } from './prayer-screen.js';
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), 'utf8');
 const run = (state, ...actions) => actions.reduce((s, a) => liveReducer(s, a), state);
@@ -117,7 +119,8 @@ test('live editing is open while the Holy Mass is on air: nothing in the editor 
 test('the Holy Mass console has Edit slide on air, Add slide and double-click editing, saved to the song', () => {
   const view = read('src/golive/MassLiveView.tsx');
   assert.match(view, /<MassHotEdit\s/);
-  assert.match(view, /onChipDoubleClick=\{isSong \? \(i\) => setEditRequest\(i\) : undefined\}/);
+  // Every item's chips open the editor, not only a song's.
+  assert.match(view, /onChipDoubleClick=\{\(i\) => setEditRequest\(i\)\}/);
   const editor = read('src/golive/MassHotEdit.tsx');
   assert.match(editor, /useLiveHotEditor\(hymn,/);
   assert.match(editor, /t\('editOnAir'\)/);
@@ -125,6 +128,30 @@ test('the Holy Mass console has Edit slide on air, Add slide and double-click ed
   assert.match(editor, /t\('lineupEditHint'\)/);
   // Step 0 is the title card, so step n is stanza n - 1.
   assert.match(editor, /hot\.startEdit\(editRequest - 1\)/);
+});
+
+test('every Holy Mass item that is not a song has Edit slide on air and Add slide, saved to this plan only', () => {
+  const view = read('src/golive/MassLiveView.tsx');
+  assert.match(view, /<MassSlideHotEdit\s/, 'a Mass part, reading, psalm, prayer or typed response gets the slide editor');
+  const editor = read('src/golive/MassSlideHotEdit.tsx');
+  assert.match(editor, /t\('editOnAir'\)/);
+  assert.match(editor, /t\('addSlide'\)/);
+  // The buttons are only off when the slide has no words (a picture or video), never because the item is not a song.
+  assert.doesNotMatch(editor, /lineupEditOnlySongs|isSong/);
+  const copy = read('src/golive/massSlideCopy.ts');
+  assert.match(copy, /display: 'full'/, 'the copy is a full-screen slide');
+  assert.match(copy, /replaceRowInFlow\(index, \{ module: 'notes'/, 'the copy takes the item’s row in this plan');
+  assert.doesNotMatch(copy, /bridge\.(lectionary|massOrder)\.\w*(save|set|update)/, 'the shared source text is never written');
+});
+
+test('the slides of an edited item become one note with a break between each, so a one-slide item can grow to two', () => {
+  assert.deepEqual(slidesNote(['Lord, have mercy.']), { body: 'Lord, have mercy.', split: null }, 'one slide has no split');
+  const two = slidesNote(['Lord, have mercy.\nLord, have mercy.', 'Christ, have mercy.']);
+  assert.equal(two.body, 'Lord, have mercy.\nLord, have mercy.\nChrist, have mercy.');
+  assert.deepEqual([two.split?.mode, two.split?.at], ['manual', [1]]);
+  assert.equal(screenPagesOf({ title: 'Kyrie', body: two.body, style: null, split: two.split }).length, 2, 'it plays as 1 / 2 and 2 / 2');
+  assert.deepEqual(slidesNote(['A', '  ', 'B']).split?.at, [0], 'a slide left empty is dropped');
+  assert.equal(screenPagesOf({ title: 'T', ...slidesNote(['A\n---\nB', 'C']) }).length, 3, 'a --- line typed in a slide starts another');
 });
 
 test('the Holy Mass and Praise & Worship consoles share one stage canvas and the same top bar', () => {

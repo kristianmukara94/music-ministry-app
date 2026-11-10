@@ -242,7 +242,7 @@ export function resumeMass(): void {
 }
 
 /** Shows a slide of the item on screen. The take is the queue's own, so the queue keeps its place. Under Blackout it lifts it onto that slide. */
-function showWithin(frame: Frame) {
+export function showWithin(frame: Frame) {
   const blackedOut = blackoutOverMass(useLive.getState().state);
   dispatch({ type: 'projector/stage', frame });
   dispatch({ type: 'projector/take', source: 'MASS_QUEUE' });
