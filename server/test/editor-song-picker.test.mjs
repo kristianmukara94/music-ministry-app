@@ -128,3 +128,53 @@ test('a song id that is not in the church\'s songs table cannot be saved from th
   assert.match(JSON.parse(res.body).error, /not in your church's song list/);
   assert.equal((await pg.query('SELECT body FROM plans WHERE id = $1', [planId])).rows[0].body.items.length, 0, 'nothing was written');
 });
+
+// ---- The song list narrowed by service type and category (the picker's tabs and category buttons) ----
+
+async function listed(cookie, queryStringParameters) {
+  const res = await editing().listSongs({ httpMethod: 'GET', headers: { cookie }, queryStringParameters });
+  return { status: res.statusCode, body: JSON.parse(res.body) };
+}
+
+async function plantScopedSongs() {
+  const add = (title, category, scope) => pg.query(
+    `INSERT INTO songs (id, church_id, title, category, scope, language, musical_key, updated_at) VALUES ($1, $2, $3, $4, $5, 'English', 'G', now())`,
+    [randomUUID(), CHURCH_A, title, category, scope]);
+  await add('Come, Now Is the Time', 'Joyful Song', 'PRAISE_AND_WORSHIP');
+  await add('Here I Am to Worship', 'Worship Song', 'PRAISE_AND_WORSHIP');
+  await add('Healing Rain', 'Healing Song', 'PRAISE_AND_WORSHIP');
+  await add('Kyrie, setting two', 'Kyrie', 'MASS');
+  await add('Shout to the Lord', 'joyful song', 'GENERAL');
+}
+
+test('songs-list narrows to a service type and a picker category, and General songs are under both service types', async () => {
+  const cookie = await cookieFor('planner', 'K7QM-4XD2');
+  await plantScopedSongs();
+  const titles = async (query) => (await listed(cookie, query)).body.songs.map((s) => s.title);
+  // The two songs planted before each test have no scope of their own, so they are General.
+  assert.deepEqual(await titles({ serviceType: 'praise_worship' }), ['Come, Now Is the Time', 'Gloria, setting one', 'Healing Rain', 'Here I Am to Worship', 'Joyful song', 'Shout to the Lord']);
+  assert.deepEqual(await titles({ serviceType: 'mass' }), ['Gloria, setting one', 'Joyful song', 'Kyrie, setting two', 'Shout to the Lord']);
+  assert.deepEqual(await titles({ serviceType: 'praise_worship', category: 'joyful' }), ['Come, Now Is the Time', 'Shout to the Lord'], 'the category name is matched in any letter case');
+  assert.deepEqual(await titles({ serviceType: 'praise_worship', category: 'all' }), await titles({ serviceType: 'praise_worship' }));
+  assert.deepEqual(await titles({ serviceType: 'mass', category: 'kyrie' }), ['Kyrie, setting two']);
+  assert.deepEqual(await titles({ serviceType: 'mass', category: 'joyful' }), [], 'Joyful is not a Holy Mass category, and no Holy Mass song is filed under that name');
+  assert.deepEqual(await titles({ serviceType: 'praise_worship', category: 'Healing Song' }), ['Healing Rain'], "a song category's own name works too");
+  assert.deepEqual(await titles({ serviceType: 'praise_worship', category: 'holy_spirit' }), [], 'an empty category is an empty list, not an error');
+});
+
+test('songs-list with no filter is the whole list, as before, and a service type that is not one is refused', async () => {
+  const cookie = await cookieFor('planner', 'K7QM-4XD2');
+  await plantScopedSongs();
+  const all = await listed(cookie, undefined);
+  assert.equal(all.status, 200);
+  assert.equal(all.body.songs.length, 7);
+  assert.equal((await listed(cookie, {})).body.songs.length, 7);
+  assert.ok(all.body.lastUpdatedAt);
+  assert.deepEqual(Object.keys(all.body.songs[0]).sort(), ['category', 'id', 'key', 'language', 'scope', 'title']);
+  const bad = await listed(cookie, { serviceType: 'vespers' });
+  assert.equal(bad.status, 400);
+  assert.equal(bad.body.error, 'Choose Holy Mass or Praise & Worship.');
+  // The filter never reaches past the church or brings back a removed song.
+  const narrowed = (await listed(cookie, { serviceType: 'mass', category: 'communion' })).body.songs;
+  assert.deepEqual(narrowed, []);
+});

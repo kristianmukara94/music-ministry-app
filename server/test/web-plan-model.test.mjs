@@ -146,10 +146,22 @@ test('the editor saves a Mass plan as items in step order, with the unshown item
 test('a Praise & Worship plan reads its minutes, and saves every segment with its minutes', () => {
   const state = model.praiseFromItems([{ key: '3', group: 'opening', order: 3, kind: 'song', songId: SONG_A, minutes: 12 }], SEGS);
   assert.equal(state.segments['3'].minutes, 12);
-  const items = model.praiseToItems({ ...state, extra: [] }, SEGS);
+  // A plan that has never been saved has no items, so every segment goes with its minutes and the laptop gets the whole lineup.
+  const items = model.praiseToItems({ ...state, present: new Set(), extra: [] }, SEGS);
   assert.equal(items.length, SEGS.length, 'every segment is saved');
   assert.equal(items.find((i) => i.key === '3').minutes, 12);
   assert.equal(items.find((i) => i.key === '1').minutes, 5, 'a segment with no change keeps its default minutes');
+});
+
+test('a card taken out of the lineup on the laptop is not put back by a save on the website, unless something is put in it', () => {
+  const saved = [{ key: '3', group: 'opening', order: 1, kind: 'song', songId: SONG_A, minutes: 12 }, { key: '5', group: 'word', order: 2, kind: 'song', minutes: 6 }];
+  const state = model.praiseFromItems(saved, SEGS);
+  assert.deepEqual([...state.present], ['3', '5']);
+  assert.deepEqual(model.praiseToItems(state, SEGS).map((i) => i.key), ['3', '5'], 'the ten segments the plan came without stay out');
+  const filled = { ...state, segments: model.withEntry(state.segments, '8', { songId: SONG_B }) };
+  assert.deepEqual(model.praiseToItems(filled, SEGS).map((i) => i.key), ['3', '5', '8'], 'a segment that is filled here goes');
+  const timed = { ...state, segments: model.withChoice(state.segments, '2', { minutes: 7 }) };
+  assert.deepEqual(model.praiseToItems(timed, SEGS).map((i) => i.key), ['2', '3', '5'], 'and so does one whose minutes are set here');
 });
 
 test('a song the plan uses that has been removed is shown as removed, and an unknown song as no longer in the list', () => {

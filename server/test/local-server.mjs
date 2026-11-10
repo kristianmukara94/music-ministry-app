@@ -67,6 +67,21 @@ await db.query(
   [CHURCH],
 );
 
+// Songs filed for one service or the other, so the song picker's Holy Mass and Praise & Worship tabs and their categories have something to show.
+// The four above have no scope of their own, so they are General and appear under both tabs.
+await db.query(
+  `INSERT INTO songs (id, church_id, title, category, scope, language, musical_key, updated_at) VALUES
+     (gen_random_uuid(), $1, 'Kyrie, setting one', 'Kyrie', 'MASS', 'English', 'Dm', now()),
+     (gen_random_uuid(), $1, 'Gloria, setting one', 'Gloria', 'MASS', 'English', 'C', now()),
+     (gen_random_uuid(), $1, 'Take and Receive', 'Preparation of the Gifts', 'MASS', 'English', 'G', now()),
+     (gen_random_uuid(), $1, 'Come, Now Is the Time to Worship', 'Joyful Song', 'PRAISE_AND_WORSHIP', 'English', 'D', now()),
+     (gen_random_uuid(), $1, 'Lord, I Lift Your Name on High', 'Joyful Song', 'PRAISE_AND_WORSHIP', 'English', 'G', now()),
+     (gen_random_uuid(), $1, 'Here I Am to Worship', 'Worship Song', 'PRAISE_AND_WORSHIP', 'English', 'E', now()),
+     (gen_random_uuid(), $1, 'Lord, Have Mercy on Us', 'Repentance Song', 'PRAISE_AND_WORSHIP', 'Tagalog', 'Am', now()),
+     (gen_random_uuid(), $1, 'Healing Rain', 'Healing Song', 'PRAISE_AND_WORSHIP', 'English', 'A', now())`,
+  [CHURCH],
+);
+
 // One setup key for this run, so a new church can be set up from the browser. Printed below, as the test password is.
 const SETUP_KEY = setupKey();
 await db.query(`INSERT INTO setup_keys (key_hash) VALUES ($1)`, [hashToken(SETUP_KEY, LOCAL_SECRET)]);

@@ -139,5 +139,107 @@ test("the page meets the site's security policy: no inline handlers, scripts or 
   assert.doesNotMatch(page, /\son[a-z]+\s*=/i, 'no inline event handlers');
   assert.doesNotMatch(page, /<script(?![^>]*\bsrc=)[^>]*>/i, 'no inline scripts');
   assert.doesNotMatch(script, /\beval\(|new Function|\son[a-z]+="/, 'no eval and no handlers in generated markup');
-  for (const id of ['bar-fill-opening', 'bar-fill-word', 'bar-fill-closing', 'status-pill', 'print', 'setlist-print']) assert.match(page, new RegExp(`id="${id}"`));
+  for (const id of ['section-bars', 'status-pill', 'print', 'setlist-print']) assert.match(page, new RegExp(`id="${id}"`));
+  // The time bars are drawn for the plan's own sections, so the laptop's lineup and the earlier layout each get theirs.
+  assert.match(script, /id="bar-fill-\$\{esc\(section\.group\)\}"/);
+});
+
+// ---- The laptop's lineup ----
+
+const lineup = await load('lineup-templates.js');
+const desktopPw = await import(pathToFileURL(path.join(here, '..', '..', 'shared', 'pw.js')).href);
+const LINEUP_SEGS = model.praiseSegments(model.PRAISE_TEMPLATE);
+const SONG_2 = '20000000-0000-4000-8000-00000000000b';
+const SONG_3 = '20000000-0000-4000-8000-00000000000c';
+
+test("a new plan has the church laptop's twelve slots: the same keys, names, groups, minutes and order", () => {
+  const laptop = desktopPw.DEFAULT_TEMPLATE;
+  assert.deepEqual(model.PRAISE_TEMPLATE.sections.map((s) => [s.group, s.title]), laptop.groups.map((g) => [g.key, g.name]));
+  assert.deepEqual(model.PRAISE_TEMPLATE.sections.map((s) => s.rows.length), [4, 4, 4]);
+  assert.deepEqual(
+    LINEUP_SEGS.map((s) => [s.id, s.name, s.group, s.defaultMinutes]),
+    desktopPw.groupOrdered(laptop.segments, laptop.groups).map((s) => [s.key, s.name, s.group, s.minutes]),
+  );
+  assert.deepEqual(LINEUP_SEGS.map((s) => s.n), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  assert.deepEqual(LINEUP_SEGS.map((s) => s.kind), ['rite', 'rite', 'song', 'reading', 'song', 'song', 'song', 'song', 'reading', 'song', 'song', 'song']);
+  assert.equal(model.praiseBreakdown(model.PRAISE_TEMPLATE, LINEUP_SEGS, { segments: {}, notes: {} }, []).total, desktopPw.totalMinutes(laptop.segments));
+});
+
+test('each song slot opens the picker on its own category, and the title and lectionary slots never count as unfilled', () => {
+  assert.deepEqual(
+    LINEUP_SEGS.filter((s) => s.kind === 'song').map((s) => [s.id, s.pickerCategory]),
+    [['marian_song', 'marian'], ['joyful_song', 'joyful'], ['worship', 'worship'], ['repentance', 'repentance'], ['holy_spirit', 'holy_spirit'], ['offertory', 'offertory'], ['thanksgiving', 'thanksgiving'], ['finale', 'finale']],
+  );
+  for (const seg of LINEUP_SEGS.filter((s) => s.kind === 'song')) assert.ok(lineup.pickerCategoryOf('praise_worship', seg.pickerCategory), seg.id);
+  const view = model.praiseBreakdown(model.PRAISE_TEMPLATE, LINEUP_SEGS, { segments: {}, notes: {} }, SONGS);
+  assert.equal(view.checks.length, 2, 'the lineup has no teaching step, so there is no speaker check');
+  assert.equal(view.checks[0].text, '8 steps still need a song or reading', 'the eight song slots; Bible Enthronement and Gospel Acclamation fill themselves');
+  assert.equal(view.songsTotal, 8);
+});
+
+test("a new plan saves as the laptop's lineup: its keys and groups, and the reading name that fills the Gospel Acclamation from the lectionary", () => {
+  const items = model.praiseToItems({ segments: {}, notes: {}, extra: [], present: new Set() }, LINEUP_SEGS);
+  assert.deepEqual(items.map((i) => i.key), lineup.PW_SEGMENT_KEYS);
+  assert.deepEqual([...new Set(items.map((i) => i.group))], ['opening', 'praise', 'word']);
+  assert.deepEqual(items.map((i) => i.kind), LINEUP_SEGS.map((s) => s.kind));
+  assert.deepEqual(items.find((i) => i.key === 'gospel_acclamation'), { key: 'gospel_acclamation', group: 'word', order: 9, kind: 'reading', minutes: 3, slotId: 'gospel_acclamation', text: 'Gospel Acclamation' });
+  assert.equal('text' in items.find((i) => i.key === 'bible_enthronement'), false, 'a title slide carries no words');
+  // Read back, the reading's name is the slot's default, not something chosen for it.
+  const again = model.praiseFromItems(items, LINEUP_SEGS);
+  assert.equal(model.praiseRow(LINEUP_SEGS.find((s) => s.id === 'gospel_acclamation'), again, SONGS).value, '');
+  assert.equal(again.present.size, 12);
+});
+
+test("a plan pushed by the laptop fills the same slots, with a segment's songs together and in order", () => {
+  // The laptop numbers every song of a segment ("worship.1"), and sends a prayer and a title slide with no words.
+  const pushed = [
+    { key: 'prayer_authority', group: 'opening', order: 1, kind: 'rite', minutes: 3 },
+    { key: 'marian_song.1', group: 'opening', order: 2, kind: 'song', songId: SONG, minutes: 5 },
+    { key: 'bible_enthronement', group: 'opening', order: 3, kind: 'reading', minutes: 4 },
+    { key: 'worship.1', group: 'praise', order: 4, kind: 'song', songId: SONG_2, minutes: 15 },
+    { key: 'worship.2', group: 'praise', order: 5, kind: 'song', songId: SONG_3 },
+    { key: 'gospel_acclamation', group: 'word', order: 6, kind: 'reading', text: 'Gospel Acclamation', minutes: 3 },
+    { key: 'custom_abc123', group: 'word', order: 7, kind: 'rite', minutes: 5 },
+  ];
+  assert.equal(model.isLegacyPraisePlan(pushed), false);
+  const state = model.praiseFromItems(pushed, LINEUP_SEGS);
+  assert.deepEqual(model.slotEntries(state.segments.marian_song).map((e) => e.songId), [SONG]);
+  assert.deepEqual(model.slotEntries(state.segments.worship).map((e) => e.songId), [SONG_2, SONG_3]);
+  assert.equal(state.segments.worship.minutes, 15);
+  assert.deepEqual(state.extra.map((i) => i.key), ['custom_abc123'], 'a card the operator added on the laptop is kept, though the editor has no slot for it');
+  // Saved again, each item keeps the key the laptop knows it by, and the cards the laptop took out stay out.
+  const items = model.praiseToItems(state, LINEUP_SEGS);
+  assert.deepEqual(items.map((i) => i.key), pushed.map((i) => i.key));
+  assert.deepEqual(items.filter((i) => i.songId).map((i) => i.slotId), ['marian_song', 'worship', 'worship']);
+});
+
+test('a further item of a long segment key still gets a key the server accepts', () => {
+  const entries = Array.from({ length: 12 }, (_, i) => ({ text: `Note ${i + 1}` }));
+  let segments = {};
+  for (const entry of entries) segments = model.withEntry(segments, 'gospel_acclamation', entry);
+  const items = model.praiseToItems({ segments, notes: {}, extra: [], present: new Set() }, LINEUP_SEGS).filter((i) => i.slotId === 'gospel_acclamation');
+  assert.equal(items.length, 12);
+  assert.equal(new Set(items.map((i) => i.key)).size, 12);
+  assert.ok(items.every((i) => i.key.length <= 20), items.map((i) => i.key).join(' '));
+  assert.deepEqual(model.slotEntries(model.praiseFromItems(items, LINEUP_SEGS).segments.gospel_acclamation).map((e) => e.text), entries.map((e) => e.text));
+});
+
+test("a plan the earlier editor laid out keeps its layout, and every other plan opens in the laptop's lineup", () => {
+  const legacy = [{ key: '2', group: 'opening', order: 1, kind: 'song', songId: SONG, minutes: 5 }, { key: '5.2', slotId: '5', group: 'word', order: 2, kind: 'song', songId: SONG_2 }];
+  assert.equal(model.isLegacyPraisePlan(legacy), true);
+  assert.equal(model.praiseTemplateFor(legacy, sample.PRAISE_PLAN), sample.PRAISE_PLAN);
+  // The laptop renumbers that plan's songs ("2.1") when it sends it back, and it is still the earlier layout.
+  assert.equal(model.isLegacyPraisePlan([{ key: '2.1', group: 'opening', order: 1, kind: 'song', songId: SONG }]), true);
+  assert.equal(model.praiseTemplateFor([], sample.PRAISE_PLAN), model.PRAISE_TEMPLATE, 'a new plan');
+  assert.equal(model.praiseTemplateFor([{ key: 'worship.1', group: 'praise', order: 1, kind: 'song' }], sample.PRAISE_PLAN), model.PRAISE_TEMPLATE);
+  assert.equal(model.praiseTemplateFor([{ key: 'custom_abc123', group: 'word', order: 1, kind: 'rite' }], sample.PRAISE_PLAN), model.PRAISE_TEMPLATE);
+});
+
+test('every item the lineup saves is one the server accepts', async () => {
+  const { checkItems } = await import(pathToFileURL(path.join(here, '..', 'lib', 'plan-sync.js')).href);
+  const segments = model.withEntry(model.withEntry({}, 'worship', { songId: SONG }), 'worship', { songId: SONG_2 });
+  const items = model.praiseToItems({ segments, notes: { prayer_authority: 'Led by the prayer leader' }, extra: [], present: new Set() }, LINEUP_SEGS);
+  const clean = checkItems(items, new Set([SONG, SONG_2]));
+  assert.equal(clean.length, 13);
+  assert.deepEqual(clean.filter((i) => i.slotId === 'worship').map((i) => i.key), ['worship', 'worship.2']);
 });

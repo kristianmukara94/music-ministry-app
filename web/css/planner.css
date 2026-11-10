@@ -2318,3 +2318,191 @@ dialog.hub-modal {
     height: 44px;
   }
 }
+
+/* The song picker dialog: the Holy Mass and Praise & Worship tabs, the category buttons and the song list. */
+dialog.picker-modal {
+  width: min(720px, calc(100vw - 32px));
+}
+.picker-body .muted {
+  font-size: 13px;
+  color: var(--muted);
+}
+.picker-tabs {
+  display: flex;
+  gap: 8px;
+}
+.picker-tabs button {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.picker-tabs button.is-on {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 700;
+}
+.picker-search {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-control);
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+.picker-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.picker-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.picker-pill:hover {
+  border-color: var(--muted);
+}
+.picker-pill.is-on {
+  border-color: var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--pill-text);
+  font-weight: 700;
+}
+.picker-pill-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+.picker-list {
+  min-height: 120px;
+  max-height: min(46dvh, 420px);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--input-bg);
+}
+.picker-songs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.picker-song {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.picker-song:last-child {
+  border-bottom: 0;
+}
+.picker-song-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.picker-song button {
+  flex: none;
+  min-width: 72px;
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.picker-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 20px 16px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.picker-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.picker-empty-actions button {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.picker-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.picker-foot .btn-primary {
+  height: 42px;
+  padding: 0 22px;
+  font-size: 14px;
+  font-weight: 700;
+}
+/* The button in a step's panel that opens the song picker. */
+.picker-open {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.picker-open .btn-primary {
+  height: 44px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.picker-open p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+@media (max-width: 560px) {
+  .picker-tabs button {
+    font-size: 13px;
+  }
+  /* One row of category buttons that scrolls sideways, so the song list keeps its room. */
+  .picker-pills {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scrollbar-width: thin;
+  }
+  .picker-pill {
+    flex: none;
+    min-height: 40px;
+    white-space: nowrap;
+  }
+  .picker-song {
+    padding: 10px 12px;
+  }
+}

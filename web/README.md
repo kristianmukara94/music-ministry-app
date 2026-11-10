@@ -25,8 +25,16 @@ in, and the planner needs an account from your church's admin. The desktop app i
 | Song list | `songs.html` |
 | Devices & sync | `devices.html` |
 
-`js/sample-data.js` holds only the fixed templates (the Mass steps, the Praise & Worship lineup, song categories and
+`js/sample-data.js` holds only the fixed templates (the Mass steps, the earlier Praise & Worship layout, song categories and
 languages). Everything else comes from the API.
+
+`js/lineup-templates.js` is the Praise & Worship lineup (the laptop's twelve slots, with its keys and groups), the four parts
+of the Holy Mass, and the song picker's categories. It is a byte-for-byte copy of `shared/lineup-templates.js`, which the
+laptop and the API use: change the shared file, copy it over this one, and `shared/lineup-templates.test.js` checks they
+match. A Praise & Worship plan opens in that lineup. A plan the earlier editor saved (steps keyed `1` to `12`) keeps its
+old layout. `js/song-picker.js` is the song dialog both editors open: Holy Mass and Praise & Worship tabs, category buttons,
+and it starts on the plan's own tab and the step's own category. `songs-list` takes the same filter as
+`?serviceType=praise_worship&category=joyful`; the editors load the whole list once and narrow it on the page.
 
 A Holy Mass plan also saves its language (`EN`, `TL` or `CEB`) and its Holy Mass time (`HH:MM` on the plan's date) in the plan
 body. The slot and section names in Tagalog and Cebuano are in `js/mass-language.js`, a copy of the laptop's
