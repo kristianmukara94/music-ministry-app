@@ -11,7 +11,7 @@ import { SongLyrics } from '../lyrics/SongLyrics';
 import { LectionaryDeck } from '../lectionary/LectionaryDeck';
 import { BibleDeck } from '../bible/BibleDeck';
 import { RosaryDeck } from '../rosary/RosaryDeck';
-import { MediaLibrary } from '../media/MediaLibrary';
+import { MediaView } from '../media/MediaView';
 import { NotesPrayersView } from '../notes/NotesPrayersView';
 import { UnifiedDeckView } from '../whiteboard/UnifiedDeckView';
 import { PlannerView } from '../planner/PlannerView';
@@ -215,7 +215,7 @@ export function OperatorApp() {
           {view === 'lectionary' && <LectionaryDeck />}
           {view === 'bible' && <BibleDeck />}
           {view === 'rosary' && <RosaryDeck />}
-          {view === 'media' && <MediaLibrary />}
+          {view === 'media' && <MediaView />}
           {/* One Planner for both views, so moving between a Mass plan and a Praise & Worship plan keeps it mounted. */}
           {(view === 'planner' || view === 'praiseWorship') && <PlannerView />}
           {view === 'goLive' && <GoLiveConsole />}

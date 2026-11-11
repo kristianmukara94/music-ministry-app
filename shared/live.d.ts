@@ -149,6 +149,14 @@ export interface MediaFrame {
   mediaType: 'image' | 'video';
   src: string;
   title: string;
+  /**
+   * The operator's look for this showing, set in the Media Library inspector. It lives only on the staged/live frame, never on the library
+   * record. `tint` is an extra dark overlay behind the text, 0 to 0.8; `rate` is the video speed; `playback` is what a video does at its end:
+   * loop, play once and clear, or hold the last frame. Absent fields mean no tint, 1x and loop, which is how backgrounds always played.
+   */
+  tint?: number;
+  rate?: number;
+  playback?: 'loop' | 'once' | 'hold';
 }
 
 /** The lower-third layouts. An absent template means the nameplate, which is what older lower thirds used. */

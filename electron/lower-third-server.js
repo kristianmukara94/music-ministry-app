@@ -40,7 +40,7 @@ export function lanAddress() {
  * the lower third and its look, so nothing else in the app is exposed. It listens on every network so that a streaming
  * computer on the same network can use it, and answers only that local network.
  */
-export function createLowerThirdServer({ distDir, port = LOWER_THIRD_PORT, host = '0.0.0.0', isExpired = () => false }) {
+export function createLowerThirdServer({ distDir, port = LOWER_THIRD_PORT, host = '0.0.0.0', isExpired = () => false, churchLogoFile = () => null }) {
   const clients = new Set();
   let latest = { lowerThird: null, lowerStyle: null };
 
@@ -76,6 +76,19 @@ export function createLowerThirdServer({ distDir, port = LOWER_THIRD_PORT, host 
       res.write(`data: ${JSON.stringify(latest)}\n\n`);
       clients.add(res);
       req.on('close', () => clients.delete(res));
+      return;
+    }
+
+    // The parish's own logo, for a lower third that shows it. 404 when there is none, and the page falls back to the built-in emblem.
+    if (pathname === '/api/church-logo') {
+      const logo = churchLogoFile();
+      if (!logo || !fs.existsSync(logo)) {
+        res.writeHead(404).end();
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-cache' });
+      if (req.method === 'HEAD') res.end();
+      else sendStream(fs.createReadStream(logo), res, 'lower third');
       return;
     }
 

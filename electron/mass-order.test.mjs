@@ -116,7 +116,7 @@ test('the tables are part of the app\'s migrations, appended at the end', () => 
   const source = fs.readFileSync(new URL('./announcements.js', import.meta.url), 'utf8');
   // Later migrations follow them (the Lectionary's Prayer of the Faithful, the plan's language and slot titles, the song categories' target
   // mode, the Whiteboard's own speaker notes), so they keep their place in the sequence.
-  assert.match(source, /\.\.\.MASS_SLOT_MIGRATIONS,\s*\.\.\.MASS_ORDER_TEXT_MIGRATIONS,\s*\.\.\.MASS_ORDER_CUSTOM_MIGRATIONS,\s*\.\.\.LECTIONARY_PRAYER_MIGRATIONS,\s*\.\.\.PLAN_LANGUAGE_MIGRATIONS,\s*\.\.\.PLAN_SLOT_TITLE_MIGRATIONS,\s*\.\.\.SONG_CATEGORY_MODE_MIGRATIONS,\s*\.\.\.WHITEBOARD_NOTES_MIGRATIONS,\s*\.\.\.NOTES_SLOT_MIGRATIONS,\s*\.\.\.DB_CRYPTO_MIGRATIONS,\s*\.\.\.WEB_HUB_MIGRATIONS,\s*\.\.\.NOTES_COPY_MIGRATIONS,\s*\.\.\.CALENDAR_DAY_NOTE_MIGRATIONS,\s*\];/);
+  assert.match(source, /\.\.\.MASS_SLOT_MIGRATIONS,\s*\.\.\.MASS_ORDER_TEXT_MIGRATIONS,\s*\.\.\.MASS_ORDER_CUSTOM_MIGRATIONS,\s*\.\.\.LECTIONARY_PRAYER_MIGRATIONS,\s*\.\.\.PLAN_LANGUAGE_MIGRATIONS,\s*\.\.\.PLAN_SLOT_TITLE_MIGRATIONS,\s*\.\.\.SONG_CATEGORY_MODE_MIGRATIONS,\s*\.\.\.WHITEBOARD_NOTES_MIGRATIONS,\s*\.\.\.NOTES_SLOT_MIGRATIONS,\s*\.\.\.DB_CRYPTO_MIGRATIONS,\s*\.\.\.WEB_HUB_MIGRATIONS,\s*\.\.\.NOTES_COPY_MIGRATIONS,\s*\.\.\.CALENDAR_DAY_NOTE_MIGRATIONS,\s*\.\.\.MEDIA_FOLDER_MIGRATIONS,\s*\];/);
   const plans = fs.readFileSync(new URL('./mass-plans.js', import.meta.url), 'utf8');
   const part = new RegExp(plans.match(/const MASS_PART = \/(.+)\/;/)[1]);
   assert.ok(part.test('mass_order_custom_5b7f0f3c-2a6e-4d1b-9a77-0c4c1b2f9e10'), 'a plan can hold a parish item');

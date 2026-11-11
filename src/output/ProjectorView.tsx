@@ -7,7 +7,7 @@ import { pwT } from '../../shared/pw-i18n.js';
 import { useUi } from '../state/ui';
 import { mirrorSource } from '../../shared/stage-plan-row.js';
 import { translate } from '../i18n/strings';
-import { LOGO_SRC } from '../brand/logo';
+import { useChurchLogo } from '../church/profile';
 import { getSlideImageUrl, onSlideImageError } from './slideImage';
 import { LowerThirdOverlay } from './LowerThirdView';
 import { customSizes, fontCss, scaledSize, slideFontCss } from '../../shared/text-style.js';
@@ -596,20 +596,32 @@ function useFadedNote(live: NoteOverlay | null, fadeMs: number) {
   return { shown, visible };
 }
 
-/** Looping motion (or a still) behind the foreground. Plays muted so it can autoplay. */
+/** The operator's extra dark tint over a background, kept within 0 to 0.8 whatever the frame carries. */
+const backgroundTint =(media: MediaFrame | null) => Math.min(0.8, Math.max(0, Number(media?.tint) || 0));
+
+/** Looping motion (or a still) behind the foreground. Plays muted so it can autoplay. Speed and end behaviour follow the frame. */
 function BackgroundLayer({ media }: { media: MediaFrame }) {
+  const [ended, setEnded] = useState(false);
+  useEffect(() => setEnded(false), [media.src, media.playback]);
+  const playback = media.playback ?? 'loop';
+  const rate = media.rate === 0.5 || media.rate === 1.5 ? media.rate : 1;
   return media.mediaType === 'video' ? (
     <video
-      key={media.src}
+      key={`${media.src}|${playback}`}
+      ref={(el) => {
+        if (el && el.playbackRate !== rate) el.playbackRate = rate;
+      }}
       src={media.src}
       autoPlay
-      loop
+      loop={playback === 'loop'}
       muted
       playsInline
       controls={false}
       preload="auto"
+      onLoadedMetadata={(e) => (e.currentTarget.playbackRate = rate)}
+      onEnded={() => playback === 'once' && setEnded(true)}
       onError={(e) => console.error('Video playback error:', e.currentTarget.error ?? e)}
-      className="absolute inset-0 -z-10 h-full w-full object-cover"
+      className={`absolute inset-0 -z-10 h-full w-full object-cover ${ended ? 'invisible' : ''}`}
     />
   ) : (
     <img key={media.src} src={getSlideImageUrl(media.src)} onError={onSlideImageError} alt="" draggable={false} className="absolute inset-0 -z-10 h-full w-full object-cover" />
@@ -709,10 +721,12 @@ function frameTextColor(frame: Frame): string | null {
 
 /** What shows when nothing is live: black (nothing), the parish crest, or a static image from the Media Library. */
 function IdleScreen({ mode, media }: { mode: ProjectorSettings['idle']; media: string | null }) {
+  // The parish's own logo when one is set up, otherwise the built-in emblem.
+  const crest = useChurchLogo();
   if (mode === 'crest') {
     return (
       <div className="absolute inset-0 flex items-center justify-center">
-        <img src={LOGO_SRC} alt="" draggable={false} className="h-[40cqh] w-auto opacity-90" />
+        <img src={crest} alt="" draggable={false} className="h-[40cqh] w-auto opacity-90" />
       </div>
     );
   }
@@ -874,6 +888,8 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
 
       {/* The shade over a background sits outside the slides, so it holds still while they change. */}
       {background && <div aria-hidden className="absolute inset-0" style={gradientShadeStyle(libraryShade, LIBRARY_SHADE)} />}
+      {/* The operator's Text Contrast Dimmer from the Media Library: an even dark tint on top of the shade, behind the text. */}
+      {background && backgroundTint(background) > 0 && <div aria-hidden className="absolute inset-0 bg-black" style={{ opacity: backgroundTint(background) }} />}
 
       {/* The slide that is leaving, during a dissolve or a push. It is drawn under the new one and is gone when the transition ends. */}
       {leaving && outputShowing && (

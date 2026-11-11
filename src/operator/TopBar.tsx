@@ -226,7 +226,7 @@ export function TopBar() {
             active={lowerThird.live !== null}
             disabled={lowerLocked}
             onClick={() =>
-              lowerThird.live !== null || lowerThird.staged !== null ? dispatch({ type: 'lowerThird/toggle' }) : setUi({ view: 'media' })
+              lowerThird.live !== null || lowerThird.staged !== null ? dispatch({ type: 'lowerThird/toggle' }) : setUi({ view: 'media', pendingFocus: { kind: 'lowerThird' } })
             }
           />
           <ControlButton icon={Eye} label={t('top.preview')} tone={PREVIEW_TONE} active={previewOpen} onClick={() => setUi({ previewOpen: !previewOpen })} />

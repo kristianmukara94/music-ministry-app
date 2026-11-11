@@ -50,6 +50,25 @@ export const MEDIA_AUDIO_MIGRATIONS = [
   `,
 ];
 
+/**
+ * Folders for the library's left column. The liturgical seasons and Praise & Worship are built in; the operator can add more. An item sits
+ * in at most one folder; deleting a folder only unfiles its items, the files stay in the library.
+ */
+export const MEDIA_FOLDER_MIGRATIONS = [
+  `
+  CREATE TABLE media_folders (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    builtin     INTEGER NOT NULL DEFAULT 0,
+    sort        INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT INTO media_folders (name, builtin, sort) VALUES
+    ('Advent', 1, 10), ('Lent', 1, 20), ('Ordinary Time', 1, 30), ('Feasts & Solemnities', 1, 40),
+    ('Praise & Worship', 1, 50), ('Off-Plan Media', 1, 60);
+  ALTER TABLE media_assets ADD COLUMN folder_id INTEGER REFERENCES media_folders(id) ON DELETE SET NULL;
+  `,
+];
+
 // Shown when an .mkv is imported and ffmpeg is not installed. Chromium cannot play Matroska, so the file needs converting.
 export const MKV_NOTICE = 'For optimal projector playback, please convert .mkv files to .mp4.';
 
@@ -95,8 +114,15 @@ export function createMediaService(db, root, deps) {
 
   const q = {
     list: db.prepare(`
-      SELECT id, filename, media_type AS mediaType, thumbnail_path AS thumbnailPath, uploaded_at AS uploadedAt
+      SELECT id, filename, media_type AS mediaType, thumbnail_path AS thumbnailPath, uploaded_at AS uploadedAt, folder_id AS folderId
       FROM media_assets ORDER BY uploaded_at DESC, id DESC`),
+    folders: db.prepare('SELECT id, name, builtin FROM media_folders ORDER BY sort, name COLLATE NOCASE'),
+    folderById: db.prepare('SELECT id, builtin FROM media_folders WHERE id = ?'),
+    folderByName: db.prepare('SELECT id FROM media_folders WHERE name = ? COLLATE NOCASE'),
+    addFolder: db.prepare('INSERT INTO media_folders (name, sort) VALUES (?, (SELECT COALESCE(MAX(sort), 0) + 10 FROM media_folders))'),
+    unfile: db.prepare('UPDATE media_assets SET folder_id = NULL WHERE folder_id = ?'),
+    removeFolder: db.prepare('DELETE FROM media_folders WHERE id = ? AND builtin = 0'),
+    setFolder: db.prepare('UPDATE media_assets SET folder_id = ? WHERE id = ?'),
     insert: db.prepare('INSERT INTO media_assets (filename, file_path, media_type) VALUES (?, ?, ?)'),
     setThumb: db.prepare('UPDATE media_assets SET thumbnail_path = ? WHERE id = ?'),
     byId: db.prepare('SELECT file_path AS filePath, thumbnail_path AS thumbnailPath FROM media_assets WHERE id = ?'),
@@ -146,15 +172,25 @@ export function createMediaService(db, root, deps) {
       return q.list.all().map(toAsset);
     },
 
-    /** Copies the chosen files in and thumbnails each one. A failed thumbnail never blocks the import. */
-    async importMedia(win) {
-      const picked = await showOpenDialog(win, { title: 'Import media', properties: ['openFiles', 'multiSelections'], filters: FILTERS });
-      if (picked.canceled || picked.filePaths.length === 0) return { imported: 0, failed: [] };
+    /**
+     * Copies the chosen files in and thumbnails each one. A failed thumbnail never blocks the import. `paths` are files dropped on the
+     * window; without them the file picker opens. `folderId` files each new item in that folder.
+     */
+    async importMedia(win, paths = null, folderId = null) {
+      let sources;
+      if (Array.isArray(paths)) {
+        sources = paths.filter((p) => typeof p === 'string' && path.isAbsolute(p));
+      } else {
+        const picked = await showOpenDialog(win, { title: 'Import media', properties: ['openFiles', 'multiSelections'], filters: FILTERS });
+        sources = picked.canceled ? [] : picked.filePaths;
+      }
+      if (sources.length === 0) return { imported: 0, failed: [] };
+      const folder = folderId !== null && q.folderById.get(folderId) ? folderId : null;
 
       const failed = [];
       let imported = 0;
       let needsConverter = false;
-      for (const source of picked.filePaths) {
+      for (const source of sources) {
         const name = path.basename(source);
         const ext = path.extname(source).toLowerCase();
         const mediaType = TYPE_BY_EXT[ext];
@@ -168,6 +204,7 @@ export function createMediaService(db, root, deps) {
         try {
           await fs.promises.copyFile(source, dest);
           const id = Number(q.insert.run(name, rel, mediaType).lastInsertRowid);
+          if (folder !== null) q.setFolder.run(folder, id);
           imported += 1;
           const src = `${MEDIA_SCHEME}://media/${id}`;
           let jpeg = null;
@@ -218,6 +255,35 @@ export function createMediaService(db, root, deps) {
       const clean = String(name ?? '').trim();
       if (!clean || clean.length > 200) throw new Error('Name must be 1 to 200 characters.');
       if (q.rename.run(clean, id).changes === 0) throw new Error('That file is no longer in the library.');
+      return true;
+    },
+
+    listFolders() {
+      return q.folders.all().map((f) => ({ id: f.id, name: f.name, builtin: f.builtin === 1 }));
+    },
+
+    createFolder(name) {
+      const clean = String(name ?? '').trim();
+      if (!clean || clean.length > 80) throw new Error('Folder name must be 1 to 80 characters.');
+      if (q.folderByName.get(clean)) throw new Error(`There is already a folder called "${clean}".`);
+      return Number(q.addFolder.run(clean).lastInsertRowid);
+    },
+
+    /** Only folders the operator made can be deleted. Their items stay in the library, unfiled. */
+    deleteFolder(id) {
+      const folder = q.folderById.get(id);
+      if (!folder) return false;
+      if (folder.builtin) throw new Error('Built-in folders cannot be deleted.');
+      // Items are unfiled first, so a failure part-way leaves them in the library with no folder, never pointing at a missing one.
+      q.unfile.run(id);
+      q.removeFolder.run(id);
+      return true;
+    },
+
+    /** Files an item in a folder, or unfiles it when `folderId` is null. Only the item's folder changes. */
+    moveToFolder(id, folderId) {
+      if (folderId !== null && !q.folderById.get(folderId)) throw new Error('That folder no longer exists.');
+      if (q.setFolder.run(folderId, id).changes === 0) throw new Error('That file is no longer in the library.');
       return true;
     },
 
@@ -304,10 +370,16 @@ export function setupMedia(db, { loadRoute, preload, releaseBackground }) {
   const handle = (channel, fn) =>
     ipcMain.handle(`media:${channel}`, (event, ...args) => fn(BrowserWindow.fromWebContents(event.sender), ...args));
   handle('list', () => service.list());
-  handle('import', (win) => service.importMedia(win));
+  const folderArg = (folderId) => (folderId === null || folderId === undefined ? null : Number(folderId));
+  handle('import', (win, folderId) => service.importMedia(win, null, folderArg(folderId)));
+  handle('importPaths', (win, paths, folderId) => service.importMedia(win, Array.isArray(paths) ? paths : [], folderArg(folderId)));
   handle('delete', (_win, id) => deleteMediaWhenFree(service, root, Number(id), { releaseBackground }));
   handle('rename', (_win, id, name) => service.renameMedia(Number(id), name));
   handle('reveal', (_win, id) => service.revealMedia(Number(id)));
+  handle('folders', () => service.listFolders());
+  handle('createFolder', (_win, name) => service.createFolder(name));
+  handle('deleteFolder', (_win, id) => service.deleteFolder(Number(id)));
+  handle('moveToFolder', (_win, id, folderId) => service.moveToFolder(Number(id), folderId === null ? null : Number(folderId)));
 
   return { close: () => thumbnailer.dispose() };
 }

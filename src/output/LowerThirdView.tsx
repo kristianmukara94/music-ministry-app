@@ -3,7 +3,7 @@ import type { LowerThird, LowerThirdTemplate } from '../../shared/live.js';
 import { TEXT_FONTS } from '../../shared/text-style.js';
 import type { LowerThirdStyle } from '../../shared/lower-third-style';
 import { useLive } from '../live/store';
-import { LOGO_SRC } from '../brand/logo';
+import { useChurchLogo } from '../church/profile';
 import { useOutput } from './outputState';
 import { slideText } from '../../shared/text-wrap.js';
 import { LOWER_THIRD_BAND, bandComposerChars, bandTitleChars, composerFor } from '../../shared/lower-third-layout.js';
@@ -91,6 +91,7 @@ export function SegmentLowerThird({ value, sizes }: { value: LowerThird; sizes?:
  */
 export function LowerThirdCard({ value, style }: { value: LowerThird; style: LowerThirdStyle }) {
   const template: LowerThirdTemplate = value.template ?? 'nameplate';
+  const logo = useChurchLogo();
 
   if (template === 'segment') return <SegmentLowerThird value={value} />;
 
@@ -157,7 +158,7 @@ export function LowerThirdCard({ value, style }: { value: LowerThird; style: Low
         gap: cq(style.padding),
       }}
     >
-      {style.showLogo && <img src={LOGO_SRC} alt="" draggable={false} className="shrink-0" style={{ height: cq(style.fontSize * 2.2), width: 'auto' }} />}
+      {style.showLogo && <img src={logo} alt="" draggable={false} className="shrink-0" style={{ height: cq(style.fontSize * 2.2), width: 'auto' }} />}
       {text}
     </div>
   );

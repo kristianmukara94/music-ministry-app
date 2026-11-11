@@ -48,6 +48,8 @@ export type PendingFocus =
   | { kind: 'hymn'; id: number }
   | { kind: 'slide'; id: number }
   | { kind: 'media'; id: number }
+  /** Opens the Media Library with its Lower Third drawer open. */
+  | { kind: 'lowerThird' }
   | { kind: 'reading'; date: string; readingType: string };
 
 interface UiState {

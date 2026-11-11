@@ -94,7 +94,7 @@ test('live.ts no longer clears the Lower 3rd for a segment with no cue', () => {
 
 test('only the operator\'s own Lower 3rd controls send a manual show', () => {
   const manualShows = (rel) => (read(rel).match(/lowerThird\/show',[^;]*manual: true/g) ?? []).length;
-  assert.equal(manualShows('src/media/LowerThirdDeck.tsx'), 1, 'the Lower Third deck\'s Show');
+  assert.equal(manualShows('src/media/LowerThirdDrawer.tsx'), 1, 'the Lower Third drawer\'s Show');
   assert.equal(manualShows('src/operator/CommandPalette.tsx'), 1, 'the command palette\'s Lower 3rd entry');
   for (const rel of [
     'src/lectionary/LectionaryDeck.tsx',

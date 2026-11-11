@@ -1,6 +1,7 @@
 /*
  * APCCMMA Web Planner: the design tokens and the base styles shared by every page. Every colour, font and corner radius on the site
- * comes from :root below, so the palette changes in one place. Layout stays inline in the markup, as designed; anything with a
+ * comes from :root below, so the palette changes in one place. :root holds the dark theme and :root[data-theme='light'] the light
+ * one's colours; js/theme-init.js sets data-theme before the page paints. Layout stays inline in the markup, as designed; anything with a
  * hover state is a class here, because an inline style cannot have one.
  */
 :root {
@@ -13,6 +14,13 @@
   --border: #1c263b;
   --input-bg: #0b101b;
   --border-input: #50638a !important;
+  --sidebar-bg: #080c14;
+  /* The light tile behind the parish emblem, whose linework is black. */
+  --brand-tile: #f4efe6;
+  /* Dialog backdrops, and the shadow under menus and the phone action bar. Cards have no shadow on the dark theme. */
+  --overlay: rgba(8, 12, 20, 0.8);
+  --shadow-strong: rgba(8, 12, 20, 0.7);
+  --card-shadow: none;
 
   /* Sapphire blue: primary buttons, the chosen tab, focus and text links. */
   --primary: #2563eb;
@@ -60,6 +68,138 @@
   --radius-control: 8px;
   --radius-card: 12px;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* The light theme. Only colours change; every name matches the dark theme above. */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --app-bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-hover: #f1f5f9;
+  --border: #e2e8f0;
+  --input-bg: #ffffff;
+  --border-input: #8494aa !important;
+  --sidebar-bg: #ffffff;
+  --brand-tile: #ffffff;
+  --overlay: rgba(15, 23, 42, 0.45);
+  --shadow-strong: rgba(15, 23, 42, 0.16);
+  --card-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --on-primary: #ffffff;
+  --focus: #2563eb;
+  --focus-ring: rgba(37, 99, 235, 0.3);
+  --primary-wash: rgba(37, 99, 235, 0.08);
+
+  --heading: #0f172a;
+  --eyebrow: #92400e;
+  --text: #0f172a;
+  --muted: #64748b;
+
+  /* Amber 300 edge and amber 100 wash: the Holy Mass and Praise & Worship badges. */
+  --gold-edge: #fcd34d;
+  --gold-wash: #fef3c7;
+
+  --pill-bg: #d1fae5;
+  --pill-text: #047857;
+  --pill-border: #6ee7b7;
+  --warn-bg: #fef3c7;
+  --warn-text: #92400e;
+  --danger: #b91c1c;
+  --status-active-text: #047857;
+  --status-active-bg: rgba(16, 185, 129, 0.12);
+  --status-disabled-text: #b91c1c;
+  --status-disabled-bg: rgba(239, 68, 68, 0.1);
+  --status-saved: #047857;
+  --status-unsaved: #b45309;
+
+  --lang-en-bg: #dbeafe;
+  --lang-en-text: #1e40af;
+  --lang-tl-bg: #fef3c7;
+  --lang-tl-text: #92400e;
+  --lang-ceb-bg: #f3e8ff;
+  --lang-ceb-text: #6b21a8;
+}
+
+/* Colours fade while the person switches theme (theme-init.js adds the class for 250 ms), never on page load. */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-switching,
+  .theme-switching *,
+  .theme-switching *::before,
+  .theme-switching *::after {
+    transition: none !important;
+  }
+}
+
+/*
+ * Cards lift slightly on the light theme (--card-shadow is none on the dark one). The last selector catches the cards whose
+ * styles are inline in the markup, which no class reaches.
+ */
+.change-password-form,
+.summary-pill,
+.user-card,
+.preview-card-box,
+.plan-list,
+.song-table,
+[style*='border-radius: 12px'][style*='background: var(--surface)'] {
+  box-shadow: var(--card-shadow);
+}
+
+/* The Light / Dark / System switch at the foot of the sidebar (shell.js). */
+.theme-toggle {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--app-bg);
+}
+
+.theme-toggle button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.theme-toggle svg {
+  flex: none;
+}
+
+.theme-toggle button:hover:not([aria-pressed='true']) {
+  color: var(--text);
+}
+
+.theme-toggle button[aria-pressed='true'] {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--heading);
+  box-shadow: 0 1px 2px var(--shadow-strong);
+}
+
+.theme-toggle button[aria-pressed='true'] svg {
+  color: var(--focus);
 }
 
 body {
@@ -187,7 +327,7 @@ button:focus-visible {
   padding: 3px;
   border-radius: 12px;
   border: 1px solid var(--eyebrow);
-  background: var(--heading);
+  background: var(--brand-tile);
   object-fit: contain;
 }
 
@@ -590,7 +730,7 @@ dialog.modal {
 }
 
 dialog.modal::backdrop {
-  background: rgba(8, 12, 20, 0.8);
+  background: var(--overlay);
 }
 
 .dialog-body {
@@ -1331,7 +1471,7 @@ textarea::placeholder {
     padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
     background: var(--surface);
     border-top: 1px solid var(--border);
-    box-shadow: 0 -8px 24px rgba(8, 12, 20, 0.6);
+    box-shadow: 0 -8px 24px var(--shadow-strong);
   }
   .plan-actions .plan-status {
     flex: 1 1 100%;
@@ -1581,7 +1721,7 @@ textarea::placeholder {
   border: 1px solid var(--border-input);
   border-radius: var(--radius-card);
   background: var(--surface);
-  box-shadow: 0 12px 32px rgba(8, 12, 20, 0.7);
+  box-shadow: 0 12px 32px var(--shadow-strong);
 }
 
 .plan-menu button {
@@ -2191,7 +2331,7 @@ dialog.hub-modal {
 }
 
 .song-drawer::backdrop {
-  background: rgba(8, 12, 20, 0.7);
+  background: var(--overlay);
 }
 
 .song-drawer-body {

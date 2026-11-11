@@ -38,6 +38,7 @@ import { createSessionWriter, restoreSession } from '../shared/session-recovery.
 import { defaultDatabasePath, PREVIEW_MIN, readConfig, resolveDatabasePath, writeConfig } from './config.js';
 import { resolveCloudAddress, saveCloudAddress } from './cloud-address.js';
 import { setupSettings } from './settings.js';
+import { setupChurchProfile } from './church-profile.js';
 import { titleBarOverlayFor } from '../shared/title-bar.js';
 import { sanitizeProjectorSettings } from '../shared/projector-settings.js';
 import { sanitizeWelcomeSettings } from '../shared/welcome-settings.js';
@@ -472,6 +473,10 @@ function reconcileWindows() {
 
 // The browser source's server, started once the app is ready.
 let lowerThirdServer = null;
+// The parish name and logo (electron/church-profile.js), set up once the app is ready.
+let churchProfile = null;
+// The custom logo's version, sent with every lower third so a browser source fetches a new logo. Null: the built-in emblem.
+let churchLogoVersion = null;
 // Whether the browser source server is listening. A port already in use leaves it off, which the dashboard's readiness check reports.
 let lowerThirdServerUp = false;
 
@@ -620,7 +625,7 @@ function stopRemoteViews() {
 }
 
 function broadcast() {
-  lowerThirdServer?.push({ lowerThird: state.lowerThird.live, lowerStyle: state.lowerStyle });
+  lowerThirdServer?.push({ lowerThird: state.lowerThird.live, lowerStyle: state.lowerStyle, churchLogoVersion });
   for (const role of REMOTE_ROLES) {
     if (remoteViews[role].running()) remoteViews[role].push(snapshotFor(role, state));
   }
@@ -1600,7 +1605,20 @@ app.whenReady().then(() => {
   setupSpontaneousLog(announcements.db, { isProjectorOpen: () => Boolean(windows.projector && !windows.projector.isDestroyed()) });
   setupWhiteboard(announcements.db, announcements.service, { onChanged: announceWhiteboardChange, convertPdf: announcements.convertPdf });
   // The browser source: the lower third at http://127.0.0.1:3002/lower-third, updated live.
-  lowerThirdServer = createLowerThirdServer({ distDir: path.join(appDir, '../dist'), isExpired: () => licenseManager.isExpired() });
+  churchProfile = setupChurchProfile({
+    userData: app.getPath('userData'),
+    // Every window is told by the service itself. The browser source learns of it with the next push.
+    onChanged: (profile) => {
+      churchLogoVersion = profile.logoVersion;
+      broadcast();
+    },
+  });
+  churchLogoVersion = churchProfile.get().logoVersion;
+  lowerThirdServer = createLowerThirdServer({
+    distDir: path.join(appDir, '../dist'),
+    isExpired: () => licenseManager.isExpired(),
+    churchLogoFile: () => churchProfile.logoPath(),
+  });
   void lowerThirdServer.start().then((ok) => {
     lowerThirdServerUp = ok;
   });

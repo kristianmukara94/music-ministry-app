@@ -56,6 +56,17 @@ and the standard texts are in `js/slot-ui.js` and `js/content-hub.js`; check tho
 the entry's title and id. The words come down to linked laptops with the plan and are kept there as notes in the Content Hub (`electron/web-hub-notes.js`), so
 Go Live can project them. A website with this code must be live before a laptop release that sends `contentHubId` back.
 
+## Light and dark theme
+
+Every page has a light and a dark theme. The switch under the account box in the sidebar offers Light, Dark and System. System is the default and follows
+the browser's `prefers-color-scheme`, including when the device changes theme while the page is open. A Light or Dark choice is kept in this browser's
+`localStorage` (`apccmma.theme`), and choosing System removes it. The sign-in page follows the same choice but has no switch.
+
+`js/theme-init.js` sets `data-theme` on `<html>` before the page paints, so a page never flashes the wrong theme. It must stay a plain `<script src>` in each
+page's `<head>`, before the stylesheets, with no `defer` or `type="module"`. It is a file and not an inline script because the Content Security Policy
+allows scripts from the site only. The dark colours are in `:root` in `css/planner.css` and the light ones in `:root[data-theme='light']`. A new colour
+token needs a value in both: `server/test/web-theme.test.mjs` checks this.
+
 ## Logo and icons
 
 `img/logo.png` (256×256), `favicon.ico` (16, 32 and 48 px), `favicon.svg` and `apple-touch-icon.png` (180×180, on a cream

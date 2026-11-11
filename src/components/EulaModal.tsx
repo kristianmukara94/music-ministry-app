@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { bridge } from '../live/bridge';
 import { COPYRIGHT_NOTICE, DEVELOPER, EULA_CONFIRMATION, EULA_SECTIONS, EULA_TITLE, SOFTWARE_NAME, type LegalSection } from '../legal/license';
 import type { Registration } from '../settings/types';
+import { OnboardingWizard } from '../onboarding/OnboardingWizard';
 
 const FIELD = 'h-11 rounded-md border border-fg/15 bg-panel-2 px-3 text-sm outline-none focus:border-accent disabled:opacity-60';
 
@@ -72,23 +73,28 @@ export function RegistrationFields({
 }
 
 /**
- * The first-launch gate. It shows the agreement and the registration form until both are complete.
- * Once they are, it renders nothing. The saved details live in config.json, so each machine asks once.
+ * The first-launch gate. It shows the agreement and the registration form until both are complete, then the parish profile setup
+ * (name and logo) until that is saved. Once both are done it renders nothing. The saved details live in config.json, so each machine
+ * asks once.
  */
 export function EulaGate() {
-  // null while the config loads, so the form does not flash up for someone already registered.
-  const [complete, setComplete] = useState<boolean | null>(null);
+  // null while the config loads, so nothing flashes up for someone already set up.
+  const [step, setStep] = useState<'license' | 'profile' | 'done' | null>(null);
 
   useEffect(() => {
-    // If the config cannot be read, the form is shown. It is the safer side to err on.
+    // If the config cannot be read, the license form is shown. It is the safer side to err on.
     bridge.config
       .get()
-      .then(({ config }) => setComplete(config.eula_accepted && !!config.registered_church && !!config.registered_location))
-      .catch(() => setComplete(false));
+      .then(({ config }) => {
+        const licensed = config.eula_accepted && !!config.registered_church && !!config.registered_location;
+        setStep(!licensed ? 'license' : config.onboarded ? 'done' : 'profile');
+      })
+      .catch(() => setStep('license'));
   }, []);
 
-  if (complete !== false) return null;
-  return <EulaModal onAccepted={() => setComplete(true)} />;
+  if (step === 'license') return <EulaModal onAccepted={() => setStep('profile')} />;
+  if (step === 'profile') return <OnboardingWizard onComplete={() => setStep('done')} />;
+  return null;
 }
 
 function EulaModal({ onAccepted }: { onAccepted: () => void }) {

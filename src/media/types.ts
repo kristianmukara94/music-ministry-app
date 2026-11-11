@@ -12,6 +12,15 @@ export interface MediaAsset {
   /** Still for the tile: `apcc-media://thumb/<id>`, or null if no thumbnail could be made. */
   thumbSrc: string | null;
   uploadedAt: string;
+  /** The library folder the item is filed in, or null when unfiled. */
+  folderId: number | null;
+}
+
+/** A library folder. Built-in folders (the liturgical seasons, Praise & Worship, Off-Plan Media) cannot be deleted. */
+export interface MediaFolder {
+  id: number;
+  name: string;
+  builtin: boolean;
 }
 
 export interface MediaImportResult {
@@ -24,13 +33,21 @@ export interface MediaImportResult {
 
 export interface MediaApi {
   list(): Promise<MediaAsset[]>;
-  /** Opens the file picker. Resolves to 0 imported if cancelled. */
-  importMedia(): Promise<MediaImportResult>;
+  /** Opens the file picker. Resolves to 0 imported if cancelled. `folderId` files the new items in that folder. */
+  importMedia(folderId?: number | null): Promise<MediaImportResult>;
+  /** Imports files dropped from the desktop, optionally into a folder. */
+  importFiles(files: File[], folderId?: number | null): Promise<MediaImportResult>;
   deleteMedia(id: number): Promise<boolean>;
   /** Changes the label shown for an item. The file on disk keeps its name. */
   rename(id: number, name: string): Promise<boolean>;
   /** Opens the folder holding the file, with the file selected. */
   reveal(id: number): Promise<boolean>;
+  folders(): Promise<MediaFolder[]>;
+  /** Resolves to the new folder's id. */
+  createFolder(name: string): Promise<number>;
+  deleteFolder(id: number): Promise<boolean>;
+  /** Files an item in a folder; null unfiles it. Only the folder link changes. */
+  moveToFolder(id: number, folderId: number | null): Promise<boolean>;
   /** Subscribes to background events from the main process. Returns the function that stops listening. */
   onEvent(callback: (event: { kind: 'changed' | 'remux-failed'; name?: string }) => void): () => void;
 }

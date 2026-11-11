@@ -100,7 +100,7 @@ test('the page keeps to the Content Security Policy and adds no outside scripts'
   assert.doesNotMatch(script, /innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function/);
   assert.doesNotMatch(script, /\balert\(/);
   const sources = [...html.matchAll(/<script[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(sources, ['js/users.js']);
+  assert.deepEqual(sources, ['js/theme-init.js', 'js/users.js']);
   assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)/, 'no inline script');
   assert.doesNotMatch(html, /\son\w+="/, 'no inline event handler');
 });

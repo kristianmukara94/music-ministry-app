@@ -21,6 +21,7 @@ import type { WelcomeSettings } from '../../shared/welcome-settings';
 import type { LowerThirdStyle } from '../../shared/lower-third-style';
 import type { WhiteboardApi } from '../whiteboard/types';
 import type { ConfigApi, UpdatesApi } from '../settings/types';
+import type { ChurchApi, ChurchProfile } from '../church/types';
 
 export interface PdfJob {
   jobId: string;
@@ -297,6 +298,8 @@ interface ElectronApi {
   library: LibraryApi;
   whiteboard: WhiteboardApi;
   config: ConfigApi;
+  /** The parish name and logo. */
+  church: ChurchApi;
   database: DatabaseApi;
   /** The dashboard's System Health card. */
   system: SystemApi;
@@ -419,6 +422,7 @@ const offlineConfig: ConfigApi = {
       registered_church: 'Browser preview',
       registered_location: 'Browser preview',
       registered_at: null,
+      onboarded: true,
     },
     databasePath: 'Browser preview (no database)',
     defaultDatabasePath: 'Browser preview (no database)',
@@ -434,6 +438,13 @@ const offlineConfig: ConfigApi = {
   updateRegistration: async () => undefined,
   changeLocation: async () => offlineError(),
   backup: async () => offlineError(),
+};
+
+/** Browser preview: nothing is saved, so setup counts as done and the built-in emblem shows. */
+const offlineChurch: ChurchApi = {
+  getProfile: async () => ({ churchName: 'Browser preview', logoPath: null, logoDataUrl: null, logoVersion: null, onboarded: true }),
+  saveProfile: async () => offlineError(),
+  onChanged: () => () => undefined,
 };
 
 /** Browser preview: updates come from the desktop app, so checks report that instead of failing silently. */
@@ -772,9 +783,14 @@ const offlineWelcome: WelcomeApi = {
 const offlineMedia: MediaApi = {
   list: async () => [],
   importMedia: async () => offlineError(),
+  importFiles: async () => offlineError(),
   deleteMedia: async () => offlineError(),
   rename: async () => offlineError(),
   reveal: async () => offlineError(),
+  folders: async () => [],
+  createFolder: async () => offlineError(),
+  deleteFolder: async () => offlineError(),
+  moveToFolder: async () => offlineError(),
   onEvent: () => () => undefined,
 };
 
@@ -932,6 +948,7 @@ function createBrowserBridge(): LiveBridge {
     library: offlineLibrary,
     whiteboard: offlineWhiteboard,
     config: offlineConfig,
+    church: offlineChurch,
     database: offlineDatabase,
     system: offlineSystem,
     updates: offlineUpdates,
@@ -947,18 +964,38 @@ function createStreamBridge(): LiveBridge {
   const base = createBrowserBridge();
   let state: LiveState = initialLiveState();
   const listeners = new Set<(s: LiveState) => void>();
+  // The parish logo comes from the app's server. Its version arrives with each push, so a new logo is fetched again.
+  let profile: ChurchProfile = { churchName: '', logoPath: null, logoDataUrl: null, logoVersion: null, onboarded: true };
+  const profileListeners = new Set<(p: ChurchProfile) => void>();
   const source = new EventSource('/api/lower-third/stream');
   source.onmessage = (event) => {
-    const payload = JSON.parse(event.data) as { lowerThird: LiveState['lowerThird']['live']; lowerStyle: LiveState['lowerStyle'] | null };
+    const payload = JSON.parse(event.data) as {
+      lowerThird: LiveState['lowerThird']['live'];
+      lowerStyle: LiveState['lowerStyle'] | null;
+      churchLogoVersion?: number | null;
+    };
     state = {
       ...state,
       lowerThird: { ...state.lowerThird, live: payload.lowerThird },
       lowerStyle: payload.lowerStyle ?? state.lowerStyle,
     };
     listeners.forEach((listener) => listener(state));
+    const version = payload.churchLogoVersion ?? null;
+    if (version !== profile.logoVersion) {
+      profile = { ...profile, logoVersion: version, logoDataUrl: version ? `/api/church-logo?v=${version}` : null };
+      profileListeners.forEach((listener) => listener(profile));
+    }
   };
   return {
     ...base,
+    church: {
+      getProfile: async () => profile,
+      saveProfile: async () => profile,
+      onChanged: (callback) => {
+        profileListeners.add(callback);
+        return () => profileListeners.delete(callback);
+      },
+    },
     isElectron: false,
     dispatch: () => undefined,
     getState: async () => state,

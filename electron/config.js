@@ -40,7 +40,16 @@ const DEFAULTS = {
   registered_church: null,
   registered_location: null,
   registered_at: null,
+  // The parish profile shown across the app (electron/church-profile.js). Null: the registered church name is shown instead.
+  church_name: null,
+  // When the custom logo last changed, so the browser source fetches it again. Null: no custom logo, so the APCCMMA emblem is used.
+  church_logo_version: null,
+  // True once the first-time setup wizard is done. Copies registered before the wizard existed count as done (see sanitize).
+  onboarded: false,
 };
+
+/** The longest parish name the profile accepts. */
+export const CHURCH_NAME_MAX_LENGTH = 100;
 
 /** The longest church name or location the registration accepts. */
 export const REGISTRATION_MAX_LENGTH = 120;
@@ -93,6 +102,12 @@ function sanitize(raw) {
     registered_church: typeof raw.registered_church === 'string' && raw.registered_church.trim() ? raw.registered_church.trim() : null,
     registered_location: typeof raw.registered_location === 'string' && raw.registered_location.trim() ? raw.registered_location.trim() : null,
     registered_at: typeof raw.registered_at === 'string' && !Number.isNaN(Date.parse(raw.registered_at)) ? raw.registered_at : null,
+    church_name:
+      typeof raw.church_name === 'string' && raw.church_name.trim() ? raw.church_name.trim().slice(0, CHURCH_NAME_MAX_LENGTH) : null,
+    church_logo_version: Number.isSafeInteger(raw.church_logo_version) && raw.church_logo_version > 0 ? raw.church_logo_version : null,
+    // A copy that accepted the license before the wizard existed is already set up, so an update never puts a new screen in front of
+    // an operator minutes before a Mass.
+    onboarded: raw.onboarded === true || (raw.onboarded === undefined && raw.eula_accepted === true),
   };
 }
 

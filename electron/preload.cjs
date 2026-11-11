@@ -325,10 +325,17 @@ contextBridge.exposeInMainWorld('apcc', {
 
   media: {
     list: () => ipcRenderer.invoke('media:list'),
-    importMedia: () => ipcRenderer.invoke('media:import'),
+    importMedia: (folderId = null) => ipcRenderer.invoke('media:import', folderId),
+    /** Imports files dropped on the window. The paths are read here, where the File objects still carry them. */
+    importFiles: (files, folderId = null) =>
+      ipcRenderer.invoke('media:importPaths', Array.from(files, (file) => webUtils.getPathForFile(file)).filter(Boolean), folderId),
     deleteMedia: (id) => ipcRenderer.invoke('media:delete', id),
     rename: (id, name) => ipcRenderer.invoke('media:rename', id, name),
     reveal: (id) => ipcRenderer.invoke('media:reveal', id),
+    folders: () => ipcRenderer.invoke('media:folders'),
+    createFolder: (name) => ipcRenderer.invoke('media:createFolder', name),
+    deleteFolder: (id) => ipcRenderer.invoke('media:deleteFolder', id),
+    moveToFolder: (id, folderId) => ipcRenderer.invoke('media:moveToFolder', id, folderId),
     /** Background events: a conversion finished (`changed`), or failed (`remux-failed`). */
     onEvent: (callback) => {
       const handler = (_event, payload) => callback(payload);
@@ -358,6 +365,17 @@ contextBridge.exposeInMainWorld('apcc', {
       const handler = (_event, progress) => callback(progress);
       ipcRenderer.on('config:migrationProgress', handler);
       return () => ipcRenderer.removeListener('config:migrationProgress', handler);
+    },
+  },
+
+  // The parish profile: name and logo (electron/church-profile.js).
+  church: {
+    getProfile: () => ipcRenderer.invoke('church:get_profile'),
+    saveProfile: (input) => ipcRenderer.invoke('church:save_profile', input),
+    onChanged: (callback) => {
+      const handler = (_event, profile) => callback(profile);
+      ipcRenderer.on('church:changed', handler);
+      return () => ipcRenderer.removeListener('church:changed', handler);
     },
   },
 

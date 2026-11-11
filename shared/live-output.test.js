@@ -69,7 +69,7 @@ test('the projector puts the shared background behind the Live set slides, and t
   assert.match(view, /const sharedBackground = Boolean\(background && settings\.backgroundEverywhere\);/);
   assert.match(view, /shownFrame\.kind === 'pw' && !sharedBackground/, 'the Live slide background layer hides');
   assert.match(view, /<FrameView frame=\{shownFrame\} sharedBackground=\{sharedBackground\} \/>/);
-  assert.match(read('src/media/MediaLibrary.tsx'), /<BackgroundEverywhereToggle \/>/, 'the switch is in the Media Library header');
+  assert.match(read('src/media/MediaView.tsx'), /<BackgroundEverywhereToggle compact \/>/, 'the switch is in the Media Library status bar');
   assert.match(read('src/operator/BackgroundPanel.tsx'), /<BackgroundEverywhereToggle compact \/>/, 'and in the Live panel background panel');
   assert.match(read('src/operator/BackgroundEverywhereToggle.tsx'), /bridge\.projector\.save\(\{ backgroundEverywhere: !on \}\)/);
 });

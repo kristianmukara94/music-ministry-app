@@ -308,7 +308,7 @@ function StatusCards() {
         detail={lowerThird.live ? lowerThird.live.line1 : t('card.nothingShowing')}
         action={lowerReady ? t('card.action.lowerThird') : t('card.action.lowerThirdSetup')}
         actionLocked={locked && lowerReady && lowerThird.live === null}
-        onAction={() => (lowerReady ? dispatch({ type: 'lowerThird/toggle' }) : setUi({ view: 'media' }))} />
+        onAction={() => (lowerReady ? dispatch({ type: 'lowerThird/toggle' }) : setUi({ view: 'media', pendingFocus: { kind: 'lowerThird' } }))} />
       <StatusWidget icon={Eye} eyebrow={t('card.mirror')} tone={mirrorBadge.tone} badge={mirrorBadge.label} inlineBadge
         detail={t('card.preview')}
         action={outputs.preview ? t('card.action.mirrorClose') : t('card.action.mirrorOpen')}

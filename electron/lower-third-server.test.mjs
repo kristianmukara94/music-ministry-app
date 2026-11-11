@@ -149,3 +149,22 @@ test('live connections are capped, so a flood cannot use up the laptop', async (
     }
   });
 });
+
+test('the parish logo is served when there is one, and a 404 lets the page fall back to the emblem', async () => {
+  const port = (nextPort += 1);
+  let logo = null;
+  const logoFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lower-third-logo-')), 'church-logo.png');
+  fs.writeFileSync(logoFile, 'png bytes');
+  const server = createLowerThirdServer({ distDir: makeDist(), port, host: '127.0.0.1', churchLogoFile: () => logo });
+  assert.equal(await server.start(), true);
+  try {
+    assert.equal((await get(port, '/api/church-logo?v=1')).status, 404);
+    logo = logoFile;
+    const served = await get(port, '/api/church-logo?v=2');
+    assert.equal(served.status, 200);
+    assert.equal(served.text, 'png bytes');
+    assert.equal((await get(port, '/api/church-logo', { Host: 'evil.example' })).status, 403, 'the same host check applies');
+  } finally {
+    await server.stop();
+  }
+});

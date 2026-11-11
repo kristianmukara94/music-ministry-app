@@ -16,6 +16,7 @@ import { RegionSettings } from './RegionSettings';
 import { ThemeView } from './ThemeView';
 import { UpdatesPanel } from './UpdatesSettings';
 import { AboutLicensing } from './AboutLicensing';
+import { ChurchProfileSettings } from './ChurchProfileSettings';
 import type { ConfigState, Language, MigrationProgress } from './types';
 
 const api = bridge.config;
@@ -28,6 +29,7 @@ const LANGUAGE_OPTIONS: { code: Language; label: string }[] = [
 ];
 
 type SectionKey =
+  | 'profile'
   | 'theme' | 'language' | 'region'
   | 'projector' | 'lower3rd' | 'cast' | 'welcome'
   | 'rosary' | 'lectionary' | 'lyrics'
@@ -43,6 +45,10 @@ interface NavItem {
 }
 
 const NAV: { title: string; items: NavItem[] }[] = [
+  {
+    title: 'Parish',
+    items: [{ key: 'profile', label: 'Parish Profile & Logo' }],
+  },
   {
     title: 'Appearance',
     items: [
@@ -215,6 +221,9 @@ export function Settings() {
 
   const content = (() => {
     switch (active) {
+      case 'profile':
+        return <ChurchProfileSettings />;
+
       case 'theme':
         return <ThemeView />;
 

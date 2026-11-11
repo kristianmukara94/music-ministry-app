@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { bridge, type FailoverMode } from '../live/bridge';
-import { LOGO_SRC } from '../brand/logo';
+import { useChurchLogo } from '../church/profile';
 
 /** Near-black for the emblem: dark enough for a sanctuary, warm enough not to read as a dead screen. */
 const EMBLEM_BACKGROUND = '#080507';
@@ -16,6 +16,8 @@ const BLACKOUT_BACKGROUND = '#000000';
  */
 export function FailoverOverlay() {
   const [mode, setMode] = useState<FailoverMode | null>(null);
+  // The parish logo, held in memory as a data URL (fetched once while this window sits hidden), or the inlined emblem until it arrives.
+  const emblemSrc = useChurchLogo();
 
   // The page background is the theme canvas elsewhere; here it must never be anything but black, even for the frame before React draws.
   useLayoutEffect(() => {
@@ -53,7 +55,7 @@ export function FailoverOverlay() {
     >
       {emblem && (
         <img
-          src={LOGO_SRC}
+          src={emblemSrc}
           alt=""
           draggable={false}
           decoding="sync"

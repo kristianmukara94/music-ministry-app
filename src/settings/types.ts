@@ -26,6 +26,8 @@ export interface ConfigState {
     registered_location: string | null;
     /** ISO date of the EULA acceptance, or null before it. */
     registered_at: string | null;
+    /** True once the first-time setup wizard (parish name and logo) has been completed. */
+    onboarded: boolean;
   };
   databasePath: string;
   defaultDatabasePath: string;
