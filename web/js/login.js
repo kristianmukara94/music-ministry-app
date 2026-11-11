@@ -50,6 +50,16 @@ function remember(code, name) {
   if (typeof name === 'string' && name.trim()) save(CHURCH_KEY, JSON.stringify({ code, name: name.trim().slice(0, 120) }));
 }
 
+// The eyebrow names the church this browser signed in to last time. A first visit shows only the generic ministry line.
+{
+  const church = knownChurch();
+  if (church) {
+    document.querySelectorAll('[data-parish-line]').forEach((el) => {
+      el.textContent = `${church.name} · Music Ministry`;
+    });
+  }
+}
+
 // ---- Tabs: Ministry Planner or Booth Operator Sync. They change only where the browser goes after signing in, and the wording. ----
 const intro = document.getElementById('intro-text');
 const roleNote = document.getElementById('role-note');

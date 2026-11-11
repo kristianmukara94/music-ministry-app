@@ -80,7 +80,7 @@ export function mountSidebar() {
       <img src="${root}img/logo.png" alt="" width="40" height="40" class="brand-mark small">
       <div style="display: flex; flex-direction: column; gap: 2px; line-height: 1.25; min-width: 0">
         <span style="font-weight: 700; font-size: 15px">APCCMMA Web Planner</span>
-        <span style="font-size: 12px; color: var(--muted)">Assumption Parish Church · Music Ministry</span>
+        <span data-parish-line style="font-size: 12px; color: var(--muted); overflow-wrap: anywhere">Music Ministry</span>
       </div>
     </div>
     <nav class="nav" aria-label="Main" style="display: flex; flex-direction: column; gap: 4px">${links}</nav>

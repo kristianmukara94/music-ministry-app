@@ -159,7 +159,9 @@ export function createApi({ sql, secret, now = () => new Date() }) {
     if (event.httpMethod !== 'GET') return json(405, { error: 'Use GET.' }, { Allow: 'GET' });
     const session = await sessionFrom(event);
     if (!session) return json(401, { error: 'Sign in first.' });
-    return json(200, { user: publicUser(session) });
+    // The signed-in user's church name, so every page names the parish instead of a fixed one. Taken from the session's church only.
+    const [church] = await sql`SELECT name FROM churches WHERE id = ${session.churchId}`;
+    return json(200, { user: publicUser(session), church: { name: church?.name ?? '' } });
   });
 
   const changePassword = safely(async (event) => {

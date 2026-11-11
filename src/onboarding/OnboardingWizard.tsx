@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import { LOGO_SRC } from '../brand/logo';
 import { bridge } from '../live/bridge';
 import { ChurchProfileForm } from '../church/ChurchProfileForm';
-import { setChurchProfile, useChurchProfile } from '../church/profile';
+import { setChurchProfile, useSavedChurchProfile } from '../church/profile';
 
 /**
  * First-time setup: the parish name and logo, shown once after the license is accepted and before the console can be used. There is no
  * close button: the only way on is to save a name. The logo can be left as the APCCMMA emblem and changed later in Settings.
  */
 export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
-  const profile = useChurchProfile();
+  const profile = useSavedChurchProfile();
   // Read again on opening: the license step just saved the registered church, which the name field starts from.
   const [fresh, setFresh] = useState(false);
   useEffect(() => {
@@ -47,6 +47,7 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
           {profile && fresh ? (
             <ChurchProfileForm
               initialName={profile.churchName}
+              initialMinistry={profile.ministryName}
               currentLogo={profile.logoDataUrl}
               submitLabel="Complete Setup & Launch"
               savingLabel="Setting up…"

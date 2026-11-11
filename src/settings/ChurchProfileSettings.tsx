@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { Check } from 'lucide-react';
 import { ChurchProfileForm } from '../church/ChurchProfileForm';
-import { useChurchProfile } from '../church/profile';
+import { useSavedChurchProfile } from '../church/profile';
 
 /** Settings › Parish Profile & Logo: change the name and logo shown across the app, without running setup again. */
 export function ChurchProfileSettings() {
-  const profile = useChurchProfile();
+  const profile = useSavedChurchProfile();
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
   return (
     <section className="rounded-xl border border-line bg-panel p-5">
       <h2 className="mb-1 border-b border-line pb-2 text-xl font-bold tracking-tight">Parish Profile &amp; Logo</h2>
       <p className="mb-5 text-xs text-muted">
-        Shown in the sidebar, on the projector&apos;s crest and failover screens, and on lower thirds that show the logo. The logo is kept on
+        Shown in the sidebar, the dashboard header, the parish nameplate, on the projector&apos;s crest and failover screens, and on lower thirds that show the logo. The logo is kept on
         this computer. The license registration is separate: change it under About &amp; Licensing.
       </p>
       {profile ? (
@@ -20,6 +20,7 @@ export function ChurchProfileSettings() {
         <ChurchProfileForm
           key={profile.logoVersion ?? 'default'}
           initialName={profile.churchName}
+          initialMinistry={profile.ministryName}
           currentLogo={profile.logoDataUrl}
           submitLabel="Save Profile"
           requireChange

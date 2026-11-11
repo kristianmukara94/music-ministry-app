@@ -7,6 +7,7 @@ import { LICENSE_LOCKED_TIP, useProjectionLocked } from '../live/license';
 import { useT, type StringKey } from '../i18n/strings';
 import { sundayCycle, weekdayCycle, liturgicalYear } from '../liturgy/lectionary';
 import { setUi, type ViewKey } from '../state/ui';
+import { useChurchProfile } from '../context/ChurchProfileContext';
 import { BoothClock } from './BoothClock';
 import { KeyboardMap } from './KeyboardMap';
 import { PreServiceWidget } from './PreServiceWidget';
@@ -19,6 +20,9 @@ import { useNow } from './useNow';
 function ConsoleHeader() {
   const t = useT();
   const today = useNow();
+  // The parish and its ministry, from the profile. A save in Settings or the setup wizard shows here at once.
+  const { churchName, ministryName } = useChurchProfile();
+  const parishLine = [churchName, ministryName].filter(Boolean).join(' • ');
   return (
     <section className="flex shrink-0 items-start justify-between gap-6">
       <div className="min-w-0">
@@ -27,7 +31,7 @@ function ConsoleHeader() {
           {t('head.welcomeTo')} APCCMMA
         </h1>
         <p className="mt-1 text-sm leading-relaxed font-normal text-fg/70">
-          <span className="uppercase">{t('head.parish')}</span> - {t('head.tagline')}
+          <span className="uppercase">{parishLine}</span> - {t('head.tagline')}
         </p>
       </div>
       <dl className="hidden shrink-0 gap-3 text-center lg:flex">

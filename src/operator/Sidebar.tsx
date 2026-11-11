@@ -9,7 +9,7 @@ import { LANGS, useT, type StringKey } from '../i18n/strings';
 import { exportSettings, importSettings, setUi, useUi, type ViewKey } from '../state/ui';
 import { toggleFullscreen } from './actions';
 import { DatabaseStatus } from '../system/DatabaseStatus';
-import { useChurchLogo, useChurchName } from '../church/profile';
+import { useChurchLogo, useChurchName, useMinistryName } from '../context/ChurchProfileContext';
 import { FOOTER_TEXT } from '../legal/license';
 import { LibraryTransferDialog } from './LibraryTransfer';
 
@@ -87,6 +87,7 @@ export function Sidebar() {
   const t = useT();
   const churchLogo = useChurchLogo();
   const churchName = useChurchName();
+  const ministryName = useMinistryName();
   const { view, collapsed, lang } = useUi();
   const outputs = useLive((s) => s.state.outputs);
   const license = useLicense((s) => s.status);
@@ -137,7 +138,9 @@ export function Sidebar() {
                 {churchName}
               </span>
             )}
-            <span className="mt-0.5 text-[8.5px] leading-tight font-semibold tracking-wide text-fg/60 uppercase">Music Ministry</span>
+            <span title={ministryName} className="mt-0.5 truncate text-[8.5px] leading-tight font-semibold tracking-wide text-fg/60 uppercase">
+              {ministryName}
+            </span>
           </span>
         )}
       </button>

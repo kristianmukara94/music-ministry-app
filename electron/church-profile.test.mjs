@@ -64,6 +64,28 @@ test('the name falls back to the registered church until one is saved', () => {
   fs.rmSync(userData, { recursive: true, force: true });
 });
 
+test('the ministry name is saved, kept when left out, cleared when blank, and announced to every window', () => {
+  const userData = tempUserData();
+  const changes = [];
+  const service = createChurchProfileService({ userData, onChanged: (p) => changes.push(p) });
+  assert.equal(service.get().ministryName, '', 'none until one is set, so screens show the generic line');
+
+  service.save({ name: 'Sto. Niño de Cebu Parish', ministry: '  Charismatic   Music Ministry ' });
+  assert.equal(service.get().ministryName, 'Charismatic Music Ministry');
+  assert.equal(changes.at(-1).ministryName, 'Charismatic Music Ministry', 'the broadcast carries the new name');
+
+  service.save({ name: 'Sto. Niño de Cebu Parish' });
+  assert.equal(service.get().ministryName, 'Charismatic Music Ministry', 'a save without a ministry keeps it');
+
+  assert.throws(() => service.save({ name: 'X', ministry: 'm'.repeat(101) }), /100 characters/);
+  assert.equal(service.get().churchName, 'Sto. Niño de Cebu Parish', 'a refused save changes nothing');
+
+  service.save({ name: 'Sto. Niño de Cebu Parish', ministry: '   ' });
+  assert.equal(service.get().ministryName, '');
+  assert.equal(readConfig(userData).ministry_name, null);
+  fs.rmSync(userData, { recursive: true, force: true });
+});
+
 test('a blank or too-long name is refused and nothing is saved', () => {
   const userData = tempUserData();
   const service = createChurchProfileService({ userData });

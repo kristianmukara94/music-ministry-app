@@ -6,7 +6,7 @@ import { setUi, useUi } from '../state/ui';
 import { dispatch } from '../live/store';
 import { projectMassPart } from './actions';
 import { NAV } from './Sidebar';
-import { useChurchName } from '../church/profile';
+import { useChurchName, useMinistryName } from '../context/ChurchProfileContext';
 
 interface Command {
   id: string;
@@ -19,6 +19,7 @@ export function CommandPalette() {
   const t = useT();
   const { paletteOpen, lang } = useUi();
   const churchName = useChurchName();
+  const ministryName = useMinistryName();
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
 
@@ -29,10 +30,10 @@ export function CommandPalette() {
     ...(churchName
       ? [{
           id: 'l3-parish', group: t('palette.project'), label: `${t('top.lowerThird')} · ${churchName}`,
-          run: () => dispatch({ type: 'lowerThird/show', value: { line1: churchName, line2: 'Music Ministry' }, manual: true }),
+          run: () => dispatch({ type: 'lowerThird/show', value: { line1: churchName, line2: ministryName }, manual: true }),
         }]
       : []),
-  ], [t, lang, churchName]);
+  ], [t, lang, churchName, ministryName]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();

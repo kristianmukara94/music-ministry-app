@@ -17,6 +17,7 @@ import {
   type SetlistPlace,
 } from '../../shared/lyrics-live.js';
 import { liveLyrics } from '../live/liveSongEdits';
+import { useMinistryName } from '../context/ChurchProfileContext';
 import { useProjectionLocked } from '../live/license';
 import { quickLiveBand } from '../praise-worship/useQuickLiveController';
 import { LiveOutputCard, LiveStatusBadge } from './LiveOutputCard';
@@ -84,6 +85,8 @@ const selectClass = 'h-9 rounded-md border border-fg/15 bg-panel-2 px-2 text-xs 
 
 export function SongLyrics() {
   const t = useLyT();
+  // The page's eyebrow names the parish's own ministry, from the profile.
+  const ministryName = useMinistryName();
   const tAnn = useAnnT();
   const openedFromQueue = useRef(false);
   // Whether the hymn on screen came from the Mass Queue. Its takes stay on the queue's account; any other hymn is a direct take.
@@ -594,7 +597,7 @@ export function SongLyrics() {
     <div className="flex flex-1 flex-col">
       <header className="flex flex-wrap items-end justify-between gap-4 px-5 pt-5 pb-4">
         <div className="min-w-0">
-          <div className="text-sm font-semibold tracking-wider text-accent uppercase">{t('eyebrow')}</div>
+          <div className="text-sm font-semibold tracking-wider text-accent uppercase">{ministryName}</div>
           <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{t('title')}</h1>
           <p className="mt-1 text-sm text-fg/70">{t('subtitle')}</p>
         </div>

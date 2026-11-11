@@ -99,7 +99,6 @@ const en = {
   'head.eyebrow': 'Service Console',
   'card.sectionTitle': 'Live Display Status & Controls',
   'head.welcomeTo': 'Welcome to',
-  'head.parish': 'Assumption Parish Church • Charismatic Music Ministry',
   'head.tagline': 'Manage your Holy Mass presentation with ease',
   'head.liturgicalYear': 'Liturgical Year',
   'head.sundayCycle': 'Sunday Cycle',
@@ -181,7 +180,6 @@ const en = {
 
   // Projector copy
   'proj.welcome': 'Welcome!',
-  'proj.welcomeSub': 'Assumption Parish Church',
   'proj.welcomeNote': 'Please silence your phones as we prepare for the Holy Mass.',
   'proj.announcements': 'Parish Announcements',
 

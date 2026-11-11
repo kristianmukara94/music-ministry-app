@@ -3,7 +3,7 @@ import { Crosshair, ImagePlus, Loader2, Maximize, Minimize, RotateCcw, Upload } 
 import { bridge } from '../live/bridge';
 import { LOGO_SRC } from '../brand/logo';
 import { setChurchProfile } from './profile';
-import { CHURCH_NAME_MAX, type ChurchProfile } from './types';
+import { CHURCH_NAME_MAX, DEFAULT_MINISTRY_NAME, MINISTRY_NAME_MAX, type ChurchProfile } from './types';
 import {
   FRAME_FIT,
   LOGO_ACCEPT,
@@ -186,6 +186,7 @@ function LogoCropper({ logo, frame, onFrame, disabled }: { logo: LoadedLogo; fra
  */
 export function ChurchProfileForm({
   initialName,
+  initialMinistry,
   currentLogo,
   submitLabel,
   savingLabel = 'Saving…',
@@ -193,6 +194,8 @@ export function ChurchProfileForm({
   requireChange = false,
 }: {
   initialName: string;
+  /** The saved ministry name, empty when none was set. */
+  initialMinistry: string;
   /** The saved custom logo as a data URL, or null when the built-in emblem is in use. */
   currentLogo: string | null;
   submitLabel: string;
@@ -202,6 +205,7 @@ export function ChurchProfileForm({
   requireChange?: boolean;
 }) {
   const [name, setName] = useState(initialName);
+  const [ministry, setMinistry] = useState(initialMinistry);
   const [choice, setChoice] = useState<LogoChoice>({ kind: 'keep' });
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -210,11 +214,15 @@ export function ChurchProfileForm({
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  // A new initial name (the profile loaded after the form mounted) replaces an untouched field.
+  // New initial names (the profile loaded after the form mounted, or a save from another window) replace untouched fields.
   const touched = useRef(false);
   useEffect(() => {
     if (!touched.current) setName(initialName);
   }, [initialName]);
+  const ministryTouched = useRef(false);
+  useEffect(() => {
+    if (!ministryTouched.current) setMinistry(initialMinistry);
+  }, [initialMinistry]);
 
   // The previews follow the crop. Drawn on the next frame, so a fast drag does not encode a PNG on every pointer move.
   useEffect(() => {
@@ -225,8 +233,14 @@ export function ChurchProfileForm({
 
   const trimmed = name.trim();
   const nameError = trimmed.length > CHURCH_NAME_MAX ? `Use ${CHURCH_NAME_MAX} characters or fewer.` : null;
-  const changed = trimmed !== initialName.trim() || choice.kind === 'new' || (choice.kind === 'default' && currentLogo !== null);
-  const canSave = trimmed !== '' && !nameError && !saving && !loading && (!requireChange || changed);
+  const ministryTrimmed = ministry.trim();
+  const ministryError = ministryTrimmed.length > MINISTRY_NAME_MAX ? `Use ${MINISTRY_NAME_MAX} characters or fewer.` : null;
+  const changed =
+    trimmed !== initialName.trim() ||
+    ministryTrimmed !== initialMinistry.trim() ||
+    choice.kind === 'new' ||
+    (choice.kind === 'default' && currentLogo !== null);
+  const canSave = trimmed !== '' && !nameError && !ministryError && !saving && !loading && (!requireChange || changed);
   const busy = saving || loading;
 
   const shownLogo = choice.kind === 'new' ? (preview ?? LOGO_SRC) : choice.kind === 'default' ? LOGO_SRC : (currentLogo ?? LOGO_SRC);
@@ -261,9 +275,10 @@ export function ChurchProfileForm({
     setError(null);
     try {
       const logo = choice.kind === 'new' ? await exportLogoPng(choice.logo, choice.frame) : choice.kind === 'default' ? null : undefined;
-      const profile = await bridge.church.saveProfile({ name: trimmed, ...(logo !== undefined ? { logo } : {}) });
+      const profile = await bridge.church.saveProfile({ name: trimmed, ministry: ministryTrimmed, ...(logo !== undefined ? { logo } : {}) });
       setChurchProfile(profile);
       touched.current = false;
+      ministryTouched.current = false;
       setChoice({ kind: 'keep' });
       onSaved(profile);
     } catch (err) {
@@ -292,7 +307,7 @@ export function ChurchProfileForm({
             touched.current = true;
             setName(e.target.value);
           }}
-          placeholder="e.g. Assumption Parish Church or Sto. Niño de Cebu Parish"
+          placeholder="e.g. Sto. Niño de Cebu Parish"
           maxLength={CHURCH_NAME_MAX + 20}
           required
           aria-required="true"
@@ -301,9 +316,32 @@ export function ChurchProfileForm({
           className={FIELD}
         />
         <span className={`flex justify-between text-[11px] ${nameError ? 'text-danger' : 'text-muted'}`}>
-          <span>{nameError ?? 'Shown in the sidebar and on lower thirds.'}</span>
+          <span>{nameError ?? 'Shown in the sidebar, the dashboard header and on lower thirds.'}</span>
           <span className="tabular-nums">
             {trimmed.length} / {CHURCH_NAME_MAX}
+          </span>
+        </span>
+      </label>
+
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs font-bold tracking-wider uppercase">Ministry Name</span>
+        <input
+          type="text"
+          value={ministry}
+          onChange={(e) => {
+            ministryTouched.current = true;
+            setMinistry(e.target.value);
+          }}
+          placeholder={`e.g. Charismatic Music Ministry (blank shows "${DEFAULT_MINISTRY_NAME}")`}
+          maxLength={MINISTRY_NAME_MAX + 20}
+          aria-invalid={ministryError ? true : undefined}
+          disabled={saving}
+          className={FIELD}
+        />
+        <span className={`flex justify-between text-[11px] ${ministryError ? 'text-danger' : 'text-muted'}`}>
+          <span>{ministryError ?? 'Optional. Shown under the parish name and as the second line of the parish nameplate.'}</span>
+          <span className="tabular-nums">
+            {ministryTrimmed.length} / {MINISTRY_NAME_MAX}
           </span>
         </span>
       </label>

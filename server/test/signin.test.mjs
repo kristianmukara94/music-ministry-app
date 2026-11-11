@@ -133,6 +133,7 @@ test('an unknown user and a locked-out user cannot be told apart from a wrong pa
   const cookie = await signIn('admin', GOOD, { churchCode: CODE_B });
   const me = await build().me(event({ method: 'GET', cookie }));
   assert.equal(JSON.parse(me.body).user.role, 'admin');
+  assert.equal(JSON.parse(me.body).church.name, 'St Mary', "the pages name the session's own church");
   const churchOfSession = (await pg.query(`SELECT church_id FROM sessions`)).rows[0].church_id;
   assert.equal(churchOfSession, CHURCH_B);
 });

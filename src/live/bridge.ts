@@ -442,7 +442,7 @@ const offlineConfig: ConfigApi = {
 
 /** Browser preview: nothing is saved, so setup counts as done and the built-in emblem shows. */
 const offlineChurch: ChurchApi = {
-  getProfile: async () => ({ churchName: 'Browser preview', logoPath: null, logoDataUrl: null, logoVersion: null, onboarded: true }),
+  getProfile: async () => ({ churchName: 'Browser preview', ministryName: '', logoPath: null, logoDataUrl: null, logoVersion: null, onboarded: true }),
   saveProfile: async () => offlineError(),
   onChanged: () => () => undefined,
 };
@@ -965,7 +965,7 @@ function createStreamBridge(): LiveBridge {
   let state: LiveState = initialLiveState();
   const listeners = new Set<(s: LiveState) => void>();
   // The parish logo comes from the app's server. Its version arrives with each push, so a new logo is fetched again.
-  let profile: ChurchProfile = { churchName: '', logoPath: null, logoDataUrl: null, logoVersion: null, onboarded: true };
+  let profile: ChurchProfile = { churchName: '', ministryName: '', logoPath: null, logoDataUrl: null, logoVersion: null, onboarded: true };
   const profileListeners = new Set<(p: ChurchProfile) => void>();
   const source = new EventSource('/api/lower-third/stream');
   source.onmessage = (event) => {

@@ -11,7 +11,18 @@ export async function currentUser() {
   const res = await fetch(`${API}/me`, { credentials: 'same-origin', cache: 'no-store' });
   if (res.status === 401) return null;
   if (!res.ok) throw new Error(`Sign-in check failed (${res.status}).`);
-  return (await res.json()).user;
+  const body = await res.json();
+  // The church comes from the session on the server, never from the page.
+  return { ...body.user, churchName: typeof body.church?.name === 'string' ? body.church.name.trim() : '' };
+}
+
+/** Shown wherever the ministry is named. Generic on purpose: it names no parish. */
+export const MINISTRY_LABEL = 'Music Ministry';
+let signedInChurch = '';
+
+/** "<church> · Music Ministry" for the signed-in church, or just "Music Ministry" before guard() has answered. */
+export function parishLine() {
+  return [signedInChurch, MINISTRY_LABEL].filter(Boolean).join(' · ');
 }
 
 /** Ends the session on the server, then goes to the sign-in page. The cookie is cleared by the server response. */
@@ -49,6 +60,11 @@ export async function guard() {
   });
   document.querySelectorAll('[data-account-role]').forEach((el) => {
     el.textContent = ROLE_LABEL[user.role] ?? '';
+  });
+  // Headers and the sidebar name the signed-in church. `data-parish-line="upper"` shows it in capitals, as the page eyebrows do.
+  signedInChurch = user.churchName;
+  document.querySelectorAll('[data-parish-line]').forEach((el) => {
+    el.textContent = el.dataset.parishLine === 'upper' ? parishLine().toUpperCase() : parishLine();
   });
   document.documentElement.classList.remove('auth-pending');
   return user;

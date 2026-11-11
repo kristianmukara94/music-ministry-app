@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { CHURCH_NAME_MAX_LENGTH, readConfig, writeConfig } from './config.js';
+import { CHURCH_NAME_MAX_LENGTH, MINISTRY_NAME_MAX_LENGTH, readConfig, writeConfig } from './config.js';
 
 // The parish profile: the name and logo the app shows in the sidebar, on the projector's idle and failover screens and on the lower third.
 // The name lives in config.json. The logo is a PNG in userData/assets, per machine, like the rest of config.json.
@@ -43,6 +43,13 @@ export function checkChurchName(input) {
   return name;
 }
 
+/** Checks the ministry name. Blank is allowed and clears it (returns null), so the generic "Music Ministry" shows. */
+export function checkMinistryName(input) {
+  const name = typeof input === 'string' ? input.trim().replace(/\s+/g, ' ') : '';
+  if (name.length > MINISTRY_NAME_MAX_LENGTH) throw new Error(`The ministry name must be ${MINISTRY_NAME_MAX_LENGTH} characters or fewer.`);
+  return name || null;
+}
+
 /** Profile logic. No window or IPC, so it can be tested on its own. */
 export function createChurchProfileService({ userData, onChanged = () => {} }) {
   const logoFile = path.join(userData, LOGO_DIR_NAME, LOGO_FILE_NAME);
@@ -74,6 +81,7 @@ export function createChurchProfileService({ userData, onChanged = () => {} }) {
       const dataUrl = logoDataUrl(config.church_logo_version);
       return {
         churchName: config.church_name ?? config.registered_church ?? '',
+        ministryName: config.ministry_name ?? '',
         logoPath: dataUrl ? logoFile : null,
         logoDataUrl: dataUrl,
         logoVersion: dataUrl ? config.church_logo_version : null,
@@ -85,10 +93,13 @@ export function createChurchProfileService({ userData, onChanged = () => {} }) {
      * Saves the name and, when given, the logo, and marks setup as done. `logo`: PNG bytes to use a new logo, null to go back to the default
      * emblem, or undefined to keep the current one. Everything is checked before anything is written, so a bad logo leaves the old profile.
      */
-    save({ name, logo } = {}) {
+    save({ name, ministry, logo } = {}) {
       const churchName = checkChurchName(name);
+      // `ministry`: a name to set (blank clears it), or undefined to keep the saved one.
+      const ministryName = ministry === undefined ? undefined : checkMinistryName(ministry);
       const png = logo === undefined || logo === null ? logo : checkLogoPng(logo);
       const patch = { church_name: churchName, onboarded: true };
+      if (ministryName !== undefined) patch.ministry_name = ministryName;
 
       if (png) {
         fs.mkdirSync(path.dirname(logoFile), { recursive: true });

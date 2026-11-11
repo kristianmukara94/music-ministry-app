@@ -2,7 +2,7 @@
 // server. Nothing is made up: when the church has no plans the list says so, and a plan shows Synced only while a laptop holds its latest
 // version. Each card opens its editor with the plan's id in the address, and its ··· menu holds the plan's other actions.
 import { esc, mountSidebar } from './shell.js';
-import { guard } from './auth.js';
+import { guard, parishLine } from './auth.js';
 import { createPlan, deletePlan, getPlan, listPlans, savePlan } from './plan-api.js';
 import { MASS_PLAN, PRAISE_PLAN } from './sample-data.js';
 import { languageName, slotName } from './mass-language.js';
@@ -256,7 +256,7 @@ function setlistMarkup(plan, entries) {
   const when = [shortDate(plan.date), plan.massTime ? timeLabel(plan.massTime) : '', plan.kind !== 'pw' && plan.language ? languageName(plan.language) : ''].filter(Boolean).join(' · ');
   const hasKeys = entries.some((entry) => entry.key);
   return `
-    <p class="setlist-eyebrow">Assumption Parish · Music Ministry</p>
+    <p class="setlist-eyebrow">${esc(parishLine())}</p>
     <h1>${esc(plan.name)}</h1>
     <p class="setlist-when">${esc(when)}</p>
     <table>

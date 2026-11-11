@@ -4,7 +4,6 @@ export const LY_LANGS = ['en', 'tl', 'ceb'];
 
 const STRINGS = {
   en: {
-    eyebrow: 'Charismatic Music Ministry',
     title: 'Song Lyrics',
     subtitle: 'Build the setlist, then send each stanza to the projector as the band plays.',
     libraryTitle: 'Hymn Library',
@@ -196,7 +195,6 @@ const STRINGS = {
     searchShortcut: 'Ctrl+F jumps to the search',
   },
   tl: {
-    eyebrow: 'Charismatic Music Ministry',
     title: 'Liriko ng Awit',
     subtitle: 'Buuin ang setlist, pagkatapos ipadala ang bawat saknong sa projector habang tumutugtog ang banda.',
     libraryTitle: 'Aklatan ng Awit',
@@ -355,7 +353,6 @@ const STRINGS = {
     searchShortcut: 'Ctrl+F para maghanap',
   },
   ceb: {
-    eyebrow: 'Charismatic Music Ministry',
     title: 'Liriko sa Kanta',
     subtitle: 'Ibutang ang setlist, dayon ipadala ang matag bersikulo sa projector samtang nagtugtog ang banda.',
     libraryTitle: 'Librarya sa Kanta',

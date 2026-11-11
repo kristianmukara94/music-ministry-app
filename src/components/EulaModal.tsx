@@ -44,7 +44,7 @@ export function RegistrationFields({
           type="text"
           value={value.church}
           onChange={(e) => onChange({ ...value, church: e.target.value })}
-          placeholder="e.g. Assumption Parish Music Ministry"
+          placeholder="e.g. Sto. Niño de Cebu Parish"
           maxLength={120}
           required
           aria-required="true"

@@ -7,7 +7,7 @@
 // written into markup goes through esc().
 import { PRAISE_PLAN } from './sample-data.js';
 import { esc, mountSidebar } from './shell.js';
-import { guard } from './auth.js';
+import { guard, parishLine } from './auth.js';
 import { getPlan, listSongs, savePlan, watchSongList } from './plan-api.js';
 import { usedHubIds } from './content-hub.js';
 import { entryListHtml, entrySummaryHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
@@ -400,7 +400,7 @@ function prepareSetlist() {
   if (!plan || entries.length === 0) return;
   const hasKeys = entries.some((entry) => entry.key);
   document.getElementById('setlist-print').innerHTML = `
-    <p class="setlist-eyebrow">Assumption Parish · Music Ministry</p>
+    <p class="setlist-eyebrow">${esc(parishLine())}</p>
     <h1>${esc(plan.name)}</h1>
     <p class="setlist-when">${esc(`${dateLabel(plan.date)} · ${durationLabel(compute().total)}`)}</p>
     <table>
