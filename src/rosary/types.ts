@@ -61,11 +61,27 @@ export interface RosaryBackupResult {
   prayers: number;
 }
 
+/**
+ * A checked backup file that has not been written yet. `textEdits` counts text fields that differ from the database,
+ * `approvalChanges` approval flags that flip, `added` rows not in the database, and `unchanged` rows that match.
+ */
+export interface RosaryImportPreview extends RosaryBackupResult {
+  token: string;
+  textEdits: number;
+  approvalChanges: number;
+  added: number;
+  unchanged: number;
+}
+
 export interface RosaryApi {
   getMysteries(): Promise<Mystery[]>;
   getPrayers(): Promise<RosaryPrayer[]>;
   saveMystery(input: MysteryInput): Promise<true>;
   savePrayer(input: PrayerInput): Promise<true>;
   exportJSON(): Promise<RosaryBackupResult | null>;
-  importJSON(): Promise<RosaryBackupResult | null>;
+  /** Picks and checks a backup file and reports what it would change. Null when the operator cancels the dialog. */
+  importPreview(): Promise<RosaryImportPreview | null>;
+  /** Writes a previewed import. */
+  importApply(token: string): Promise<RosaryBackupResult>;
+  importCancel(token: string): Promise<true>;
 }

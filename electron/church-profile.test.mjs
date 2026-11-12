@@ -148,3 +148,75 @@ test('only a PNG of a sensible size is accepted, and a refused logo leaves the p
   assert.deepEqual(service.get(), before);
   fs.rmSync(userData, { recursive: true, force: true });
 });
+
+test('diocese, location, logo framing and the team roster are saved, kept when left out, and checked first', () => {
+  const userData = tempUserData();
+  const changes = [];
+  const service = createChurchProfileService({ userData, onChanged: (p) => changes.push(p) });
+  const fresh = service.get();
+  assert.equal(fresh.diocese, '');
+  assert.equal(fresh.location, '');
+  assert.equal(fresh.logoScale, 100, 'the logo fills its frame until the operator changes it');
+  assert.equal(fresh.logoBacking, false);
+  assert.deepEqual(fresh.roster, []);
+
+  service.save({
+    name: 'Parish',
+    diocese: '  Archdiocese   of Cebu ',
+    location: 'Cebu City',
+    logoScale: 87.6,
+    logoBacking: true,
+    roster: [
+      { id: 'a', name: ' Rev. Fr. Juan  dela Cruz ', role: 'Parish Priest' },
+      { id: 'b', name: '', role: '' },
+      { id: 'c', name: 'Maria Santos', role: 'Music Director' },
+    ],
+  });
+  const saved = service.get();
+  assert.equal(saved.diocese, 'Archdiocese of Cebu');
+  assert.equal(saved.location, 'Cebu City');
+  assert.equal(saved.logoScale, 88);
+  assert.equal(saved.logoBacking, true);
+  assert.deepEqual(saved.roster, [
+    { id: 'a', name: 'Rev. Fr. Juan dela Cruz', role: 'Parish Priest' },
+    { id: 'c', name: 'Maria Santos', role: 'Music Director' },
+  ], 'blank rows are dropped and the order is kept');
+  assert.equal(changes.at(-1).roster.length, 2, 'the broadcast carries the roster for the Lower Third drawer');
+
+  service.save({ name: 'Parish' });
+  assert.deepEqual(service.get(), { ...saved }, 'a save of the name alone (the setup wizard) keeps everything else');
+
+  service.save({ name: 'Parish', logoScale: 500 });
+  assert.equal(service.get().logoScale, 120, 'the size is held to its range');
+
+  const before = service.get();
+  assert.throws(() => service.save({ name: 'Changed', roster: [{ name: '', role: 'Lector' }] }), /Enter a name/);
+  assert.throws(() => service.save({ name: 'Changed', diocese: 'd'.repeat(101) }), /100 characters/);
+  assert.throws(() => service.save({ name: 'Changed', roster: Array.from({ length: 31 }, (_, i) => ({ name: `P${i}`, role: '' })) }), /up to 30/);
+  assert.throws(() => service.save({ name: 'Changed', logoScale: 'big' }), /logo size/);
+  assert.deepEqual(service.get(), before, 'a refused save writes nothing');
+
+  service.save({ name: 'Parish', diocese: '', location: '  ' });
+  assert.equal(service.get().diocese, '', 'blank clears it');
+  assert.equal(service.get().location, '');
+  fs.rmSync(userData, { recursive: true, force: true });
+});
+
+test('a hand-edited config with a damaged roster and framing still loads', () => {
+  const userData = tempUserData();
+  fs.writeFileSync(
+    path.join(userData, 'config.json'),
+    JSON.stringify({
+      church_name: 'Parish',
+      logo_scale: 'huge',
+      logo_backing: 'yes',
+      clergy_roster: [{ id: 'x', name: 'A', role: 'Lector' }, { id: 'x', name: 'B' }, { name: 'A', role: 'lector' }, 'junk', { role: 'no name' }],
+    }),
+  );
+  const config = readConfig(userData);
+  assert.equal(config.logo_scale, 100);
+  assert.equal(config.logo_backing, false);
+  assert.equal(config.clergy_roster.length, 2, 'repeats, junk and nameless rows are dropped');
+  assert.notEqual(config.clergy_roster[0].id, config.clergy_roster[1].id, 'ids are made unique');
+  fs.rmSync(userData, { recursive: true, force: true });
+});

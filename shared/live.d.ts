@@ -96,7 +96,16 @@ export type Frame =
   | { kind: 'blackout' }
   /** A solid black screen: an intro slide shown as black. Nothing is drawn on it. */
   | { kind: 'black' }
-  | { kind: 'welcome'; lang: Lang }
+  | {
+      kind: 'welcome';
+      lang: Lang;
+      /** Epoch ms the welcome screen went up: a countdown duration counts from here. Absent on older frames; each screen then uses when it drew it. */
+      shownAt?: number;
+      /** The carousel slide the operator last stepped to (0 when the screen went up). */
+      slide?: number;
+      /** Epoch ms of that step: timed slides advance from here. */
+      slideAt?: number;
+    }
   | { kind: 'announcements'; lang: Lang }
   /** `labels`, when set, is the title each slide shows in place of `title`: a slide cut into parts shows its place, "Sanctus (1/2)". */
   /** `key` names what the slides came from (a Lectionary reading's is readingKey's), so its module can tell it is on screen. */
@@ -127,6 +136,8 @@ export type Frame =
       /** Which slide of a long prayer this is, 1-based. Absent when the text fits on one slide. */
       part?: { index: number; total: number };
       style?: TextStyle | null;
+      /** The bead tracker line ("2nd Joyful Mystery · Hail Mary 4 of 10"), when Settings turns the overlay on. Absent otherwise. */
+      tracker?: string;
     }
   /** A whiteboard slide, drawn from its design. */
   | { kind: 'whiteboard'; slide: { title: string; content: string; design: WhiteboardDesign } }
@@ -157,6 +168,11 @@ export interface MediaFrame {
   tint?: number;
   rate?: number;
   playback?: 'loop' | 'once' | 'hold';
+  /**
+   * Set on a "play once" video each time the operator stages it, so taking the same clip again is a new showing that plays from the start,
+   * even after an earlier showing has ended. Frames arrive as fresh copies with every state update, so this, not the object, tells them apart.
+   */
+  cue?: number;
 }
 
 /** The lower-third layouts. An absent template means the nameplate, which is what older lower thirds used. */

@@ -68,19 +68,19 @@ test('the canvas draws the image the chosen way, on the background colour, in bo
   assert.match(canvas, /backgroundColor: background\.color/, 'the background colour is behind the picture in both modes');
 });
 
-test('the text welcome type is unchanged: the same padding, the same size and the same text', () => {
+test('a text slide keeps the padding and the operator\'s size', () => {
   const canvas = read('src/output/WelcomeScreen.tsx');
-  assert.match(canvas, /font-serif leading-tight font-semibold whitespace-pre-line/, 'the message is drawn as before');
-  assert.match(canvas, /fontSize: `\$\{settings\.fontSize \/ 19\.2\}cqw`/, 'the size is the operator\'s size');
+  assert.match(canvas, /leading-tight font-semibold whitespace-pre-line/, 'the message is drawn as a pre-wrapped line');
+  assert.match(canvas, /\(settings\.fontSize \* share\) \/ 19\.2\}cqw/, 'the size is the operator\'s size');
   assert.match(canvas, /'p-\[6cqw\]'/, 'the text keeps the padding');
 });
 
 test('the projector and the settings preview draw the same welcome canvas, and the settings offer both choices', () => {
-  assert.match(read('src/output/WelcomeScreen.tsx'), /export function WelcomeFrame\(\)[\s\S]*<WelcomeCanvas settings=\{welcome\} \/>/, 'the projector draws the canvas');
-  assert.match(read('src/settings/WelcomeScreenSettings.tsx'), /<WelcomeCanvas settings=\{welcome\} onBackgroundMissing/, 'the preview draws the same canvas');
+  assert.match(read('src/output/WelcomeScreen.tsx'), /export function WelcomeFrame\(\)[\s\S]*<WelcomeCanvas settings=\{welcome\} anchor=/, 'the projector draws the canvas');
+  assert.match(read('src/settings/WelcomeScreenSettings.tsx'), /<WelcomeCanvas settings=\{settings\} anchor=\{anchor\} onBackgroundMissing/, 'the preview draws the same canvas');
   const settings = read('src/settings/WelcomeScreenSettings.tsx');
   assert.match(settings, /label: 'Fill screen'/);
   assert.match(settings, /label: 'Show whole picture'/);
-  assert.match(settings, /onClick=\{\(\) => update\(\{ imageFit: id \}\)\}/, 'the choice is saved with the welcome settings');
+  assert.match(settings, /onChange=\{\(imageFit\) => update\(\{ imageFit \}\)\}/, 'the choice is saved with the welcome settings');
   assert.match(read('src/output/ProjectorView.tsx'), /case 'welcome':[\s\S]*<WelcomeFrame \/>/, 'the projector shows the welcome screen from the same settings');
 });

@@ -6,7 +6,7 @@
 export const BACKUP_FORMAT = 'apccmma-rosary';
 export const BACKUP_VERSION = 1;
 export const MYSTERY_TYPES = ['joyful', 'sorrowful', 'glorious', 'luminous'];
-export const PRAYER_KEYS = ['creed', 'our_father', 'hail_mary', 'glory_be', 'fatima', 'hail_holy_queen', 'litany_loreto'];
+export const PRAYER_KEYS = ['creed', 'our_father', 'hail_mary', 'glory_be', 'fatima', 'hail_holy_queen', 'litany_loreto', 'st_michael'];
 export const LANGS = ['en', 'tl', 'ceb'];
 
 /** Longest text accepted in any one field. Prayers and meditations are far shorter. */
@@ -54,13 +54,20 @@ export function normalizeMystery(row, where = 'Mystery') {
   return out;
 }
 
+/**
+ * Prayers whose English may be empty. The Litany of Loreto is installed without text until the ministry supplies it, so a backup
+ * taken before then must still import.
+ */
+const OPTIONAL_TEXT_PRAYERS = new Set(['litany_loreto']);
+
 /** Checks one prayer row and returns the clean version. */
 export function normalizePrayer(row, where = 'Prayer') {
   if (!row || typeof row !== 'object') fail(where, 'is not an object.');
   if (!PRAYER_KEYS.includes(row.key)) fail(where, `"key" must be one of ${PRAYER_KEYS.join(', ')}.`);
   const out = { key: row.key };
   const named = `${where} "${row.key}"`;
-  for (const field of PRAYER_TEXT_FIELDS) out[field] = text(named, row, field, { required: field === 'text_en' });
+  const englishRequired = !OPTIONAL_TEXT_PRAYERS.has(row.key);
+  for (const field of PRAYER_TEXT_FIELDS) out[field] = text(named, row, field, { required: field === 'text_en' && englishRequired });
   for (const field of APPROVAL_FIELDS) out[field] = approval(named, row, field);
   return out;
 }
@@ -139,6 +146,39 @@ export function createRosaryWriter(db) {
     /** Saves rows that already passed normalizeMystery / normalizePrayer, or a parsed backup. */
     write: (rows) => write(rows),
   };
+}
+
+/**
+ * What writing parsed backup rows would change, field by field. `textEdits` counts text fields that differ, `approvalChanges`
+ * counts approval flags that flip, `added` counts rows not yet in the database, and `unchanged` counts rows that match exactly.
+ */
+export function diffRosary(db, { mysteries, prayers }) {
+  const mysteryRow = db.prepare('SELECT * FROM rosary_mysteries WHERE mystery_type = ? AND decade_number = ?');
+  const prayerRow = db.prepare('SELECT * FROM rosary_prayers WHERE key = ?');
+  const result = { textEdits: 0, approvalChanges: 0, added: 0, unchanged: 0 };
+  const compare = (current, next, textFields) => {
+    if (!current) {
+      result.added += 1;
+      return;
+    }
+    let changed = false;
+    for (const field of textFields) {
+      if ((current[field] ?? '') !== next[field]) {
+        result.textEdits += 1;
+        changed = true;
+      }
+    }
+    for (const field of APPROVAL_FIELDS) {
+      if (Number(current[field] ?? 0) !== next[field]) {
+        result.approvalChanges += 1;
+        changed = true;
+      }
+    }
+    if (!changed) result.unchanged += 1;
+  };
+  for (const m of mysteries) compare(mysteryRow.get(m.mystery_type, m.decade_number), m, MYSTERY_TEXT_FIELDS);
+  for (const p of prayers) compare(prayerRow.get(p.key), p, PRAYER_TEXT_FIELDS);
+  return result;
 }
 
 /** Reads every rosary row in its stored form, for the backup file. */

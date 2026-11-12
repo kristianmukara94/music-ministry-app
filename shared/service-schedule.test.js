@@ -77,3 +77,11 @@ test('countdown parts and text', () => {
   assert.equal(formatCountdown(59_999), '00:00:59');
   assert.equal(formatCountdown(-5000), '00:00:00');
 });
+
+test('a Mass time keeps its label, tidied, and the countdown reports it', () => {
+  const list = sanitizeMassTimes([{ day: 0, time: '08:00', label: '  Sunday   Morning Mass ' }, { day: 0, time: '17:00', label: '   ' }]);
+  assert.deepEqual(list, [{ day: 0, time: '08:00', label: 'Sunday Morning Mass' }, { day: 0, time: '17:00' }]);
+  assert.equal(sanitizeMassTimes([{ day: 1, time: '06:00', label: 'x'.repeat(200) }])[0].label.length, 60);
+  const next = nextMassStart(manila('2026-11-07T20:00:00'), list, MANILA);
+  assert.equal(next.label, 'Sunday Morning Mass');
+});

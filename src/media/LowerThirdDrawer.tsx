@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Eraser, MonitorPlay, Send, X } from 'lucide-react';
+import { Eraser, MonitorPlay, Send, UserRound, X } from 'lucide-react';
 import type { LowerThird, LowerThirdTemplate } from '../../shared/live.js';
 import { dispatch, useLive } from '../live/store';
 import { LowerThirdStage } from '../output/LowerThirdView';
-import { useChurchName } from '../church/profile';
+import { useChurchName, useChurchRoster } from '../church/profile';
+import type { RosterEntry } from '../church/types';
+import { setUi } from '../state/ui';
 
 /** The three layouts. Field labels say what each line is for, so the operator knows what to type. */
 const TEMPLATES: { id: LowerThirdTemplate; label: string; line1Label: string; line2Label: string | null }[] = [
@@ -45,6 +47,7 @@ export function LowerThirdDrawer({ open, onClose }: { open: boolean; onClose: ()
   const [line1, setLine1] = useState('');
   const [line2, setLine2] = useState('');
   const churchName = useChurchName();
+  const roster = useChurchRoster();
   const firstField = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -65,10 +68,26 @@ export function LowerThirdDrawer({ open, onClose }: { open: boolean; onClose: ()
     ? { template, line1: line1.trim(), ...(config.line2Label && line2.trim() ? { line2: line2.trim() } : {}) }
     : null;
 
-  const show = () => {
-    if (value) dispatch({ type: 'lowerThird/show', value, manual: true });
+  // The drawer's one way on air: its Show button and a roster pill's send button both come here.
+  const showValue = (next: LowerThird | null) => {
+    if (next) dispatch({ type: 'lowerThird/show', value: next, manual: true });
   };
+  const show = () => showValue(value);
   const clear = () => dispatch({ type: 'lowerThird/clear' });
+
+  /** A roster nameplate: the name, then the role (or the parish name when no role was saved). */
+  const presetOf = (person: RosterEntry): LowerThird => {
+    const second = person.role || churchName;
+    return { template: 'nameplate', line1: person.name, ...(second ? { line2: second } : {}) };
+  };
+  const applyPreset = (person: RosterEntry, showNow: boolean) => {
+    const preset = presetOf(person);
+    setTemplate('nameplate');
+    setLine1(preset.line1);
+    setLine2(preset.line2 ?? '');
+    if (showNow) showValue(preset);
+  };
+  const isLive = (person: RosterEntry) => live?.template === 'nameplate' && live.line1 === person.name;
 
   if (!open) return null;
   return (
@@ -100,6 +119,36 @@ export function LowerThirdDrawer({ open, onClose }: { open: boolean; onClose: ()
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
+          {/* The parish team from Settings › Parish: a click fills the nameplate, the send button puts it on screen at once. */}
+          <section aria-labelledby="lower-third-team" className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <h3 id="lower-third-team" className="text-[11px] font-bold tracking-wider text-fg/60 uppercase">Parish team</h3>
+              <button type="button" onClick={() => { onClose(); setUi({ view: 'settings', settingsSection: 'profile' }); }} className="text-[11px] font-semibold text-accent hover:underline">
+                {roster.length ? 'Edit team' : 'Add the parish team'}
+              </button>
+            </div>
+            {roster.length === 0 ? (
+              <p className="text-xs text-fg/50">Save the priests, music director and commentators in Settings › Parish to show their nameplates in one click.</p>
+            ) : (
+              <ul className="flex flex-wrap gap-1.5">
+                {roster.map((person) => (
+                  <li key={person.id} className={`flex items-stretch overflow-hidden rounded-full border text-xs ${isLive(person) ? 'border-ok/60 bg-ok/10' : 'border-fg/15 bg-panel-2'}`}>
+                    <button type="button" onClick={() => applyPreset(person, false)} title={`Fill the nameplate: ${person.name}${person.role ? `, ${person.role}` : ''}`}
+                      className="flex min-w-0 items-center gap-1.5 py-1 pr-2 pl-2.5 text-left hover:bg-fg/10">
+                      <UserRound size={12} aria-hidden className="shrink-0 text-fg/50" />
+                      <span className="max-w-[11rem] truncate font-semibold text-fg">{person.name}</span>
+                      {person.role && <span className="max-w-[8rem] truncate text-fg/55">{person.role}</span>}
+                    </button>
+                    <button type="button" onClick={() => applyPreset(person, true)} aria-label={`Show ${person.name} now`} title="Show on screen now"
+                      className="grid w-7 place-items-center border-l border-fg/15 text-ok hover:bg-ok/15">
+                      <Send size={11} aria-hidden />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           <div role="radiogroup" aria-label="Template" className="flex flex-wrap gap-1.5">
             {TEMPLATES.map((t) => (
               <button

@@ -206,7 +206,7 @@ function Countdown() {
   const soon = !next.started && next.at - now.getTime() <= 10 * 60 * 1000;
   return (
     <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
-      <div className="text-xs font-semibold tracking-wide text-fg/70 uppercase">{t('count.title')} · {when}</div>
+      <div className="text-xs font-semibold tracking-wide text-fg/70 uppercase">{next.label || t('count.title')} · {when}</div>
       {next.started ? (
         <div className="text-2xl font-bold text-ok">{t('count.started')}</div>
       ) : (

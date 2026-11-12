@@ -1,3 +1,7 @@
+import type { RosterEntry } from '../../shared/parish-profile.js';
+
+export type { RosterEntry };
+
 /** The parish profile as the main process reports it (electron/church-profile.js). */
 export interface ChurchProfile {
   /** The parish name to show. Falls back to the registered church, and is empty only before setup. */
@@ -10,6 +14,16 @@ export interface ChurchProfile {
   logoDataUrl: string | null;
   /** Changes each time a new logo is saved. Null with no custom logo. */
   logoVersion: number | null;
+  /** The diocese or archdiocese, e.g. "Archdiocese of Cebu". Empty when not set. */
+  diocese: string;
+  /** The city or town. Empty when not set. */
+  location: string;
+  /** The logo's size inside its round and square frames, in percent (75–120). Below 100 adds padding. */
+  logoScale: number;
+  /** True: a light disc sits behind the logo on dark screens, so a dark crest stays visible. */
+  logoBacking: boolean;
+  /** The clergy and liturgical team, offered as one-click nameplates in the Lower Third drawer. */
+  roster: RosterEntry[];
   /** True once the first-time setup wizard has been completed. */
   onboarded: boolean;
 }
@@ -20,6 +34,12 @@ export interface ChurchProfileInput {
   ministry?: string;
   /** PNG bytes for a new logo, null to go back to the built-in emblem, or left out to keep the current logo. */
   logo?: Uint8Array | null;
+  /** Each of these is kept when left out. Blank text clears it. */
+  diocese?: string;
+  location?: string;
+  logoScale?: number;
+  logoBacking?: boolean;
+  roster?: RosterEntry[];
 }
 
 export interface ChurchApi {

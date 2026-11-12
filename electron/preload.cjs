@@ -120,7 +120,9 @@ contextBridge.exposeInMainWorld('apcc', {
     saveMystery: (input) => ipcRenderer.invoke('rosary:saveMystery', input),
     savePrayer: (input) => ipcRenderer.invoke('rosary:savePrayer', input),
     exportJSON: () => ipcRenderer.invoke('rosary:exportJSON'),
-    importJSON: () => ipcRenderer.invoke('rosary:importJSON'),
+    importPreview: () => ipcRenderer.invoke('rosary:importPreview'),
+    importApply: (token) => ipcRenderer.invoke('rosary:importApply', token),
+    importCancel: (token) => ipcRenderer.invoke('rosary:importCancel', token),
   },
 
   files: {

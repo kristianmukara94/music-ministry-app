@@ -74,6 +74,8 @@ interface UiState {
   /** The operator window's lighting preset, chosen on the booth clock. Saved with the other operator preferences. */
   boothPreset: BoothPreset;
   pendingFocus: PendingFocus | null;
+  /** A Settings section to open next time Settings shows, e.g. 'profile' from the Lower Third drawer. Cleared once opened. Not persisted. */
+  settingsSection: string | null;
   /** Shown when a queue item is played while the projector is off. Not persisted. */
   projectorPrompt: ProjectorPrompt | null;
   /** The choice made for the projector prompt in this session. Reset to 'ask' when the projector turns on, or a new queue or session loads. */
@@ -153,6 +155,7 @@ export const useUi = create<UiState>()(
       massTimes: [],
       boothPreset: 'standard',
       pendingFocus: null,
+      settingsSection: null,
       projectorPrompt: null,
       projectorPromptChoice: 'ask',
       slideStyleOpen: false,

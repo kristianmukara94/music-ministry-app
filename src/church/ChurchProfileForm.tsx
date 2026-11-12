@@ -21,7 +21,7 @@ import {
 } from './logoImage';
 
 /** What the save will do with the logo. */
-type LogoChoice =
+export type LogoChoice =
   | { kind: 'keep' }
   | { kind: 'default' }
   | { kind: 'new'; logo: LoadedLogo; frame: LogoFrame };
@@ -62,7 +62,7 @@ function LogoPreviews({ src }: { src: string }) {
 }
 
 /** The square crop: drag to move, scroll or use the slider to zoom. */
-function LogoCropper({ logo, frame, onFrame, disabled }: { logo: LoadedLogo; frame: LogoFrame; onFrame: (f: LogoFrame) => void; disabled: boolean }) {
+export function LogoCropper({ logo, frame, onFrame, disabled }: { logo: LoadedLogo; frame: LogoFrame; onFrame: (f: LogoFrame) => void; disabled: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drag = useRef<{ x: number; y: number; frame: LogoFrame } | null>(null);
   // The latest frame for the wheel listener, which is added once.

@@ -1,7 +1,9 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import {
   createRosaryWriter,
+  diffRosary,
   MYSTERY_TYPES,
   normalizeMystery,
   normalizePrayer,
@@ -69,6 +71,28 @@ export const ROSARY_LITANY_MIGRATIONS = [
   `,
 ];
 
+/**
+ * Adds the St. Michael the Archangel prayer key, which the deck can append after the closing prayers. The same table copy
+ * as the Litany migration above; existing prayers keep their text and approval.
+ */
+export const ROSARY_ST_MICHAEL_MIGRATIONS = [
+  `
+  CREATE TABLE rosary_prayers_new (
+    key       TEXT PRIMARY KEY CHECK (key IN ('creed', 'our_father', 'hail_mary', 'glory_be', 'fatima', 'hail_holy_queen', 'litany_loreto', 'st_michael')),
+    text_en   TEXT NOT NULL,
+    text_tl   TEXT NOT NULL DEFAULT '',
+    text_ceb  TEXT NOT NULL DEFAULT '',
+    approved_en  INTEGER NOT NULL DEFAULT 0 CHECK (approved_en IN (0, 1)),
+    approved_tl  INTEGER NOT NULL DEFAULT 0 CHECK (approved_tl IN (0, 1)),
+    approved_ceb INTEGER NOT NULL DEFAULT 0 CHECK (approved_ceb IN (0, 1))
+  );
+  INSERT INTO rosary_prayers_new (key, text_en, text_tl, text_ceb, approved_en, approved_tl, approved_ceb)
+    SELECT key, text_en, text_tl, text_ceb, approved_en, approved_tl, approved_ceb FROM rosary_prayers;
+  DROP TABLE rosary_prayers;
+  ALTER TABLE rosary_prayers_new RENAME TO rosary_prayers;
+  `,
+];
+
 // Traditional English wording of the prayers (public-domain forms). Check the wording against the
 // parish's approved text before the first public use.
 const PRAYERS = [
@@ -93,6 +117,10 @@ const PRAYERS = [
   {
     key: 'fatima',
     en: `O my Jesus, forgive us our sins, save us from the fires of hell, lead all souls to heaven, especially those in most need of thy mercy. Amen.`,
+  },
+  {
+    key: 'st_michael',
+    en: `St. Michael the Archangel, defend us in battle. Be our protection against the wickedness and snares of the devil. May God rebuke him, we humbly pray; and do thou, O Prince of the heavenly host, by the power of God, cast into hell Satan and all the evil spirits who prowl about the world seeking the ruin of souls. Amen.`,
   },
   {
     key: 'hail_holy_queen',
@@ -222,6 +250,8 @@ export function seedRosary(db) {
 export function createRosaryService(db, deps = {}) {
   const { showSaveDialog, showOpenDialog } = deps;
   const writer = createRosaryWriter(db);
+  /** Checked imports waiting for the operator to confirm, by token. */
+  const pending = new Map();
 
   const mysteries = db.prepare(`
     SELECT mystery_type AS mysteryType, decade_number AS decadeNumber,
@@ -274,10 +304,10 @@ export function createRosaryService(db, deps = {}) {
     },
 
     /**
-     * Asks for a backup file, checks every row, then writes them all in one transaction. A file
-     * with any bad row changes nothing. Resolves to null if cancelled.
+     * Asks for a backup file and checks every row, but writes nothing yet. Returns what the import would change, and a token
+     * for applyImport. A file with any bad row is refused here. Resolves to null if cancelled.
      */
-    async importBackup(win) {
+    async previewImport(win) {
       const picked = await showOpenDialog(win, {
         title: 'Import rosary content',
         properties: ['openFile'],
@@ -292,8 +322,27 @@ export function createRosaryService(db, deps = {}) {
         throw new Error('This file is not valid JSON.');
       }
       const rows = parseBackup(data);
-      writer.write(rows);
-      return { path: source, mysteries: rows.mysteries.length, prayers: rows.prayers.length, total: counts() };
+      const diff = diffRosary(db, rows);
+      // One import waits at a time: a new preview replaces one that was never applied.
+      pending.clear();
+      const token = randomUUID();
+      pending.set(token, { source, rows });
+      return { token, path: source, mysteries: rows.mysteries.length, prayers: rows.prayers.length, ...diff };
+    },
+
+    /** Writes the rows of a previewed import in one transaction. */
+    applyImport(token) {
+      const entry = pending.get(token);
+      if (!entry) throw new Error('This import has expired. Choose the file again.');
+      pending.delete(token);
+      writer.write(entry.rows);
+      return { path: entry.source, mysteries: entry.rows.mysteries.length, prayers: entry.rows.prayers.length, total: counts() };
+    },
+
+    /** Forgets a previewed import the operator cancelled. */
+    cancelImport(token) {
+      pending.delete(token);
+      return true;
     },
   };
 }
@@ -313,6 +362,8 @@ export function setupRosary(db) {
   handle('saveMystery', (_win, input) => service.saveMystery(input));
   handle('savePrayer', (_win, input) => service.savePrayer(input));
   handle('exportJSON', (win) => service.exportBackup(win));
-  handle('importJSON', (win) => service.importBackup(win));
+  handle('importPreview', (win) => service.previewImport(win));
+  handle('importApply', (_win, token) => service.applyImport(token));
+  handle('importCancel', (_win, token) => service.cancelImport(token));
   return service;
 }

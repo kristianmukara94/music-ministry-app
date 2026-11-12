@@ -7,7 +7,7 @@ import { pwT } from '../../shared/pw-i18n.js';
 import { useUi } from '../state/ui';
 import { mirrorSource } from '../../shared/stage-plan-row.js';
 import { translate } from '../i18n/strings';
-import { useChurchLogo } from '../church/profile';
+import { ChurchEmblem } from '../church/ChurchEmblem';
 import { getSlideImageUrl, onSlideImageError } from './slideImage';
 import { LowerThirdOverlay } from './LowerThirdView';
 import { customSizes, fontCss, scaledSize, slideFontCss } from '../../shared/text-style.js';
@@ -441,6 +441,9 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
               ))}
             </div>
           )}
+          {frame.tracker && (
+            <div className="mt-[1.6cqh] shrink-0 font-mono text-[length:min(1.1cqw,22px)] font-bold tracking-[0.2em] text-gold/90 uppercase">{frame.tracker}</div>
+          )}
         </div>
       );
     }
@@ -599,15 +602,22 @@ function useFadedNote(live: NoteOverlay | null, fadeMs: number) {
 /** The operator's extra dark tint over a background, kept within 0 to 0.8 whatever the frame carries. */
 const backgroundTint =(media: MediaFrame | null) => Math.min(0.8, Math.max(0, Number(media?.tint) || 0));
 
-/** Looping motion (or a still) behind the foreground. Plays muted so it can autoplay. Speed and end behaviour follow the frame. */
-function BackgroundLayer({ media }: { media: MediaFrame }) {
-  const [ended, setEnded] = useState(false);
-  useEffect(() => setEnded(false), [media.src, media.playback]);
+/**
+ * One showing of a background: its file, its end behaviour and, for a "play once" clip, the cue it was staged with. A new take of the same
+ * clip is a new showing, so it plays from the start; a state update that only re-sends the same frame is the same showing.
+ */
+const showingOf = (media: MediaFrame) => `${media.src}|${media.playback ?? 'loop'}|${media.cue ?? ''}`;
+
+/**
+ * Looping motion (or a still) behind the foreground. Plays muted so it can autoplay. Speed and end behaviour follow the frame. A "play once"
+ * clip reports its end through `onEnded`, and the projector then takes it off the screen as a clear would.
+ */
+function BackgroundLayer({ media, onEnded }: { media: MediaFrame; onEnded: (showing: string) => void }) {
   const playback = media.playback ?? 'loop';
   const rate = media.rate === 0.5 || media.rate === 1.5 ? media.rate : 1;
   return media.mediaType === 'video' ? (
     <video
-      key={`${media.src}|${playback}`}
+      key={showingOf(media)}
       ref={(el) => {
         if (el && el.playbackRate !== rate) el.playbackRate = rate;
       }}
@@ -619,9 +629,9 @@ function BackgroundLayer({ media }: { media: MediaFrame }) {
       controls={false}
       preload="auto"
       onLoadedMetadata={(e) => (e.currentTarget.playbackRate = rate)}
-      onEnded={() => playback === 'once' && setEnded(true)}
+      onEnded={() => playback === 'once' && onEnded(showingOf(media))}
       onError={(e) => console.error('Video playback error:', e.currentTarget.error ?? e)}
-      className={`absolute inset-0 -z-10 h-full w-full object-cover ${ended ? 'invisible' : ''}`}
+      className="absolute inset-0 -z-10 h-full w-full object-cover"
     />
   ) : (
     <img key={media.src} src={getSlideImageUrl(media.src)} onError={onSlideImageError} alt="" draggable={false} className="absolute inset-0 -z-10 h-full w-full object-cover" />
@@ -721,12 +731,11 @@ function frameTextColor(frame: Frame): string | null {
 
 /** What shows when nothing is live: black (nothing), the parish crest, or a static image from the Media Library. */
 function IdleScreen({ mode, media }: { mode: ProjectorSettings['idle']; media: string | null }) {
-  // The parish's own logo when one is set up, otherwise the built-in emblem.
-  const crest = useChurchLogo();
   if (mode === 'crest') {
+    // The parish's own logo when one is set up, otherwise the built-in emblem, framed as the profile sets.
     return (
       <div className="absolute inset-0 flex items-center justify-center">
-        <img src={crest} alt="" draggable={false} className="h-[40cqh] w-auto opacity-90" />
+        <ChurchEmblem className="size-[40cqh] opacity-90" />
       </div>
     );
   }
@@ -774,13 +783,25 @@ export function ProjectorView(props: { mirror?: boolean; embedded?: boolean }) {
  * here is on air, so it uses the working look and has no fades, background video or lower third. `counter` is the operator's place in the item,
  * drawn in the slide's own proportions so it stays in the margin the text keeps clear, however small the preview is.
  */
-export function FramePreview({ frame, counter }: { frame: Frame; counter?: string }) {
+export function FramePreview({ frame, counter, background }: { frame: Frame; counter?: string; background?: { src: string; mediaType: 'image' | 'video' } | null }) {
   const introSlideMode = useOutput((s) => s.introSlideMode);
   const shown = presentedFrame(frame, introSlideMode);
   return (
     <OnAirLook.Provider value={false}>
       <div className="relative isolate h-full w-full overflow-hidden bg-stone-950 text-white select-none [container-type:size]">
-        {(shown.kind === 'lyrics' || shown.kind === 'rosary') && shown.style?.bgColor && (
+        {/* A Media Library background, as the projector puts one behind the text: covering the slide, under its usual shade. */}
+        {background && (
+          <>
+            {background.mediaType === 'video' ? (
+              <video src={background.src} muted loop autoPlay playsInline className="absolute inset-0 h-full w-full object-cover" />
+            ) : (
+              <img src={background.src} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            )}
+            <div className="absolute inset-0 bg-black" style={{ opacity: LIBRARY_SHADE }} />
+          </>
+        )}
+        {/* As on the projector, a slide colour shows only when no background is behind it. */}
+        {!background && (shown.kind === 'lyrics' || shown.kind === 'rosary') && shown.style?.bgColor && (
           <div className="absolute inset-0" style={{ backgroundColor: shown.style.bgColor }} />
         )}
         <div className="absolute inset-0 flex items-center justify-center">
@@ -824,7 +845,11 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
   // The projector output shows nothing while its master switch is OFF, whatever the live buffer holds.
   // The operator mirror is a separate monitor with its own toggle, so it is not gated by this switch.
   const outputShowing = mirror || projectorOn;
-  const background = blackedOut || !outputShowing ? null : projector.background?.live ?? null;
+  const liveBackground = blackedOut || !outputShowing ? null : projector.background?.live ?? null;
+  // A "play once" clip that has played to its end is off the screen, as after a clear: the idle screen or the slide's own colour shows again,
+  // and its shade and dimmer go with it. A new take of the clip carries a new cue, so it is a new showing and plays.
+  const [endedShowing, setEndedShowing] = useState<string | null>(null);
+  const background = liveBackground && showingOf(liveBackground) === endedShowing ? null : liveBackground;
   // The Media Library's background over every slide: the Live set's slides show it in place of their own background.
   const sharedBackground = Boolean(background && settings.backgroundEverywhere);
   const shownFrame = outputShowing ? frame : IDLE;
@@ -877,7 +902,7 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
     {/* Every size inside the stage is a share of the stage, so text keeps its proportions in any window. */}
     <LegibilityContext.Provider value={shadeChoice}>
     <div className="relative isolate overflow-hidden [container-type:size]" style={{ ...stageStyle, ...legibleVars }}>
-      {background && <BackgroundLayer media={background} />}
+      {background && <BackgroundLayer media={background} onEnded={setEndedShowing} />}
       {slideMedia && <SlideBackgroundLayer media={slideMedia} visible={outputShowing && !blackedOut && shownFrame.kind === 'pw' && !sharedBackground} />}
       {/* A song's or prayer's background colour fills the screen only when no motion background is playing, so it never covers the media. */}
       {!background && shownFrame.kind === 'idle' && <IdleScreen mode={settings.idle} media={settings.idleMedia} />}

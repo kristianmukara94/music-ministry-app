@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { bridge } from '../live/bridge';
 import { LOGO_SRC } from '../brand/logo';
-import { DEFAULT_MINISTRY_NAME, type ChurchProfile } from './types';
+import { LOGO_SCALE_DEFAULT } from '../../shared/parish-profile.js';
+import { DEFAULT_MINISTRY_NAME, type ChurchProfile, type RosterEntry } from './types';
 
 // The store behind the parish profile. Screens read it through useChurchProfile (src/context/ChurchProfileContext.tsx) or the
 // single-value hooks below; each subscribes only to what it shows.
@@ -44,6 +45,21 @@ export function useChurchLogo(): string {
   startChurchProfile();
   return useProfileStore((s) => s.profile?.logoDataUrl ?? LOGO_SRC);
 }
+
+/** How the logo sits in its frame: its size in percent and whether a light backing shows on dark screens. */
+export function useChurchLogoFrame(): { scale: number; backing: boolean } {
+  startChurchProfile();
+  const scale = useProfileStore((s) => s.profile?.logoScale ?? LOGO_SCALE_DEFAULT);
+  const backing = useProfileStore((s) => s.profile?.logoBacking ?? false);
+  return { scale, backing };
+}
+
+/** The clergy and liturgical team roster, for the Lower Third drawer's one-click nameplates. */
+export function useChurchRoster(): RosterEntry[] {
+  startChurchProfile();
+  return useProfileStore((s) => s.profile?.roster ?? NO_ROSTER);
+}
+const NO_ROSTER: RosterEntry[] = [];
 
 /** The parish name, or an empty string before setup or while loading. */
 export function useChurchName(): string {

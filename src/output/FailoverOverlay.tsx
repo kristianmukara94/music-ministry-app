@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { bridge, type FailoverMode } from '../live/bridge';
 import { useChurchLogo } from '../church/profile';
+import { ChurchEmblem } from '../church/ChurchEmblem';
 
 /** Near-black for the emblem: dark enough for a sanctuary, warm enough not to read as a dead screen. */
 const EMBLEM_BACKGROUND = '#080507';
@@ -54,13 +55,8 @@ export function FailoverOverlay() {
       style={{ background: emblem ? EMBLEM_BACKGROUND : BLACKOUT_BACKGROUND, contain: 'strict', transform: 'translateZ(0)' }}
     >
       {emblem && (
-        <img
-          src={emblemSrc}
-          alt=""
-          draggable={false}
-          decoding="sync"
-          className="pointer-events-none max-h-[34vmin] max-w-[34vmin] object-contain opacity-90"
-        />
+        // Framed like the projector crest: the profile's logo size, and its light backing when one is chosen.
+        <ChurchEmblem src={emblemSrc} className="pointer-events-none size-[34vmin] opacity-90" />
       )}
     </div>
   );

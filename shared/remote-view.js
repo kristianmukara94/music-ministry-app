@@ -71,6 +71,19 @@ function linesOf(text) {
   return lines;
 }
 
+/**
+ * The words of the welcome slide the operator last stepped to (the carousel's timed turns are not followed: the remote view shows text, not
+ * timing). A config from before the carousel has no slides, and its single message is used.
+ */
+function welcomeLines(frame, welcome) {
+  if (!welcome) return [];
+  const slides = Array.isArray(welcome.slides) ? welcome.slides : null;
+  if (!slides) return welcome.welcomeType === 'TEXT' ? linesOf(welcome.message) : [];
+  const slide = slides.length ? slides[(((frame.slide ?? 0) % slides.length) + slides.length) % slides.length] : null;
+  if (!slide || slide.type === 'IMAGE') return [];
+  return linesOf(slide.type === 'ANNOUNCEMENT' && slide.title ? `${slide.title}\n${slide.text}` : slide.text);
+}
+
 /** "3 of 8" for a 1-based position. Null when there is nothing to count. */
 const counted = (current, total) => (total > 1 ? `${current} of ${total}` : null);
 
@@ -81,7 +94,7 @@ const counted = (current, total) => (total > 1 ? `${current} of ${total}` : null
 export function presentFrame(frame, welcome) {
   switch (frame.kind) {
     case 'welcome':
-      return { title: 'Welcome', position: null, lines: welcome?.welcomeType === 'TEXT' ? linesOf(welcome.message) : [] };
+      return { title: 'Welcome', position: null, lines: welcomeLines(frame, welcome) };
     case 'announcements':
       return { title: 'Announcements', position: null, lines: [] };
     case 'deck':

@@ -19,7 +19,7 @@ import { WEB_HUB_MIGRATIONS } from './web-hub-notes.js';
 import { NOTES_COPY_MIGRATIONS, NOTES_SLOT_MIGRATIONS, PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS, setupNotes } from './notes.js';
 import { DB_CRYPTO_MIGRATIONS } from './db-vault.js';
 import { CALENDAR_DAY_NOTE_MIGRATIONS } from './calendar-notes.js';
-import { ROSARY_LITANY_MIGRATIONS } from './rosary.js';
+import { ROSARY_LITANY_MIGRATIONS, ROSARY_ST_MICHAEL_MIGRATIONS } from './rosary.js';
 import { BIBLE_MIGRATIONS } from './bible-seed.js';
 import { ROSARY_MIGRATIONS } from './rosary.js';
 import { PW_MIGRATIONS } from './pw-sessions.js';
@@ -156,6 +156,7 @@ const ALL_MIGRATIONS = [
   ...NOTES_COPY_MIGRATIONS,
   ...CALENDAR_DAY_NOTE_MIGRATIONS,
   ...MEDIA_FOLDER_MIGRATIONS,
+  ...ROSARY_ST_MICHAEL_MIGRATIONS,
 ];
 
 const SLIDE_SELECT = `

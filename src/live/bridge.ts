@@ -441,8 +441,11 @@ const offlineConfig: ConfigApi = {
 };
 
 /** Browser preview: nothing is saved, so setup counts as done and the built-in emblem shows. */
+/** The profile fields a window outside the desktop app has no source for. */
+const EMPTY_PROFILE_EXTRAS = { diocese: '', location: '', logoScale: 100, logoBacking: false, roster: [] };
+
 const offlineChurch: ChurchApi = {
-  getProfile: async () => ({ churchName: 'Browser preview', ministryName: '', logoPath: null, logoDataUrl: null, logoVersion: null, onboarded: true }),
+  getProfile: async () => ({ churchName: 'Browser preview', ministryName: '', logoPath: null, logoDataUrl: null, logoVersion: null, ...EMPTY_PROFILE_EXTRAS, onboarded: true }),
   saveProfile: async () => offlineError(),
   onChanged: () => () => undefined,
 };
@@ -838,7 +841,9 @@ const offlineRosary: RosaryApi = {
   saveMystery: async () => offlineError(),
   savePrayer: async () => offlineError(),
   exportJSON: async () => offlineError(),
-  importJSON: async () => offlineError(),
+  importPreview: async () => offlineError(),
+  importApply: async () => offlineError(),
+  importCancel: async () => true,
 };
 
 /** Browser preview has no Bible data, so the module shows its "not installed" message. */
@@ -965,7 +970,7 @@ function createStreamBridge(): LiveBridge {
   let state: LiveState = initialLiveState();
   const listeners = new Set<(s: LiveState) => void>();
   // The parish logo comes from the app's server. Its version arrives with each push, so a new logo is fetched again.
-  let profile: ChurchProfile = { churchName: '', ministryName: '', logoPath: null, logoDataUrl: null, logoVersion: null, onboarded: true };
+  let profile: ChurchProfile = { churchName: '', ministryName: '', logoPath: null, logoDataUrl: null, logoVersion: null, ...EMPTY_PROFILE_EXTRAS, onboarded: true };
   const profileListeners = new Set<(p: ChurchProfile) => void>();
   const source = new EventSource('/api/lower-third/stream');
   source.onmessage = (event) => {
@@ -973,6 +978,7 @@ function createStreamBridge(): LiveBridge {
       lowerThird: LiveState['lowerThird']['live'];
       lowerStyle: LiveState['lowerStyle'] | null;
       churchLogoVersion?: number | null;
+      churchLogoFrame?: { scale: number; backing: boolean } | null;
     };
     state = {
       ...state,
@@ -981,8 +987,15 @@ function createStreamBridge(): LiveBridge {
     };
     listeners.forEach((listener) => listener(state));
     const version = payload.churchLogoVersion ?? null;
-    if (version !== profile.logoVersion) {
-      profile = { ...profile, logoVersion: version, logoDataUrl: version ? `/api/church-logo?v=${version}` : null };
+    const frame = payload.churchLogoFrame ?? null;
+    const frameChanged = frame !== null && (frame.scale !== profile.logoScale || frame.backing !== profile.logoBacking);
+    if (version !== profile.logoVersion || frameChanged) {
+      profile = {
+        ...profile,
+        logoVersion: version,
+        logoDataUrl: version ? `/api/church-logo?v=${version}` : null,
+        ...(frame ? { logoScale: frame.scale, logoBacking: frame.backing } : {}),
+      };
       profileListeners.forEach((listener) => listener(profile));
     }
   };

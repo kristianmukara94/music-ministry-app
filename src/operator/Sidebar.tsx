@@ -9,7 +9,8 @@ import { LANGS, useT, type StringKey } from '../i18n/strings';
 import { exportSettings, importSettings, setUi, useUi, type ViewKey } from '../state/ui';
 import { toggleFullscreen } from './actions';
 import { DatabaseStatus } from '../system/DatabaseStatus';
-import { useChurchLogo, useChurchName, useMinistryName } from '../context/ChurchProfileContext';
+import { useChurchName, useMinistryName } from '../context/ChurchProfileContext';
+import { ChurchEmblem } from '../church/ChurchEmblem';
 import { FOOTER_TEXT } from '../legal/license';
 import { LibraryTransferDialog } from './LibraryTransfer';
 
@@ -85,7 +86,6 @@ const KBD = 'rounded-md border border-fg/15 bg-fg/[0.04] px-2 py-0.5 font-mono t
 
 export function Sidebar() {
   const t = useT();
-  const churchLogo = useChurchLogo();
   const churchName = useChurchName();
   const ministryName = useMinistryName();
   const { view, collapsed, lang } = useUi();
@@ -128,7 +128,7 @@ export function Sidebar() {
       {/* Brand: the crest and the app name, in gold. Clicking it returns to the dashboard. */}
       <button type="button" onClick={() => setUi({ view: 'dashboard' })} title={t('nav.dashboard')} aria-current={view === 'dashboard' ? 'page' : undefined}
         className={`mt-2 mb-1 flex shrink-0 items-center rounded-xl px-1 py-1 text-left transition hover:bg-fg/[0.04] ${collapsed ? 'justify-center' : 'gap-2.5'}`}>
-        <img src={churchLogo} alt={churchName || 'APCCMMA'} draggable={false} className="h-14 w-14 shrink-0 object-contain" />
+        <ChurchEmblem alt={churchName || 'APCCMMA'} className="h-14 w-14" />
         {!collapsed && (
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-[34px] leading-none font-extrabold tracking-tight text-accent [text-shadow:0_0_18px_color-mix(in_oklab,var(--color-accent)_30%,transparent)]">APCCMMA</span>

@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Presentation } from 'lucide-react';
-import type { Frame } from '../../shared/live.js';
-import { rosaryT } from '../../shared/rosary-i18n.js';
-import { BACKGROUND_COLORS, fontCss, parseTextStyle, sanitizeTextStyle } from '../../shared/text-style.js';
+import { BACKGROUND_COLORS, fontCss, sanitizeTextStyle } from '../../shared/text-style.js';
 import type { TextStyle } from '../../shared/text-style';
 import { publishRemotePanel, registerRemoteHandler } from '../live/remoteBridge';
 import { bridge } from '../live/bridge';
@@ -12,6 +10,7 @@ import { ColorField, StyleToolbar } from '../announcements/StyleControls';
 import type { MediaAsset } from '../media/types';
 import {
   beadPosition,
+  closingPrayers,
   DECADE_BEADS,
   DECADES,
   INTRO_BEADS,
@@ -20,20 +19,15 @@ import {
   positionOfDecade,
   positionOfIntro,
   stepAt,
-  TOTAL_POSITIONS,
+  totalPositions,
 } from '../../shared/rosary-logic.js';
-import type { RosaryT } from './strings';
+import type { RosaryPresentation } from '../../shared/rosary-presentation.js';
 import { onRosaryChanged } from './refresh';
-import { loadChunkOptions, splitPrayerText, type ChunkOptions } from './rosaryUtils';
+import { loadChunkOptions, type ChunkOptions } from './rosaryUtils';
+import { buildStep, loadDeckStyle, loadPresentation, localized, ROSARY_LANGUAGES as LANGUAGES, saveDeckStyle, tFor, type RosaryLang } from './frames';
 import { MYSTERY_TYPES, type Mystery, type MysteryType, type RosaryPrayer } from './types';
 
 const api = bridge.rosary;
-const LANGUAGES = ['en', 'tl', 'ceb'] as const;
-type RosaryLang = (typeof LANGUAGES)[number];
-
-type RosaryFrame = Extract<Frame, { kind: 'rosary' }>;
-
-const STYLE_KEY = 'apccmma.rosary.style';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -42,136 +36,6 @@ const CARD = 'rounded-[10px] border border-line bg-panel';
 const LABEL = 'text-[11px] font-semibold tracking-wider text-fg/60 uppercase';
 const button =
   'flex h-10 items-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-4 text-xs font-semibold tracking-wide text-fg/85 uppercase transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
-
-/** The text in the chosen language, or English when that language has none yet. */
-function localized(lang: string, en: string, tl: string, ceb: string): { text: string; fallback: boolean } {
-  if (lang === 'tl' && tl) return { text: tl, fallback: false };
-  if (lang === 'ceb' && ceb) return { text: ceb, fallback: false };
-  return { text: en, fallback: lang !== 'en' };
-}
-
-/** Labels for one language. The deck keeps its own language, so this does not read the sidebar. */
-const tFor = (lang: RosaryLang): RosaryT => (key, vars) => rosaryT(lang, key, vars);
-
-/** The deck's text style, remembered on this machine only. A failed read or write keeps the default. */
-function loadStyle(): TextStyle {
-  try {
-    return parseTextStyle(localStorage.getItem(STYLE_KEY)) ?? {};
-  } catch {
-    return {};
-  }
-}
-
-function saveStyle(style: TextStyle) {
-  try {
-    localStorage.setItem(STYLE_KEY, JSON.stringify(style));
-  } catch {
-    /* storage unavailable: the style still applies for this session */
-  }
-}
-
-/**
- * The projector frame and fallback flag for one position in the sequence. Shared by the preview,
- * the staging on each step, and the take action, so the screen always shows what the deck shows.
- */
-function buildStep(
-  position: number,
-  type: MysteryType,
-  mysteries: Mystery[],
-  prayers: RosaryPrayer[],
-  lang: RosaryLang,
-  style: TextStyle,
-  options: ChunkOptions,
-  chunk: number,
-): { frame: RosaryFrame; fallback: boolean } {
-  const t = tFor(lang);
-  const step = stepAt(position);
-  const frameStyle = sanitizeTextStyle(style);
-  let fallback = false;
-  const pick = (en: string, tl: string, ceb: string) => {
-    const r = localized(lang, en, tl, ceb);
-    if (r.fallback) fallback = true;
-    return r.text;
-  };
-  /** The slide of a prayer that is shown. A long prayer is split, and `chunk` picks which slide. */
-  const prayerPart = (key: string) => {
-    const row = prayers.find((p) => p.key === key);
-    const slides = splitPrayerText(row ? pick(row.textEn, row.textTl, row.textCeb) : '', options);
-    const slide = slides[Math.min(chunk, Math.max(slides.length - 1, 0))];
-    return {
-      text: slide?.text ?? '',
-      part: slides.length > 1 && slide ? { index: slide.partIndex, total: slide.totalParts } : undefined,
-    };
-  };
-  const pray = prayerPart(step.kind);
-  const prayerLabel = () => (step.kind === 'hail_mary' ? t('prayer_hail_mary') : t(`prayer_${step.kind}`));
-
-  if (step.section === 'intro') {
-    return {
-      frame: {
-        kind: 'rosary',
-        section: t('section_intro'),
-        decade: '',
-        mystery: '',
-        scripture: '',
-        prayer: prayerLabel(),
-        text: pray.text, part: pray.part,
-        bead: step.bead,
-        stage: 'prayer',
-        style: frameStyle,
-      },
-      fallback,
-    };
-  }
-
-  if (step.section === 'closing') {
-    return {
-      frame: {
-        kind: 'rosary',
-        section: t(`set_${type}`),
-        decade: t('closing'),
-        mystery: '',
-        scripture: '',
-        prayer: prayerLabel(),
-        text: pray.text, part: pray.part,
-        bead: null,
-        stage: 'prayer',
-        style: frameStyle,
-      },
-      fallback,
-    };
-  }
-
-  const section = t(`set_${type}`);
-  const m = mysteries.find((x) => x.mysteryType === type && x.decadeNumber === step.decade);
-  const mystery = m ? pick(m.titleEn, m.titleTl, m.titleCeb) : '';
-  const decade = t('decade', { n: step.decade ?? 0 });
-  const scripture = m?.scriptureRef ?? '';
-
-  if (step.kind === 'announce') {
-    return {
-      frame: {
-        kind: 'rosary',
-        section,
-        decade,
-        mystery,
-        scripture,
-        prayer: t('announce'),
-        text: m ? pick(m.meditationEn, m.meditationTl, m.meditationCeb) : '',
-        bead: null,
-        stage: 'announce',
-        style: frameStyle,
-      },
-      fallback,
-    };
-  }
-
-  const label = step.kind === 'hail_mary' ? t('beadOf', { n: step.bead ?? 0 }) : prayerLabel();
-  return {
-    frame: { kind: 'rosary', section, decade, mystery, scripture, prayer: label, text: pray.text, part: pray.part, bead: step.bead, stage: 'prayer', style: frameStyle },
-    fallback,
-  };
-}
 
 export function RosaryDeck() {
   // The deck starts in the app's language and then keeps its own. Changing it here does not change the sidebar.
@@ -188,10 +52,13 @@ export function RosaryDeck() {
   const todaySet = mysteryTypeFor(new Date()) as MysteryType;
   const [type, setType] = useState<MysteryType>(todaySet);
   const [position, setPosition] = useState(0);
-  const [style, setStyle] = useState<TextStyle>(loadStyle);
+  const [style, setStyle] = useState<TextStyle>(loadDeckStyle);
   // The slide of a long prayer that is showing (0-based), and how prayers are split. The split settings live in Settings.
   const [chunk, setChunk] = useState(0);
   const [options, setOptions] = useState<ChunkOptions>(loadChunkOptions);
+  // The optional prayers, the bead tracker and the default background, all set in Settings.
+  const [presentation, setPresentation] = useState<RosaryPresentation>(loadPresentation);
+  const total = totalPositions(presentation);
 
   // Loads the text on mount, and again after Settings saves or imports it. The staged frame follows the new data.
   const [contentVersion, setContentVersion] = useState(0);
@@ -199,9 +66,13 @@ export function RosaryDeck() {
   useEffect(() => {
     Promise.all([api.getMysteries(), api.getPrayers()])
       .then(([m, p]) => {
+        const nextPresentation = loadPresentation();
         setMysteries(m);
         setPrayers(p);
         setOptions(loadChunkOptions());
+        setPresentation(nextPresentation);
+        // A prayer turned off can shorten the rosary past the current step.
+        setPosition((at) => Math.min(at, totalPositions(nextPresentation) - 1));
       })
       .catch((err) => setError(errorText(err)));
   }, [contentVersion]);
@@ -213,14 +84,30 @@ export function RosaryDeck() {
 
   /** The frame for a position in a given language and style. Used when either is changing. */
   const build = (pos: number, l: RosaryLang = lang, s: TextStyle = style, c: number = chunk) =>
-    mysteries ? buildStep(pos, type, mysteries, prayers, l, s, options, c) : null;
+    mysteries ? buildStep(pos, type, mysteries, prayers, l, s, options, c, presentation) : null;
   const frameAt = (pos: number, c: number = chunk) => build(pos, lang, style, c);
 
   // Keep the staged frame in step with the set, language and split settings, so the preview never shows an old prayer.
   useEffect(() => {
     const built = frameAt(position);
     if (built) dispatch({ type: 'projector/stage', frame: built.frame });
-  }, [type, mysteries, prayers, lang, options]);
+  }, [type, mysteries, prayers, lang, options, presentation]);
+
+  /**
+   * The default rosary background from Settings goes up each time the rosary goes live (from the deck's Take, the top bar or a
+   * phone), unless that picture is already on the background layer. A rosary that was already live when the deck opened is left as it is.
+   */
+  const wasLive = useRef<boolean | null>(null);
+  useEffect(() => {
+    const live = projectorLive.kind === 'rosary';
+    const wentLive = wasLive.current === false && live;
+    wasLive.current = live;
+    if (!wentLive || presentation.backgroundId === null) return;
+    const asset = media.find((m) => m.id === presentation.backgroundId);
+    if (!asset || asset.mediaType === 'audio' || background.live?.src === asset.src) return;
+    dispatch({ type: 'background/stage', media: { kind: 'media', mediaType: asset.mediaType, src: asset.src, title: asset.filename } });
+    dispatch({ type: 'background/take' });
+  }, [projectorLive.kind]);
 
   /** Re-sends the current step to the projector when it is already live, so a change shows at once. */
   const sendIfLive = (built: ReturnType<typeof build>) => {
@@ -243,7 +130,7 @@ export function RosaryDeck() {
   const changeStyle = (patch: TextStyle) => {
     const next = { ...style, ...patch };
     setStyle(next);
-    saveStyle(sanitizeTextStyle(next) ?? {});
+    saveDeckStyle(sanitizeTextStyle(next) ?? {});
     sendIfLive(build(position, lang, next));
   };
 
@@ -271,7 +158,7 @@ export function RosaryDeck() {
 
   /** Moves to a step, starting at its first slide unless `c` names another. */
   const goTo = (pos: number, c = 0) => {
-    const next = Math.min(Math.max(0, pos), TOTAL_POSITIONS - 1);
+    const next = Math.min(Math.max(0, pos), total - 1);
     setPosition(next);
     setChunk(c);
     show(next, c);
@@ -332,15 +219,14 @@ export function RosaryDeck() {
   /** The sections a phone can pick: the introduction, each decade, then the closing prayers, with the step each starts at. */
   const remoteSections = () => {
     if (!mysteries) return [];
-    const at = stepAt(position);
+    const at = stepAt(position, presentation);
     return [
       { label: t('section_intro'), start: positionOfIntro(), current: at.section === 'intro' },
       ...Array.from({ length: DECADES }, (_, i) => i + 1).map((d) => {
         const m = mysteries.find((x) => x.mysteryType === type && x.decadeNumber === d);
-        return { label: `${d}. ${m ? localized(lang, m.titleEn, m.titleTl, m.titleCeb).text : ''}`, start: positionOfDecade(d), current: at.section === 'decade' && at.decade === d };
+        return { label: `${d}. ${m ? localized(lang, m.titleEn, m.titleTl, m.titleCeb).text : ''}`, start: positionOfDecade(d, presentation), current: at.section === 'decade' && at.decade === d };
       }),
-      { label: t('prayer_hail_holy_queen'), start: positionOfClosing('hail_holy_queen'), current: at.kind === 'hail_holy_queen' },
-      { label: t('prayer_litany_loreto'), start: positionOfClosing('litany_loreto'), current: at.kind === 'litany_loreto' },
+      ...closingPrayers(presentation).map((kind) => ({ label: t(`prayer_${kind}`), start: positionOfClosing(kind, presentation), current: at.kind === kind })),
     ];
   };
 
@@ -350,10 +236,10 @@ export function RosaryDeck() {
     publishRemotePanel({
       panel: 'rosary',
       title: t('title'),
-      step: { index: position, count: TOTAL_POSITIONS },
+      step: { index: position, count: total },
       sections: remoteSections().map(({ label, current }) => ({ label, current })),
     });
-  }, [position, type, mysteries, lang]);
+  }, [position, type, mysteries, lang, presentation]);
   useEffect(() => () => publishRemotePanel(null), []);
   useEffect(() =>
     registerRemoteHandler((command) => {
@@ -388,9 +274,9 @@ export function RosaryDeck() {
   const built = frameAt(position);
   if (!built) return null;
   const { frame, fallback } = built;
-  const step = stepAt(position);
+  const step = stepAt(position, presentation);
 
-  // Sections for the left-hand list: the introduction, each decade, then the two closing prayers.
+  // Sections for the left-hand list: the introduction, each decade, then the closing prayers that are turned on.
   const sections: { key: string; label: string; start: number; active: boolean }[] = [
     { key: 'intro', label: t('section_intro'), start: positionOfIntro(), active: step.section === 'intro' },
     ...Array.from({ length: DECADES }, (_, i) => i + 1).map((d) => {
@@ -398,21 +284,20 @@ export function RosaryDeck() {
       return {
         key: `decade-${d}`,
         label: `${d}. ${m ? localized(lang, m.titleEn, m.titleTl, m.titleCeb).text : ''}`,
-        start: positionOfDecade(d),
+        start: positionOfDecade(d, presentation),
         active: step.section === 'decade' && step.decade === d,
       };
     }),
-    { key: 'hail_holy_queen', label: t('prayer_hail_holy_queen'), start: positionOfClosing('hail_holy_queen'), active: step.kind === 'hail_holy_queen' },
-    { key: 'litany_loreto', label: t('prayer_litany_loreto'), start: positionOfClosing('litany_loreto'), active: step.kind === 'litany_loreto' },
+    ...closingPrayers(presentation).map((kind) => ({ key: kind, label: t(`prayer_${kind}`), start: positionOfClosing(kind, presentation), active: step.kind === kind })),
   ];
 
   // The bead strip runs over the introduction (3 Hail Marys) and each decade (10). It is clickable.
   const beadCount = step.section === 'intro' ? INTRO_BEADS : step.section === 'decade' ? DECADE_BEADS : 0;
-  const beadsDone = Array.from({ length: beadCount }, (_, i) => i + 1).filter((n) => beadPosition(step, n) < position).length;
+  const beadsDone = Array.from({ length: beadCount }, (_, i) => i + 1).filter((n) => beadPosition(step, n, presentation) < position).length;
   const previewStyle = sanitizeTextStyle(style);
   const bgSelected = media.find((m) => m.src === background.live?.src);
 
-  const progress = Math.round(((position + 1) / TOTAL_POSITIONS) * 100);
+  const progress = Math.round(((position + 1) / total) * 100);
   const isLive = projectorLive.kind === 'rosary';
   const sectionLabel = frame.decade ? `${frame.section} · ${frame.decade}` : frame.section;
 
@@ -531,14 +416,14 @@ export function RosaryDeck() {
                     {t('live')}
                   </span>
                 )}
-                <span className="text-xs text-fg/60 tabular-nums">{t('stepOf', { n: position + 1, total: TOTAL_POSITIONS })}</span>
+                <span className="text-xs text-fg/60 tabular-nums">{t('stepOf', { n: position + 1, total: total })}</span>
               </div>
             </div>
             <div
               role="progressbar"
               aria-label={t('title')}
               aria-valuemin={1}
-              aria-valuemax={TOTAL_POSITIONS}
+              aria-valuemax={total}
               aria-valuenow={position + 1}
               className="h-1.5 overflow-hidden rounded-full bg-fg/10"
             >
@@ -603,7 +488,7 @@ export function RosaryDeck() {
                     type="button"
                     aria-label={step.section === 'intro' ? `${t('prayer_hail_mary')} ${n}` : t('beadOf', { n })}
                     aria-current={current ? 'step' : undefined}
-                    onClick={() => goTo(beadPosition(step, n))}
+                    onClick={() => goTo(beadPosition(step, n, presentation))}
                     className={`grid size-9 place-items-center rounded-full border-2 font-mono text-xs font-bold tabular-nums transition ${
                       current
                         ? 'border-accent bg-accent/25 text-accent ring-2 ring-accent/50'
@@ -624,7 +509,7 @@ export function RosaryDeck() {
             <button type="button" onClick={() => goTo(position - 1)} disabled={position === 0} className={`${button} h-11`}>
               <ChevronLeft size={15} aria-hidden /> {t('previous')}
             </button>
-            <button type="button" onClick={() => goTo(position + 1)} disabled={position === TOTAL_POSITIONS - 1} className={`${button} h-11 px-6`}>
+            <button type="button" onClick={() => goTo(position + 1)} disabled={position === total - 1} className={`${button} h-11 px-6`}>
               {t('next')} <ChevronRight size={15} aria-hidden />
             </button>
             <button

@@ -106,7 +106,7 @@ test('a missing file falls back to that setting\'s colour; its warning is only o
 test('the Current and Next panels and the projector read the Live slide background; the Welcome screen reads the Welcome background', () => {
   assert.match(read('src/praise-worship/CurrentNextPreview.tsx'), /welcomeBackground\(useLive\(\(s\) => s\.state\.welcome\.slideBackground\)\)/);
   assert.match(read('src/output/ProjectorView.tsx'), /welcomeBackground\(useOutput\(\(s\) => s\.welcome\.slideBackground\)\)/);
-  assert.match(read('src/output/WelcomeScreen.tsx'), /const background = welcomeBackground\(settings, failed\);/, 'the Welcome screen reads the Welcome settings');
+  assert.match(read('src/output/WelcomeScreen.tsx'), /const background = welcomeBackground\(settings, failed \|\| cleared\);/, 'the Welcome screen reads the Welcome settings');
   assert.match(read('src/output/WelcomeScreen.tsx'), /<WelcomeFrame \/>|export function WelcomeFrame\(\)/);
 });
 

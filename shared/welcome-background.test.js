@@ -88,15 +88,17 @@ test('the video is muted, has no controls, loops only when Loop is on, and the p
 
 test('the Welcome screen draws the background from the same rule and the same component as the slides', () => {
   const canvas = read('src/output/WelcomeScreen.tsx');
-  assert.match(canvas, /const background = welcomeBackground\(settings, failed\);/);
+  // At zero, the countdown's "Auto-Clear Background" drops the media through the same rule a missing file does.
+  assert.match(canvas, /const background = welcomeBackground\(settings, failed \|\| cleared\);/);
   assert.match(canvas, /<BackgroundMedia media=\{background\.media\}/, 'the same media component as the slides');
   assert.match(canvas, /backgroundColor: background\.color \?\? WELCOME_CANVAS_COLOR/, 'an unset colour keeps the Welcome black');
 });
 
-test('the text welcome type is unchanged', () => {
+test('a text slide is drawn at the operator\'s size, in the chosen typeface', () => {
   const canvas = read('src/output/WelcomeScreen.tsx');
-  assert.match(canvas, /font-serif leading-tight font-semibold whitespace-pre-line/);
-  assert.match(canvas, /fontSize: `\$\{settings\.fontSize \/ 19\.2\}cqw`/);
+  assert.match(canvas, /leading-tight font-semibold whitespace-pre-line" style=\{\{ \.\.\.textStyle, fontSize: size\(1\) \}\}/);
+  assert.match(canvas, /\(settings\.fontSize \* share\) \/ 19\.2\}cqw/);
+  assert.match(canvas, /fontFamily: WELCOME_FONT_STACKS\[settings\.fontFamily\]/);
 });
 
 test('the settings offer Colour, Image and Video; the Loop and Shade switches; and a warning for a missing file', () => {

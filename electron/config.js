@@ -7,6 +7,7 @@ import { REMOTE_VIEW_DEFAULTS, sanitizeRemoteView } from '../shared/remote-view.
 import { checkCloudAddress } from './cloud-address.js';
 import { DEFAULT_FAILOVER_MODE, sanitizeFailoverMode } from './watchdog.js';
 import { sanitizeDisplayLocks } from './edid-watchdog.js';
+import { DIOCESE_MAX, LOCATION_MAX, LOGO_SCALE_DEFAULT, sanitizeLogoScale, sanitizeOptionalLine, sanitizeRoster } from '../shared/parish-profile.js';
 
 // Preferences that must be known before the database opens, so they live in a plain file
 // in userData rather than in the database itself.
@@ -46,6 +47,14 @@ const DEFAULTS = {
   ministry_name: null,
   // When the custom logo last changed, so the browser source fetches it again. Null: no custom logo, so the APCCMMA emblem is used.
   church_logo_version: null,
+  // Where the parish is, shown on letterheads and the projector crest. Null: not shown.
+  diocese: null,
+  parish_location: null,
+  // The logo's size in its round and square frames, in percent (shared/parish-profile.js), and a light disc behind it on dark screens.
+  logo_scale: LOGO_SCALE_DEFAULT,
+  logo_backing: false,
+  // The clergy and liturgical team: one-click nameplates in the Lower Third drawer. [{ id, name, role }]
+  clergy_roster: [],
   // True once the first-time setup wizard is done. Copies registered before the wizard existed count as done (see sanitize).
   onboarded: false,
 };
@@ -112,6 +121,11 @@ function sanitize(raw) {
     ministry_name:
       typeof raw.ministry_name === 'string' && raw.ministry_name.trim() ? raw.ministry_name.trim().slice(0, MINISTRY_NAME_MAX_LENGTH) : null,
     church_logo_version: Number.isSafeInteger(raw.church_logo_version) && raw.church_logo_version > 0 ? raw.church_logo_version : null,
+    diocese: sanitizeOptionalLine(raw.diocese, DIOCESE_MAX),
+    parish_location: sanitizeOptionalLine(raw.parish_location, LOCATION_MAX),
+    logo_scale: sanitizeLogoScale(raw.logo_scale),
+    logo_backing: raw.logo_backing === true,
+    clergy_roster: sanitizeRoster(raw.clergy_roster),
     // A copy that accepted the license before the wizard existed is already set up, so an update never puts a new screen in front of
     // an operator minutes before a Mass.
     onboarded: raw.onboarded === true || (raw.onboarded === undefined && raw.eula_accepted === true),

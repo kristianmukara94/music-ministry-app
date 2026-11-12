@@ -6,6 +6,8 @@ export const EVERY_DAY = -1;
 /** A Mass is still "starting" for this long after its time, so the widget says so instead of jumping to next week's at once. */
 export const STARTED_GRACE_MS = 10 * 60 * 1000;
 export const MAX_MASS_TIMES = 40;
+/** The longest label a Mass time can carry, e.g. "Sunday Morning Mass". */
+export const MASS_LABEL_MAX = 60;
 
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -21,7 +23,8 @@ export function sanitizeMassTimes(list) {
     const key = `${day}|${time}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ day, time });
+    const label = typeof entry?.label === 'string' ? entry.label.trim().replace(/\s+/g, ' ').slice(0, MASS_LABEL_MAX) : '';
+    out.push(label ? { day, time, label } : { day, time });
     if (out.length >= MAX_MASS_TIMES) break;
   }
   return out.sort((a, b) => a.day - b.day || a.time.localeCompare(b.time));
@@ -72,7 +75,7 @@ function instantOf(year, month, day, hour, minute, timeZone) {
 }
 
 /**
- * The next Mass from `now`: `{ at, day, time, started }` where `at` is the start in milliseconds. A Mass that began less than
+ * The next Mass from `now`: `{ at, day, time, label?, started }` where `at` is the start in milliseconds. A Mass that began less than
  * STARTED_GRACE_MS ago is returned with `started: true`. Null when no times are set.
  */
 export function nextMassStart(now, times, timeZone) {
@@ -90,7 +93,7 @@ export function nextMassStart(now, times, timeZone) {
       const [hour, minute] = entry.time.split(':').map(Number);
       const at = instantOf(civil.getUTCFullYear(), civil.getUTCMonth() + 1, civil.getUTCDate(), hour, minute, timeZone);
       if (at <= nowMs - STARTED_GRACE_MS) continue;
-      if (!best || at < best.at) best = { at, day: weekday, time: entry.time, started: at <= nowMs };
+      if (!best || at < best.at) best = { at, day: weekday, time: entry.time, ...(entry.label ? { label: entry.label } : {}), started: at <= nowMs };
     }
   }
   return best;

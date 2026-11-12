@@ -477,6 +477,8 @@ let lowerThirdServer = null;
 let churchProfile = null;
 // The custom logo's version, sent with every lower third so a browser source fetches a new logo. Null: the built-in emblem.
 let churchLogoVersion = null;
+// How the logo sits in its frame (size and the light backing), sent with the version so the browser source frames it like the projector.
+let churchLogoFrame = null;
 // Whether the browser source server is listening. A port already in use leaves it off, which the dashboard's readiness check reports.
 let lowerThirdServerUp = false;
 
@@ -625,7 +627,7 @@ function stopRemoteViews() {
 }
 
 function broadcast() {
-  lowerThirdServer?.push({ lowerThird: state.lowerThird.live, lowerStyle: state.lowerStyle, churchLogoVersion });
+  lowerThirdServer?.push({ lowerThird: state.lowerThird.live, lowerStyle: state.lowerStyle, churchLogoVersion, churchLogoFrame });
   for (const role of REMOTE_ROLES) {
     if (remoteViews[role].running()) remoteViews[role].push(snapshotFor(role, state));
   }
@@ -1610,10 +1612,15 @@ app.whenReady().then(() => {
     // Every window is told by the service itself. The browser source learns of it with the next push.
     onChanged: (profile) => {
       churchLogoVersion = profile.logoVersion;
+      churchLogoFrame = { scale: profile.logoScale, backing: profile.logoBacking };
       broadcast();
     },
   });
-  churchLogoVersion = churchProfile.get().logoVersion;
+  {
+    const profile = churchProfile.get();
+    churchLogoVersion = profile.logoVersion;
+    churchLogoFrame = { scale: profile.logoScale, backing: profile.logoBacking };
+  }
   lowerThirdServer = createLowerThirdServer({
     distDir: path.join(appDir, '../dist'),
     isExpired: () => licenseManager.isExpired(),

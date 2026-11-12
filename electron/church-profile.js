@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { CHURCH_NAME_MAX_LENGTH, MINISTRY_NAME_MAX_LENGTH, readConfig, writeConfig } from './config.js';
+import { DIOCESE_MAX, LOCATION_MAX, checkOptionalLine, checkRoster, sanitizeLogoScale } from '../shared/parish-profile.js';
 
 // The parish profile: the name and logo the app shows in the sidebar, on the projector's idle and failover screens and on the lower third.
 // The name lives in config.json. The logo is a PNG in userData/assets, per machine, like the rest of config.json.
@@ -85,21 +86,35 @@ export function createChurchProfileService({ userData, onChanged = () => {} }) {
         logoPath: dataUrl ? logoFile : null,
         logoDataUrl: dataUrl,
         logoVersion: dataUrl ? config.church_logo_version : null,
+        diocese: config.diocese ?? '',
+        location: config.parish_location ?? '',
+        logoScale: config.logo_scale,
+        logoBacking: config.logo_backing,
+        roster: config.clergy_roster,
         onboarded: config.onboarded,
       };
     },
 
     /**
      * Saves the name and, when given, the logo, and marks setup as done. `logo`: PNG bytes to use a new logo, null to go back to the default
-     * emblem, or undefined to keep the current one. Everything is checked before anything is written, so a bad logo leaves the old profile.
+     * emblem, or undefined to keep the current one. The other fields (diocese, location, logoScale, logoBacking, roster) are likewise kept
+     * when left out. Everything is checked before anything is written, so a bad logo or roster leaves the old profile.
      */
-    save({ name, ministry, logo } = {}) {
+    save({ name, ministry, logo, diocese, location, logoScale, logoBacking, roster } = {}) {
       const churchName = checkChurchName(name);
       // `ministry`: a name to set (blank clears it), or undefined to keep the saved one.
       const ministryName = ministry === undefined ? undefined : checkMinistryName(ministry);
       const png = logo === undefined || logo === null ? logo : checkLogoPng(logo);
       const patch = { church_name: churchName, onboarded: true };
       if (ministryName !== undefined) patch.ministry_name = ministryName;
+      if (diocese !== undefined) patch.diocese = checkOptionalLine(diocese, DIOCESE_MAX, 'diocese');
+      if (location !== undefined) patch.parish_location = checkOptionalLine(location, LOCATION_MAX, 'city or location');
+      if (logoScale !== undefined) {
+        if (!Number.isFinite(Number(logoScale))) throw new Error('The logo size could not be read.');
+        patch.logo_scale = sanitizeLogoScale(logoScale);
+      }
+      if (logoBacking !== undefined) patch.logo_backing = logoBacking === true;
+      if (roster !== undefined) patch.clergy_roster = checkRoster(roster);
 
       if (png) {
         fs.mkdirSync(path.dirname(logoFile), { recursive: true });

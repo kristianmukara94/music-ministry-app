@@ -26,16 +26,76 @@ export interface BackgroundSettings {
   textShade: boolean;
 }
 
-export interface WelcomeSettings extends BackgroundSettings {
-  welcomeType: 'TEXT' | 'IMAGE';
-  message: string;
+export const WELCOME_SLIDE_TYPES: readonly ['TEXT', 'IMAGE', 'ANNOUNCEMENT'];
+export type WelcomeSlideType = 'TEXT' | 'IMAGE' | 'ANNOUNCEMENT';
+/** Seconds a slide stays up; 0 is Manual Step. */
+export type WelcomeDwell = 5 | 10 | 15 | 0;
+export const WELCOME_DWELLS: readonly WelcomeDwell[];
+export const WELCOME_DWELL_DEFAULT: WelcomeDwell;
+export const WELCOME_SLIDES_MAX: number;
+export const WELCOME_TITLE_MAX: number;
+
+/** One slide of the welcome carousel. */
+export interface WelcomeSlide {
+  id: string;
+  type: WelcomeSlideType;
+  /** The message (a text slide) or the card's body (an announcement). */
+  text: string;
+  /** The announcement card's heading. Unused by the other kinds. */
+  title: string;
+  /** The picture of an image slide. */
   imageUrl: string | null;
-  /** How the Welcome image is fitted (the picture on the Welcome screen). Separate from the Welcome background's fit. */
+  dwell: WelcomeDwell;
+}
+
+export type WelcomeFont = 'INTER' | 'CINZEL' | 'ROBOTO' | 'CLASSIC';
+export const WELCOME_FONTS: readonly WelcomeFont[];
+export const WELCOME_FONT_STACKS: Record<WelcomeFont, string>;
+export type WelcomeShadow = 'NONE' | 'SOFT' | 'OUTLINE';
+export const WELCOME_SHADOWS: readonly WelcomeShadow[];
+export const WELCOME_SCRIM_MAX: number;
+
+export type CountdownMode = 'TARGET' | 'DURATION';
+export type CountdownOnZero = 'HOLD' | 'FADE' | 'CLEAR';
+export const COUNTDOWN_MODES: readonly CountdownMode[];
+export const COUNTDOWN_ON_ZERO: readonly CountdownOnZero[];
+export const COUNTDOWN_DURATION_MIN: number;
+export const COUNTDOWN_DURATION_MAX: number;
+export const COUNTDOWN_LABEL_MAX: number;
+
+/** The pre-service countdown over the welcome screen. */
+export interface WelcomeCountdown {
+  enabled: boolean;
+  mode: CountdownMode;
+  /** 24-hour "HH:MM", today, on this computer's clock. */
+  targetTime: string;
+  durationSec: number;
+  onZero: CountdownOnZero;
+  /** The words over the digits. */
+  label: string;
+}
+export const COUNTDOWN_DEFAULTS: WelcomeCountdown;
+
+export interface WelcomeSettings extends BackgroundSettings {
+  /** Legacy: the single welcome kind before the carousel. Read once to make the first slide. */
+  welcomeType: 'TEXT' | 'IMAGE';
+  /** Legacy: the single welcome message before the carousel. */
+  message: string;
+  /** Legacy: the single welcome picture before the carousel. */
+  imageUrl: string | null;
+  /** How a picture slide is fitted. Separate from the Welcome background's fit. */
   imageFit: ImageFit;
   textColor: string;
   fontSize: number;
   /** The Live set's slide background, saved separately from the Welcome background. */
   slideBackground: BackgroundSettings;
+  /** The welcome carousel, in order. */
+  slides: WelcomeSlide[];
+  fontFamily: WelcomeFont;
+  textShadow: WelcomeShadow;
+  /** The dark gradient behind the text, 0 to 80 percent. */
+  scrim: number;
+  countdown: WelcomeCountdown;
 }
 
 /** The Welcome screen's colour when none is set. */
@@ -49,7 +109,13 @@ export const BACKGROUND_DEFAULTS: BackgroundSettings;
 export const WELCOME_DEFAULTS: WelcomeSettings;
 export const WELCOME_CONTENT_DEFAULTS: Pick<WelcomeSettings, 'welcomeType' | 'message' | 'imageUrl' | 'imageFit'>;
 export const WELCOME_STYLE_DEFAULTS: Pick<WelcomeSettings, 'backgroundType' | 'backgroundColor' | 'textColor' | 'fontSize'>;
+export const WELCOME_TYPOGRAPHY_DEFAULTS: Pick<WelcomeSettings, 'fontFamily' | 'textShadow' | 'scrim'>;
 export function sanitizeWelcomeSettings(raw: unknown): WelcomeSettings;
+/** The slide showing `elapsedMs` after the carousel started on `start`, and its time left (null while it waits for the operator). */
+export function carouselPosition(slides: readonly Pick<WelcomeSlide, 'dwell'>[], start: number, elapsedMs: number): { index: number; remainingMs: number | null };
+/** Milliseconds left on the countdown, or null when it is off. Never below zero. */
+export function countdownRemainingMs(countdown: WelcomeCountdown, now: number, startedAt: number): number | null;
+export function formatCountdown(ms: number): string;
 export function fittedPicture(imageFit: ImageFit, boxW: number, boxH: number, imgW: number, imgH: number): { scale: number; width: number; height: number; left: number; top: number };
 
 export interface WelcomeBackground {

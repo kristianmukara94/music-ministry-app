@@ -60,6 +60,10 @@ const lookOf = (frame: MediaFrame | null): Look =>
       }
     : DEFAULT_LOOK;
 
+/** A new cue for each staging of a "play once" clip. Always moves forward, even for two stagings in the same millisecond. */
+let lastCue = 0;
+const nextCue = () => (lastCue = Math.max(Date.now(), lastCue + 1));
+
 /** A library item as a background frame, with the inspector's look. Audio is never a background, so it has no frame. */
 const toFrame = (m: MediaAsset, look: Look = DEFAULT_LOOK): MediaFrame | null => {
   if (m.mediaType === 'audio') return null;
@@ -68,6 +72,8 @@ const toFrame = (m: MediaAsset, look: Look = DEFAULT_LOOK): MediaFrame | null =>
   if (look.tint > 0) frame.tint = look.tint / 100;
   if (m.mediaType === 'video' && look.rate !== 1) frame.rate = look.rate;
   if (m.mediaType === 'video' && look.playback !== 'loop') frame.playback = look.playback;
+  // Each staging of a "play once" clip is its own showing, so taking it again after it ended plays it again.
+  if (frame.playback === 'once') frame.cue = nextCue();
   return frame;
 };
 const sameLook = (a: Look, b: Look) => a.tint === b.tint && a.rate === b.rate && a.playback === b.playback;
