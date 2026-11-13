@@ -64,10 +64,10 @@ export function AddNoteOverlayModal({ reference, verseText, onClose }: {
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Add note overlay" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" aria-label="Add note overlay" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[92vh] w-full max-w-2xl flex-col gap-5 overflow-y-auto rounded-xl border border-fg/20 bg-panel p-6 shadow-2xl"
+        className="flex max-h-[92vh] w-full max-w-2xl flex-col gap-5 overflow-y-auto rounded-xl border border-fg/20 bg-surface p-6 shadow-2xl"
       >
         {/* Header: icon, title, close, and the verse it is for. */}
         <header className="flex items-start justify-between gap-4">
@@ -77,10 +77,10 @@ export function AddNoteOverlayModal({ reference, verseText, onClose }: {
             </div>
             <div>
               <h2 className="text-lg font-bold tracking-tight text-fg">Add note overlay</h2>
-              <p className="mt-0.5 text-sm text-fg/60">For: {reference}</p>
+              <p className="mt-0.5 text-sm text-muted">For: {reference}</p>
             </div>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/20 text-fg/60 hover:text-fg">
+          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/20 text-muted hover:text-fg">
             <X size={16} aria-hidden />
           </button>
         </header>
@@ -90,7 +90,7 @@ export function AddNoteOverlayModal({ reference, verseText, onClose }: {
           <div className="flex items-center gap-2 text-sm font-bold text-fg/90">
             <BookOpen size={15} className="text-accent" aria-hidden /> {reference}
           </div>
-          <p className="text-xs text-fg/60">Click words to add them to your note:</p>
+          <p className="text-xs text-muted">Click words to add them to your note:</p>
           <div className="flex max-h-44 flex-wrap gap-1.5 overflow-y-auto rounded-lg border border-line bg-panel-2/60 p-3">
             {words.map((word, i) => (
               <button
@@ -107,7 +107,7 @@ export function AddNoteOverlayModal({ reference, verseText, onClose }: {
 
         {/* The message, the prefix, and the live preview. */}
         <section className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1.5 text-xs font-bold tracking-wider text-fg/60 uppercase">
+          <label className="flex flex-col gap-1.5 text-xs font-bold tracking-wider text-muted uppercase">
             Message
             <textarea
               rows={3}
@@ -140,7 +140,7 @@ export function AddNoteOverlayModal({ reference, verseText, onClose }: {
               aria-label="Prefix"
               className="h-9 w-40 rounded-md border border-fg/20 bg-panel-2 px-3 font-mono text-sm font-bold text-fg uppercase outline-none focus:border-accent disabled:opacity-40"
             />
-            <span className="font-mono text-xs text-fg/60 tabular-nums">
+            <span className="font-mono text-xs text-muted tabular-nums">
               {prefix.length}/{PREFIX_MAX}
             </span>
           </div>
@@ -173,7 +173,7 @@ export function AddNoteOverlayModal({ reference, verseText, onClose }: {
                 ['Border accent', accent, setAccent],
               ] as const).map(([label, current, set]) => (
                 <div key={label} className="flex flex-col gap-2">
-                  <span className="text-xs font-bold tracking-wider text-fg/60 uppercase">{label}</span>
+                  <span className="text-xs font-bold tracking-wider text-muted uppercase">{label}</span>
                   <div className="flex gap-2">
                     {TEXT_SWATCHES.map((swatch) => (
                       <button

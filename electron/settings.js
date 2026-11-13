@@ -201,10 +201,22 @@ export function setupSettings(deps) {
 
   handle('get', () => service.get());
   handle('setLanguage', (_win, lang) => service.setLanguage(lang));
-  // The title-bar buttons take the new theme's colours at once, so they match the top bar without a restart.
+  // The title-bar buttons take the new theme's colours at once, so they match the top bar without a restart. Every other open
+  // window (a slide editor, say) is told too, and repaints with the same calibrated colours.
   handle('setTheme', (win, theme) => {
     const saved = service.setTheme(theme);
-    if (process.platform === 'win32') win?.setTitleBarOverlay?.(titleBarOverlayFor(saved));
+    for (const other of BrowserWindow.getAllWindows()) {
+      if (other.isDestroyed()) continue;
+      // Frameless output windows have no overlay and Electron throws for them; the save must not fail because of that.
+      if (process.platform === 'win32') {
+        try {
+          other.setTitleBarOverlay?.(titleBarOverlayFor(saved));
+        } catch {
+          /* no title-bar overlay on this window */
+        }
+      }
+      if (other !== win) other.webContents.send('config:themeChanged', saved);
+    }
     return saved;
   });
   handle('acceptEula', (_win, registration) => service.acceptEula(registration));

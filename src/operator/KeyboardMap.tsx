@@ -115,22 +115,22 @@ export function KeyboardMap() {
   if (adding) {
     body = (
       <div className="flex flex-col gap-1.5 p-3">
-        <div className="px-1 pb-1 text-xs font-semibold text-fg/60">{t('keys.pickAction')}</div>
+        <div className="px-1 pb-1 text-xs font-semibold text-muted">{t('keys.pickAction')}</div>
         {unassigned.length === 0 ? (
-          <p className="px-1 py-3 text-sm text-fg/60">{t('keys.allAssigned')}</p>
+          <p className="px-1 py-3 text-sm text-muted">{t('keys.allAssigned')}</p>
         ) : (
           unassigned.map((a) => (
             <button key={a.id} type="button" onClick={() => add(a.id)}
               className="flex flex-col rounded-lg border border-fg/10 bg-fg/[0.03] px-3 py-2 text-left transition hover:border-accent/50 hover:bg-fg/[0.07]">
               <span className="text-sm font-medium text-fg">{a.label}</span>
-              <span className="text-xs text-fg/50">{a.description}</span>
+              <span className="text-xs text-faint">{a.description}</span>
             </button>
           ))
         )}
       </div>
     );
   } else if (shortcuts.length === 0) {
-    body = <p className="px-4 py-6 text-center text-sm text-fg/60">{t('keys.empty')}</p>;
+    body = <p className="px-4 py-6 text-center text-sm text-muted">{t('keys.empty')}</p>;
   } else {
     body = (
       <ul className="flex flex-col gap-2 p-3">
@@ -147,7 +147,7 @@ export function KeyboardMap() {
               </button>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium text-fg">{nameOf(s)}</div>
-                <div className="truncate text-xs text-fg/50">{s.description ?? action?.description}</div>
+                <div className="truncate text-xs text-faint">{s.description ?? action?.description}</div>
               </div>
               {active && (
                 <span className="flex shrink-0 items-center gap-1.5 text-[10px] font-bold tracking-wider text-ok uppercase">
@@ -156,7 +156,7 @@ export function KeyboardMap() {
                 </span>
               )}
               <button type="button" onClick={() => remove(s.id)} aria-label={`${t('keys.remove')}: ${nameOf(s)}`} title={t('keys.remove')}
-                className="shrink-0 rounded-md p-1 text-fg/50 opacity-0 transition-opacity group-hover:opacity-100 hover:text-danger focus-visible:opacity-100">
+                className="shrink-0 rounded-md p-1 text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:text-danger focus-visible:opacity-100">
                 <Trash2 size={16} aria-hidden />
               </button>
             </li>
@@ -180,9 +180,9 @@ export function KeyboardMap() {
       {body}
       <div className="flex flex-col gap-1 px-4 pb-3">
         {notice && <p role="alert" className="text-xs font-medium text-danger">{notice}</p>}
-        <p className="text-xs leading-normal font-normal text-fg/60">{t('keys.hint')}</p>
+        <p className="text-xs leading-normal font-normal text-muted">{t('keys.hint')}</p>
         {!isDefault && !adding && (
-          <button type="button" onClick={restore} className="self-start text-xs text-fg/60 underline underline-offset-2 hover:text-accent">{t('keys.restore')}</button>
+          <button type="button" onClick={restore} className="self-start text-xs text-muted underline underline-offset-2 hover:text-accent">{t('keys.restore')}</button>
         )}
       </div>
     </Panel>

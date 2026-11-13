@@ -27,7 +27,7 @@ export function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
         aria-modal="true"
         aria-labelledby="onboarding-title"
         aria-describedby="onboarding-subtitle"
-        className="my-auto flex max-h-full w-full max-w-3xl flex-col rounded-xl border border-fg/15 bg-panel shadow-2xl"
+        className="my-auto flex max-h-full w-full max-w-3xl flex-col rounded-xl border border-fg/15 bg-surface shadow-2xl"
       >
         <header className="flex items-center gap-4 border-b border-line px-6 py-5">
           <img src={LOGO_SRC} alt="" draggable={false} className="size-14 shrink-0 object-contain" />

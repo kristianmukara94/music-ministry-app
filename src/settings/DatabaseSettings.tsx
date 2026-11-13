@@ -90,14 +90,14 @@ export function DatabaseSettings() {
       )}
 
       {confirming && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setConfirming(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => setConfirming(false)}>
           <div
             role="alertdialog"
             aria-modal="true"
             aria-labelledby="restore-title"
             aria-describedby="restore-warning"
             onClick={(e) => e.stopPropagation()}
-            className="flex w-full max-w-md flex-col gap-4 rounded-xl border border-fg/15 bg-panel p-6 shadow-2xl"
+            className="flex w-full max-w-md flex-col gap-4 rounded-xl border border-fg/15 bg-surface p-6 shadow-2xl"
           >
             <h3 id="restore-title" className="flex items-center gap-2 text-lg font-bold">
               <DatabaseBackup size={18} aria-hidden /> Restore a backup?

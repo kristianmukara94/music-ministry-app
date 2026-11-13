@@ -18,7 +18,7 @@ import { AddBibleVerseModal } from './AddBibleVerseModal';
 import type { WhiteboardVerse } from './types';
 
 const SECTION = 'flex flex-col gap-4 rounded-lg border border-line bg-panel-2/60 p-4';
-export const LABEL = 'text-[11px] font-bold tracking-wider text-fg/60 uppercase';
+export const LABEL = 'text-[11px] font-bold tracking-wider text-muted uppercase';
 export const FIELD = 'w-full rounded-md border border-fg/20 bg-panel px-3 py-2 text-sm text-fg outline-none focus:border-accent';
 export const CHIP = 'rounded-md border px-3 py-1.5 text-xs font-bold tracking-wider uppercase transition-colors';
 export const CHIP_OFF = 'border-fg/20 bg-panel text-fg/80 hover:border-accent/40 hover:text-accent';
@@ -165,7 +165,7 @@ export function BackgroundImageGroup({
   return (
     <Group title="Background image">
       {failed ? (
-        <p className="rounded-md border border-dashed border-fg/20 px-3 py-3 text-xs text-fg/60">The Media Library could not be read.</p>
+        <p className="rounded-md border border-dashed border-fg/20 px-3 py-3 text-xs text-muted">The Media Library could not be read.</p>
       ) : pictures === null ? (
         <div className="grid grid-cols-3 gap-2" aria-hidden>
           {[0, 1, 2].map((i) => (
@@ -193,7 +193,7 @@ export function BackgroundImageGroup({
         </div>
       )}
       {pictures !== null && pictures.length === 0 && !fromSlide && (
-        <p className="rounded-md border border-dashed border-fg/20 px-3 py-3 text-xs text-fg/60">No pictures in the Media Library yet. Add pictures in Media, and they will appear here.</p>
+        <p className="rounded-md border border-dashed border-fg/20 px-3 py-3 text-xs text-muted">No pictures in the Media Library yet. Add pictures in Media, and they will appear here.</p>
       )}
       {design.bgImage && (
         <>
@@ -370,7 +370,7 @@ export function SlideForm({
         }
       >
         {design.verses.length === 0 && (
-          <p className="flex items-center gap-2 rounded-md border border-dashed border-fg/20 px-3 py-3 text-xs text-fg/60">
+          <p className="flex items-center gap-2 rounded-md border border-dashed border-fg/20 px-3 py-3 text-xs text-muted">
             <BookOpen size={14} aria-hidden /> No verses added yet. Click &apos;Add Verse&apos; to include scripture
           </p>
         )}
@@ -379,11 +379,11 @@ export function SlideForm({
             <div className="min-w-0 flex-1">
               <div className="text-xs font-bold tracking-wider text-accent uppercase">{v.reference}</div>
               <div className="mt-1 line-clamp-3 text-sm text-fg/80">{v.text}</div>
-              <div className="mt-1 font-mono text-[10px] text-fg/50">
+              <div className="mt-1 font-mono text-[10px] text-faint">
                 {v.style} • {v.position} • {v.align} • {v.fontSize}px
               </div>
             </div>
-            <button type="button" onClick={() => set({ verses: design.verses.filter((_, j) => j !== i) })} aria-label={`Remove ${v.reference || 'verse'}`} className="grid size-7 shrink-0 place-items-center rounded text-fg/60 hover:text-danger">
+            <button type="button" onClick={() => set({ verses: design.verses.filter((_, j) => j !== i) })} aria-label={`Remove ${v.reference || 'verse'}`} className="grid size-7 shrink-0 place-items-center rounded text-muted hover:text-danger">
               <Trash2 size={13} aria-hidden />
             </button>
           </div>

@@ -55,7 +55,7 @@ export function MassSlotPicker({ value, onChange }: { value: string | null; onCh
     <div className="flex flex-col gap-3">
       {MASS_SECTIONS.map((section) => (
         <section key={section.id} aria-label={section.name}>
-          <h3 className="mb-1 px-1 text-[10px] font-bold tracking-wider text-fg/50 uppercase">
+          <h3 className="mb-1 px-1 text-[10px] font-bold tracking-wider text-faint uppercase">
             {section.number}. {section.name}
           </h3>
           <ul className="flex flex-col gap-0.5">
@@ -67,7 +67,7 @@ export function MassSlotPicker({ value, onChange }: { value: string | null; onCh
                     <span className="grid size-7 shrink-0 place-items-center rounded-full bg-panel-2 font-mono text-[11px] text-muted">{slot.position}</span>
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate font-semibold">{slot.name}</span>
-                      <span className="truncate text-[11px] text-fg/50">{filler ? filler.label : 'Empty'}</span>
+                      <span className="truncate text-[11px] text-faint">{filler ? filler.label : 'Empty'}</span>
                     </span>
                   </button>
                 </li>
@@ -155,17 +155,17 @@ export function TargetSlotSelectorModal({ decks, onClose, onDone }: { decks: Pic
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="target-slot-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !busy && onClose()}>
-      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full max-w-xl flex-col gap-4 rounded-xl border border-fg/20 bg-panel p-6 shadow-2xl">
+    <div role="dialog" aria-modal="true" aria-labelledby="target-slot-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => !busy && onClose()}>
+      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full max-w-xl flex-col gap-4 rounded-xl border border-fg/20 bg-surface p-6 shadow-2xl">
         <header className="flex items-start justify-between gap-4">
           <div>
             <h2 id="target-slot-title" className="text-lg font-bold tracking-tight text-fg">Add PowerPoint to Go Live</h2>
-            <p className="mt-1 flex items-center gap-1.5 text-xs text-fg/60">
+            <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
               <Presentation size={13} aria-hidden />
               {decks.length === 1 ? decks[0].title : plural(decks.length, 'deck', 'decks')} · {plural(slideCount, 'slide', 'slides')}
             </p>
           </div>
-          <button type="button" onClick={onClose} disabled={busy} aria-label="Close" className="grid size-8 place-items-center rounded-md border border-fg/20 text-fg/60 hover:text-fg">
+          <button type="button" onClick={onClose} disabled={busy} aria-label="Close" className="grid size-8 place-items-center rounded-md border border-fg/20 text-muted hover:text-fg">
             <X size={16} aria-hidden />
           </button>
         </header>
@@ -182,7 +182,7 @@ export function TargetSlotSelectorModal({ decks, onClose, onDone }: { decks: Pic
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
           {flow === 'mass' ? (
             <>
-              <p className="mb-3 text-xs text-fg/60">
+              <p className="mb-3 text-xs text-muted">
                 {planLoaded
                   ? 'Choose a slot. An empty slot takes the PowerPoint; for a filled one, replace what is there or play it after.'
                   : 'No Holy Mass plan is loaded in the queue. A "Quick passages" plan for today will be made for it.'}
@@ -191,18 +191,18 @@ export function TargetSlotSelectorModal({ decks, onClose, onDone }: { decks: Pic
             </>
           ) : (
             <div className="flex flex-col gap-3">
-              <p className="text-xs text-fg/60">Choose a session and the card it plays in. It plays after what the card already holds.</p>
+              <p className="text-xs text-muted">Choose a session and the card it plays in. It plays after what the card already holds.</p>
               {sessions === null ? (
-                <p className="text-sm text-fg/60">Loading sessions…</p>
+                <p className="text-sm text-muted">Loading sessions…</p>
               ) : sessions.length === 0 ? (
-                <p className="text-sm text-fg/60">There are no Praise &amp; Worship sessions yet. Make one in Praise &amp; Worship first.</p>
+                <p className="text-sm text-muted">There are no Praise &amp; Worship sessions yet. Make one in Praise &amp; Worship first.</p>
               ) : (
                 <ul className="flex flex-col gap-0.5">
                   {sessions.map((s) => (
                     <li key={s.id}>
                       <button type="button" aria-pressed={session?.id === s.id} onClick={() => void pickSession(s.id)} className={CHOICE(session?.id === s.id)}>
                         <span className="min-w-0 flex-1 truncate font-semibold">{s.name}</span>
-                        <span className="shrink-0 font-mono text-[11px] text-fg/50">{s.liturgicalDate}</span>
+                        <span className="shrink-0 font-mono text-[11px] text-faint">{s.liturgicalDate}</span>
                       </button>
                     </li>
                   ))}
@@ -210,7 +210,7 @@ export function TargetSlotSelectorModal({ decks, onClose, onDone }: { decks: Pic
               )}
               {session && (
                 <section aria-label={`Cards in ${session.name}`} className="border-t border-line pt-3">
-                  <h3 className="mb-1 px-1 text-[10px] font-bold tracking-wider text-fg/50 uppercase">Cards</h3>
+                  <h3 className="mb-1 px-1 text-[10px] font-bold tracking-wider text-faint uppercase">Cards</h3>
                   <ul className="flex flex-col gap-0.5">
                     {session.segments.map((segment, i) => (
                       <li key={segment.key}>

@@ -45,7 +45,7 @@ export function NewPlanForm({ t, initialDate, initialName = '', initialTemplate 
         <input type="date" required aria-label={t('liturgicalDate')} value={date} onChange={(e) => setDate(e.target.value)} className={`${FIELD} px-2`} />
       </div>
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1 text-[11px] font-semibold tracking-wider text-fg/60 uppercase">{t('newPlanStartFrom')}</legend>
+        <legend className="mb-1 text-[11px] font-semibold tracking-wider text-muted uppercase">{t('newPlanStartFrom')}</legend>
         <div role="radiogroup" aria-label={t('newPlanStartFrom')} className="grid gap-2 sm:grid-cols-2">
           {NEW_PLAN_TEMPLATES.map((id) => (
             <label
@@ -55,7 +55,7 @@ export function NewPlanForm({ t, initialDate, initialName = '', initialTemplate 
               <input type="radio" name="new-plan-template" value={id} checked={template === id} onChange={() => setTemplate(id)} className="mt-1 accent-accent" />
               <span className="min-w-0">
                 <span className="block text-sm font-semibold text-fg">{t(`template_${id}`)}</span>
-                <span className="block text-[11px] text-fg/60">{t(`template_${id}Hint`)}</span>
+                <span className="block text-[11px] text-muted">{t(`template_${id}Hint`)}</span>
               </span>
             </label>
           ))}

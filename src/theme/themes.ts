@@ -1,4 +1,5 @@
 import { AUTO_SEASON_THEME, resolveTheme } from '../../shared/liturgical-season.js';
+import { TOKEN_VARS, resolveReadableThemeTokens, type PaletteKey, type ThemePalette } from '../../shared/theme-contrast.js';
 
 /** The theme catalogue. Each id has a matching [data-theme] block in src/styles.css, except `season-auto`. */
 export type SeasonThemeId = 'advent' | 'christmas' | 'ordinary-time' | 'lent' | 'holy-week' | 'easter' | 'pentecost';
@@ -53,7 +54,35 @@ export const isThemeId = (value: unknown): value is ThemeId => THEME_IDS.include
 /** The [data-theme] a theme id paints with today. `season-auto` becomes the current season's theme. */
 export const resolvedTheme = (id: ThemeId, date: Date = new Date()): Exclude<ThemeId, 'season-auto'> => resolveTheme(id, date) as Exclude<ThemeId, 'season-auto'>;
 
-/** Points the whole document at a theme. Every colour variable re-resolves at once. */
+const PALETTE_VARS = Object.entries(TOKEN_VARS) as [PaletteKey, string][];
+
+/**
+ * Points the whole document at a theme, then runs the contrast engine over the colours it resolved to: any text, tint or outline
+ * that falls short of its WCAG target is raised on <html> as an inline variable. The built-in themes already pass (their values in
+ * styles.css are the engine's own output, checked by shared/theme-contrast.test.js), so for them this only sets color-scheme, which
+ * makes native <select> menus, scrollbars and date pickers draw dark or light to match.
+ */
 export function applyTheme(id: ThemeId): void {
-  document.documentElement.setAttribute('data-theme', resolvedTheme(id));
+  const root = document.documentElement;
+  // Clear what the last theme raised, so this theme's own values are what gets measured.
+  for (const [, name] of PALETTE_VARS) root.style.removeProperty(name);
+  root.setAttribute('data-theme', resolvedTheme(id));
+
+  const computed = getComputedStyle(root);
+  const palette: Partial<Record<PaletteKey, string>> = {};
+  for (const [key, name] of PALETTE_VARS) {
+    const value = computed.getPropertyValue(name).trim();
+    if (value) palette[key] = value;
+  }
+  if (!palette.canvas) return;
+  try {
+    const { tokens, scheme, changed } = resolveReadableThemeTokens(palette as ThemePalette);
+    for (const key of changed) root.style.setProperty(TOKEN_VARS[key], tokens[key]);
+    // The opaque surfaces always follow the theme's panel and canvas, even if a theme block forgot to declare them.
+    if (palette.surface !== tokens.surface) root.style.setProperty(TOKEN_VARS.surface, tokens.surface);
+    if (palette.surface2 !== tokens.surface2) root.style.setProperty(TOKEN_VARS.surface2, tokens.surface2);
+    root.style.colorScheme = scheme;
+  } catch {
+    // A colour the engine cannot read (a var() or color-mix() in a hand-edited theme) leaves the theme as written.
+  }
 }

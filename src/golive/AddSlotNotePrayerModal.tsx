@@ -44,7 +44,7 @@ const DISPLAY_BUTTON = (on: boolean) =>
   `flex min-w-0 items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition ${
     on ? 'border-accent bg-accent/15 text-fg' : 'border-fg/15 text-fg/80 hover:border-fg/30 hover:bg-fg/[0.04]'
   }`;
-const FIELD = 'w-full rounded-md border border-fg/20 bg-canvas px-3 py-2 text-sm text-fg placeholder:text-fg/40 focus-visible:border-accent focus-visible:outline-none';
+const FIELD = 'w-full rounded-md border border-fg/20 bg-canvas px-3 py-2 text-sm text-fg placeholder:text-faint focus-visible:border-accent focus-visible:outline-none';
 const BTN = 'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-4 text-sm font-semibold text-fg/85 transition hover:bg-fg/10 disabled:opacity-40';
 const PRIMARY =
   'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#ecc98a] bg-[#ecc98a] px-4 text-sm font-bold text-[#1a1408] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40';
@@ -204,21 +204,21 @@ export function AddSlotNotePrayerModal({
   const sharedCategories = categories.filter((c) => !OPERATOR_CATEGORIES.includes(c));
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="note-modal-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={close}>
-      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full max-w-2xl flex-col gap-4 rounded-xl border border-fg/20 bg-panel p-6 shadow-2xl">
+    <div role="dialog" aria-modal="true" aria-labelledby="note-modal-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={close}>
+      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full max-w-2xl flex-col gap-4 rounded-xl border border-fg/20 bg-surface p-6 shadow-2xl">
         <header className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 flex-col gap-0.5">
             <h2 id="note-modal-title" className="text-lg font-bold tracking-tight text-fg">{t(note ? 'noteEditTitle' : 'noteModalTitle')}</h2>
-            <p className="truncate text-xs text-fg/60">{presetName ?? t('noteModalSubtitle')}</p>
+            <p className="truncate text-xs text-muted">{presetName ?? t('noteModalSubtitle')}</p>
           </div>
-          <button type="button" onClick={close} disabled={busy} aria-label={t('inflowClose')} className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/20 text-fg/60 hover:text-fg">
+          <button type="button" onClick={close} disabled={busy} aria-label={t('inflowClose')} className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/20 text-muted hover:text-fg">
             <X size={16} aria-hidden />
           </button>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
           <fieldset className="flex flex-col gap-1.5">
-            <legend className="mb-1.5 text-[11px] font-bold tracking-wider text-fg/60 uppercase">{t('noteType')}</legend>
+            <legend className="mb-1.5 text-[11px] font-bold tracking-wider text-muted uppercase">{t('noteType')}</legend>
             <div className="grid grid-cols-2 gap-2">
               {TYPES.map((x) => (
                 <button key={x.id} type="button" aria-pressed={type === x.id} onClick={() => pickType(x.id)} className={TYPE_BUTTON(type === x.id, x.tone)}>
@@ -226,7 +226,7 @@ export function AddSlotNotePrayerModal({
                     <span aria-hidden>{x.icon} </span>
                     {t(x.label)}
                   </span>
-                  <span className="truncate text-[11px] text-fg/60">{t(x.hint)}</span>
+                  <span className="truncate text-[11px] text-muted">{t(x.hint)}</span>
                 </button>
               ))}
             </div>
@@ -266,7 +266,7 @@ export function AddSlotNotePrayerModal({
 
           {!operator && (
             <fieldset className="flex flex-col gap-1.5">
-              <legend className="mb-1.5 text-[11px] font-bold tracking-wider text-fg/60 uppercase">{t('noteDisplay')}</legend>
+              <legend className="mb-1.5 text-[11px] font-bold tracking-wider text-muted uppercase">{t('noteDisplay')}</legend>
               <div className="grid grid-cols-2 gap-2">
                 {(
                   [
@@ -278,7 +278,7 @@ export function AddSlotNotePrayerModal({
                     <Icon size={16} aria-hidden className="shrink-0 text-accent" />
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate text-sm font-semibold">{t(label)}</span>
-                      <span className="truncate text-[11px] text-fg/60">{t(hint)}</span>
+                      <span className="truncate text-[11px] text-muted">{t(hint)}</span>
                     </span>
                   </button>
                 ))}
@@ -290,7 +290,7 @@ export function AddSlotNotePrayerModal({
             {t('noteBody')}
             <textarea value={text} rows={9} onChange={(e) => setText(e.target.value)} className={`${FIELD} resize-y font-mono text-[13px] leading-relaxed`} />
           </label>
-          <p className={`-mt-2 flex flex-wrap items-center gap-x-2 text-xs ${tooLong ? 'text-danger' : 'text-fg/55'}`}>
+          <p className={`-mt-2 flex flex-wrap items-center gap-x-2 text-xs ${tooLong ? 'text-danger' : 'text-faint'}`}>
             {operator ? (
               <span className="flex items-center gap-1.5">
                 <Lock size={12} aria-hidden /> {t('noteBodyOperatorHint')}
@@ -308,7 +308,7 @@ export function AddSlotNotePrayerModal({
 
           {placement && (
             <fieldset className="flex flex-col gap-2 border-t border-line pt-3">
-              <legend className="mb-1 text-[11px] font-bold tracking-wider text-fg/60 uppercase">{t('inflowWhere')}</legend>
+              <legend className="mb-1 text-[11px] font-bold tracking-wider text-muted uppercase">{t('inflowWhere')}</legend>
               <button type="button" aria-pressed={where === 'slot'} onClick={() => setWhere('slot')} className={CHOICE(where === 'slot')}>
                 <span className="min-w-0 flex-1 truncate">
                   {t('noteInSlot')}
@@ -339,7 +339,7 @@ export function AddSlotNotePrayerModal({
         )}
 
         <footer className="flex items-center justify-end gap-2">
-          <span className="mr-auto hidden text-xs text-fg/50 sm:inline">{t('noteKeys')}</span>
+          <span className="mr-auto hidden text-xs text-faint sm:inline">{t('noteKeys')}</span>
           <button type="button" onClick={close} disabled={busy} className={BTN}>
             {t('inflowCancel')}
           </button>

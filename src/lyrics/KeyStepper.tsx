@@ -16,7 +16,7 @@ export function KeyStepper({ musicalKey, semitones, onChange, t }: { musicalKey:
 
   return (
     <span role="group" aria-label={t('keyStepper')} className="inline-flex items-center gap-1.5">
-      <span className="text-fg/60">{t('keyLabel')}:</span>
+      <span className="text-muted">{t('keyLabel')}:</span>
       <span className={`min-w-6 font-mono text-sm font-bold ${shift ? 'text-accent' : 'text-fg'}`} aria-live="polite">
         {shown}
       </span>

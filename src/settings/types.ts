@@ -51,6 +51,8 @@ export interface ConfigApi {
   get(): Promise<ConfigState>;
   setLanguage(lang: Language): Promise<unknown>;
   setTheme(theme: ThemeId): Promise<ThemeId>;
+  /** Fires in every other open window when one of them saves a new theme, so all of them repaint together. Returns the unsubscribe. */
+  onThemeChanged?(callback: (theme: ThemeId) => void): () => void;
   /** Records the EULA acceptance and the church registration on this machine. Rejects a blank registration. */
   acceptEula(registration: Registration): Promise<void>;
   /** Changes the church and location on an existing registration. */

@@ -11,7 +11,7 @@ const CARD = 'inline-flex shrink-0 flex-nowrap items-center gap-3 whitespace-now
 const SEG_GROUP = 'inline-flex h-9 flex-nowrap items-center gap-1 rounded-lg border border-fg/15 bg-panel-2 p-0.5';
 const SEG = 'inline-flex h-8 items-center whitespace-nowrap rounded-md px-3 text-xs font-bold tracking-wider transition-colors';
 const SEG_ON = 'bg-accent text-on-accent';
-const SEG_OFF = 'text-fg/60 hover:text-fg';
+const SEG_OFF = 'text-muted hover:text-fg';
 
 /**
  * The look of the intro slide for the item on air: its title card, or a solid black screen. It changes the projector and the TV at once,

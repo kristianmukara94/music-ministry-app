@@ -37,7 +37,7 @@ test('the song form asks for two category dropdowns: the Mass slot dropdown is g
   assert.doesNotMatch(modal, /set\('category'/);
   assert.doesNotMatch(modal, /fieldCategory/);
   assert.match(modal, /<CategorySelectGroup/);
-  assert.doesNotMatch(read('src/lyrics/BatchImportView.tsx'), /defaults\.category/);
+  assert.doesNotMatch(read('src/lyrics/DocxImportView.tsx'), /defaults\.category/);
   assert.doesNotMatch(read('src/lyrics/useSongEditor.ts'), /^\s+category: HymnCategory;/m);
 });
 

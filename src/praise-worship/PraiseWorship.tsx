@@ -84,7 +84,7 @@ export function PraiseWorship() {
         <div className="flex flex-wrap items-center gap-3">
           <span aria-live="polite" className="min-w-20 text-right">
             {saveState === 'saving' ? (
-              <span className="text-xs text-fg/60">{t('saving')}</span>
+              <span className="text-xs text-muted">{t('saving')}</span>
             ) : saveState === 'saved' ? (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-ok/50 bg-ok/10 px-2.5 py-0.5 text-[11px] font-bold text-ok">
                 <Check size={12} aria-hidden /> {t('saved')}

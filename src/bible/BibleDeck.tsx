@@ -1001,7 +1001,7 @@ export function BibleDeck() {
               <details className="group rounded-lg border border-line bg-fg/[0.03]">
                 <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 [&::-webkit-details-marker]:hidden">
                   <span className={LABEL}>{t('stylePanel')}</span>
-                  <ChevronDown size={16} className="text-fg/60 transition group-open:rotate-180" aria-hidden />
+                  <ChevronDown size={16} className="text-muted transition group-open:rotate-180" aria-hidden />
                 </summary>
                 <div className="flex flex-col gap-3 border-t border-line p-3">
                   <StyleToolbar style={style} onChange={changeStyle} />
@@ -1046,7 +1046,7 @@ export function BibleDeck() {
                   <span className="shrink-0 rounded-full border border-accent/40 bg-accent/15 px-3 py-1 font-mono text-[11px] font-bold text-accent tabular-nums">
                     {selected.length > 0 ? t('selectedCount', { count: selected.length }) : t('selectHint')}
                   </span>
-                  {slideCount > 0 && <span className="shrink-0 font-mono text-[11px] text-fg/60 tabular-nums">{t('slidesCount', { n: slideCount })}</span>}
+                  {slideCount > 0 && <span className="shrink-0 font-mono text-[11px] text-muted tabular-nums">{t('slidesCount', { n: slideCount })}</span>}
                   <button type="button" onClick={handleClearSelection} disabled={!selected.length} className={PILL}>
                     <X size={14} aria-hidden /> {t('clearSelection')}
                   </button>
@@ -1062,7 +1062,7 @@ export function BibleDeck() {
 
                 {/* Where the selection goes: the Mass queue, a plan, or a note on the screen. */}
                 <div role="group" aria-label={t('sendGroup')} className="flex flex-1 flex-wrap items-center gap-2">
-                  <label className="flex shrink-0 items-center gap-2 text-[10px] font-bold tracking-[0.14em] text-fg/60 uppercase">
+                  <label className="flex shrink-0 items-center gap-2 text-[10px] font-bold tracking-[0.14em] text-muted uppercase">
                     {t('blockLabel')}
                     <select value={block} onChange={(e) => setBlock(e.target.value as LiturgicalBlock)} className={FIELD}>
                       {BLOCKS.map((b) => (
@@ -1073,7 +1073,7 @@ export function BibleDeck() {
                   <button type="button" onClick={sendToQueue} disabled={!canUseSelection} className={PILL}>
                     {t('addToQueue')}
                   </button>
-                  <label className="flex min-w-[12rem] flex-1 items-center gap-2 text-[10px] font-bold tracking-[0.14em] text-fg/60 uppercase">
+                  <label className="flex min-w-[12rem] flex-1 items-center gap-2 text-[10px] font-bold tracking-[0.14em] text-muted uppercase">
                     {t('planLabel')}
                     <select
                       value={planId ?? ''}
@@ -1133,10 +1133,10 @@ function ShortcutHint() {
   ];
   return (
     <div role="note" className="flex flex-wrap items-center gap-x-2 gap-y-2 rounded-lg border border-line bg-panel px-3 py-2 text-xs text-fg/80">
-      <span aria-hidden className="text-fg/60">ⓘ</span>
+      <span aria-hidden className="text-muted">ⓘ</span>
       {items.map((item, i) => (
         <span key={i} className="flex items-center gap-2">
-          {i > 0 && <span aria-hidden className="text-fg/40">•</span>}
+          {i > 0 && <span aria-hidden className="text-faint">•</span>}
           {item}
         </span>
       ))}
@@ -1179,19 +1179,19 @@ function CompareVerseModal({ verse, bookNumber, bookName, chapter, translations,
   }, [onClose]);
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={`${bookName} ${chapter}:${verse.verse}`} className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-2xl flex-col gap-4 rounded-xl border border-fg/20 bg-panel p-5 shadow-2xl">
+    <div role="dialog" aria-modal="true" aria-label={`${bookName} ${chapter}:${verse.verse}`} className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-2xl flex-col gap-4 rounded-xl border border-fg/20 bg-surface p-5 shadow-2xl">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-serif text-2xl text-accent">{bookName} {chapter}:{verse.verse}</h2>
           <button type="button" onClick={onClose} className="rounded-md border border-fg/20 px-3 py-1 text-xs font-bold uppercase text-fg/80 hover:text-fg">Close</button>
         </div>
         {rows === null ? (
-          <p className="text-sm text-fg/60">Loading translations…</p>
+          <p className="text-sm text-muted">Loading translations…</p>
         ) : (
           <ul className="flex flex-col gap-3">
             {rows.map(({ translation, text }) => (
               <li key={translation.id} className="rounded-lg border border-line bg-panel-2 p-3">
-                <div className="mb-1 text-[11px] font-bold tracking-widest text-fg/60 uppercase">{translation.name}</div>
+                <div className="mb-1 text-[11px] font-bold tracking-widest text-muted uppercase">{translation.name}</div>
                 <p className="font-serif text-base leading-relaxed text-fg">{text ?? 'Not in this translation.'}</p>
               </li>
             ))}
@@ -1246,7 +1246,7 @@ function OperatorListFontStepper({ value, onChange }: { value: number; onChange:
           aria-label="Verse text size in pixels"
           className="h-8 w-14 rounded-lg border border-fg/15 bg-panel-2 pr-4 text-center text-sm font-semibold text-accent focus:border-accent focus:outline-none"
         />
-        <span aria-hidden className="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 text-[10px] text-fg/50">px</span>
+        <span aria-hidden className="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 text-[10px] text-faint">px</span>
       </div>
 
       <button

@@ -6,8 +6,8 @@ import { PRIMARY_OPTIONS, SCOPE_HINT_KEY, categoryModeLookup, groupCategories, h
 import type { SongCategory } from './types';
 
 const FIELD =
-  'w-full rounded-lg border border-fg/15 bg-panel-2 px-3 text-fg outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40';
-const CAPTION = 'flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-fg/60 uppercase';
+  'w-full rounded-lg border border-line-strong bg-surface-2 px-3 text-fg outline-none placeholder:text-faint focus:border-accent focus:ring-1 focus:ring-accent/40';
+const CAPTION = 'flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-muted uppercase';
 
 /** The heading a category group gets in a filter: its scope's name, and All for the categories that suit every scope. */
 const GROUP_LABEL: Record<PrimaryCategory, LyKey> = { MASS: 'scope_MASS', PRAISE_AND_WORSHIP: 'scope_PRAISE_AND_WORSHIP', GENERAL: 'targetMode_ALL' };

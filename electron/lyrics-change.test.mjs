@@ -119,3 +119,34 @@ test('a window that fails to hear the announcement does not fail the save', () =
   assert.match(lyricsOf(service.getHymn(id)), /Still saved/);
   assert.ok(db);
 });
+
+// The song form saves its slides as shown: a continuation slide is stored under the part it carries on.
+const { lyricSlides, slidesToSaved } = await import('../shared/lyric-slides.js');
+const twelve = Array.from({ length: 12 }, (_, i) => `Line ${i + 1}`).join('\n');
+
+test('a song saved with continuation slides stores each under its inherited part', () => {
+  const { service } = library();
+  const { slides } = lyricSlides(`${twelve}\n\n[Chorus]\nSample lyric line 1\nSample lyric line 2`);
+  const { id } = service.createHymn(hymn('Sample Song', slidesToSaved(slides)));
+  const stored = service.getHymn(id).stanzas;
+  assert.deepEqual(stored.map((s) => s.stanzaType), ['Verse 1', 'Verse 1', 'Verse 1', 'Chorus']);
+  assert.deepEqual(stored.map((s) => s.lyricsText.split('\n').length), [4, 4, 4, 2]);
+});
+
+test('an edit that cuts a long verse into slides puts the new slides after it in a saved lineup arrangement', () => {
+  const { db, service } = library();
+  const { id } = service.createHymn(hymn('Sample Song', `[Verse 1]\n${twelve}\n\n[Chorus]\nSample lyric line 1`));
+  const [verse, chorus] = service.getHymn(id).stanzas.map((s) => s.id);
+  const sessionId = Number(db.prepare("INSERT INTO pw_sessions (name, liturgical_date, groups) VALUES ('Night', '2026-11-06', '[]')").run().lastInsertRowid);
+  db.prepare(`INSERT INTO pw_segments (session_id, display_order, segment_key, group_key, name, type, minutes, leader, content_ref, arrangement, cues, notes)
+    VALUES (?, 1, 'joyful_song', 'praise', 'Joyful', 'song', 5, '', '{}', ?, '{}', '')`)
+    .run(sessionId, JSON.stringify({ [id]: [String(chorus), String(verse), String(chorus)] }));
+
+  service.editHymn(id, hymn('Sample Song', slidesToSaved(lyricSlides(`[Verse 1]\n${twelve}\n\n[Chorus]\nSample lyric line 1`).slides)));
+  const after = service.getHymn(id).stanzas;
+  assert.deepEqual(after.map((s) => s.stanzaType), ['Verse 1', 'Verse 1', 'Verse 1', 'Chorus']);
+  assert.equal(after[0].id, verse, 'the verse keeps its id');
+  assert.equal(after[3].id, chorus);
+  const arrangement = JSON.parse(db.prepare('SELECT arrangement FROM pw_segments').get().arrangement)[id];
+  assert.deepEqual(arrangement.map(Number), [chorus, verse, after[1].id, after[2].id, chorus]);
+});

@@ -14,7 +14,7 @@ const TEMPLATES: { id: LowerThirdTemplate; label: string; line1Label: string; li
   { id: 'response', label: 'Response', line1Label: 'Response, e.g. R: And with your spirit', line2Label: null },
 ];
 
-const input = 'h-10 w-full rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40';
+const input = 'h-10 w-full rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none placeholder:text-faint focus:border-accent focus:ring-1 focus:ring-accent/40';
 const button =
   'flex h-9 items-center gap-2 rounded-md px-4 text-xs font-bold tracking-wide uppercase transition disabled:cursor-not-allowed disabled:opacity-40';
 
@@ -97,7 +97,7 @@ export function LowerThirdDrawer({ open, onClose }: { open: boolean; onClose: ()
         role="dialog"
         aria-modal="true"
         aria-labelledby="lower-third-title"
-        className="relative flex h-full w-full max-w-md flex-col border-l border-line bg-panel shadow-2xl"
+        className="relative flex h-full w-full max-w-md flex-col border-l border-line bg-surface shadow-2xl"
       >
         <header className="flex items-center gap-3 border-b border-line px-5 py-4">
           <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-accent/30 bg-accent/10 text-accent">
@@ -105,7 +105,7 @@ export function LowerThirdDrawer({ open, onClose }: { open: boolean; onClose: ()
           </span>
           <div className="min-w-0 flex-1">
             <h2 id="lower-third-title" className="text-sm font-bold text-fg">Lower third</h2>
-            <p className="truncate text-xs text-fg/60">{live ? `Showing: ${live.line1}` : 'Nothing showing'}</p>
+            <p className="truncate text-xs text-muted">{live ? `Showing: ${live.line1}` : 'Nothing showing'}</p>
           </div>
           {live && (
             <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-ok/60 bg-ok/15 px-2.5 py-0.5 text-[10px] font-extrabold tracking-wider text-ok uppercase">
@@ -113,7 +113,7 @@ export function LowerThirdDrawer({ open, onClose }: { open: boolean; onClose: ()
               Live
             </span>
           )}
-          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-md text-fg/60 hover:bg-fg/10 hover:text-fg">
+          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-md text-muted hover:bg-fg/10 hover:text-fg">
             <X size={16} aria-hidden />
           </button>
         </header>
@@ -122,22 +122,22 @@ export function LowerThirdDrawer({ open, onClose }: { open: boolean; onClose: ()
           {/* The parish team from Settings › Parish: a click fills the nameplate, the send button puts it on screen at once. */}
           <section aria-labelledby="lower-third-team" className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
-              <h3 id="lower-third-team" className="text-[11px] font-bold tracking-wider text-fg/60 uppercase">Parish team</h3>
+              <h3 id="lower-third-team" className="text-[11px] font-bold tracking-wider text-muted uppercase">Parish team</h3>
               <button type="button" onClick={() => { onClose(); setUi({ view: 'settings', settingsSection: 'profile' }); }} className="text-[11px] font-semibold text-accent hover:underline">
                 {roster.length ? 'Edit team' : 'Add the parish team'}
               </button>
             </div>
             {roster.length === 0 ? (
-              <p className="text-xs text-fg/50">Save the priests, music director and commentators in Settings › Parish to show their nameplates in one click.</p>
+              <p className="text-xs text-faint">Save the priests, music director and commentators in Settings › Parish to show their nameplates in one click.</p>
             ) : (
               <ul className="flex flex-wrap gap-1.5">
                 {roster.map((person) => (
                   <li key={person.id} className={`flex items-stretch overflow-hidden rounded-full border text-xs ${isLive(person) ? 'border-ok/60 bg-ok/10' : 'border-fg/15 bg-panel-2'}`}>
                     <button type="button" onClick={() => applyPreset(person, false)} title={`Fill the nameplate: ${person.name}${person.role ? `, ${person.role}` : ''}`}
                       className="flex min-w-0 items-center gap-1.5 py-1 pr-2 pl-2.5 text-left hover:bg-fg/10">
-                      <UserRound size={12} aria-hidden className="shrink-0 text-fg/50" />
+                      <UserRound size={12} aria-hidden className="shrink-0 text-faint" />
                       <span className="max-w-[11rem] truncate font-semibold text-fg">{person.name}</span>
-                      {person.role && <span className="max-w-[8rem] truncate text-fg/55">{person.role}</span>}
+                      {person.role && <span className="max-w-[8rem] truncate text-faint">{person.role}</span>}
                     </button>
                     <button type="button" onClick={() => applyPreset(person, true)} aria-label={`Show ${person.name} now`} title="Show on screen now"
                       className="grid w-7 place-items-center border-l border-fg/15 text-ok hover:bg-ok/15">
@@ -196,7 +196,7 @@ export function LowerThirdDrawer({ open, onClose }: { open: boolean; onClose: ()
             aria-label="Lower third preview"
             className="relative aspect-video overflow-hidden rounded-[10px] border border-line bg-gradient-to-br from-[#3a1020] to-[#100306] [container-type:inline-size]"
           >
-            {value ? <LowerThirdStage value={value} /> : <p className="absolute inset-0 grid place-items-center text-xs text-white/50">Type a line to preview it.</p>}
+            {value ? <LowerThirdStage value={value} /> : <p className="absolute inset-0 grid place-items-center text-xs text-white/70">Type a line to preview it.</p>}
           </div>
         </div>
 

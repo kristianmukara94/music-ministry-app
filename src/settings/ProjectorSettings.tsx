@@ -121,9 +121,9 @@ export function ProjectorSettingsPanel() {
       {/* Header: the category, the title, and the auto-save note. */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="text-[11px] font-bold tracking-[0.2em] text-fg/50 uppercase">Output</div>
+          <div className="text-[11px] font-bold tracking-[0.2em] text-faint uppercase">Output</div>
           <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">Projector</h1>
-          <p className="mt-2 max-w-xl text-sm text-fg/60">Choose the display the congregation sees, then open or close the projector.</p>
+          <p className="mt-2 max-w-xl text-sm text-muted">Choose the display the congregation sees, then open or close the projector.</p>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-panel-2/80 px-3 py-1 text-xs font-semibold text-accent/90 shadow-sm">
           <CheckCircle2 size={13} aria-hidden /> Changes save automatically
@@ -153,7 +153,7 @@ export function ProjectorSettingsPanel() {
               <span className={`size-2 rounded-full ${projectorOn ? 'animate-pulse bg-ok' : 'border border-fg/50'}`} aria-hidden />
               {projectorOn ? 'Projector open' : 'Projector closed'}
             </span>
-            <p className="mt-1.5 text-sm text-fg/60">
+            <p className="mt-1.5 text-sm text-muted">
               {projectorOn ? `Showing on ${target}${chosen ? ` · ${chosen.width} × ${chosen.height}` : ''}.` : `Opens on ${target}. Change the display below first if needed.`}
             </p>
           </div>
@@ -191,7 +191,7 @@ export function ProjectorSettingsPanel() {
                 }`}
               >
                 <span className="text-sm font-bold">{name}</span>
-                <span className="font-mono text-xs text-fg/60">{size}</span>
+                <span className="font-mono text-xs text-muted">{size}</span>
               </button>
             ))}
           </div>
@@ -248,11 +248,11 @@ export function ProjectorSettingsPanel() {
                     selected ? 'border-accent bg-accent/10 shadow-md shadow-black/30' : 'border-line bg-panel/60 hover:border-fg/30'
                   }`}
                 >
-                  <Monitor size={18} className={`mt-0.5 shrink-0 ${selected ? 'text-accent' : 'text-fg/60'}`} aria-hidden />
+                  <Monitor size={18} className={`mt-0.5 shrink-0 ${selected ? 'text-accent' : 'text-muted'}`} aria-hidden />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-bold text-fg">Display {d.index}</span>
-                      {d.label && <span className="text-xs text-fg/60">{d.label}</span>}
+                      {d.label && <span className="text-xs text-muted">{d.label}</span>}
                       {d.primary && (
                         <span className="rounded border border-fg/30 bg-fg/10 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-fg/80 uppercase">Primary</span>
                       )}
@@ -263,7 +263,7 @@ export function ProjectorSettingsPanel() {
                     <div className="mt-1 font-mono text-xs text-fg/90">
                       {d.width} × {d.height}
                     </div>
-                    <div className="font-mono text-[11px] text-fg/50">
+                    <div className="font-mono text-[11px] text-faint">
                       Position {d.x}, {d.y}
                     </div>
                   </div>

@@ -142,15 +142,15 @@ export function HubSlideSelectionModal({
   const style = note ? sanitizeTextStyle(note.style) : null;
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="hub-pick-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => keys.current.close()}>
-      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full max-w-4xl flex-col gap-4 rounded-xl border border-fg/20 bg-panel p-6 shadow-2xl">
+    <div role="dialog" aria-modal="true" aria-labelledby="hub-pick-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => keys.current.close()}>
+      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full max-w-4xl flex-col gap-4 rounded-xl border border-fg/20 bg-surface p-6 shadow-2xl">
         <header className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('hubPickTitle')}</span>
             <h2 id="hub-pick-title" className="truncate text-lg font-bold tracking-tight text-fg">{note?.title ?? '—'}</h2>
-            {note && <p className="truncate text-xs text-fg/60">{noteCategoryLabel(note.category)}</p>}
+            {note && <p className="truncate text-xs text-muted">{noteCategoryLabel(note.category)}</p>}
           </div>
-          <button type="button" onClick={() => keys.current.close()} disabled={busy} aria-label={t('inflowClose')} className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/20 text-fg/60 hover:text-fg">
+          <button type="button" onClick={() => keys.current.close()} disabled={busy} aria-label={t('inflowClose')} className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/20 text-muted hover:text-fg">
             <X size={16} aria-hidden />
           </button>
         </header>
@@ -183,7 +183,7 @@ export function HubSlideSelectionModal({
                   />
                   {t('hubPickSelectAll')}
                 </label>
-                <span className={`font-mono text-xs ${kept.length === 0 ? 'text-danger' : 'text-fg/60'}`}>
+                <span className={`font-mono text-xs ${kept.length === 0 ? 'text-danger' : 'text-muted'}`}>
                   {kept.length === 0 ? t('hubPickNone') : t('hubPickSelected', { n: kept.length, total })}
                 </span>
               </div>
@@ -211,7 +211,7 @@ export function HubSlideSelectionModal({
                           className="aspect-video w-full rounded-md border border-fg/15"
                         />
                         {/* The whole text of the slide, as the preview may draw it small. */}
-                        <span className="line-clamp-4 text-[11px] leading-snug whitespace-pre-line text-fg/65">{page.text}</span>
+                        <span className="line-clamp-4 text-[11px] leading-snug whitespace-pre-line text-muted">{page.text}</span>
                       </label>
                     </li>
                   );
@@ -221,7 +221,7 @@ export function HubSlideSelectionModal({
           )}
 
           <fieldset className="flex flex-col gap-2 border-t border-line pt-3">
-            <legend className="mb-1 text-[11px] font-bold tracking-wider text-fg/60 uppercase">{t('inflowWhere')}</legend>
+            <legend className="mb-1 text-[11px] font-bold tracking-wider text-muted uppercase">{t('inflowWhere')}</legend>
             <select value={where} onChange={(e) => setWhere(e.target.value as Where)} aria-label={t('inflowWhere')} className={FIELD}>
               <option value="slot">{slotInfo ? t('hubPickWhereSlotIn', { slot: `${slotInfo.position} · ${slotInfo.name}` }) : t('hubPickWhereSlot')}</option>
               {current && <option value="next">{t('inflowAfterLive', { item: current.label })}</option>}
@@ -229,7 +229,7 @@ export function HubSlideSelectionModal({
             </select>
             {where === 'slot' && (
               <div className="flex flex-col gap-1">
-                {!slot && <span className="text-xs text-fg/60">{t('hubPickChooseSlot')}</span>}
+                {!slot && <span className="text-xs text-muted">{t('hubPickChooseSlot')}</span>}
                 <div className="max-h-56 overflow-y-auto pl-2">
                   <MassSlotPicker value={slot} onChange={setSlot} />
                 </div>

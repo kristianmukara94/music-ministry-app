@@ -24,14 +24,14 @@ export function ProjectorPrompt() {
   const dismiss = () => setUi({ projectorPrompt: null });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={dismiss}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={dismiss}>
       <div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="projector-prompt-title"
         aria-describedby="projector-prompt-message"
         onClick={(e) => e.stopPropagation()}
-        className="flex w-full max-w-md flex-col gap-5 rounded-xl border border-accent/40 bg-panel p-6 shadow-2xl"
+        className="flex w-full max-w-md flex-col gap-5 rounded-xl border border-accent/40 bg-surface p-6 shadow-2xl"
       >
         <header className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -46,7 +46,7 @@ export function ProjectorPrompt() {
             type="button"
             onClick={dismiss}
             aria-label="Close"
-            className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/20 text-fg/60 hover:text-fg"
+            className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/20 text-muted hover:text-fg"
           >
             <X size={16} aria-hidden />
           </button>
@@ -56,7 +56,7 @@ export function ProjectorPrompt() {
           <p id="projector-prompt-message" className="text-sm text-fg/80">
             Please turn on the projector before launching queue items to the display.
           </p>
-          <p className="truncate text-xs font-semibold text-fg/50" title={prompt.label}>
+          <p className="truncate text-xs font-semibold text-faint" title={prompt.label}>
             {prompt.label}
           </p>
         </div>
@@ -83,7 +83,7 @@ export function ProjectorPrompt() {
               >
                 Skip, test without projector
               </button>
-              <p className="text-center text-[11px] text-fg/50">
+              <p className="text-center text-[11px] text-faint">
                 Goes live in the app only. Won&apos;t ask again until you turn the projector on.
               </p>
             </div>
@@ -94,7 +94,7 @@ export function ProjectorPrompt() {
             <button
               type="button"
               onClick={dismiss}
-              className="h-9 px-3 text-xs font-bold tracking-wider text-fg/60 uppercase hover:text-fg"
+              className="h-9 px-3 text-xs font-bold tracking-wider text-muted uppercase hover:text-fg"
             >
               Cancel
             </button>

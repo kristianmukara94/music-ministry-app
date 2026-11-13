@@ -20,7 +20,7 @@ const CHOICE = (on: boolean) =>
   `flex w-full min-w-0 items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition ${
     on ? 'border-accent bg-accent/15 text-fg' : 'border-transparent text-fg/85 hover:border-fg/15 hover:bg-fg/[0.06]'
   }`;
-const FIELD = 'w-full rounded-md border border-fg/20 bg-canvas px-3 py-2 text-sm text-fg placeholder:text-fg/40 focus-visible:border-accent focus-visible:outline-none';
+const FIELD = 'w-full rounded-md border border-fg/20 bg-canvas px-3 py-2 text-sm text-fg placeholder:text-faint focus-visible:border-accent focus-visible:outline-none';
 const BTN = 'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-4 text-sm font-semibold text-fg/85 transition hover:bg-fg/10';
 const PRIMARY =
   'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-accent bg-accent px-4 text-sm font-bold text-on-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40';
@@ -90,11 +90,11 @@ export function InFlowSlidePickerModal({ queue, cursor, t, onClose, onDone }: { 
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="inflow-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !busy && onClose()}>
-      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full max-w-xl flex-col gap-4 rounded-xl border border-fg/20 bg-panel p-6 shadow-2xl">
+    <div role="dialog" aria-modal="true" aria-labelledby="inflow-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => !busy && onClose()}>
+      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full max-w-xl flex-col gap-4 rounded-xl border border-fg/20 bg-surface p-6 shadow-2xl">
         <header className="flex items-center justify-between gap-4">
           <h2 id="inflow-title" className="text-lg font-bold tracking-tight text-fg">{t('inflowTitle')}</h2>
-          <button type="button" onClick={onClose} disabled={busy} aria-label={t('inflowClose')} className="grid size-8 place-items-center rounded-md border border-fg/20 text-fg/60 hover:text-fg">
+          <button type="button" onClick={onClose} disabled={busy} aria-label={t('inflowClose')} className="grid size-8 place-items-center rounded-md border border-fg/20 text-muted hover:text-fg">
             <X size={16} aria-hidden />
           </button>
         </header>
@@ -119,14 +119,14 @@ export function InFlowSlidePickerModal({ queue, cursor, t, onClose, onDone }: { 
                 {t('inflowTextBody')}
                 <textarea value={body} rows={6} onChange={(e) => setBody(e.target.value)} className={`${FIELD} resize-y`} />
               </label>
-              <p className="text-xs text-fg/55">
+              <p className="text-xs text-faint">
                 {t('inflowTextHint')} {pages.length > 0 && <strong className="font-semibold text-fg/75">{t('inflowPages', { n: pages.length })}</strong>}
               </p>
             </div>
           ) : decks === null ? (
-            <p className="text-sm text-fg/60">…</p>
+            <p className="text-sm text-muted">…</p>
           ) : decks.length === 0 ? (
-            <p className="text-sm text-fg/60">{t('inflowNoDecks')}</p>
+            <p className="text-sm text-muted">{t('inflowNoDecks')}</p>
           ) : (
             <ul className="flex flex-col gap-0.5">
               {decks.map((d) => (
@@ -134,7 +134,7 @@ export function InFlowSlidePickerModal({ queue, cursor, t, onClose, onDone }: { 
                   <button type="button" aria-pressed={deckKey === d.key} onClick={() => setDeckKey(d.key)} className={CHOICE(deckKey === d.key)}>
                     <Presentation size={15} className="shrink-0 text-accent" aria-hidden />
                     <span className="min-w-0 flex-1 truncate font-semibold">{d.title}</span>
-                    <span className="shrink-0 font-mono text-[11px] text-fg/50">{t('inflowPages', { n: d.slideIds.length })}</span>
+                    <span className="shrink-0 font-mono text-[11px] text-faint">{t('inflowPages', { n: d.slideIds.length })}</span>
                   </button>
                 </li>
               ))}
@@ -142,7 +142,7 @@ export function InFlowSlidePickerModal({ queue, cursor, t, onClose, onDone }: { 
           )}
 
           <fieldset className="flex flex-col gap-2 border-t border-line pt-3">
-            <legend className="mb-1 text-[11px] font-bold tracking-wider text-fg/60 uppercase">{t('inflowWhere')}</legend>
+            <legend className="mb-1 text-[11px] font-bold tracking-wider text-muted uppercase">{t('inflowWhere')}</legend>
             {current && (
               <button type="button" aria-pressed={where === 'next'} onClick={() => setWhere('next')} className={CHOICE(where === 'next')}>
                 <span className="min-w-0 flex-1 truncate">{t('inflowAfterLive', { item: current.label })}</span>

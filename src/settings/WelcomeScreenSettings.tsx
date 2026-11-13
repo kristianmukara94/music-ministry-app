@@ -54,11 +54,11 @@ import { BackgroundControls } from './BackgroundControls';
 
 const CARD = 'flex flex-col gap-5 rounded-xl border border-line bg-panel-2 p-6 shadow-lg';
 const CARD_TITLE = 'text-base font-bold tracking-tight text-fg';
-const SUB = 'text-xs text-fg/60';
+const SUB = 'text-xs text-muted';
 const LABEL = 'text-sm font-semibold text-fg';
 const FOCUS = 'focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none';
 const INPUT = 'rounded-lg border border-line bg-panel text-sm text-fg outline-none focus:border-accent';
-const RESET = `flex shrink-0 items-center gap-1.5 text-[11px] font-bold tracking-wider text-fg/60 uppercase transition-colors hover:text-accent disabled:opacity-40 ${FOCUS}`;
+const RESET = `flex shrink-0 items-center gap-1.5 text-[11px] font-bold tracking-wider text-muted uppercase transition-colors hover:text-accent disabled:opacity-40 ${FOCUS}`;
 const ICON_BUTTON = `flex size-8 items-center justify-center rounded-md border border-line bg-panel text-fg/70 transition-colors hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-30 ${FOCUS}`;
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
@@ -183,7 +183,7 @@ function Choice<T extends string | number>({ label, value, options, onChange, si
             onClick={() => onChange(id)}
             style={style}
             className={`flex items-center gap-1.5 rounded-md font-bold tracking-wide transition-colors ${FOCUS} ${size === 'sm' ? 'px-2 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} ${
-              on ? 'bg-accent text-on-accent shadow-md shadow-black/40' : 'text-fg/60 hover:text-fg'
+              on ? 'bg-accent text-on-accent shadow-md shadow-black/40' : 'text-muted hover:text-fg'
             }`}
           >
             {Icon && <Icon size={13} aria-hidden />} {text}
@@ -289,7 +289,7 @@ function SlideItem({ slide, index, count, selected, images, busy, onSelect, onCh
           <Icon size={15} className="shrink-0 text-accent" aria-hidden />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-fg">{summary}</span>
-            <span className="block text-[11px] text-fg/50">{kind.label}</span>
+            <span className="block text-[11px] text-faint">{kind.label}</span>
           </span>
         </button>
         <Choice size="sm" label={`Slide ${index + 1} dwell time`} value={slide.dwell} options={WELCOME_DWELLS.map((d) => ({ id: d, label: dwellLabel(d) }))} onChange={(dwell) => onChange({ dwell })} />
@@ -490,7 +490,7 @@ function LivePreview({ settings, onBackgroundMissing }: { settings: WelcomeSetti
             <ChevronRight size={15} aria-hidden />
           </button>
         </div>
-        <p className="font-mono text-[11px] text-fg/60" aria-live="off">
+        <p className="font-mono text-[11px] text-muted" aria-live="off">
           {slides.length === 0
             ? 'No slides'
             : `Slide ${position.index + 1} of ${slides.length} · ${
@@ -602,9 +602,9 @@ export function WelcomeScreenSettings() {
     <div className="flex w-full flex-col gap-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="text-[11px] font-bold tracking-[0.2em] text-fg/50 uppercase">Output</div>
+          <div className="text-[11px] font-bold tracking-[0.2em] text-faint uppercase">Output</div>
           <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">Welcome Screen</h1>
-          <p className="mt-2 text-sm text-fg/60">What the projector shows before the service starts.</p>
+          <p className="mt-2 text-sm text-muted">What the projector shows before the service starts.</p>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-panel-2 px-3 py-1 text-xs font-semibold text-accent/90">
           <CheckCircle2 size={13} aria-hidden /> Changes save automatically
@@ -631,7 +631,7 @@ export function WelcomeScreenSettings() {
               }}
             />
             {slides.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-fg/60">No slides. The welcome screen shows only its background.</p>
+              <p className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-muted">No slides. The welcome screen shows only its background.</p>
             ) : (
               <ol className="flex flex-col gap-2" aria-label="Welcome slide queue">
                 {slides.map((slide, i) => (

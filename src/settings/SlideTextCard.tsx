@@ -48,7 +48,7 @@ export function SlideTextCard({ id, sample, note }: { id: string; sample: string
           type="button"
           onClick={() => save({ slideFont: DEFAULTS.slideFont, slideFontScale: DEFAULTS.slideFontScale })}
           disabled={isDefault}
-          className={`flex shrink-0 items-center gap-1.5 rounded text-[11px] font-bold tracking-wider whitespace-nowrap text-fg/60 uppercase transition-colors hover:text-accent disabled:cursor-default disabled:opacity-40 disabled:hover:text-fg/60 ${FOCUS}`}
+          className={`flex shrink-0 items-center gap-1.5 rounded text-[11px] font-bold tracking-wider whitespace-nowrap text-muted uppercase transition-colors hover:text-accent disabled:cursor-default disabled:opacity-40 disabled:hover:text-fg/60 ${FOCUS}`}
         >
           <RotateCcw size={12} aria-hidden /> Reset to defaults
         </button>
@@ -117,7 +117,7 @@ export function SlideTextCard({ id, sample, note }: { id: string; sample: string
                 <Plus size={15} aria-hidden />
               </button>
             </div>
-            <div className="flex justify-between font-mono text-[10px] text-fg/50" aria-hidden>
+            <div className="flex justify-between font-mono text-[10px] text-faint" aria-hidden>
               <span>{Math.round(SLIDE_FONT_SCALES[0] * 100)}%</span>
               <span>100%</span>
               <span>{Math.round(SLIDE_FONT_SCALES[last] * 100)}%</span>

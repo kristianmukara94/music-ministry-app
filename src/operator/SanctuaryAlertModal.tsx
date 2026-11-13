@@ -120,12 +120,12 @@ function AlertDialog() {
     `rounded-md border px-3 py-1.5 text-xs font-bold transition-colors ${on ? 'border-[#f59e0b] bg-[#f59e0b]/15 text-[#f59e0b]' : 'border-line-strong text-fg hover:bg-panel-2'}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 pt-[12vh]" onMouseDown={close}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/75 backdrop-blur-sm pt-[12vh]" onMouseDown={close}>
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="sanctuary-alert-title"
-        className="flex w-[600px] max-w-[calc(100vw-32px)] flex-col gap-4 rounded-xl border border-line-strong bg-panel p-5 shadow-2xl"
+        className="flex w-[600px] max-w-[calc(100vw-32px)] flex-col gap-4 rounded-xl border border-line-strong bg-surface p-5 shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
       >
@@ -203,7 +203,7 @@ function AlertDialog() {
 
         {/* What the congregation will read. */}
         <div className="rounded-md border-t-2 px-3 py-2 text-sm text-white" style={{ backgroundColor: 'rgba(17, 10, 14, 0.92)', borderColor: severity === 'urgent' ? '#ef4444' : '#f59e0b' }}>
-          {text || <span className="text-white/40">The notice appears here.</span>}
+          {text || <span className="text-white/70">The notice appears here.</span>}
         </div>
 
         <div className="flex flex-wrap justify-end gap-2">

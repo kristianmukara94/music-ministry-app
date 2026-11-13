@@ -70,8 +70,8 @@ export function SplitStanzaDialog() {
   };
 
   return (
-    <div className="fixed inset-0 z-[80] grid place-items-center bg-black/60 p-4">
-      <div role="dialog" aria-modal="true" aria-labelledby="split-title" className="flex w-full max-w-xl flex-col gap-3 rounded-xl border border-line-strong bg-panel p-5 shadow-2xl">
+    <div className="fixed inset-0 z-[80] grid place-items-center bg-black/75 backdrop-blur-sm p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="split-title" className="flex w-full max-w-xl flex-col gap-3 rounded-xl border border-line-strong bg-surface p-5 shadow-2xl">
         <header className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 id="split-title" className="flex items-center gap-2 text-lg font-bold">

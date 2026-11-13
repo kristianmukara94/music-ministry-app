@@ -2,14 +2,17 @@ import { useEffect, useRef, useState, type ClipboardEvent, type ReactNode } from
 import { AlertTriangle, ArrowDown, ArrowUp, CopyPlus, FileUp, History, PenLine, Trash2, X } from 'lucide-react';
 import { LANGUAGES, sectionHeader } from '../../shared/lyrics-parser.js';
 import { isMetadataLine, splitSongSheet } from '../../shared/lyrics-import.js';
-import { batchT } from '../../shared/song-batch-i18n.js';
+import { docxT } from '../../shared/docx-import-i18n.js';
+import { MAX_DOCX_BYTES } from '../../shared/docx-song-parser.js';
 import { bridge } from '../live/bridge';
 import { useUi } from '../state/ui';
-import { BatchImportView, type CloseGuard } from './BatchImportView';
+import { DocxImportView, type CloseGuard } from './DocxImportView';
 import { useLyT, type LyT } from './strings';
 import type { Hymn, HymnLanguage } from './types';
 import { CategorySelectGroup } from './CategorySelectGroup';
 import { useSongEditor, type PreviewStanza, type SongEditor } from './useSongEditor';
+import { PartSelect } from './PartSelect';
+import { slidePart } from '../../shared/lyric-slides.js';
 
 const api = bridge.lyrics;
 
@@ -26,18 +29,11 @@ Sa sariwang pastulan`;
 /** The keys a song can be in, major then minor. A song saved in another key keeps it. */
 const KEYS = ['C', 'C#', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B', 'Cm', 'C#m', 'Dm', 'Ebm', 'Em', 'Fm', 'F#m', 'Gm', 'G#m', 'Am', 'Bbm', 'Bm'];
 
-const FIELD = 'h-10 w-full rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40';
-const CAPTION = 'flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-fg/60 uppercase';
-const ICON = 'grid size-7 place-items-center rounded-md text-fg/60 transition hover:bg-fg/10 hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-30';
+const FIELD = 'h-10 w-full rounded-lg border border-line-strong bg-surface-2 px-3 text-sm text-fg outline-none placeholder:text-faint focus:border-accent focus:ring-1 focus:ring-accent/40';
+const CAPTION = 'flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-muted uppercase';
+const ICON = 'grid size-7 place-items-center rounded-md text-muted transition hover:bg-fg/10 hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-30';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-
-/** Which part a stanza is, as a colour: verses carry the accent, a chorus is green, a bridge blue, a tag or outro amber. */
-const chipTone = (type: string) =>
-  /^Chorus/.test(type) ? 'border-ok/50 bg-ok/10 text-ok'
-    : /^Bridge/.test(type) ? 'border-info/50 bg-info/10 text-info'
-      : /^(Tag|Outro)/.test(type) ? 'border-warn/50 bg-warn/10 text-warn'
-        : 'border-accent/50 bg-accent/10 text-accent';
 
 /**
  * One stanza as the projector shows it: white lines centred on black, sized to fit the screen. The size follows the longest line and the
@@ -156,7 +152,9 @@ function SongComposer({
       lyricsRef.current?.setSelectionRange(caret, caret);
     });
   };
-  const nextVerse = e.stanzas.filter((s) => /^Verse/.test(s.stanzaType)).length + 1;
+  // The verse after the highest one so far; a verse cut into several slides counts once.
+  const nextVerse = Math.max(0, ...e.stanzas.map((s) => Number(/^Verse (\d+)$/.exec(s.stanzaType)?.[1] ?? 0))) + 1;
+  const partLabels = { part: t('slidePart'), continuation: t('partContinuation'), firstSlide: t('partFirstSlide') };
   const TAGS = [
     { label: t('tagVerse'), tag: `[Verse ${nextVerse}]` },
     { label: t('tagChorus'), tag: '[Chorus]' },
@@ -253,7 +251,7 @@ function SongComposer({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className={CAPTION}>{t('fieldLyrics')} {required}</span>
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="mr-1 text-[11px] text-fg/50">{t('insertSection')}</span>
+                <span className="mr-1 text-[11px] text-faint">{t('insertSection')}</span>
                 {TAGS.map(({ label, tag }) => (
                   <button key={label} type="button" onClick={() => insertTag(tag)} title={tag} className="h-7 rounded-md border border-fg/15 bg-panel-2 px-2.5 text-[11px] font-semibold text-fg/85 transition hover:border-accent/50 hover:text-accent">
                     {label}
@@ -278,21 +276,27 @@ function SongComposer({
               spellCheck={false}
               aria-label={t('fieldLyrics')}
               aria-invalid={showProblem('noStanzas') || undefined}
-              className={`min-h-[320px] flex-1 resize-y rounded-lg border bg-panel-2 p-3 font-mono text-sm leading-relaxed text-fg outline-none placeholder:text-fg/35 focus:border-accent focus:ring-1 focus:ring-accent/40 ${showProblem('noStanzas') ? 'border-danger' : 'border-fg/15'}`}
+              className={`min-h-[320px] flex-1 resize-y rounded-lg border bg-panel-2 p-3 font-mono text-sm leading-relaxed text-fg outline-none placeholder:text-faint focus:border-accent focus:ring-1 focus:ring-accent/40 ${showProblem('noStanzas') ? 'border-danger' : 'border-fg/15'}`}
             />
-            <p className="text-xs text-fg/60">{t('lyricsHelp')}</p>
+            <p className="text-xs text-muted">{t('lyricsHelp')}</p>
             {notice && <p role="status" className="rounded-lg border border-ok/50 bg-ok/10 px-3 py-2 text-sm text-ok">{notice}</p>}
           </section>
         </div>
 
         {/* The slides the projector will get, updated as you type. Each can be moved, repeated or removed. */}
         <aside aria-label={t('previewTitle', { n: e.stanzas.length })} className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-0 lg:max-h-[calc(100vh-15rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className={CAPTION}>{t('previewTitle', { n: e.stanzas.length })}</span>
-            <span className="text-[11px] text-fg/45">{t('previewHint')}</span>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className={CAPTION}>{t('previewTitle', { n: e.stanzas.length })}</span>
+              <span className="text-[11px] text-faint">{t('previewHint')}</span>
+            </div>
+            <label title={t('autoSplitHint')} className="flex w-fit cursor-pointer items-center gap-2 text-xs text-fg/85">
+              <input type="checkbox" checked={e.autoSplit} onChange={(ev) => e.setAutoSplit(ev.target.checked)} className="size-3.5 accent-[var(--color-accent)]" />
+              {t('autoSplit')} <span className="text-faint">(4)</span>
+            </label>
           </div>
           {e.stanzas.length === 0 ? (
-            <div className={`grid min-h-40 place-items-center rounded-[10px] border-2 border-dashed p-6 text-center text-sm text-fg/60 ${showProblem('noStanzas') ? 'border-danger/60' : 'border-fg/20'}`}>
+            <div className={`grid min-h-40 place-items-center rounded-[10px] border-2 border-dashed p-6 text-center text-sm text-muted ${showProblem('noStanzas') ? 'border-danger/60' : 'border-fg/20'}`}>
               {t('parsedEmpty')}
             </div>
           ) : (
@@ -300,8 +304,9 @@ function SongComposer({
               {e.stanzas.map((s, i) => (
                 <li key={`${i}-${s.stanzaType}`} className="flex flex-col gap-2 rounded-lg border border-line bg-panel-2 p-2.5">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[11px] text-fg/45 tabular-nums">{i + 1}</span>
-                    <span className={`inline-block rounded-full border px-2 py-0.5 font-mono text-[10px] font-bold tracking-wider uppercase ${chipTone(s.stanzaType)}`}>{s.stanzaType}</span>
+                    <span className="font-mono text-[11px] text-faint tabular-nums">{i + 1}</span>
+                    <PartSelect n={i + 1} value={slidePart(e.stanzas, i)} first={i === 0} onChange={(part) => e.stanzaActions.setPart(i, part)} labels={partLabels} />
+                    {s.continuation && <span className="truncate text-[10px] text-faint">↳ {s.stanzaType}</span>}
                     <div className="ml-auto flex items-center">
                       <button type="button" onClick={() => e.stanzaActions.move(i, i - 1)} disabled={i === 0} aria-label={`${t('moveUp')}: ${s.stanzaType}`} title={t('moveUp')} className={ICON}>
                         <ArrowUp size={14} aria-hidden />
@@ -333,7 +338,7 @@ function SongComposer({
       <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-line px-6 py-4">
         <p role="alert" className="min-h-5 min-w-0 flex-1 text-sm text-danger">{footerProblem ?? ''}</p>
         <div className="flex items-center gap-3">
-          <span className="hidden text-xs text-fg/50 md:block">{e.draftSavedAt ? t('saveHintDraft') : t('saveHint')}</span>
+          <span className="hidden text-xs text-faint md:block">{e.draftSavedAt ? t('saveHintDraft') : t('saveHint')}</span>
           {e.dirty && (
             <button type="button" onClick={() => window.confirm(t('discardConfirm')) && e.discardChanges()} className="h-10 rounded-md px-3 text-xs font-semibold tracking-wide text-fg/70 uppercase transition hover:text-danger">
               {t('draftDiscard')}
@@ -355,7 +360,7 @@ export type AddSongTab = 'type' | 'import';
 
 /**
  * Adds songs to the Hymn Library, two ways, each on its own tab: type or paste one song (with its slides shown as they will be cued), or
- * import many songs from a Word or text file. With `hymn`, it edits that song instead, and only the typing tab is there.
+ * import a whole lineup from a Word (.docx) or text file, checking each song's flow and slides before it is saved. With `hymn`, it edits that song instead, and only the typing tab is there.
  * Both tabs stay open while the other is shown, so switching never loses work.
  */
 export function AddSongModal({
@@ -363,7 +368,6 @@ export function AddSongModal({
   initialTab = 'type',
   onClose,
   onSaved,
-  onOpenSong,
   onImported,
 }: {
   hymn?: Hymn | null;
@@ -371,9 +375,7 @@ export function AddSongModal({
   onClose: () => void;
   /** After the typed song is saved. */
   onSaved: () => void;
-  /** Opens a song added by the file import. */
-  onOpenSong: (id: number) => void;
-  /** After the file import added songs. */
+  /** After the file import added or updated songs. */
   onImported: () => void;
 }) {
   const t = useLyT();
@@ -399,13 +401,13 @@ export function AddSongModal({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 sm:p-6" onMouseDown={(ev) => ev.target === ev.currentTarget && requestClose()}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 backdrop-blur-sm p-4 sm:p-6" onMouseDown={(ev) => ev.target === ev.currentTarget && requestClose()}>
       <div
         ref={dialog}
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-song-heading"
-        className="relative flex h-[min(920px,100%)] w-full max-w-[1180px] flex-col overflow-hidden rounded-xl border border-fg/15 bg-panel shadow-2xl"
+        className="relative flex h-[min(920px,100%)] w-full max-w-[1180px] flex-col overflow-hidden rounded-xl border border-fg/15 bg-surface shadow-2xl"
       >
         <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line px-6 py-3.5">
           <h2 id="add-song-heading" className="text-xl font-bold tracking-tight text-fg">
@@ -429,14 +431,14 @@ export function AddSongModal({
               ))}
             </div>
           )}
-          {!hymn && tab === 'import' && <span className="hidden text-xs text-fg/50 md:inline">{batchT(lang, 'dropHint', { mb: 10 })}</span>}
-          <button type="button" onClick={requestClose} aria-label={t('close')} title={t('close')} className="ml-auto grid size-8 place-items-center rounded-md text-fg/60 transition hover:bg-fg/10 hover:text-fg">
+          {!hymn && tab === 'import' && <span className="hidden text-xs text-faint md:inline">{docxT(lang, 'fileHint', { mb: MAX_DOCX_BYTES / 1024 / 1024 })}</span>}
+          <button type="button" onClick={requestClose} aria-label={t('close')} title={t('close')} className="ml-auto grid size-8 place-items-center rounded-md text-muted transition hover:bg-fg/10 hover:text-fg">
             <X size={18} aria-hidden />
           </button>
         </header>
 
         <SongComposer editor={editor} hymn={hymn} active={tab === 'type'} t={t} onClose={requestClose} onSaved={onSaved} />
-        {!hymn && <BatchImportView active={tab === 'import'} closeGuard={closeGuard} onClose={requestClose} onOpenSong={onOpenSong} onImported={onImported} />}
+        {!hymn && <DocxImportView active={tab === 'import'} closeGuard={closeGuard} onClose={requestClose} onImported={onImported} />}
       </div>
     </div>
   );

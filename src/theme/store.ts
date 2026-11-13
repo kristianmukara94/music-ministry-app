@@ -47,6 +47,8 @@ export const useTheme = create<ThemeState>((set, get) => {
     refreshSeason(get);
     watchSeason(get);
   });
+  // Another window saved a theme: paint it here too. It is already saved, so this only applies it.
+  bridge.config.onThemeChanged?.((id) => get().hydrate(id));
 
   return {
     theme: 'obsidian',

@@ -82,7 +82,7 @@ function NumberField({ label, value, min, max, step = 1, unit, onChange }: {
 }) {
   return (
     <label className="flex min-w-0 flex-col gap-1">
-      <span className="text-[10px] font-bold tracking-wider text-fg/55 uppercase">
+      <span className="text-[10px] font-bold tracking-wider text-faint uppercase">
         {label} <span className="font-normal normal-case">({unit})</span>
       </span>
       <input
@@ -384,7 +384,7 @@ export function TextBoxEditor({
           </div>
         </section>
     ) : (
-        <p className="rounded-md border border-dashed border-fg/20 px-3 py-3 text-xs text-fg/60">
+        <p className="rounded-md border border-dashed border-fg/20 px-3 py-3 text-xs text-muted">
           {boxes.length > 0
             ? `This slide has ${boxes.length} text box${boxes.length === 1 ? '' : 'es'}. Click one on the slide to change its words, font, size, colour or place.`
             : 'This slide has no text boxes. Add one to put words anywhere on the slide.'}
@@ -493,7 +493,7 @@ export function TextBoxEditor({
           })}
         </div>
       </div>
-      <p className="text-xs text-fg/55">
+      <p className="text-xs text-faint">
         Drag a text to move it · drag its handles to resize it · double-click to type · arrows nudge it (Shift for more) · Delete removes it.
       </p>
 

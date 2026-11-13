@@ -22,8 +22,8 @@ const TABS: { id: SourceModule; key: 'tabSongs' | 'tabReadings' | 'tabBible' }[]
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 // The same surfaces as the dashboard: cards on the panel colour, hairline borders, dark ghost buttons, an accent focus ring.
 const CARD = 'rounded-[10px] border border-line bg-panel';
-const LABEL = 'text-[11px] font-semibold tracking-wider text-fg/60 uppercase';
-const input = 'h-10 rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40';
+const LABEL = 'text-[11px] font-semibold tracking-wider text-muted uppercase';
+const input = 'h-10 rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none placeholder:text-faint focus:border-accent focus:ring-1 focus:ring-accent/40';
 const SMALL_BTN =
   'h-9 shrink-0 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs font-semibold text-fg/85 transition hover:bg-fg/10 hover:text-fg';
 
@@ -137,7 +137,7 @@ export function MassPlanHub({ planId, liturgicalDate }: { planId: number; liturg
             {t('planItems')}
           </h2>
           {items.length === 0 ? (
-            <p className="py-6 text-center text-sm text-fg/60">{t('noItems')}</p>
+            <p className="py-6 text-center text-sm text-muted">{t('noItems')}</p>
           ) : (
             BLOCKS.map((block) => {
               const rows = blockRows(items, block.id);
@@ -153,7 +153,7 @@ export function MassPlanHub({ planId, liturgicalDate }: { planId: number; liturg
                       <li key={`${block.id}-${i}`} className="flex items-center gap-3 rounded-lg px-2 py-1.5 transition hover:bg-fg/[0.05]">
                         <span className="grid size-6 shrink-0 place-items-center rounded-full bg-fg/10 font-mono text-[10px] font-bold text-fg/70 tabular-nums">{i + 1}</span>
                         <span className="min-w-0 flex-1 truncate text-sm text-fg">{row.label}</span>
-                        <span className="shrink-0 rounded-full border border-fg/20 bg-fg/[0.06] px-2 py-0.5 text-[10px] font-bold tracking-wider text-fg/60 uppercase">{plannerT(`module_${row.module}`)}</span>
+                        <span className="shrink-0 rounded-full border border-fg/20 bg-fg/[0.06] px-2 py-0.5 text-[10px] font-bold tracking-wider text-muted uppercase">{plannerT(`module_${row.module}`)}</span>
                         <button type="button" onClick={() => showPreview(row.label, row.module, row.sourceId)} className={SMALL_BTN}>
                           {t('previewButton')}
                         </button>
@@ -188,7 +188,7 @@ export function MassPlanHub({ planId, liturgicalDate }: { planId: number; liturg
           </div>
           <div className="flex flex-wrap gap-2">
             <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('searchLabel')} aria-label={t('searchLabel')} className={`${input} min-w-48 flex-1`} />
-            <label className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-fg/60 uppercase">
+            <label className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-muted uppercase">
               {t('blockLabel')}
               <select value={block} onChange={(e) => setBlock(e.target.value as LiturgicalBlock)} className={`${input} w-auto normal-case`}>
                 {BLOCKS.map((b) => (
@@ -200,14 +200,14 @@ export function MassPlanHub({ planId, liturgicalDate }: { planId: number; liturg
             </label>
           </div>
           {results.length === 0 ? (
-            <p className="py-6 text-center text-sm text-fg/60">{t('noResults')}</p>
+            <p className="py-6 text-center text-sm text-muted">{t('noResults')}</p>
           ) : (
             <ul className="flex max-h-[50vh] flex-col overflow-y-auto">
               {results.map((row) => (
                 <li key={`${row.module}-${row.sourceId}`} className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-2 transition hover:bg-fg/[0.05]">
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-sm font-semibold text-fg">{row.label}</span>
-                    <span className="truncate text-xs text-fg/60">{row.sub}</span>
+                    <span className="truncate text-xs text-muted">{row.sub}</span>
                   </span>
                   <button type="button" onClick={() => showPreview(row.label, row.module, row.sourceId)} className={SMALL_BTN}>
                     {t('previewButton')}
@@ -241,7 +241,7 @@ export function MassPlanHub({ planId, liturgicalDate }: { planId: number; liturg
                 }
               />
             )}
-            {preview.slides && preview.slides.pages.length === 0 && <p className="text-sm text-fg/60">{t('noPreview')}</p>}
+            {preview.slides && preview.slides.pages.length === 0 && <p className="text-sm text-muted">{t('noPreview')}</p>}
           </>
         )}
       </div>

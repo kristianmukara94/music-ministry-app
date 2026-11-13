@@ -51,7 +51,7 @@ export function SlotTitleToggle({ live = false }: { live?: boolean }) {
       >
         <Heading size={14} aria-hidden />
         {live ? 'Hide title' : 'Show slot title'}
-        {!live && <span className={`rounded px-1.5 py-0.5 text-[10px] ${on ? 'bg-accent text-on-accent' : 'bg-fg/10 text-fg/60'}`}>{on ? 'On' : 'Off'}</span>}
+        {!live && <span className={`rounded px-1.5 py-0.5 text-[10px] ${on ? 'bg-accent text-on-accent' : 'bg-fg/10 text-muted'}`}>{on ? 'On' : 'Off'}</span>}
       </button>
       {error && <p role="alert" className="text-xs whitespace-nowrap text-danger">{error}</p>}
     </div>

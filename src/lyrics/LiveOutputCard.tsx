@@ -72,7 +72,7 @@ export function LiveOutputCard({ t }: { t: LyT }) {
             <p className="line-clamp-6 text-[15px] leading-snug font-semibold whitespace-pre-line text-white">{words.text}</p>
           </>
         ) : (
-          <p className="py-2 text-xs text-white/60">
+          <p className="py-2 text-xs text-white/70">
             {!frame || frame.kind === 'idle' ? t('outputIdle') : t('outputOther', { kind: frame.kind })}
           </p>
         )}

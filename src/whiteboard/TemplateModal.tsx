@@ -21,11 +21,11 @@ export function TemplateModal({ onPick, onClose }: { onPick: (id: TemplateId) =>
   }, [onClose]);
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Choose template" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full max-w-2xl flex-col gap-5 overflow-y-auto rounded-xl border border-fg/20 bg-panel p-6 shadow-2xl">
+    <div role="dialog" aria-modal="true" aria-label="Choose template" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full max-w-2xl flex-col gap-5 overflow-y-auto rounded-xl border border-fg/20 bg-surface p-6 shadow-2xl">
         <header className="flex items-center justify-between gap-4">
           <h2 className="text-lg font-bold tracking-tight text-fg">Choose Template</h2>
-          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-md border border-fg/20 text-fg/60 hover:text-fg">
+          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-md border border-fg/20 text-muted hover:text-fg">
             <X size={16} aria-hidden />
           </button>
         </header>
@@ -42,7 +42,7 @@ export function TemplateModal({ onPick, onClose }: { onPick: (id: TemplateId) =>
               </span>
               <span className="flex flex-col">
                 <span className="text-sm font-bold text-fg">{label}</span>
-                <span className="text-xs text-fg/60">{hint}</span>
+                <span className="text-xs text-muted">{hint}</span>
               </span>
             </button>
           ))}

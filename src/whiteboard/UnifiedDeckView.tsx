@@ -996,7 +996,7 @@ export function UnifiedDeckView() {
               {inView.length}
             </span>
           </nav>
-          <p className="mt-1.5 text-xs text-fg/50">
+          <p className="mt-1.5 text-xs text-faint">
             New slides and imports go to <strong className="font-semibold text-fg/75">{destLabel}</strong>
           </p>
         </div>
@@ -1041,11 +1041,11 @@ export function UnifiedDeckView() {
       {notice && !error && (
         <div
           role="status"
-          className="pointer-events-auto fixed bottom-6 left-1/2 z-50 flex max-w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-lg border border-accent/40 bg-panel px-4 py-2.5 text-sm text-fg shadow-xl shadow-black/50"
+          className="pointer-events-auto fixed bottom-6 left-1/2 z-50 flex max-w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-lg border border-accent/40 bg-surface px-4 py-2.5 text-sm text-fg shadow-xl shadow-black/50"
         >
           <Check size={15} className="shrink-0 text-accent" aria-hidden />
           <span className="min-w-0 [overflow-wrap:anywhere]">{notice}</span>
-          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className="grid size-6 shrink-0 place-items-center rounded text-fg/60 hover:text-fg">
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className="grid size-6 shrink-0 place-items-center rounded text-muted hover:text-fg">
             <X size={14} aria-hidden />
           </button>
         </div>
@@ -1095,7 +1095,7 @@ export function UnifiedDeckView() {
                 <Monitor size={26} aria-hidden />
               </div>
               <h2 className="mt-5 text-2xl font-bold tracking-tight text-fg">No slides yet</h2>
-              <p className="mt-2 max-w-md text-sm text-fg/60">
+              <p className="mt-2 max-w-md text-sm text-muted">
                 Write a text slide or a sermon note, or import a PowerPoint, PDF or images. Announcements and Whiteboard slides live side by side here, each in its
                 own folders.
               </p>
@@ -1140,7 +1140,7 @@ export function UnifiedDeckView() {
                     {view === 'wb:unfiled' ? <Inbox size={24} aria-hidden /> : <Folder size={24} aria-hidden />}
                   </div>
                   <h3 className="mt-4 text-xl font-bold tracking-tight text-fg">{view === 'wb:unfiled' ? 'Nothing is unfiled' : 'Nothing here yet'}</h3>
-                  <p className="mt-2 max-w-md text-sm text-fg/60">
+                  <p className="mt-2 max-w-md text-sm text-muted">
                     {view === 'wb:unfiled'
                       ? 'Every Whiteboard slide is in a folder. Drag a slide onto Unfiled to take it out of its folder.'
                       : `Make a new slide or import into ${destLabel}.`}
@@ -1159,7 +1159,7 @@ export function UnifiedDeckView() {
               )}
 
               {inView.length > 0 && visible.length === 0 && (
-                <p role="status" className="rounded-lg border border-dashed border-fg/20 p-8 text-center text-sm text-fg/60">
+                <p role="status" className="rounded-lg border border-dashed border-fg/20 p-8 text-center text-sm text-muted">
                   No slides match "{query.trim()}".
                 </p>
               )}
@@ -1253,7 +1253,7 @@ export function UnifiedDeckView() {
                             void saveRename(wb);
                           }}
                           onKeyDown={(e) => e.key === 'Escape' && cancelRename()}
-                          className="absolute inset-x-0 bottom-0 z-20 flex flex-col gap-1 rounded-b-lg border-t border-accent bg-panel p-2 shadow-lg shadow-black/50"
+                          className="absolute inset-x-0 bottom-0 z-20 flex flex-col gap-1 rounded-b-lg border-t border-accent bg-surface p-2 shadow-lg shadow-black/50"
                         >
                           <div className="flex items-center gap-1.5">
                             <input
@@ -1272,7 +1272,7 @@ export function UnifiedDeckView() {
                             <button type="submit" aria-label="Save title" title="Save" className="grid size-8 shrink-0 place-items-center rounded-md text-ok transition hover:bg-ok/15">
                               <Check size={15} aria-hidden />
                             </button>
-                            <button type="button" onClick={cancelRename} aria-label="Cancel" title="Cancel" className="grid size-8 shrink-0 place-items-center rounded-md text-fg/60 transition hover:bg-fg/10">
+                            <button type="button" onClick={cancelRename} aria-label="Cancel" title="Cancel" className="grid size-8 shrink-0 place-items-center rounded-md text-muted transition hover:bg-fg/10">
                               <X size={15} aria-hidden />
                             </button>
                           </div>

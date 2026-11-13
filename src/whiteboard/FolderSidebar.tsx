@@ -25,7 +25,7 @@ const ROW =
   'group flex min-h-10 w-full items-center gap-2 rounded-md border-l-2 px-3 py-2 text-left text-sm font-semibold transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none';
 const COUNT = 'shrink-0 rounded-full border border-fg/15 bg-panel px-2 py-0.5 font-mono text-xs tabular-nums';
 const ICON_BTN =
-  'grid size-7 shrink-0 place-items-center rounded text-fg/60 transition hover:bg-fg/10 hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none';
+  'grid size-7 shrink-0 place-items-center rounded text-muted transition hover:bg-fg/10 hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none';
 /** A name that wraps to a second line before it is cut, so a long name stays readable; the row's tooltip shows the whole of it. */
 const NAME = 'min-w-0 flex-1 line-clamp-2 leading-snug [overflow-wrap:anywhere]';
 
@@ -85,7 +85,7 @@ function NameForm({ initial, label, onSubmit, onCancel, children }: {
           aria-invalid={error ? true : undefined}
           placeholder="Folder name"
           disabled={saving}
-          className="h-9 min-w-0 flex-1 rounded-md border border-fg/20 bg-panel-2 px-2.5 text-sm text-fg outline-none placeholder:text-fg/40 focus:border-accent"
+          className="h-9 min-w-0 flex-1 rounded-md border border-fg/20 bg-panel-2 px-2.5 text-sm text-fg outline-none placeholder:text-faint focus:border-accent"
         />
         <button type="submit" disabled={saving || !name.trim()} aria-label="Save folder name" title="Save" className={`${ICON_BTN} text-ok disabled:opacity-40`}>
           <Check size={15} aria-hidden />
@@ -138,7 +138,7 @@ function SectionRow({ id, icon, label, count, active, expanded, onClick, onToggl
         aria-current={active ? 'true' : undefined}
         title={`${label}: every slide (${count})`}
         className={`flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-[11px] font-bold tracking-[0.08em] uppercase transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none ${
-          active ? 'bg-accent/10 text-accent' : 'text-fg/55 hover:bg-fg/[0.06] hover:text-fg'
+          active ? 'bg-accent/10 text-accent' : 'text-faint hover:bg-fg/[0.06] hover:text-fg'
         }`}
       >
         <span className="shrink-0">{icon}</span>
@@ -286,7 +286,7 @@ export function FolderSidebar({
             <span className={`${COUNT} transition ${folder.locked ? '' : 'group-focus-within/row:opacity-0 group-hover/row:opacity-0'}`}>{folder.count}</span>
           </button>
           {!folder.locked && (
-            <div className="absolute top-1/2 right-1.5 flex -translate-y-1/2 gap-0.5 rounded bg-panel opacity-0 transition group-focus-within/row:opacity-100 group-hover/row:opacity-100">
+            <div className="absolute top-1/2 right-1.5 flex -translate-y-1/2 gap-0.5 rounded bg-surface opacity-0 transition group-focus-within/row:opacity-100 group-hover/row:opacity-100">
               <button
                 type="button"
                 onClick={() => {
@@ -328,7 +328,7 @@ export function FolderSidebar({
               aria-checked={creating === s}
               onClick={() => startCreate(s)}
               className={`flex-1 rounded-md border px-2 py-1 text-[11px] font-bold tracking-wide uppercase transition ${
-                creating === s ? 'border-accent bg-accent/15 text-accent' : 'border-fg/15 text-fg/65 hover:text-fg'
+                creating === s ? 'border-accent bg-accent/15 text-accent' : 'border-fg/15 text-muted hover:text-fg'
               }`}
             >
               {s === 'ann' ? 'Announcements' : 'Whiteboard'}
@@ -380,7 +380,7 @@ export function FolderSidebar({
       <div id="deck-section-ann" className={collapsed.ann ? 'hidden' : 'flex flex-col gap-1'}>
         {createForm('ann')}
         {folderRows('ann', annFolders)}
-        {annFolders.length === 0 && creating !== 'ann' && <p className="px-3 py-1 text-xs text-fg/45">No announcement folders yet.</p>}
+        {annFolders.length === 0 && creating !== 'ann' && <p className="px-3 py-1 text-xs text-faint">No announcement folders yet.</p>}
       </div>
 
       <SectionRow

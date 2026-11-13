@@ -237,16 +237,27 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
     return changed;
   };
 
-  /** Replaces a hymn's details and stanzas. Each stanza keeps its id where it has a counterpart; only the removed ones lose theirs. */
+  /**
+   * Replaces a hymn's details and stanzas. Each stanza keeps its id where it has a counterpart; only the removed ones lose theirs. A new
+   * stanza that continues the one before it (the same part: a long verse cut into slides) follows that stanza in every saved lineup
+   * arrangement, as a split on air does, so a lineup that sings the song in its own order keeps all of the words.
+   */
   const replaceHymn = db.transaction((id, hymn) => {
     const before = q.stanzaIds.all(id);
     const ids = matchStanzaIds(before, hymn.stanzas);
     const dropped = before.filter((o) => !ids.includes(o.id));
     q.updateHymn.run(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, hymn.songCategory, hymn.primaryCategory, id);
     q.clearStanzas.run(id);
-    hymn.stanzas.forEach((s, i) => q.insertStanzaWithId.run(ids[i], id, s.stanzaType, s.lyricsText, i + 1));
+    const saved = hymn.stanzas.map((s, i) => {
+      const result = q.insertStanzaWithId.run(ids[i], id, s.stanzaType, s.lyricsText, i + 1);
+      return ids[i] ?? Number(result.lastInsertRowid);
+    });
     const lineupsChanged = dropped.length ? dropStanzaIdsFromLineups(id, dropped.map((d) => d.id)) : 0;
-    return { dropped, lineupsChanged };
+    let lineupsFollowed = 0;
+    hymn.stanzas.forEach((s, i) => {
+      if (i > 0 && ids[i] == null && hymn.stanzas[i - 1].stanzaType === s.stanzaType) lineupsFollowed += insertSplitIntoLineups(id, saved[i - 1], saved[i]);
+    });
+    return { dropped, lineupsChanged, lineupsFollowed };
   });
 
   const replaceSetlist = db.transaction((setlistId, hymnIds) => {
@@ -332,11 +343,12 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
       // to either follows the new pair.
       const sameFiling = current.primaryCategory === hymn.primaryCategory && current.songCategory.toLowerCase() === hymn.songCategory.toLowerCase();
       hymn.category ??= sameFiling ? current.category : legacyCategoryFor(hymn.primaryCategory, hymn.songCategory);
-      const { dropped, lineupsChanged } = replaceHymn(id, hymn);
+      const { dropped, lineupsChanged, lineupsFollowed } = replaceHymn(id, hymn);
       // Each removed stanza is reported, so the operator knows its place in a lineup arrangement was taken out.
       const removed = dropped.map((d) => `${d.stanzaType} (stanza ${d.position}) was removed by this edit, and taken out of ${lineupsChanged} saved lineup arrangement${lineupsChanged === 1 ? '' : 's'}.`);
       changed(id);
-      return { id, warnings: [...hymn.warnings, ...removed] };
+      // lineupsFollowed: how many saved lineups gained a new continuation stanza, for the stanza split to report.
+      return { id, warnings: [...hymn.warnings, ...removed], lineupsFollowed };
     },
 
     /**
@@ -382,11 +394,12 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
         { stanzaType: stanza.stanzaType, lyricsText: second },
         ...hymn.stanzas.slice(at + 1),
       ];
-      const result = this.editLyrics(id, toTaggedLyrics(stanzas));
+      const { lineupsFollowed, ...result } = this.editLyrics(id, toTaggedLyrics(stanzas));
       const saved = q.stanzas.all(id);
       const firstId = saved[at]?.id ?? null;
       const secondId = saved[at + 1]?.id ?? null;
-      const lineupsChanged = firstId === stanza.id && secondId !== null ? insertSplitIntoLineups(id, firstId, secondId) : 0;
+      // The edit itself put the second half after the first in the saved lineups: it is a new stanza of the same part.
+      const lineupsChanged = firstId === stanza.id && secondId !== null ? lineupsFollowed : 0;
       return { ...result, firstId, secondId, lineupsChanged };
     },
 

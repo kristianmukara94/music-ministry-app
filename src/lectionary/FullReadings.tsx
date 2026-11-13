@@ -168,7 +168,7 @@ function ReadingCard({ reading, draft, draftSource, t, busy, unsaved, onEdit, on
           {draft && !unsaved && <span className="rounded-full border border-accent/60 bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent">{t('fromBible')}</span>}
           {unsaved && <span className="rounded-full border border-warn/60 bg-warn/15 px-2 py-0.5 text-[10px] font-bold text-warn">{t('editorAhead')}</span>}
           {slides.length > 0 && (
-            <span className="font-mono text-xs text-fg/60 tabular-nums">{slides.length === 1 ? t('slideOne') : t('slideMany', { n: slides.length })}</span>
+            <span className="font-mono text-xs text-muted tabular-nums">{slides.length === 1 ? t('slideOne') : t('slideMany', { n: slides.length })}</span>
           )}
         </span>
       </header>
@@ -183,7 +183,7 @@ function ReadingCard({ reading, draft, draftSource, t, busy, unsaved, onEdit, on
           <ol className="flex max-h-96 flex-col gap-2 overflow-y-auto pr-1">
             {slides.map((slide, i) => (
               <li key={i} className="flex gap-2.5">
-                <span className="mt-0.5 h-fit shrink-0 rounded border border-fg/15 bg-panel-2 px-1.5 font-mono text-[10px] font-bold text-fg/60 tabular-nums">{i + 1}</span>
+                <span className="mt-0.5 h-fit shrink-0 rounded border border-fg/15 bg-panel-2 px-1.5 font-mono text-[10px] font-bold text-muted tabular-nums">{i + 1}</span>
                 <p className="font-serif text-[15px] leading-relaxed whitespace-pre-line text-fg/90">{slide}</p>
               </li>
             ))}
@@ -191,7 +191,7 @@ function ReadingCard({ reading, draft, draftSource, t, busy, unsaved, onEdit, on
           {ending && !endsWithEnding(slides) && <p className="text-sm font-semibold text-fg/75 italic">{t(ending === 'gospel' ? 'endingGospel' : 'endingWord')}</p>}
         </>
       ) : (
-        <p className="text-sm text-fg/55">{readingType === 'Second Reading' ? `${t('optional')}. ` : ''}{t('notSavedYet')}</p>
+        <p className="text-sm text-faint">{readingType === 'Second Reading' ? `${t('optional')}. ` : ''}{t('notSavedYet')}</p>
       )}
 
       <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-line pt-3">

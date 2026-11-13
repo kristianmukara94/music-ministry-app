@@ -258,7 +258,7 @@ function CategoryRail({
           if (items.length === 0) return null;
           return (
             <div key={group.key} className="mb-3 last:mb-0">
-              <h3 className="px-2 pt-1 pb-1 text-[10px] font-bold tracking-wider text-fg/55 uppercase" title={group.hint}>{group.label}</h3>
+              <h3 className="px-2 pt-1 pb-1 text-[10px] font-bold tracking-wider text-faint uppercase" title={group.hint}>{group.label}</h3>
               <ul className="flex flex-col gap-0.5">
                 {items.map((item) => {
                   const on = item.id === selectedId;
@@ -298,7 +298,7 @@ function FitGauge({ text, prayer, chunks }: { text: string; prayer: boolean; chu
     const longest = Math.max(0, ...slides.map((s) => wrappedLineCount(s.text)));
     const fits = longest <= FIT_MAX_LINES;
     return (
-      <p className={`mt-1 self-end text-[11px] tabular-nums ${fits ? 'text-fg/55' : 'font-semibold text-warn'}`}>
+      <p className={`mt-1 self-end text-[11px] tabular-nums ${fits ? 'text-faint' : 'font-semibold text-warn'}`}>
         {text.trim().length} chars · {slides.length} {slides.length === 1 ? 'slide' : 'slides'} · longest slide {longest} {longest === 1 ? 'line' : 'lines'}
         {fits ? '' : ` — over ${FIT_MAX_LINES} lines, so the projector shrinks the text`}
       </p>
@@ -311,7 +311,7 @@ function FitGauge({ text, prayer, chunks }: { text: string; prayer: boolean; chu
       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-fg/10" aria-hidden>
         <div className={`h-full rounded-full transition-all ${fit.fits ? 'bg-ok' : 'bg-warn'}`} style={{ width: `${share}%` }} />
       </div>
-      <p className={`text-[11px] whitespace-nowrap tabular-nums ${fit.fits ? 'text-fg/60' : 'font-semibold text-warn'}`}>
+      <p className={`text-[11px] whitespace-nowrap tabular-nums ${fit.fits ? 'text-muted' : 'font-semibold text-warn'}`}>
         {fit.chars} / {fit.capacity} chars ·{' '}
         {fit.lines === 0 ? 'Empty' : fit.fits ? `Fits cleanly (${fit.lines} ${fit.lines === 1 ? 'line' : 'lines'})` : `${fit.lines} lines — the projector will shrink it`}
       </p>
@@ -386,7 +386,7 @@ function EnglishReference({ item, draft }: { item: Item; draft: Draft }) {
       <dl className="flex flex-col gap-2">
         {fieldsFor(item).map((f) => (
           <div key={f.name}>
-            <dt className="text-[10px] font-semibold tracking-wider text-fg/55 uppercase">{f.label}</dt>
+            <dt className="text-[10px] font-semibold tracking-wider text-faint uppercase">{f.label}</dt>
             <dd className={`text-sm leading-relaxed whitespace-pre-line text-fg/85 ${f.multiline ? 'max-h-40 overflow-y-auto' : 'font-semibold'}`}>
               {(draft.values[`${f.name}_en`] ?? '').trim() || <span className="text-muted italic">No English text yet.</span>}
             </dd>
@@ -455,10 +455,10 @@ function RosaryPreview({
         <h2 id="rosary-preview-heading" className="flex items-center gap-2 text-xs font-bold tracking-wider text-fg/70 uppercase">
           <MonitorPlay size={14} className="text-accent" aria-hidden /> Live slide preview
         </h2>
-        <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-bold tracking-wider text-fg/60 uppercase">{langLabel(lang)} · 16:9</span>
+        <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-bold tracking-wider text-muted uppercase">{langLabel(lang)} · 16:9</span>
       </div>
       <div className="aspect-video w-full overflow-hidden rounded-lg border border-fg/15 shadow-lg shadow-black/30">
-        {built ? <FramePreview frame={built.frame} background={media} /> : <div className="grid h-full place-items-center bg-stone-950 text-xs text-white/50">Loading…</div>}
+        {built ? <FramePreview frame={built.frame} background={media} /> : <div className="grid h-full place-items-center bg-stone-950 text-xs text-white/70">Loading…</div>}
       </div>
       <div className="flex items-center gap-2">
         <button type="button" onClick={() => setAt((n) => Math.max(0, n - 1))} disabled={at === 0} aria-label="Previous step" className={`${small} size-8 justify-center px-0`}>
@@ -487,7 +487,7 @@ function DeckSequence({ presentation }: { presentation: RosaryPresentation }) {
     <li
       key={text}
       className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-        state === 'on' ? 'border-line text-fg/75' : state === 'optional' ? 'border-accent/50 bg-accent/10 text-accent' : 'border-dashed border-fg/20 text-fg/35 line-through'
+        state === 'on' ? 'border-line text-fg/75' : state === 'optional' ? 'border-accent/50 bg-accent/10 text-accent' : 'border-dashed border-fg/20 text-faint line-through'
       }`}
     >
       {text}
@@ -510,7 +510,7 @@ function DeckSequence({ presentation }: { presentation: RosaryPresentation }) {
       </div>
       {rows.map((row) => (
         <div key={row.label} className="flex flex-col gap-1.5">
-          <span className="text-[10px] font-bold tracking-wider text-fg/50 uppercase">{row.label}</span>
+          <span className="text-[10px] font-bold tracking-wider text-faint uppercase">{row.label}</span>
           <ul className="flex flex-wrap gap-1.5">{row.chips}</ul>
         </div>
       ))}
@@ -556,7 +556,7 @@ function PresentationOptions({
       </div>
 
       <div className="flex flex-col gap-2">
-        <p className="text-[11px] font-bold tracking-wider text-fg/55 uppercase">On screen</p>
+        <p className="text-[11px] font-bold tracking-wider text-faint uppercase">On screen</p>
         <Toggle
           checked={value.beadTracker}
           onChange={(beadTracker) => onChange({ beadTracker })}
@@ -566,7 +566,7 @@ function PresentationOptions({
       </div>
 
       <div className="flex flex-col gap-2">
-        <p className="text-[11px] font-bold tracking-wider text-fg/55 uppercase">Devotional prayers in the deck</p>
+        <p className="text-[11px] font-bold tracking-wider text-faint uppercase">Devotional prayers in the deck</p>
         <Toggle checked={value.fatima} onChange={(fatima) => onChange({ fatima })} title="Include Fatima Prayer (“O My Jesus…”)" detail="Said after the Glory Be of every decade." />
         <Toggle
           checked={value.stMichael}
@@ -583,12 +583,12 @@ function PresentationOptions({
       </div>
 
       <div className="flex flex-col gap-2">
-        <label htmlFor="rosary-default-bg" className="text-[11px] font-bold tracking-wider text-fg/55 uppercase">
+        <label htmlFor="rosary-default-bg" className="text-[11px] font-bold tracking-wider text-faint uppercase">
           Default Rosary background
         </label>
         <div className="flex items-center gap-3">
           <div className="grid h-12 w-20 shrink-0 place-items-center overflow-hidden rounded-md border border-line bg-stone-950">
-            {chosen?.thumbSrc ? <img src={chosen.thumbSrc} alt="" className="h-full w-full object-cover" /> : <span className="text-[10px] text-white/40">None</span>}
+            {chosen?.thumbSrc ? <img src={chosen.thumbSrc} alt="" className="h-full w-full object-cover" /> : <span className="text-[10px] text-white/70">None</span>}
           </div>
           <select
             id="rosary-default-bg"
@@ -646,14 +646,14 @@ function ImportDiffModal({
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   const nothing = preview.textEdits === 0 && preview.approvalChanges === 0 && preview.added === 0;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !busy && onCancel()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => !busy && onCancel()}>
       <div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="rosary-import-title"
         aria-describedby="rosary-import-summary"
         onClick={(e) => e.stopPropagation()}
-        className="flex w-full max-w-lg flex-col gap-4 rounded-xl border border-fg/15 bg-panel p-6 shadow-2xl"
+        className="flex w-full max-w-lg flex-col gap-4 rounded-xl border border-fg/15 bg-surface p-6 shadow-2xl"
       >
         <h3 id="rosary-import-title" className="flex items-center gap-2 text-lg font-bold">
           <FileUp size={18} aria-hidden /> Import rosary backup?
@@ -1044,7 +1044,7 @@ export function RosarySettings() {
                             {approved ? (
                               <CheckCircle2 size={14} className="text-ok" aria-label="Approved" />
                             ) : (
-                              <AlertTriangle size={14} className={filled ? 'text-warn' : 'text-fg/40'} aria-label={filled ? 'Needs approval' : 'Empty'} />
+                              <AlertTriangle size={14} className={filled ? 'text-warn' : 'text-faint'} aria-label={filled ? 'Needs approval' : 'Empty'} />
                             )}
                           </button>
                         );
@@ -1154,7 +1154,7 @@ export function RosarySettings() {
                           </button>
                         </div>
                       </div>
-                      <p className="text-[11px] text-fg/50">
+                      <p className="text-[11px] text-faint">
                         <kbd className="rounded border border-fg/20 px-1 font-mono">Ctrl</kbd>+<kbd className="rounded border border-fg/20 px-1 font-mono">S</kbd> save ·{' '}
                         <kbd className="rounded border border-fg/20 px-1 font-mono">Ctrl</kbd>+<kbd className="rounded border border-fg/20 px-1 font-mono">Enter</kbd> save &amp; next item needing approval
                       </p>

@@ -122,7 +122,7 @@ function EulaModal({ onAccepted }: { onAccepted: () => void }) {
   // Deliberately no close button, no Escape handler and no backdrop click. The only way forward is to accept.
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4">
-      <div role="dialog" aria-modal="true" aria-labelledby="eula-title" className="flex max-h-full w-full max-w-2xl flex-col rounded-xl border border-fg/15 bg-panel shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-labelledby="eula-title" className="flex max-h-full w-full max-w-2xl flex-col rounded-xl border border-fg/15 bg-surface shadow-2xl">
         <header className="border-b border-line px-6 py-4">
           <p className="eyebrow">{SOFTWARE_NAME}</p>
           <h2 id="eula-title" className="text-2xl font-bold tracking-tight">

@@ -47,11 +47,11 @@ import { useRegion } from '../state/useRegion';
 
 const CARD = 'flex flex-col gap-5 rounded-xl border border-line bg-panel-2 p-6 shadow-lg';
 const CARD_TITLE = 'flex items-center gap-2 text-base font-bold tracking-tight text-fg';
-const SUB = 'text-xs text-fg/60';
+const SUB = 'text-xs text-muted';
 const FOCUS = 'focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none';
-const INPUT = `h-10 rounded-lg border border-line bg-panel px-3 text-sm text-fg outline-none placeholder:text-fg/35 focus:border-accent disabled:opacity-60`;
+const INPUT = `h-10 rounded-lg border border-line bg-panel px-3 text-sm text-fg outline-none placeholder:text-faint focus:border-accent disabled:opacity-60`;
 const SMALL_BUTTON = `flex h-8 items-center gap-1.5 rounded-md border border-fg/15 px-2.5 text-xs font-semibold hover:bg-fg/10 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`;
-const ICON_BUTTON = `grid size-8 shrink-0 place-items-center rounded-md text-fg/60 hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-30 ${FOCUS}`;
+const ICON_BUTTON = `grid size-8 shrink-0 place-items-center rounded-md text-muted hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-30 ${FOCUS}`;
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(err));
 const tidy = (text: string) => text.trim().replace(/\s+/g, ' ');
@@ -153,7 +153,7 @@ function TextField({
         disabled={disabled}
         className={`${INPUT} w-full`}
       />
-      <span className={`flex justify-between gap-3 text-[11px] ${error ? 'text-danger' : 'text-fg/55'}`}>
+      <span className={`flex justify-between gap-3 text-[11px] ${error ? 'text-danger' : 'text-faint'}`}>
         <span>{error ?? hint}</span>
         <span className="shrink-0 tabular-nums">
           {length} / {max}
@@ -168,9 +168,9 @@ function TextField({
 function PreviewCard({ title, caption, children }: { title: string; caption?: ReactNode; children: ReactNode }) {
   return (
     <figure className="flex flex-col gap-2 rounded-xl border border-line bg-panel-2 p-4 shadow-lg">
-      <figcaption className="text-[11px] font-bold tracking-[0.14em] text-fg/55 uppercase">{title}</figcaption>
+      <figcaption className="text-[11px] font-bold tracking-[0.14em] text-faint uppercase">{title}</figcaption>
       {children}
-      {caption && <div className="text-[11px] leading-snug text-fg/55">{caption}</div>}
+      {caption && <div className="text-[11px] leading-snug text-faint">{caption}</div>}
     </figure>
   );
 }
@@ -196,7 +196,7 @@ function NameplatePreview({ name, subtitle }: { name: string; subtitle: string }
             <LowerThirdCard value={{ template: 'nameplate', line1: name, ...(subtitle ? { line2: subtitle } : {}) }} style={{ ...style, showLogo: true }} />
           </div>
         ) : (
-          <p className="absolute inset-0 grid place-items-center text-xs text-white/50">Enter the parish name to preview it.</p>
+          <p className="absolute inset-0 grid place-items-center text-xs text-white/70">Enter the parish name to preview it.</p>
         )}
       </div>
     </PreviewCard>
@@ -273,9 +273,9 @@ function LetterheadPreview({ draftName, cloud, onCheck, checking }: { draftName:
         <div className="flex flex-col text-[11px]">
           {['Entrance', 'Responsorial Psalm', 'Offertory'].map((part, i) => (
             <div key={part} className="flex gap-3 border-b border-black/30 py-1">
-              <span className="w-3 text-black/60">{i + 1}</span>
+              <span className="w-3 text-black/70">{i + 1}</span>
               <span className="w-28">{part}</span>
-              <span className="flex-1 text-black/40">Song or text</span>
+              <span className="flex-1 text-black/70">Song or text</span>
             </div>
           ))}
         </div>
@@ -303,7 +303,7 @@ function ContrastStrip() {
             >
               <ChurchEmblem shape={tile.shape} dark={tile.dark} className="size-full" />
             </div>
-            <span className="text-center text-[10px] leading-tight text-fg/60">{tile.label}</span>
+            <span className="text-center text-[10px] leading-tight text-muted">{tile.label}</span>
           </div>
         ))}
       </div>
@@ -324,7 +324,7 @@ function RosterEditor({ rows, onChange, disabled }: { rows: RosterEntry[]; onCha
   return (
     <div className="flex flex-col gap-3">
       {rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-line p-5 text-center text-sm text-fg/55">
+        <p className="rounded-lg border border-dashed border-line p-5 text-center text-sm text-faint">
           No one yet. Add the parish priest, the music director and the regular commentators.
         </p>
       ) : (
@@ -334,7 +334,7 @@ function RosterEditor({ rows, onChange, disabled }: { rows: RosterEntry[]; onCha
             return (
               <li key={row.id} className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
-                  <span className="w-5 shrink-0 text-right text-xs text-fg/40 tabular-nums">{i + 1}</span>
+                  <span className="w-5 shrink-0 text-right text-xs text-faint tabular-nums">{i + 1}</span>
                   <input
                     aria-label={`Name ${i + 1}`}
                     value={row.name}
@@ -412,7 +412,7 @@ function MassScheduleEditor({ rows, onChange, disabled }: { rows: MassTime[]; on
   return (
     <div className="flex flex-col gap-3">
       {rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-line p-5 text-center text-sm text-fg/55">No Holy Mass times. The dashboard countdown stays empty until one is added.</p>
+        <p className="rounded-lg border border-dashed border-line p-5 text-center text-sm text-faint">No Holy Mass times. The dashboard countdown stays empty until one is added.</p>
       ) : (
         <ul className="flex flex-col gap-2" aria-label="Regular Holy Mass times">
           {rows.map((row, i) => (
@@ -641,9 +641,9 @@ function ParishWorkspace({ saved }: { saved: ChurchProfile }) {
     <div className="flex w-full flex-col gap-6 @container/parish">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="text-[11px] font-bold tracking-[0.2em] text-fg/50 uppercase">Parish</div>
+          <div className="text-[11px] font-bold tracking-[0.2em] text-faint uppercase">Parish</div>
           <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">Parish Profile</h1>
-          <p className="mt-2 max-w-2xl text-sm text-fg/60">
+          <p className="mt-2 max-w-2xl text-sm text-muted">
             The parish name, logo, team and Holy Mass times used across the app. The license registration is separate: change it under About &amp; Licensing.
           </p>
         </div>
@@ -734,7 +734,7 @@ function ParishWorkspace({ saved }: { saved: ChurchProfile }) {
                   >
                     {loadingLogo ? <Loader2 size={28} className="animate-spin text-accent" aria-hidden /> : <ImagePlus size={28} className="text-accent" aria-hidden />}
                     <span className="text-sm font-semibold">{loadingLogo ? 'Opening image…' : 'Drop the logo here, or click to choose'}</span>
-                    <span className="text-[11px] text-fg/55">PNG, JPG, WEBP or SVG, up to 10 MB</span>
+                    <span className="text-[11px] text-faint">PNG, JPG, WEBP or SVG, up to 10 MB</span>
                   </button>
                 )}
                 <div className="flex flex-wrap gap-2">
@@ -759,7 +759,7 @@ function ParishWorkspace({ saved }: { saved: ChurchProfile }) {
                 <label className="flex flex-col gap-2">
                   <span className="flex items-center justify-between text-sm font-semibold text-fg">
                     Logo size in its frame
-                    <span className="text-xs text-fg/60 tabular-nums">{draft.logoScale}%</span>
+                    <span className="text-xs text-muted tabular-nums">{draft.logoScale}%</span>
                   </span>
                   <input
                     type="range"
@@ -772,7 +772,7 @@ function ParishWorkspace({ saved }: { saved: ChurchProfile }) {
                     className="w-full accent-accent"
                     aria-valuetext={`${draft.logoScale} percent`}
                   />
-                  <span className="flex items-center justify-between gap-2 text-[11px] text-fg/55">
+                  <span className="flex items-center justify-between gap-2 text-[11px] text-faint">
                     <span>Below 100% adds padding so a crest&apos;s edges are never cut by a round frame.</span>
                     {draft.logoScale !== LOGO_SCALE_DEFAULT && (
                       <button type="button" className="shrink-0 font-semibold text-accent hover:underline" onClick={() => patch({ logoScale: LOGO_SCALE_DEFAULT })}>
@@ -792,7 +792,7 @@ function ParishWorkspace({ saved }: { saved: ChurchProfile }) {
                   />
                   <span className="flex flex-col gap-0.5">
                     <span className="text-sm font-semibold text-fg">Light backing on dark screens</span>
-                    <span className="text-[11px] text-fg/55">A soft light disc behind the logo on the projector, failover and lower third, so a dark crest stays visible.</span>
+                    <span className="text-[11px] text-faint">A soft light disc behind the logo on the projector, failover and lower third, so a dark crest stays visible.</span>
                   </span>
                 </label>
               </div>
@@ -827,7 +827,7 @@ function ParishWorkspace({ saved }: { saved: ChurchProfile }) {
               </p>
             )}
             <div className="flex flex-wrap items-center gap-3">
-              <span className={`px-1 text-xs font-semibold ${dirty ? 'text-warn' : 'text-fg/55'}`}>{dirty ? 'Unsaved changes' : 'No changes'}</span>
+              <span className={`px-1 text-xs font-semibold ${dirty ? 'text-warn' : 'text-faint'}`}>{dirty ? 'Unsaved changes' : 'No changes'}</span>
               <span className="ml-auto flex items-center gap-2">
                 <button type="button" onClick={discard} disabled={!dirty || saving} className={`${SMALL_BUTTON} h-10 px-4`}>
                   <Undo2 size={14} aria-hidden /> Discard

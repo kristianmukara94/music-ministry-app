@@ -255,7 +255,7 @@ export function MassItemSelect({ slot, lang, date, t, onPick, onClose }: Props) 
         {option.icon === 'song' ? <Music size={14} className="shrink-0 text-ok" aria-hidden /> : <FileText size={14} className="shrink-0 text-muted" aria-hidden />}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold">{option.label}</span>
-          <span className="block truncate text-[11px] text-fg/60">{option.sub}</span>
+          <span className="block truncate text-[11px] text-muted">{option.sub}</span>
         </span>
       </li>
     );
@@ -294,7 +294,7 @@ export function MassItemSelect({ slot, lang, date, t, onPick, onClose }: Props) 
       ref={box}
       role="dialog"
       aria-label={t('pickerLabel', { slot: slotName })}
-      className="absolute top-full right-0 left-0 z-30 mt-1 flex max-h-[28rem] flex-col overflow-hidden rounded-lg border border-line-strong bg-panel shadow-2xl shadow-black/50"
+      className="absolute top-full right-0 left-0 z-30 mt-1 flex max-h-[28rem] flex-col overflow-hidden rounded-lg border border-line-strong bg-surface shadow-2xl shadow-black/50"
     >
       <div className="flex items-center gap-1 border-b border-line px-2 pt-2">
         <div role="tablist" aria-label={t('pickerTabsLabel')} className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
@@ -310,7 +310,7 @@ export function MassItemSelect({ slot, lang, date, t, onPick, onClose }: Props) 
               onClick={() => setTab(id)}
               onKeyDown={onTabKey}
               className={`-mb-px inline-flex h-8 shrink-0 items-center gap-1.5 rounded-t-md border-b-2 px-2.5 text-[11px] font-bold whitespace-nowrap transition ${
-                tab === id ? 'border-accent text-accent' : 'border-transparent text-fg/65 hover:text-fg'
+                tab === id ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-fg'
               }`}
             >
               <Icon size={13} aria-hidden /> {text}

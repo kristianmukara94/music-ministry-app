@@ -24,6 +24,16 @@
  *
  * Text pairings in every theme are checked against WCAG AAA (7:1) for the background they
  * sit on. Accent fills take --color-on-accent for their label, never a fixed colour.
+ *
+ * Contrast is enforced by shared/theme-contrast.js and shared/theme-contrast.test.js, against canvas,
+ * surface and surface-2: fg ≥ 7:1, muted ≥ 5:1, faint ≥ 4.5:1, accent/status text ≥ 4.5:1 (also on
+ * its own 10% chip), on-accent ≥ 4.5:1 on the accent, line-strong ≥ 3:1. The values below are the
+ * engine's own output; if you edit a theme, run the test and take the values it asks for.
+ *
+ * --color-panel / --color-panel-2 are translucent glass for the shell. Anything that floats over
+ * other content (modals, drawers, menus, popovers, toasts) uses --color-surface / --color-surface-2:
+ * the same colours painted over the canvas, fully opaque. Secondary text is text-muted or
+ * text-faint, not a faded text-fg/NN, which cannot be kept readable on every theme.
  */
 @theme {
   --font-sans: "Archivo Variable", "Segoe UI", system-ui, sans-serif;
@@ -33,8 +43,10 @@
   --color-canvas: #100306;
   --color-panel: rgb(47 14 22 / 0.72);
   --color-panel-2: rgb(74 23 36 / 0.6);
+  --color-surface: #260b12;
+  --color-surface-2: #3c121d;
   --color-line: rgb(105 33 51 / 0.7);
-  --color-line-strong: #8a2e45;
+  --color-line-strong:#99495d;
   --color-fg: #f7eef0;
   --color-muted: #e6bcc7;
   --color-faint: #d392a2;
@@ -60,8 +72,10 @@
   --color-canvas: #100306;
   --color-panel: rgb(47 14 22 / 0.72);
   --color-panel-2: rgb(74 23 36 / 0.6);
+  --color-surface: #260b12;
+  --color-surface-2: #3c121d;
   --color-line: rgb(105 33 51 / 0.7);
-  --color-line-strong: #8a2e45;
+  --color-line-strong:#99495d;
   --color-fg: #f7eef0;
   --color-muted: #e6bcc7;
   --color-faint: #d392a2;
@@ -77,15 +91,17 @@
   --color-canvas: #0c0d10;
   --color-panel: #161820;
   --color-panel-2: #1b1e28;
-  --color-line: rgb(255 255 255 / 0.08);
-  --color-line-strong: #2a2e3b;
+  --color-surface: #161820;
+  --color-surface-2: #1b1e28;
+  --color-line:rgb(255 255 255 / 0.11);
+  --color-line-strong:#646670;
   --color-fg: #f1f1f4;
   --color-muted: #b4b7c2;
   --color-faint: #8d909c;
   --color-accent: #f59e0b;
   --color-on-accent: #120b00;
   --color-gold: #f59e0b;
-  --color-danger: #ef4444;
+  --color-danger:#f15c5c;
   --color-ok: #22c55e;
 }
 
@@ -93,8 +109,10 @@
   --color-canvas: #faf6f4;
   --color-panel: rgb(255 255 255 / 0.86);
   --color-panel-2: rgb(243 232 234 / 0.9);
+  --color-surface: #fefefd;
+  --color-surface-2: #f4eaec;
   --color-line: rgb(120 60 75 / 0.25);
-  --color-line-strong: #b98a97;
+  --color-line-strong:#b58794;
   --color-fg: #2a0f17;
   --color-muted: #5a3a44;
   --color-faint: #4f3a44;
@@ -111,8 +129,10 @@
   --color-canvas: #0d1b2e;
   --color-panel: rgb(20 36 58 / 0.8);
   --color-panel-2: rgb(30 52 82 / 0.7);
+  --color-surface: #132238;
+  --color-surface-2: #1b2f4a;
   --color-line: rgb(60 90 130 / 0.5);
-  --color-line-strong: #3d5f8f;
+  --color-line-strong:#4e6d99;
   --color-fg: #f2f5fa;
   --color-muted: #c7d3e4;
   --color-faint: #9fb1cb;
@@ -127,8 +147,10 @@
   --color-canvas: #141a0c;
   --color-panel: rgb(34 42 22 / 0.8);
   --color-panel-2: rgb(48 58 30 / 0.7);
+  --color-surface: #1f2714;
+  --color-surface-2: #2b341b;
   --color-line: rgb(85 100 50 / 0.5);
-  --color-line-strong: #5f7035;
+  --color-line-strong:#64743b;
   --color-fg: #f3f6ea;
   --color-muted: #cfd9b4;
   --color-faint: #aab78c;
@@ -144,8 +166,10 @@
   --color-canvas: #0a0a0a;
   --color-panel: rgb(26 24 20 / 0.85);
   --color-panel-2: rgb(40 36 28 / 0.75);
+  --color-surface: #181613;
+  --color-surface-2: #24201a;
   --color-line: rgb(90 75 30 / 0.5);
-  --color-line-strong: #6b5620;
+  --color-line-strong:#756230;
   --color-fg: #f6f1e4;
   --color-muted: #d6cba9;
   --color-faint: #aa9e7c;
@@ -160,6 +184,8 @@
   --color-canvas: #031f1e;
   --color-panel: rgb(6 46 44 / 0.8);
   --color-panel-2: rgb(10 66 63 / 0.7);
+  --color-surface: #052b29;
+  --color-surface-2: #093b38;
   --color-line: rgb(20 110 103 / 0.5);
   --color-line-strong: #1f7d75;
   --color-fg: #eefaf8;
@@ -176,8 +202,10 @@
   --color-canvas: #2a0610;
   --color-panel: rgb(66 12 28 / 0.8);
   --color-panel-2: rgb(96 20 40 / 0.7);
+  --color-surface: #3d0b1a;
+  --color-surface-2: #561124;
   --color-line: rgb(140 40 62 / 0.5);
-  --color-line-strong: #9a3a52;
+  --color-line-strong:#a44e63;
   --color-fg: #fbeef0;
   --color-muted: #e8c6cd;
   --color-faint: #cf9ea9;
@@ -192,8 +220,10 @@
   --color-canvas: #15070f;
   --color-panel: rgb(44 14 36 / 0.8);
   --color-panel-2: rgb(70 24 58 / 0.7);
-  --color-line: rgb(110 50 96 / 0.5);
-  --color-line-strong: #7d3f70;
+  --color-surface: #270d20;
+  --color-surface-2: #3d1532;
+  --color-line:rgb(110 50 96 / 0.51);
+  --color-line-strong:#89507d;
   --color-fg: #f6eef5;
   --color-muted: #dcc5d8;
   --color-faint: #b89cb4;
@@ -208,8 +238,10 @@
   --color-canvas: #111418;
   --color-panel: rgb(30 35 42 / 0.85);
   --color-panel-2: rgb(44 50 60 / 0.75);
+  --color-surface: #1c2127;
+  --color-surface-2: #282e37;
   --color-line: rgb(78 90 108 / 0.5);
-  --color-line-strong: #5a6578;
+  --color-line-strong:#616b7d;
   --color-fg: #eef1f5;
   --color-muted: #c3cbd6;
   --color-faint: #9aa5b5;
@@ -225,8 +257,10 @@
   --color-canvas: #eef6fb;
   --color-panel: rgb(255 255 255 / 0.85);
   --color-panel-2: rgb(219 236 246 / 0.9);
+  --color-surface: #fcfefe;
+  --color-surface-2: #deeef7;
   --color-line: rgb(120 160 190 / 0.35);
-  --color-line-strong: #7fa3bd;
+  --color-line-strong:#7698b0;
   --color-fg: #0f1d28;
   --color-muted: #2f4a5c;
   --color-faint: #33495a;
@@ -243,8 +277,10 @@
   --color-canvas: #eefaf4;
   --color-panel: rgb(255 255 255 / 0.85);
   --color-panel-2: rgb(214 240 226 / 0.9);
+  --color-surface: #fcfefd;
+  --color-surface-2: #daf1e5;
   --color-line: rgb(90 160 120 / 0.35);
-  --color-line-strong: #7fbf9a;
+  --color-line-strong:#699f80;
   --color-fg: #0d2318;
   --color-muted: #2c5140;
   --color-faint: #34503f;
@@ -261,14 +297,16 @@
   --color-canvas: #f1f4ee;
   --color-panel: rgb(255 255 255 / 0.86);
   --color-panel-2: rgb(224 231 216 / 0.9);
+  --color-surface: #fdfdfd;
+  --color-surface-2: #e3e9dc;
   --color-line: rgb(110 130 95 / 0.35);
-  --color-line-strong: #9aab88;
+  --color-line-strong:#899879;
   --color-fg: #1c2416;
   --color-muted: #414f36;
   --color-faint: #3f4d33;
   --color-accent: #36521c;
   --color-on-accent: #ffffff;
-  --color-gold: #4a6b2a;
+  --color-gold:#486829;
   --color-danger: #8a1c22;
   --color-ok: #1f6b35;
   --color-warn: #8a4b08;
@@ -279,14 +317,16 @@
   --color-canvas: #f8f3ea;
   --color-panel: rgb(255 252 246 / 0.88);
   --color-panel-2: rgb(240 230 214 / 0.9);
+  --color-surface: #fefbf5;
+  --color-surface-2: #f1e8d9;
   --color-line: rgb(150 120 80 / 0.3);
-  --color-line-strong: #bfa584;
+  --color-line-strong:#a48e72;
   --color-fg: #2b2117;
   --color-muted: #5b4a36;
   --color-faint: #4f4030;
   --color-accent: #6b4412;
   --color-on-accent: #ffffff;
-  --color-gold: #8a5a1c;
+  --color-gold:#84561b;
   --color-danger: #8a1c22;
   --color-ok: #1f6b35;
   --color-warn: #8a4b08;
@@ -297,8 +337,10 @@
   --color-canvas: #f6f5f8;
   --color-panel: rgb(255 255 255 / 0.86);
   --color-panel-2: rgb(233 230 240 / 0.9);
+  --color-surface: #fefefe;
+  --color-surface-2: #ebe8f1;
   --color-line: rgb(110 100 130 / 0.3);
-  --color-line-strong: #aaa3bd;
+  --color-line-strong:#9791a8;
   --color-fg: #1d1a24;
   --color-muted: #4a4458;
   --color-faint: #4a4260;
@@ -316,8 +358,10 @@
   --color-canvas: #130a26;
   --color-panel: rgb(34 18 66 / 0.8);
   --color-panel-2: rgb(52 28 96 / 0.7);
+  --color-surface: #1f103c;
+  --color-surface-2: #2e1955;
   --color-line: rgb(100 70 160 / 0.5);
-  --color-line-strong: #6d4fb0;
+  --color-line-strong:#7154b2;
   --color-fg: #f4eefc;
   --color-muted: #d4c6ee;
   --color-faint: #beaee0;
@@ -332,14 +376,16 @@
   --color-canvas: #fcf8ee;
   --color-panel: rgb(255 255 255 / 0.88);
   --color-panel-2: rgb(246 236 214 / 0.9);
+  --color-surface: #fffefd;
+  --color-surface-2: #f7eeda;
   --color-line: rgb(160 120 60 / 0.3);
-  --color-line-strong: #c9a96a;
+  --color-line-strong:#ab905a;
   --color-fg: #2a1410;
   --color-muted: #5a3a30;
   --color-faint: #503a30;
   --color-accent: #8a1722;
   --color-on-accent: #ffffff;
-  --color-gold: #8a6410;
+  --color-gold:#805d0f;
   --color-danger: #8a1c22;
   --color-ok: #1f6b35;
   --color-warn: #8a4b08;
@@ -350,6 +396,8 @@
   --color-canvas: #071a10;
   --color-panel: rgb(12 46 28 / 0.8);
   --color-panel-2: rgb(18 68 40 / 0.7);
+  --color-surface: #0b2a1a;
+  --color-surface-2: #103c24;
   --color-line: rgb(40 120 70 / 0.5);
   --color-line-strong: #2f8a55;
   --color-fg: #eefaf2;
@@ -366,8 +414,10 @@
   --color-canvas: #161019;
   --color-panel: rgb(40 30 48 / 0.85);
   --color-panel-2: rgb(58 44 70 / 0.75);
+  --color-surface: #251c2d;
+  --color-surface-2: #352840;
   --color-line: rgb(110 90 130 / 0.45);
-  --color-line-strong: #6e5a82;
+  --color-line-strong:#756288;
   --color-fg: #f1ecf4;
   --color-muted: #cdbfd6;
   --color-faint: #c2b3ce;
@@ -382,8 +432,10 @@
   --color-canvas: #1a0406;
   --color-panel: rgb(52 10 14 / 0.85);
   --color-panel-2: rgb(80 16 22 / 0.75);
+  --color-surface: #30090d;
+  --color-surface-2: #480e14;
   --color-line: rgb(140 36 44 / 0.5);
-  --color-line-strong: #9c2f38;
+  --color-line-strong:#a6444c;
   --color-fg: #fbeeee;
   --color-muted: #ebc5c7;
   --color-faint: #d6a3a7;
@@ -398,8 +450,10 @@
   --color-canvas: #fffdf6;
   --color-panel: rgb(255 255 255 / 0.9);
   --color-panel-2: rgb(250 240 210 / 0.9);
+  --color-surface: #fffffe;
+  --color-surface-2: #fbf1d6;
   --color-line: rgb(170 130 30 / 0.3);
-  --color-line-strong: #d4b45a;
+  --color-line-strong:#ac9249;
   --color-fg: #25200f;
   --color-muted: #54491f;
   --color-faint: #4d4420;
@@ -416,6 +470,8 @@
   --color-canvas: #200a03;
   --color-panel: rgb(66 24 8 / 0.82);
   --color-panel-2: rgb(96 36 12 / 0.72);
+  --color-surface: #3c1507;
+  --color-surface-2: #56200b;
   --color-line: rgb(160 70 30 / 0.5);
   --color-line-strong: #b0501f;
   --color-fg: #fff0e6;
@@ -455,6 +511,33 @@
   :focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
+  }
+
+  /*
+   * Native controls follow the theme's brightness: <select> menus, scrollbars and pickers draw dark on dark themes and light on
+   * light ones. src/theme/themes.ts sets the same thing from the contrast engine; this covers the first paint.
+   */
+  :root {
+    color-scheme: dark;
+  }
+  :root:is([data-theme="light"], [data-theme="ice-blue"], [data-theme="mint"], [data-theme="sage"], [data-theme="linen"], [data-theme="shell"], [data-theme="christmas"], [data-theme="easter"]) {
+    color-scheme: light;
+  }
+  /*
+   * The open list of a <select> is drawn from its <option>s. They take an opaque theme surface and the calibrated foreground, so
+   * no menu opens as a white OS box, even under a select that is itself transparent.
+   */
+  option,
+  optgroup {
+    background-color: var(--color-surface-2);
+    color: var(--color-fg);
+  }
+  option:disabled {
+    color: var(--color-faint);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-faint);
   }
 }
 

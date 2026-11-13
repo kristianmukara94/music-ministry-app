@@ -63,15 +63,15 @@ function CalendarToday() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-lg border border-line bg-panel/60 px-4 py-3">
           <div className="text-lg font-extrabold text-fg">{SEASON_NAME[season]}</div>
-          <div className="text-xs text-fg/60">Liturgical season</div>
+          <div className="text-xs text-muted">Liturgical season</div>
         </div>
         <div className="rounded-lg border border-line bg-panel/60 px-4 py-3">
           <div className="text-lg font-extrabold text-fg">Year {sundayCycle(today)}</div>
-          <div className="text-xs text-fg/60">Sundays and solemnities</div>
+          <div className="text-xs text-muted">Sundays and solemnities</div>
         </div>
         <div className="rounded-lg border border-line bg-panel/60 px-4 py-3">
           <div className="text-lg font-extrabold text-fg">Year {weekdayCycle(today)}</div>
-          <div className="text-xs text-fg/60">Weekday first reading</div>
+          <div className="text-xs text-muted">Weekday first reading</div>
         </div>
       </div>
     </Card>
@@ -118,7 +118,7 @@ function UpcomingSundays({ overview, error }: { overview: LectionaryOverview | n
                     {formatIsoWeekday(row.date, DATE_LOCALE[lang])}, {formatIsoDay(row.date, region)}
                     {row.date === today && <span className="rounded bg-accent px-1.5 py-0.5 text-[10px] font-extrabold tracking-wider text-on-accent uppercase">Today</span>}
                   </div>
-                  <div className="truncate text-xs text-fg/60">
+                  <div className="truncate text-xs text-muted">
                     {row.label || SEASON_NAME[row.season]} · Year {row.cycle}
                   </div>
                 </div>
@@ -132,7 +132,7 @@ function UpcomingSundays({ overview, error }: { overview: LectionaryOverview | n
                         key={slot}
                         title={`${slot}: ${have ? 'saved' : needed ? 'missing' : 'not saved (optional)'}`}
                         className={`rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase ${
-                          have ? 'border-ok/50 bg-ok/15 text-ok' : needed ? 'border-fg/25 text-fg/60' : 'border-dashed border-fg/20 text-fg/40'
+                          have ? 'border-ok/50 bg-ok/15 text-ok' : needed ? 'border-fg/25 text-muted' : 'border-dashed border-fg/20 text-faint'
                         }`}
                       >
                         <span className="sr-only">{slot}: {have ? 'saved' : needed ? 'missing' : 'optional, not saved'}. </span>

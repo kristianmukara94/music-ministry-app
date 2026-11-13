@@ -67,14 +67,14 @@ function Metric({ icon: Icon, label, value, sub, percent, tone }: {
 }) {
   return (
     <div className="min-w-0 rounded-lg border border-fg/10 bg-fg/[0.03] px-3 py-2">
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-fg/60 uppercase">
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted uppercase">
         <Icon size={12} aria-hidden className="shrink-0" />
         <span className="truncate">{label}</span>
       </div>
       <div className={`truncate font-mono text-base leading-tight font-bold tabular-nums ${tone === 'warn' ? 'text-warn' : tone === 'ok' ? 'text-ok' : 'text-fg'}`} title={value}>
         {value}
       </div>
-      {sub && <div className="truncate text-[11px] text-fg/55" title={sub}>{sub}</div>}
+      {sub && <div className="truncate text-[11px] text-faint" title={sub}>{sub}</div>}
       {percent !== undefined && <Meter percent={percent} />}
     </div>
   );
@@ -106,14 +106,14 @@ function RecentPlans() {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="text-[11px] font-semibold tracking-wide text-fg/60 uppercase">{t('health.recentPlans')}</div>
-      {plans !== null && recent.length === 0 && <div className="text-xs text-fg/55">{t('health.noPlans')}</div>}
+      <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">{t('health.recentPlans')}</div>
+      {plans !== null && recent.length === 0 && <div className="text-xs text-faint">{t('health.noPlans')}</div>}
       <ul className="flex flex-col gap-1.5">
         {recent.map((plan) => (
           <li key={plan.id} className="flex min-w-0 items-center gap-2 rounded-lg border border-fg/10 bg-fg/[0.03] px-3 py-1.5">
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold text-fg" title={plan.name}>{plan.name}</div>
-              <div className="text-[11px] text-fg/55">
+              <div className="text-[11px] text-faint">
                 {formatIsoDay(plan.liturgicalDate, region)}
                 {plan.id === loadedId && <span className="ml-1.5 font-bold text-ok">· {t('health.loaded')}</span>}
               </div>
@@ -136,7 +136,7 @@ function PinnedShortcuts() {
   if (items.length === 0) return null;
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="text-[11px] font-semibold tracking-wide text-fg/60 uppercase">{t('health.shortcuts')}</div>
+      <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">{t('health.shortcuts')}</div>
       <div className="flex flex-wrap gap-1.5">
         {items.map((item) => (
           <button key={item.id} type="button" onClick={() => runLaunchItem(item)}
@@ -161,7 +161,7 @@ export function SystemHealthPanel() {
 
   let metrics;
   if (unavailable && !health) {
-    metrics = <p className="text-sm text-fg/60">{t('health.unavailable')}</p>;
+    metrics = <p className="text-sm text-muted">{t('health.unavailable')}</p>;
   } else {
     const h = health;
     const ramPercent = h ? Math.round((h.memory.usedBytes / Math.max(1, h.memory.totalBytes)) * 100) : null;

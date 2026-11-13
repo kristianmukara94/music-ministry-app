@@ -45,7 +45,7 @@ export function ServiceQueue({ items }: { items: QueueItem[] }) {
   useEffect(() => {
     currentRow.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [cursor]);
-  if (items.length === 0) return <p className="p-5 text-sm text-fg/60">{t('queueEmpty')}</p>;
+  if (items.length === 0) return <p className="p-5 text-sm text-muted">{t('queueEmpty')}</p>;
 
   /** Puts an item live: it moves the CURRENT badge there, and the projector and preview show it. */
   const takeLive = async (index: number) => {
@@ -86,7 +86,7 @@ export function ServiceQueue({ items }: { items: QueueItem[] }) {
           {t('queueNext')}
         </button>
       </div>
-      <p className="shrink-0 px-4 pt-2 text-[11px] font-medium text-fg/50">Ctrl ↑ / Ctrl ↓ to step</p>
+      <p className="shrink-0 px-4 pt-2 text-[11px] font-medium text-faint">Ctrl ↑ / Ctrl ↓ to step</p>
 
       {error && (
         <p role="alert" className="mx-3 mt-3 rounded-md border border-danger/40 bg-panel px-3 py-2 text-xs text-danger">
@@ -127,7 +127,7 @@ export function ServiceQueue({ items }: { items: QueueItem[] }) {
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span
                           title={item.label}
-                          className={`max-w-[180px] truncate text-sm font-semibold ${item.stale ? 'text-fg/50 line-through' : 'text-fg'}`}
+                          className={`max-w-[180px] truncate text-sm font-semibold ${item.stale ? 'text-faint line-through' : 'text-fg'}`}
                         >
                           {item.label}
                         </span>

@@ -33,7 +33,7 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
 
 // The same surfaces as the dashboard: cards on the panel colour, hairline borders, dark ghost buttons, an accent focus ring.
 const CARD = 'rounded-[10px] border border-line bg-panel';
-const LABEL = 'text-[11px] font-semibold tracking-wider text-fg/60 uppercase';
+const LABEL = 'text-[11px] font-semibold tracking-wider text-muted uppercase';
 const button =
   'flex h-10 items-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-4 text-xs font-semibold tracking-wide text-fg/85 uppercase transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
 
@@ -259,7 +259,7 @@ export function RosaryDeck() {
       </div>
     );
   }
-  if (!mysteries) return <p className="p-5 text-sm text-fg/60">{t('loading')}</p>;
+  if (!mysteries) return <p className="p-5 text-sm text-muted">{t('loading')}</p>;
   if (mysteries.length === 0) {
     return (
       <div className="p-5">
@@ -319,7 +319,7 @@ export function RosaryDeck() {
               aria-pressed={lang === l}
               onClick={() => changeLanguage(l)}
               className={`rounded-md px-3 py-1.5 text-xs font-semibold uppercase transition ${
-                lang === l ? 'bg-accent text-on-accent' : 'text-fg/65 hover:bg-fg/10 hover:text-fg'
+                lang === l ? 'bg-accent text-on-accent' : 'text-muted hover:bg-fg/10 hover:text-fg'
               }`}
             >
               {l}
@@ -387,7 +387,7 @@ export function RosaryDeck() {
           <div className={`${CARD} p-4`}>
             <h2 className={`${LABEL} mb-2`}>{t('backgroundHeading')}</h2>
             {media.length === 0 ? (
-              <p className="text-xs text-fg/60">{t('mediaEmpty')}</p>
+              <p className="text-xs text-muted">{t('mediaEmpty')}</p>
             ) : (
               <select
                 aria-label={t('backgroundHeading')}
@@ -416,7 +416,7 @@ export function RosaryDeck() {
                     {t('live')}
                   </span>
                 )}
-                <span className="text-xs text-fg/60 tabular-nums">{t('stepOf', { n: position + 1, total: total })}</span>
+                <span className="text-xs text-muted tabular-nums">{t('stepOf', { n: position + 1, total: total })}</span>
               </div>
             </div>
             <div
@@ -435,7 +435,7 @@ export function RosaryDeck() {
             <div>
               <h2 className="text-3xl leading-tight font-bold tracking-tight text-fg">{frame.mystery}</h2>
               {frame.scripture && (
-                <p className="mt-1 text-sm text-fg/60">
+                <p className="mt-1 text-sm text-muted">
                   {t('scripture')}: {frame.scripture}
                 </p>
               )}
@@ -459,7 +459,7 @@ export function RosaryDeck() {
             >
               {frame.text || t('noText')}
             </p>
-            {fallback && <p className="mt-3 text-xs text-fg/60">{t('fallbackNote')}</p>}
+            {fallback && <p className="mt-3 text-xs text-muted">{t('fallbackNote')}</p>}
           </div>
 
           {/* A long prayer is shown in parts. These step through them, then on to the next step. */}
@@ -494,7 +494,7 @@ export function RosaryDeck() {
                         ? 'border-accent bg-accent/25 text-accent ring-2 ring-accent/50'
                         : done
                           ? 'border-accent bg-accent text-on-accent'
-                          : 'border-fg/25 text-fg/60 hover:border-accent hover:text-accent'
+                          : 'border-fg/25 text-muted hover:border-accent hover:text-accent'
                     }`}
                   >
                     {n}
@@ -519,14 +519,14 @@ export function RosaryDeck() {
             >
               <Presentation size={15} aria-hidden /> {t('takeLive')}
             </button>
-            <p className="ml-auto text-xs text-fg/50">{t('hotkeys')}</p>
+            <p className="ml-auto text-xs text-faint">{t('hotkeys')}</p>
           </div>
 
           {/* The slide style is set once and kept, so it stays folded away until it is needed. */}
           <details className="group border-t border-line pt-4">
             <summary className="flex cursor-pointer list-none items-center justify-between rounded-md [&::-webkit-details-marker]:hidden">
               <span className={LABEL}>{t('styleHeading')}</span>
-              <ChevronDown size={16} className="text-fg/60 transition group-open:rotate-180" aria-hidden />
+              <ChevronDown size={16} className="text-muted transition group-open:rotate-180" aria-hidden />
             </summary>
             <div className="mt-3 flex flex-col gap-3">
               <StyleToolbar style={style} onChange={changeStyle} />

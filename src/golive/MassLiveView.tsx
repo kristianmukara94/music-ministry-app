@@ -220,7 +220,7 @@ function AddMenu({
       {open && (
         <div
           role="menu"
-          className="absolute top-full right-0 left-0 z-20 mt-1 flex max-h-[70vh] flex-col gap-0.5 overflow-y-auto rounded-lg border border-fg/20 bg-panel p-1 shadow-2xl backdrop-blur"
+          className="absolute top-full right-0 left-0 z-20 mt-1 flex max-h-[70vh] flex-col gap-0.5 overflow-y-auto rounded-lg border border-fg/20 bg-surface p-1 shadow-2xl backdrop-blur"
         >
           <button type="button" role="menuitem" autoFocus className={`${ITEM} text-accent`} onClick={() => pick(onNote)}>
             <Plus size={14} aria-hidden /> {t('addMenuCreate')}
@@ -244,13 +244,13 @@ function AddMenu({
                     <span aria-hidden>{s.icon} </span>
                     {t(s.label)}
                   </span>
-                  <span className="shrink-0 rounded-full bg-fg/10 px-1.5 font-mono text-[10px] text-fg/60">{list.length}</span>
-                  <ChevronRight size={13} aria-hidden className={`shrink-0 text-fg/50 transition ${expanded ? 'rotate-90' : ''}`} />
+                  <span className="shrink-0 rounded-full bg-fg/10 px-1.5 font-mono text-[10px] text-muted">{list.length}</span>
+                  <ChevronRight size={13} aria-hidden className={`shrink-0 text-faint transition ${expanded ? 'rotate-90' : ''}`} />
                 </button>
                 {expanded && (
                   <div role="menu" aria-label={t(s.label)} className="flex flex-col gap-px pb-1">
                     {list.length === 0 ? (
-                      <span className="py-1.5 pr-2 pl-8 text-xs text-fg/50">{t('addMenuSectionEmpty')}</span>
+                      <span className="py-1.5 pr-2 pl-8 text-xs text-faint">{t('addMenuSectionEmpty')}</span>
                     ) : (
                       list.map((n) => {
                         const count = n.display === 'full' && n.body.trim() ? screenPagesOf(n).length : 0;
@@ -258,7 +258,7 @@ function AddMenu({
                           <button key={n.id} type="button" role="menuitem" className={ENTRY} title={n.title} onClick={() => pick(() => onHubItem(n))}>
                             <span aria-hidden className="shrink-0">{n.display === 'operator' ? '📝' : n.display === 'lower' ? '▭' : '▣'}</span>
                             <span className="min-w-0 flex-1 truncate">{n.title}</span>
-                            {count > 1 && <span className="shrink-0 font-mono text-[10px] text-fg/50">{t('addMenuSlideCount', { n: count })}</span>}
+                            {count > 1 && <span className="shrink-0 font-mono text-[10px] text-faint">{t('addMenuSlideCount', { n: count })}</span>}
                           </button>
                         );
                       })
@@ -289,7 +289,7 @@ function SlotAddButton({ slot, busy, onAdd, className }: { slot: MassSlot; busy:
       disabled={busy}
       aria-label={label}
       title={label}
-      className={`absolute top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-md text-fg/50 opacity-0 transition group-hover:opacity-100 hover:bg-accent/15 hover:text-accent focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:hidden ${className}`}
+      className={`absolute top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-md text-faint opacity-0 transition group-hover:opacity-100 hover:bg-accent/15 hover:text-accent focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:hidden ${className}`}
     >
       <Plus size={14} aria-hidden />
     </button>
@@ -346,7 +346,7 @@ function MassLineup({
   const sectionHeader = (block: string) => {
     const header = block !== lastBlock ? blockTitle(block) : null;
     lastBlock = block;
-    return header && <span className="mt-2 mb-1 px-1 text-[10px] font-bold tracking-wider text-fg/50 uppercase first:mt-0">{header}</span>;
+    return header && <span className="mt-2 mb-1 px-1 text-[10px] font-bold tracking-wider text-faint uppercase first:mt-0">{header}</span>;
   };
   return (
     <section aria-labelledby="mass-lineup" className={`${CARD} flex min-w-0 flex-col p-4`}>
@@ -378,7 +378,7 @@ function MassLineup({
                     <span className="grid size-8 shrink-0 place-items-center rounded-full border border-dashed border-fg/25 font-mono text-[11px] text-muted">{slot.position}</span>
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate text-[15px] leading-tight text-fg/70">{slot.name}</span>
-                      <span className="text-[10px] font-semibold tracking-wider text-fg/45 uppercase">{t('massEmptySlot')}</span>
+                      <span className="text-[10px] font-semibold tracking-wider text-faint uppercase">{t('massEmptySlot')}</span>
                     </span>
                   </div>
                   <SlotAddButton slot={slot} busy={busy} onAdd={onAddNote} className="right-1.5" />
@@ -431,7 +431,7 @@ function MassLineup({
                     <span className={`truncate text-[15px] leading-tight ${isDone ? 'text-muted' : 'font-semibold'} ${item.stale ? 'line-through' : ''}`}>{item.label}</span>
                     <span className="flex min-w-0 items-center gap-1.5">
                       {note && <NoteBadge note={note} t={t} />}
-                      <span className="truncate text-[10px] font-semibold tracking-wider text-fg/45 uppercase">
+                      <span className="truncate text-[10px] font-semibold tracking-wider text-faint uppercase">
                         {labelSlot ? `${slot ? '' : '↳ '}${labelSlot.position}. ${labelSlot.name}${note ? '' : ' · '}` : ''}
                         {note ? '' : MODULE_TAG[item.module]}
                       </span>
@@ -446,7 +446,7 @@ function MassLineup({
                   disabled={busy}
                   aria-label={t(slot ? 'massRemoveSlot' : 'massRemove', { item: item.label })}
                   title={t(slot ? 'massRemoveSlot' : 'massRemove', { item: item.label })}
-                  className="absolute top-1/2 right-1.5 grid size-7 -translate-y-1/2 place-items-center rounded-md text-fg/50 opacity-0 transition group-hover:opacity-100 hover:bg-danger/15 hover:text-danger focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-danger/60 focus-visible:outline-none disabled:hidden"
+                  className="absolute top-1/2 right-1.5 grid size-7 -translate-y-1/2 place-items-center rounded-md text-faint opacity-0 transition group-hover:opacity-100 hover:bg-danger/15 hover:text-danger focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-danger/60 focus-visible:outline-none disabled:hidden"
                 >
                   <X size={14} aria-hidden />
                 </button>
@@ -481,8 +481,8 @@ function ConfirmResetModal({ onConfirm, onClose }: { onConfirm: () => void; onCl
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <div role="alertdialog" aria-modal="true" aria-labelledby="reset-title" aria-describedby="reset-body" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-md flex-col gap-4 rounded-xl border border-fg/20 bg-panel p-6 shadow-2xl">
+    <div role="alertdialog" aria-modal="true" aria-labelledby="reset-title" aria-describedby="reset-body" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-md flex-col gap-4 rounded-xl border border-fg/20 bg-surface p-6 shadow-2xl">
         <h2 id="reset-title" className="flex items-center gap-2 text-lg font-bold">
           <RotateCcw size={18} className="text-danger" aria-hidden /> {t('massResetOrder')}
         </h2>
@@ -645,19 +645,19 @@ export function MassLiveView({ planName }: { planName: string | null }) {
       <div className={`${CARD} flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3`}>
         <span
           className={`inline-flex min-h-9 items-center gap-2 rounded-full border px-4 text-sm font-extrabold tracking-[0.18em] uppercase ${
-            onAir ? 'border-danger/60 bg-danger/15 text-danger' : 'border-fg/20 bg-fg/[0.06] text-fg/60'
+            onAir ? 'border-danger/60 bg-danger/15 text-danger' : 'border-fg/20 bg-fg/[0.06] text-muted'
           }`}
         >
           <span aria-hidden className={`size-2 rounded-full ${onAir ? 'animate-pulse bg-danger' : 'bg-fg/50'}`} />
           {onAir ? tp('liveBadge') : tp('offAir')}
         </span>
         <span className="flex items-baseline gap-2">
-          <span className="text-xs text-fg/60">{tp('sessionTime')}</span>
+          <span className="text-xs text-muted">{tp('sessionTime')}</span>
           <span className="font-mono text-2xl tabular-nums text-fg">{clock(liveSince ? now - liveSince : 0)}</span>
         </span>
         {planName && (
           <span className="flex min-w-0 items-baseline gap-2">
-            <span className="text-xs text-fg/60">{t('massPlanLabel')}</span>
+            <span className="text-xs text-muted">{t('massPlanLabel')}</span>
             <span className="truncate text-base font-semibold text-fg">{planName}</span>
           </span>
         )}
@@ -792,7 +792,7 @@ export function MassLiveView({ planName }: { planName: string | null }) {
                         </div>
                       ) : nextItem ? (
                         <div className="flex aspect-video w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-line bg-stone-950 p-3 text-center text-white">
-                          <span className="text-[10px] font-semibold tracking-wider text-white/50 uppercase">{MODULE_TAG[nextItem.module]}</span>
+                          <span className="text-[10px] font-semibold tracking-wider text-white/70 uppercase">{MODULE_TAG[nextItem.module]}</span>
                           <span className="line-clamp-3 text-sm font-bold">{nextItem.label}</span>
                         </div>
                       ) : (
@@ -890,7 +890,7 @@ export function MassLiveView({ planName }: { planName: string | null }) {
               {live.lowerThird.live ? (
                 <LowerThirdStage value={live.lowerThird.live} lyricBottomShare={lyricBottomOf(live.projector.live)} />
               ) : (
-                <div className="absolute inset-0 grid place-items-center px-3 text-center text-xs text-fg/50">
+                <div className="absolute inset-0 grid place-items-center px-3 text-center text-xs text-faint">
                   {tp('lowerThirdToggle')}: {tp('off')}
                 </div>
               )}
@@ -904,7 +904,7 @@ export function MassLiveView({ planName }: { planName: string | null }) {
             {nextItem ? (
               <>
                 <p className="text-2xl font-bold tracking-tight">{nextItem.label}</p>
-                <p className="text-sm font-semibold text-fg/60">{MODULE_TAG[nextItem.module]}</p>
+                <p className="text-sm font-semibold text-muted">{MODULE_TAG[nextItem.module]}</p>
               </>
             ) : (
               <p className="text-muted">{t('massEndOfQueue')}</p>

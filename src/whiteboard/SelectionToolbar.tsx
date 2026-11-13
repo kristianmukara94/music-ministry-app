@@ -51,13 +51,13 @@ export function SelectionToolbar({
           <span className="size-2 rounded-full bg-accent shadow-[0_0_8px_var(--color-accent)]" aria-hidden />
           <span className="tabular-nums">{count}</span> selected
         </span>
-        {allShown && <span className="text-xs text-fg/55">All shown</span>}
+        {allShown && <span className="text-xs text-faint">All shown</span>}
         {hidden > 0 && (
-          <span className="text-xs text-fg/55">
+          <span className="text-xs text-faint">
             <span className="tabular-nums">{hidden}</span> hidden by search
           </span>
         )}
-        <span className="hidden text-[11px] text-fg/40 xl:inline">Shift-click to pick a range · Drag onto a folder to file · Esc to clear · Del to delete</span>
+        <span className="hidden text-[11px] text-faint xl:inline">Shift-click to pick a range · Drag onto a folder to file · Esc to clear · Del to delete</span>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         <button type="button" onClick={onSelectAll} disabled={allShown} className={GHOST} title="Select every slide shown (Ctrl+A)">

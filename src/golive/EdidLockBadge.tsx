@@ -7,7 +7,7 @@ import { useGoLiveT, type GoLiveT } from './strings';
 const errorText = (err: unknown) => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(err));
 
 const LOOK: Record<EdidLockState, string> = {
-  unavailable: 'border-fg/20 bg-fg/[0.06] text-fg/60',
+  unavailable: 'border-fg/20 bg-fg/[0.06] text-muted',
   unpinned: 'border-fg/25 bg-fg/[0.06] text-fg/75',
   matched: 'border-ok/60 bg-ok/15 text-ok',
   port: 'border-warn/70 bg-warn/15 text-warn',
@@ -91,14 +91,14 @@ export function EdidLockPanel({ status }: { status: EdidStatus | null }) {
       <p className="leading-snug text-fg/85">{hintFor(t, role)}</p>
       {role.lock && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-          <dt className="text-fg/55">{t('edidLockedTo')}</dt>
+          <dt className="text-faint">{t('edidLockedTo')}</dt>
           <dd className="min-w-0 text-fg">
             {role.lock.name} · <span className="font-mono">{serial(role.lock.serial)}</span>
-            <div className="text-fg/60">{role.lock.portLabel}</div>
+            <div className="text-muted">{role.lock.portLabel}</div>
           </dd>
           {role.connected && (
             <>
-              <dt className="text-fg/55">{t('edidNowOn')}</dt>
+              <dt className="text-faint">{t('edidNowOn')}</dt>
               <dd className="min-w-0 text-fg">
                 {role.connected.portLabel} · <span className="font-mono">{role.connected.gdiDeviceName}</span>
               </dd>
@@ -108,12 +108,12 @@ export function EdidLockPanel({ status }: { status: EdidStatus | null }) {
       )}
       {status?.available && status.monitors.length > 0 && (
         <div>
-          <div className="text-[11px] font-semibold tracking-wider text-fg/60 uppercase">{t('edidMonitors')}</div>
+          <div className="text-[11px] font-semibold tracking-wider text-muted uppercase">{t('edidMonitors')}</div>
           <ul className="mt-1 flex flex-col gap-0.5 text-xs text-fg/75">
             {status.monitors.map((m) => (
               <li key={`${m.gdiDeviceName}-${m.portLabel}`}>
                 {m.name} · <span className="font-mono">{serial(m.serial)}</span> · {m.portLabel}
-                {m.primary && <span className="text-fg/50"> ({t('edidPrimary')})</span>}
+                {m.primary && <span className="text-faint"> ({t('edidPrimary')})</span>}
               </li>
             ))}
           </ul>
@@ -194,8 +194,8 @@ export function EdidLockBadge() {
         </span>
       </button>
       {open && (
-        <div role="dialog" aria-label={t('edidLockHeading')} className="absolute top-12 right-0 z-40 w-96 rounded-[10px] border border-line bg-panel p-4 text-fg shadow-xl">
-          <div className="mb-2 text-[11px] font-semibold tracking-wider text-fg/60 uppercase">{t('edidLockHeading')}</div>
+        <div role="dialog" aria-label={t('edidLockHeading')} className="absolute top-12 right-0 z-40 w-96 rounded-[10px] border border-line bg-surface p-4 text-fg shadow-xl">
+          <div className="mb-2 text-[11px] font-semibold tracking-wider text-muted uppercase">{t('edidLockHeading')}</div>
           <EdidLockPanel status={status} />
         </div>
       )}

@@ -185,7 +185,7 @@ export function DeckControlBar({
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[220px] flex-1">
-          <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-fg/40" aria-hidden />
+          <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" aria-hidden />
           <input
             type="search"
             value={query}
@@ -193,10 +193,10 @@ export function DeckControlBar({
             onKeyDown={(e) => e.key === 'Escape' && query && (e.stopPropagation(), onQuery(''))}
             placeholder={searchPlaceholder}
             aria-label="Search slides"
-            className="h-10 w-full rounded-lg border border-fg/15 bg-panel-2 pr-9 pl-9 text-sm text-fg outline-none placeholder:text-fg/40 focus:border-accent"
+            className="h-10 w-full rounded-lg border border-fg/15 bg-panel-2 pr-9 pl-9 text-sm text-fg outline-none placeholder:text-faint focus:border-accent"
           />
           {query && (
-            <button type="button" onClick={() => onQuery('')} aria-label="Clear search" className="absolute top-1/2 right-2 grid size-6 -translate-y-1/2 place-items-center rounded text-fg/50 hover:text-fg">
+            <button type="button" onClick={() => onQuery('')} aria-label="Clear search" className="absolute top-1/2 right-2 grid size-6 -translate-y-1/2 place-items-center rounded text-faint hover:text-fg">
               <X size={14} aria-hidden />
             </button>
           )}
@@ -210,7 +210,7 @@ export function DeckControlBar({
               aria-pressed={columns === n}
               title={`${n} slides across`}
               className={`h-full rounded-md px-2.5 text-xs font-bold tabular-nums transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none ${
-                columns === n ? 'bg-accent text-on-accent shadow shadow-black/40' : 'text-fg/65 hover:bg-fg/10 hover:text-fg'
+                columns === n ? 'bg-accent text-on-accent shadow shadow-black/40' : 'text-muted hover:bg-fg/10 hover:text-fg'
               }`}
             >
               {n} col

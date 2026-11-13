@@ -67,7 +67,7 @@ const themeOf = (style: TextStyle | null) =>
 
 // The same surfaces as the dashboard: cards on the panel colour, hairline borders, dark ghost buttons, an accent focus ring.
 const CARD = 'rounded-[10px] border border-line bg-panel';
-const LABEL = 'text-[11px] font-semibold tracking-wider text-fg/60 uppercase';
+const LABEL = 'text-[11px] font-semibold tracking-wider text-muted uppercase';
 const PILL =
   'flex h-9 shrink-0 items-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs font-semibold tracking-wide text-fg/85 uppercase transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
 const ICON =
@@ -78,7 +78,7 @@ const ADD_BUTTON =
 const LIVE_BUTTON =
   'flex h-10 shrink-0 items-center gap-2 rounded-md border border-[#10b981] bg-[#10b981] px-5 text-xs font-extrabold tracking-wider text-[#04140d] uppercase shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40';
 const FIELD =
-  'h-10 w-full rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40';
+  'h-10 w-full rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none placeholder:text-faint focus:border-accent focus:ring-1 focus:ring-accent/40';
 const KBD = 'rounded border border-current/30 px-1 py-px font-mono text-[9px] font-semibold tracking-normal normal-case opacity-75';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -284,12 +284,12 @@ export function NotesPrayersView() {
                 on ? 'border-accent bg-gradient-to-br from-accent/20 to-accent/5' : 'border-line bg-panel hover:border-fg/25 hover:bg-fg/[0.04]'
               }`}
             >
-              <span className={`grid size-9 shrink-0 place-items-center rounded-lg border ${on ? 'border-accent/60 text-accent' : 'border-line text-fg/60'}`}>
+              <span className={`grid size-9 shrink-0 place-items-center rounded-lg border ${on ? 'border-accent/60 text-accent' : 'border-line text-muted'}`}>
                 <Icon size={18} aria-hidden />
               </span>
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className={`truncate text-xs font-extrabold tracking-wider uppercase ${on ? 'text-accent' : 'text-fg/85'}`}>{label}</span>
-                <span className="truncate text-[11px] text-fg/55">{hint}</span>
+                <span className="truncate text-[11px] text-faint">{hint}</span>
               </span>
               <span className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-[11px] tabular-nums ${on ? 'bg-accent text-on-accent' : 'bg-fg/10 text-fg/70'}`}>{counts[id]}</span>
             </button>
@@ -318,7 +318,7 @@ export function NotesPrayersView() {
           ))}
         </div>
         <label className="relative min-w-[14rem] flex-1">
-          <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-fg/60" aria-hidden />
+          <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" aria-hidden />
           <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search title, category or text" aria-label="Search entries" className={`${FIELD} pl-9`} />
         </label>
         <select
@@ -339,7 +339,7 @@ export function NotesPrayersView() {
         <ul aria-label={sectionInfo.label} className={`${CARD} flex max-h-[calc(100vh-22rem)] min-h-48 flex-col gap-1 overflow-y-auto p-2`}>
           {visible.length === 0 && (
             <li className="flex flex-col items-center gap-3 px-4 py-10 text-center">
-              <span className="grid size-11 place-items-center rounded-[10px] border border-line text-fg/50">
+              <span className="grid size-11 place-items-center rounded-[10px] border border-line text-faint">
                 <FileText size={20} aria-hidden />
               </span>
               <p className="text-sm text-fg/70">{query || category || visibility !== 'all' ? 'Nothing matches these filters.' : sectionInfo.empty}</p>
@@ -372,7 +372,7 @@ export function NotesPrayersView() {
                     ) : (
                       <span
                         className={`flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-                          n.display === 'operator' ? 'border-cyan-500/50 bg-cyan-500/10 text-fg/75' : 'border-fg/20 bg-fg/[0.06] text-fg/60'
+                          n.display === 'operator' ? 'border-cyan-500/50 bg-cyan-500/10 text-fg/75' : 'border-fg/20 bg-fg/[0.06] text-muted'
                         }`}
                       >
                         {n.display === 'operator' && <Lock size={9} aria-hidden />}
@@ -380,11 +380,11 @@ export function NotesPrayersView() {
                       </span>
                     )}
                   </span>
-                  <span className="truncate text-[11px] font-semibold tracking-wider text-fg/60 uppercase">
+                  <span className="truncate text-[11px] font-semibold tracking-wider text-muted uppercase">
                     {noteCategoryLabel(n.category)}
                     {slotTag(n) && <span className="text-accent/80"> · {slotTag(n)}</span>}
                   </span>
-                  {(n.body || n.sealed) && <span className="line-clamp-2 text-xs text-fg/60">{bodyText(n)}</span>}
+                  {(n.body || n.sealed) && <span className="line-clamp-2 text-xs text-muted">{bodyText(n)}</span>}
                 </button>
               </li>
             );
@@ -393,7 +393,7 @@ export function NotesPrayersView() {
 
         {/* The detail: the entry, its editing controls, and for projectable entries the projection engine. */}
         {current === null ? (
-          <div className="grid min-h-48 place-items-center rounded-[10px] border-2 border-dashed border-fg/20 p-8 text-center text-sm text-fg/60">
+          <div className="grid min-h-48 place-items-center rounded-[10px] border-2 border-dashed border-fg/20 p-8 text-center text-sm text-muted">
             Choose an entry on the left, or add a new one.
           </div>
         ) : (
@@ -444,7 +444,7 @@ export function NotesPrayersView() {
                     <details className="group rounded-lg border border-line bg-fg/[0.03]">
                       <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 [&::-webkit-details-marker]:hidden">
                         <span className={LABEL}>Slide style</span>
-                        <ChevronDown size={16} className="text-fg/60 transition group-open:rotate-180" aria-hidden />
+                        <ChevronDown size={16} className="text-muted transition group-open:rotate-180" aria-hidden />
                       </summary>
                       <div className="flex flex-col gap-3 border-t border-line p-3">
                         <StyleToolbar style={current.style ?? {}} onChange={(patch) => changeStyle(current, patch)} />
@@ -489,7 +489,7 @@ export function NotesPrayersView() {
                       </div>
                     </div>
                     {target !== current.display && (
-                      <p className="flex flex-wrap items-center gap-2 text-xs text-fg/60">
+                      <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
                         This take only. The default is {DISPLAY_LABEL[current.display].toLowerCase()}.
                         <button type="button" onClick={() => void quickSave({ ...inputOf(current), display: target })} className="font-semibold text-accent underline-offset-2 hover:underline">
                           Make default
@@ -523,8 +523,8 @@ export function NotesPrayersView() {
                     )}
 
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] text-fg/55">{target === 'full' ? 'Congregation projector · 16:9' : 'Live stream / confidence monitor · 16:9'}</span>
-                      {target === 'full' && screen.length > 0 && <span className="font-mono text-xs text-fg/60 tabular-nums">{shown + 1} / {screen.length}</span>}
+                      <span className="text-[11px] text-faint">{target === 'full' ? 'Congregation projector · 16:9' : 'Live stream / confidence monitor · 16:9'}</span>
+                      {target === 'full' && screen.length > 0 && <span className="font-mono text-xs text-muted tabular-nums">{shown + 1} / {screen.length}</span>}
                     </div>
                     {target === 'full' ? (
                       <SlidePreview
@@ -571,7 +571,7 @@ export function NotesPrayersView() {
 
                 {/* The sanctuary dock stays at the bottom of the window while the page scrolls, so Stage and Take live are never below the fold. */}
                 <div className="sticky bottom-0 z-10 -mx-5 -mb-5 mt-1 flex flex-wrap items-center gap-3 rounded-b-[10px] border-t border-line bg-panel px-5 py-3">
-                  <label className="flex items-center gap-2 text-[10px] font-bold tracking-[0.14em] text-fg/60 uppercase">
+                  <label className="flex items-center gap-2 text-[10px] font-bold tracking-[0.14em] text-muted uppercase">
                     {tGoLive('blockLabel')}
                     <select value={block} onChange={(e) => setBlock(e.target.value as LiturgicalBlock)} className="h-9 rounded-md border border-fg/15 bg-panel-2 px-2 text-sm text-fg normal-case outline-none focus:border-accent">
                       {BLOCKS.map((b) => (
@@ -634,11 +634,11 @@ function SlideSplit({ note, onSplit }: { note: Note; onSplit: (split: PrayerSpli
     <details className="group rounded-lg border border-line bg-fg/[0.03]">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
         <span className={LABEL}>Slide breaks · {label}</span>
-        <ChevronDown size={16} className="shrink-0 text-fg/60 transition group-open:rotate-180" aria-hidden />
+        <ChevronDown size={16} className="shrink-0 text-muted transition group-open:rotate-180" aria-hidden />
       </summary>
       <div className="flex flex-col gap-3 border-t border-line p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-fg/60">
+          <p className="text-xs text-muted">
             Split here starts a new slide after a line, and that break is kept. A `---` line typed in the editor does the same. A section between your breaks that is too long for one slide is
             split automatically.
           </p>

@@ -11,13 +11,13 @@ import type { MediaAsset } from '../media/types';
  * settings, and `save` writes a change to it only. So changing one never changes the other.
  */
 
-const SUB = 'text-xs text-fg/60';
+const SUB = 'text-xs text-muted';
 const LABEL = 'text-sm font-semibold text-fg';
 const INPUT = 'rounded-lg border border-line bg-panel text-sm text-fg outline-none focus:border-accent';
 const SEG = 'rounded-md px-3 py-1.5 text-[11px] font-bold tracking-wider transition-colors';
 const SEG_ON = 'bg-accent text-on-accent shadow-md shadow-black/40';
-const SEG_OFF = 'text-fg/60 hover:text-fg';
-const SWITCH_OFF = 'border border-fg/20 text-fg/60 hover:text-fg';
+const SEG_OFF = 'text-muted hover:text-fg';
+const SWITCH_OFF = 'border border-fg/20 text-muted hover:text-fg';
 
 const TYPE_OPTIONS: { id: BackgroundType; label: string }[] = [
   { id: 'COLOR', label: 'Colour' },
@@ -233,7 +233,7 @@ export function BackgroundControls({
             <button type="button" onClick={() => {
                 const field = fileField(value.backgroundType);
                 change({ backgroundUrl: null, backgroundType: 'COLOR', ...(field ? { [field]: null } : {}) });
-              }} className="flex w-fit shrink-0 items-center gap-1.5 text-[11px] font-bold tracking-wider text-fg/60 uppercase transition-colors hover:text-accent">
+              }} className="flex w-fit shrink-0 items-center gap-1.5 text-[11px] font-bold tracking-wider text-muted uppercase transition-colors hover:text-accent">
               <Trash2 size={13} aria-hidden /> Remove background
             </button>
           )}

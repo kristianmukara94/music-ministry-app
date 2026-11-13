@@ -12,7 +12,7 @@ const MODES: { id: DisplayState['mode']; label: string }[] = [
 
 const SEG = 'rounded-md px-3 py-1.5 text-[11px] font-bold tracking-wider transition-colors';
 const SEG_ON = 'bg-accent text-on-accent shadow-md shadow-black/30';
-const SEG_OFF = 'text-fg/60 hover:text-fg';
+const SEG_OFF = 'text-muted hover:text-fg';
 
 export function SecondaryControls() {
   const display = useLive((s) => s.state.display);

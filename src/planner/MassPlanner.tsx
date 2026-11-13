@@ -733,13 +733,13 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
                           }`}
                         >
                           {row.stale && <AlertTriangle size={15} className="shrink-0 text-danger" aria-label={t('stale')} />}
-                          <span className="w-5 shrink-0 text-center font-mono text-[11px] text-fg/40 tabular-nums">{extra + 1}</span>
+                          <span className="w-5 shrink-0 text-center font-mono text-[11px] text-faint tabular-nums">{extra + 1}</span>
                           {/* A placeholder step says what it is in its own name, so it has no type tag. */}
                           {!step && <span className={`${TAG} ${tag.tone}`}>{tag.text}</span>}
                           <span className="min-w-0 flex-1">
-                            <span className={`block truncate text-sm font-semibold ${row.stale ? 'text-fg/50 line-through' : 'text-fg'}`}>{row.label}</span>
+                            <span className={`block truncate text-sm font-semibold ${row.stale ? 'text-faint line-through' : 'text-fg'}`}>{row.label}</span>
                             {row.stale && <span className="block text-[11px] text-danger">{row.deleted ? t('deletedHymnStatus') : t('stale')}</span>}
-                            {step && <span className="block text-[11px] text-fg/60">{t('pendingStep')}</span>}
+                            {step && <span className="block text-[11px] text-muted">{t('pendingStep')}</span>}
                           </span>
                           {row.stale && (
                             <span className="shrink-0 rounded bg-danger px-1.5 py-0.5 text-[10px] font-extrabold text-canvas uppercase">{t('staleBadge')}</span>
@@ -948,7 +948,7 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
           {tab === 'notes' && (
             // Read-only: every prayer, Mass flow text and announcement is written in the Liturgical Content Hub. This list reads the same notes
             // table and is read again on notes:changed, so an entry saved in any window shows here without a reload.
-            <p role="note" className="flex items-start gap-2 border-b border-line px-3 py-2.5 text-[11px] leading-snug text-fg/65">
+            <p role="note" className="flex items-start gap-2 border-b border-line px-3 py-2.5 text-[11px] leading-snug text-muted">
               <Info size={13} aria-hidden className="mt-px shrink-0 text-accent" />
               <span>
                 {t('notesPopulate')}{' '}
@@ -959,7 +959,7 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
             </p>
           )}
           <ul className="min-h-0 flex-1 overflow-y-auto p-2">
-            {library.length === 0 && <li className="p-4 text-sm text-fg/60">{t('nothingHere')}</li>}
+            {library.length === 0 && <li className="p-4 text-sm text-muted">{t('nothingHere')}</li>}
             {library.map((item) => (
               <li
                 key={`${item.module}:${item.sourceId}`}
@@ -981,15 +981,15 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-fg">{item.label}</div>
-                  <div className="truncate text-[11px] text-fg/60">{item.sub}</div>
+                  <div className="truncate text-[11px] text-muted">{item.sub}</div>
                 </div>
-                <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-md border border-fg/15 text-fg/60 opacity-60 transition group-hover:border-accent group-hover:text-accent group-hover:opacity-100">
+                <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-md border border-fg/15 text-muted opacity-60 transition group-hover:border-accent group-hover:text-accent group-hover:opacity-100">
                   <Plus size={14} />
                 </span>
               </li>
             ))}
           </ul>
-          <p className="border-t border-line p-3 text-[11px] text-fg/60">{t('dragHintLeft')}</p>
+          <p className="border-t border-line p-3 text-[11px] text-muted">{t('dragHintLeft')}</p>
         </section>
 
         {/* ── Right: the plan ── */}
@@ -1015,7 +1015,7 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
                 ))}
               </select>
             ) : (
-              <span className="text-sm text-fg/60">{t('noPlans')}</span>
+              <span className="text-sm text-muted">{t('noPlans')}</span>
             )}
             {currentPlan && (
               <div role="group" aria-label={t('massLanguage')} title={t('massLanguageTip', { bible: bibleOf(currentPlan.language) })} className="flex h-10 overflow-hidden rounded-md border border-fg/15 bg-panel-2">
@@ -1062,18 +1062,18 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
               )}
             </div>
             {planId != null && (
-              <button type="button" onClick={deletePlan} aria-label={t('deletePlan')} title={t('deletePlan')} className="ml-auto grid size-10 place-items-center rounded-md border border-fg/15 bg-panel-2 text-fg/60 transition hover:border-danger/60 hover:text-danger">
+              <button type="button" onClick={deletePlan} aria-label={t('deletePlan')} title={t('deletePlan')} className="ml-auto grid size-10 place-items-center rounded-md border border-fg/15 bg-panel-2 text-muted transition hover:border-danger/60 hover:text-danger">
                 <Trash2 size={14} aria-hidden />
               </button>
             )}
           </div>
 
           {currentPlan && cycle && (
-            <p className="px-1 text-xs text-fg/60">{t('planLine', { name: currentPlan.name, cycle, n: items.length })}</p>
+            <p className="px-1 text-xs text-muted">{t('planLine', { name: currentPlan.name, cycle, n: items.length })}</p>
           )}
 
           {planId == null ? (
-            <p className="rounded-[10px] border-2 border-dashed border-fg/20 p-8 text-center text-sm text-fg/60">{t('createFirst')}</p>
+            <p className="rounded-[10px] border-2 border-dashed border-fg/20 p-8 text-center text-sm text-muted">{t('createFirst')}</p>
           ) : (
             <HolyMassPlan
               t={t}

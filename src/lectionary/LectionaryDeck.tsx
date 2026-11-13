@@ -50,9 +50,9 @@ const upcomingSunday = () => {
 
 // The same surfaces as the dashboard: cards on the panel colour, hairline borders, dark ghost buttons, an accent focus ring.
 const CARD = 'rounded-[10px] border border-line bg-panel';
-const LABEL = 'text-[11px] font-semibold tracking-wider text-fg/60 uppercase';
+const LABEL = 'text-[11px] font-semibold tracking-wider text-muted uppercase';
 const input =
-  'h-10 w-full rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40';
+  'h-10 w-full rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none placeholder:text-faint focus:border-accent focus:ring-1 focus:ring-accent/40';
 const button =
   'flex h-9 items-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-3 text-xs font-semibold tracking-wide text-fg/85 uppercase transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
 
@@ -486,7 +486,7 @@ export function LectionaryDeck() {
           <nav aria-label={t('readingsHeading')} className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2">
               <span className={LABEL}>{t('readingsHeading')}</span>
-              <span className="text-xs text-fg/60 tabular-nums">{readyCount > 0 ? t('progressReady', { n: savedCount, total: READING_TYPES.length, ready: readyCount }) : t('progress', { n: savedCount, total: READING_TYPES.length })}</span>
+              <span className="text-xs text-muted tabular-nums">{readyCount > 0 ? t('progressReady', { n: savedCount, total: READING_TYPES.length, ready: readyCount }) : t('progress', { n: savedCount, total: READING_TYPES.length })}</span>
             </div>
             <div role="progressbar" aria-label={t('readingsHeading')} aria-valuemin={0} aria-valuemax={READING_TYPES.length} aria-valuenow={savedCount} className="mb-1 h-1 overflow-hidden rounded-full bg-fg/10">
               <div className="h-full rounded-full bg-ok transition-all" style={{ width: `${(savedCount / READING_TYPES.length) * 100}%` }} />
@@ -508,11 +508,11 @@ export function LectionaryDeck() {
                 >
                   <span className={`flex items-center gap-2 text-sm font-semibold ${active ? 'text-accent' : 'text-fg'}`}>
                     {t(SLOT_KEY[type] as Parameters<LectT>[0])}
-                    <span className={`ml-auto rounded-full border px-2 py-0.5 text-[10px] font-extrabold tracking-wider uppercase ${filled ? 'border-ok/60 bg-ok/15 text-ok' : drafted ? 'border-accent/60 bg-accent/15 text-accent' : 'border-fg/20 bg-fg/[0.06] text-fg/60'}`}>
+                    <span className={`ml-auto rounded-full border px-2 py-0.5 text-[10px] font-extrabold tracking-wider uppercase ${filled ? 'border-ok/60 bg-ok/15 text-ok' : drafted ? 'border-accent/60 bg-accent/15 text-accent' : 'border-fg/20 bg-fg/[0.06] text-muted'}`}>
                       {filled ? t('saved') : drafted ? t('fromBible') : t('empty')}
                     </span>
                   </span>
-                  <span className="truncate text-xs text-fg/60">
+                  <span className="truncate text-xs text-muted">
                     {(day && citationFor(day, type)) || (type === 'Second Reading' ? t('optional') : type === 'Prayer of the Faithful' ? t('prayersHint') : ' ')}
                   </span>
                 </button>
@@ -551,7 +551,7 @@ export function LectionaryDeck() {
                 maxLength={160}
                 placeholder={t(isPsalm ? 'responsePlaceholder' : 'responsePrayersPlaceholder')}
                 onChange={(e) => edit(() => setResponse(e.target.value))}
-                className="h-11 rounded-lg border border-fg/15 bg-panel-2 px-3 text-[15px] font-semibold text-accent outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40"
+                className="h-11 rounded-lg border border-fg/15 bg-panel-2 px-3 text-[15px] font-semibold text-accent outline-none placeholder:text-faint focus:border-accent focus:ring-1 focus:ring-accent/40"
               />
             </label>
           )}
@@ -590,7 +590,7 @@ export function LectionaryDeck() {
                         ? t('intentionsPlaceholder')
                         : t('readingPlaceholder')
                 }
-                className="min-h-[240px] flex-1 resize-y rounded-lg border border-fg/15 bg-panel-2 p-3 font-mono text-sm leading-relaxed text-fg outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40"
+                className="min-h-[240px] flex-1 resize-y rounded-lg border border-fg/15 bg-panel-2 p-3 font-mono text-sm leading-relaxed text-fg outline-none placeholder:text-faint focus:border-accent focus:ring-1 focus:ring-accent/40"
               />
               {fromScripture(slot) && (
                 <div className="flex flex-wrap items-center gap-2">
@@ -626,7 +626,7 @@ export function LectionaryDeck() {
                   <Scissors size={14} aria-hidden /> {t('breakAtCursor')}
                 </button>
                 {pages.length > 0 && (
-                  <span className="ml-auto text-xs text-fg/60 tabular-nums">{pages.length === 1 ? t('slideOne') : t('slideMany', { n: pages.length })}</span>
+                  <span className="ml-auto text-xs text-muted tabular-nums">{pages.length === 1 ? t('slideOne') : t('slideMany', { n: pages.length })}</span>
                 )}
               </div>
 
@@ -634,7 +634,7 @@ export function LectionaryDeck() {
               <details className="group rounded-lg border border-line bg-fg/[0.03]">
                 <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 [&::-webkit-details-marker]:hidden">
                   <span className={LABEL}>{t('stylePanel')}</span>
-                  <ChevronDown size={16} className="text-fg/60 transition group-open:rotate-180" aria-hidden />
+                  <ChevronDown size={16} className="text-muted transition group-open:rotate-180" aria-hidden />
                 </summary>
                 <div className="flex flex-col gap-2 border-t border-line p-3">
                   <StyleToolbar style={readingStyle} onChange={(patch) => edit(() => setReadingStyle((s) => ({ ...s, ...patch })))} />
@@ -653,7 +653,7 @@ export function LectionaryDeck() {
             <div className="flex min-w-0 flex-col gap-3 2xl:sticky 2xl:top-5 2xl:self-start">
               <div className="flex items-center justify-between gap-2">
                 <span className={LABEL}>{t('preview')}</span>
-                {pages.length > 0 && <span className="font-mono text-xs text-fg/60 tabular-nums">{current + 1} / {pages.length}</span>}
+                {pages.length > 0 && <span className="font-mono text-xs text-muted tabular-nums">{current + 1} / {pages.length}</span>}
               </div>
               <div className="relative">
                 {withResponse ? (
@@ -662,7 +662,7 @@ export function LectionaryDeck() {
                   <SlidePreview text={pages[current] ?? ''} bgSrc={null} style={checked} className="aspect-video w-full rounded-[10px] border border-fg/15" />
                 )}
                 {pages.length === 0 && (
-                  <div className="pointer-events-none absolute inset-0 grid place-items-center p-6 text-center text-sm text-white/45">{t('previewEmpty')}</div>
+                  <div className="pointer-events-none absolute inset-0 grid place-items-center p-6 text-center text-sm text-white/70">{t('previewEmpty')}</div>
                 )}
               </div>
               {pages.length > 1 && (

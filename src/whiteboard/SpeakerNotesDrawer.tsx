@@ -187,7 +187,7 @@ export function SpeakerNotesDrawer({
         aria-expanded={false}
         aria-label={`Show ${tr('notesTitle')}`}
         title={`Show ${tr('notesTitle')}`}
-        className="flex w-10 shrink-0 flex-col items-center gap-3 border-l border-line bg-panel py-4 text-fg/60 transition hover:bg-fg/[0.06] hover:text-accent"
+        className="flex w-10 shrink-0 flex-col items-center gap-3 border-l border-line bg-panel py-4 text-muted transition hover:bg-fg/[0.06] hover:text-accent"
       >
         <NotebookText size={16} aria-hidden />
         <span className="text-[11px] font-bold tracking-[0.2em] uppercase [writing-mode:vertical-rl]">{tr('notesTitle')}</span>
@@ -245,7 +245,7 @@ export function SpeakerNotesDrawer({
             aria-expanded
             aria-label={`Hide ${tr('notesTitle')}`}
             title={`Hide ${tr('notesTitle')}`}
-            className="ml-1 grid size-7 place-items-center rounded text-fg/60 transition hover:bg-fg/10 hover:text-fg"
+            className="ml-1 grid size-7 place-items-center rounded text-muted transition hover:bg-fg/10 hover:text-fg"
           >
             <PanelRightClose size={15} aria-hidden />
           </button>
@@ -279,7 +279,7 @@ export function SpeakerNotesDrawer({
             maxLength={4000}
             placeholder={tr('notesPlaceholder')}
             aria-label={`${tr('notesTitle')}: ${title || 'Untitled slide'}`}
-            className={`min-h-[200px] w-full flex-1 resize-y rounded-md border border-fg/20 bg-panel-2 p-3 leading-relaxed text-fg outline-none placeholder:text-sm placeholder:text-fg/40 focus:border-accent ${sizeClass}`}
+            className={`min-h-[200px] w-full flex-1 resize-y rounded-md border border-fg/20 bg-panel-2 p-3 leading-relaxed text-fg outline-none placeholder:text-sm placeholder:text-faint focus:border-accent ${sizeClass}`}
           />
           <p role="status" aria-live="polite" className={`min-h-4 text-right text-[11px] ${saveState === 'error' ? 'text-danger' : 'text-muted'}`}>
             {status}

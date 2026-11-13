@@ -33,14 +33,14 @@ export function RenewLicenseDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !busy && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => !busy && onClose()}>
       <form
         role="dialog"
         aria-modal="true"
         aria-labelledby="renew-license-title"
         onClick={(e) => e.stopPropagation()}
         onSubmit={renew}
-        className="flex w-full max-w-md flex-col gap-5 rounded-xl border border-accent/40 bg-panel p-6 shadow-2xl"
+        className="flex w-full max-w-md flex-col gap-5 rounded-xl border border-accent/40 bg-surface p-6 shadow-2xl"
       >
         <header className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -51,7 +51,7 @@ export function RenewLicenseDialog({ onClose }: { onClose: () => void }) {
               Renew license
             </h2>
           </div>
-          <button type="button" onClick={onClose} disabled={busy} aria-label="Close" className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/20 text-fg/60 hover:text-fg">
+          <button type="button" onClick={onClose} disabled={busy} aria-label="Close" className="grid size-8 shrink-0 place-items-center rounded-md border border-fg/20 text-muted hover:text-fg">
             <X size={16} aria-hidden />
           </button>
         </header>
@@ -77,7 +77,7 @@ export function RenewLicenseDialog({ onClose }: { onClose: () => void }) {
         )}
 
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={busy} className="h-10 px-4 text-xs font-bold tracking-wider text-fg/60 uppercase hover:text-fg">
+          <button type="button" onClick={onClose} disabled={busy} className="h-10 px-4 text-xs font-bold tracking-wider text-muted uppercase hover:text-fg">
             Cancel
           </button>
           <button

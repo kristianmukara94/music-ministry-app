@@ -63,8 +63,8 @@ export function BoothClock() {
       eyebrow={t('clock.eyebrow')}
       action={
         <span className="flex shrink-0 items-center gap-2" title={night ? 'Night' : 'Day'} role="img" aria-label={night ? 'Night' : 'Day'}>
-          <Moon size={18} aria-hidden className={night ? 'text-accent' : 'text-fg/45'} />
-          <Sun size={18} aria-hidden className={night ? 'text-fg/45' : 'text-accent'} />
+          <Moon size={18} aria-hidden className={night ? 'text-accent' : 'text-faint'} />
+          <Sun size={18} aria-hidden className={night ? 'text-faint' : 'text-accent'} />
         </span>
       }
     >

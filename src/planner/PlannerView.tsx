@@ -225,7 +225,7 @@ export function PlannerView() {
                 <span
                   id="plan-editor-locked"
                   role="tooltip"
-                  className="pointer-events-none absolute top-full right-0 z-40 mt-2 w-72 rounded-lg border border-fg/15 bg-panel-2 px-3 py-2 text-sm leading-snug font-medium text-fg opacity-0 shadow-xl shadow-black/40 backdrop-blur transition-opacity duration-150 group-hover:opacity-100"
+                  className="pointer-events-none absolute top-full right-0 z-40 mt-2 w-72 rounded-lg border border-fg/15 bg-surface-2 px-3 py-2 text-sm leading-snug font-medium text-fg opacity-0 shadow-xl shadow-black/40 backdrop-blur transition-opacity duration-150 group-hover:opacity-100"
                 >
                   {t('editorLocked')}
                 </span>

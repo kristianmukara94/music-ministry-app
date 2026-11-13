@@ -62,12 +62,12 @@ export function Launchpad() {
   } else if (items.length === 0) {
     body = (
       <div className="m-4 flex flex-col items-center gap-3 rounded-[10px] border-2 border-dashed border-fg/20 px-6 py-8 text-center">
-        <div className="grid place-items-center text-fg/60">
+        <div className="grid place-items-center text-muted">
           <Zap size={44} strokeWidth={1.4} aria-hidden />
         </div>
         <div>
           <div className="text-base font-semibold text-fg">{t('pad.emptyTitle')}</div>
-          <p className="mx-auto mt-1.5 max-w-xs text-sm leading-relaxed font-normal text-fg/65">{t('pad.emptyBody')}</p>
+          <p className="mx-auto mt-1.5 max-w-xs text-sm leading-relaxed font-normal text-muted">{t('pad.emptyBody')}</p>
         </div>
       </div>
     );
@@ -82,7 +82,7 @@ export function Launchpad() {
               <span className="line-clamp-2">{item.label}</span>
             </button>
             <button type="button" onClick={() => remove(item.id)} aria-label={`Remove ${item.label}`}
-              className="absolute -top-1.5 -right-1.5 hidden size-5 place-items-center rounded-full border border-line-strong bg-panel-2 group-hover:grid">
+              className="absolute -top-1.5 -right-1.5 hidden size-5 place-items-center rounded-full border border-line-strong bg-surface-2 group-hover:grid">
               <X size={11} />
             </button>
           </div>

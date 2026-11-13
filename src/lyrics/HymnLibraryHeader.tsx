@@ -18,7 +18,7 @@ function MenuItem({ icon, label, hint, onSelect, itemRef }: { icon: ReactNode; l
       <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-md bg-accent/15 text-accent">{icon}</span>
       <span className="flex min-w-0 flex-col">
         <span className="text-sm font-semibold text-fg">{label}</span>
-        <span className="text-xs text-fg/60">{hint}</span>
+        <span className="text-xs text-muted">{hint}</span>
       </span>
     </button>
   );
@@ -26,8 +26,9 @@ function MenuItem({ icon, label, hint, onSelect, itemRef }: { icon: ReactNode; l
 
 /**
  * The top of the Hymn Library: what the panel shows (the songs, or the song categories) on the left, and one way to add songs on the right.
- * "Add song" opens the song form; its arrow opens a menu with the two ways to add: type the lyrics, or import a Word or text file of many
- * songs. The menu works from the keyboard: arrows move, Enter chooses, Escape closes it.
+ * "Add song" opens the song form; its arrow opens a menu with the two ways to add: type the lyrics, or import a Word (.docx) lineup of many
+ * songs, which opens the same dialog on its Import tab. When the panel is too narrow for both, the button wraps under the tabs instead of
+ * overlapping them. The menu works from the keyboard: arrows move, Enter chooses, Escape closes it.
  */
 export function HymnLibraryHeader({
   tab,
@@ -87,8 +88,8 @@ export function HymnLibraryHeader({
   ];
 
   return (
-    <div className="flex items-center justify-between gap-3">
-      <div role="tablist" aria-label={t('libraryTitle')} className="inline-flex min-w-0 rounded-lg border border-fg/15 bg-panel-2 p-0.5">
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+      <div role="tablist" aria-label={t('libraryTitle')} className="inline-flex shrink-0 rounded-lg border border-fg/15 bg-panel-2 p-0.5">
         {tabs.map((x) => (
           <button
             key={x.id}
@@ -98,7 +99,7 @@ export function HymnLibraryHeader({
             title={x.id === 'library' ? `${x.label} (${count})` : x.label}
             onClick={() => onTab(x.id)}
             className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-bold whitespace-nowrap transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none ${
-              tab === x.id ? 'bg-canvas text-accent shadow-sm ring-1 ring-accent/40' : 'text-fg/65 hover:text-fg'
+              tab === x.id ? 'bg-canvas text-accent shadow-sm ring-1 ring-accent/40' : 'text-muted hover:text-fg'
             }`}
           >
             {x.icon}
@@ -130,7 +131,7 @@ export function HymnLibraryHeader({
           <ChevronDown size={15} strokeWidth={2.5} className={`transition ${menuOpen ? 'rotate-180' : ''}`} aria-hidden />
         </button>
         {menuOpen && (
-          <div role="menu" aria-label={t('addSong')} onKeyDown={onMenuKey} className="absolute top-full right-0 z-30 mt-1.5 w-72 rounded-lg border border-fg/15 bg-panel p-1.5 shadow-2xl shadow-black/60">
+          <div role="menu" aria-label={t('addSong')} onKeyDown={onMenuKey} className="absolute top-full right-0 z-30 mt-1.5 w-72 rounded-lg border border-fg/15 bg-surface p-1.5 shadow-2xl shadow-black/60">
             <MenuItem icon={<PenLine size={16} aria-hidden />} label={t('composeOption')} hint={t('composeOptionHint')} onSelect={() => choose('type')} itemRef={(el) => (items.current[0] = el)} />
             <MenuItem icon={<FileUp size={16} aria-hidden />} label={t('importOption')} hint={t('importOptionHint')} onSelect={() => choose('import')} itemRef={(el) => (items.current[1] = el)} />
           </div>

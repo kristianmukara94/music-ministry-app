@@ -431,6 +431,7 @@ const offlineConfig: ConfigApi = {
     version: __APP_VERSION__,
   }),
   onMigrationProgress: () => () => undefined,
+  onThemeChanged: () => () => undefined,
   setLanguage: async () => offlineError(),
   // Browser preview has nowhere to save; the theme still applies for the session.
   setTheme: async (theme) => theme,

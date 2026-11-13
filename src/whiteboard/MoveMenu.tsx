@@ -61,9 +61,9 @@ export function MoveMenu({
       ref={ref}
       role="menu"
       aria-label={title}
-      className={`absolute z-30 flex max-h-64 w-56 flex-col gap-0.5 overflow-y-auto rounded-lg border border-fg/20 bg-panel p-1.5 shadow-xl shadow-black/50 ${className}`}
+      className={`absolute z-30 flex max-h-64 w-56 flex-col gap-0.5 overflow-y-auto rounded-lg border border-fg/20 bg-surface p-1.5 shadow-xl shadow-black/50 ${className}`}
     >
-      <p className="px-2.5 pt-1 pb-1.5 text-[10px] font-bold tracking-wider text-fg/50 uppercase">{title}</p>
+      <p className="px-2.5 pt-1 pb-1.5 text-[10px] font-bold tracking-wider text-faint uppercase">{title}</p>
       {folders.map((f) => item(f.name, f.id, Folder))}
       {item('Unfiled', null, Inbox)}
     </div>

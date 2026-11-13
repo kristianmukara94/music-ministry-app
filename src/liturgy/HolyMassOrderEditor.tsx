@@ -156,15 +156,15 @@ export function HolyMassOrderEditor({ partId, lang, t, onClose, onNotice }: { pa
   const atStandard = !custom && draft.text.trim() === tabStandard.text.trim() && draft.title.trim() === tabStandard.title.trim();
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div role="dialog" aria-modal="true" aria-labelledby="mass-order-editor-title" className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-2xl shadow-black/50">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 backdrop-blur-sm p-4" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="mass-order-editor-title" className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl shadow-black/50">
         <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div className="min-w-0">
             <p className="text-[11px] font-bold tracking-wider text-accent uppercase">{t('moEditorTitle')}</p>
             <h2 id="mass-order-editor-title" className="truncate text-lg font-bold text-fg">{heading}</h2>
-            <p className="mt-0.5 text-xs text-fg/60">{custom ? t('moParishItem') : isCustomized(partId!, tab, overrides) ? t('moParish') : t('moStandard')}</p>
+            <p className="mt-0.5 text-xs text-muted">{custom ? t('moParishItem') : isCustomized(partId!, tab, overrides) ? t('moParish') : t('moStandard')}</p>
           </div>
-          <button type="button" onClick={onClose} disabled={busy} aria-label={t('cancel')} className="grid size-8 place-items-center rounded-md text-fg/60 hover:bg-fg/10 hover:text-fg">
+          <button type="button" onClick={onClose} disabled={busy} aria-label={t('cancel')} className="grid size-8 place-items-center rounded-md text-muted hover:bg-fg/10 hover:text-fg">
             <X size={16} aria-hidden />
           </button>
         </header>
@@ -227,7 +227,7 @@ export function HolyMassOrderEditor({ partId, lang, t, onClose, onNotice }: { pa
             disabled={busy}
             className="min-h-[16rem] w-full resize-y rounded-lg border border-fg/15 bg-panel-2 p-3 font-mono text-sm leading-relaxed text-fg outline-none focus:border-accent"
           />
-          <p className="text-xs text-fg/60" aria-live="polite">
+          <p className="text-xs text-muted" aria-live="polite">
             {projected ? t('moSlides', { n: projected.slides.length }) : custom && !draft.text.trim() ? t('moEmptyLang') : null}
             {projected?.labels ? ` · ${t('moSplitNote', { part: shownTitle })}` : null}
           </p>

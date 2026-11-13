@@ -33,7 +33,7 @@ export function BackgroundEverywhereToggle({ compact = false }: { compact?: bool
       >
         <Images size={14} aria-hidden />
         Apply staged background to all slides
-        <span className={`rounded px-1.5 py-0.5 text-[10px] ${on ? 'bg-accent text-on-accent' : 'bg-fg/10 text-fg/60'}`}>{on ? 'On' : 'Off'}</span>
+        <span className={`rounded px-1.5 py-0.5 text-[10px] ${on ? 'bg-accent text-on-accent' : 'bg-fg/10 text-muted'}`}>{on ? 'On' : 'Off'}</span>
       </button>
       {error && <p role="alert" className="text-xs text-danger">{error}</p>}
     </div>

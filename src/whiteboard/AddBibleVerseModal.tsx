@@ -16,7 +16,7 @@ const DEUTEROCANONICAL = new Set(['TOB', 'JDT', 'WIS', 'SIR', 'BAR', '1MA', '2MA
 
 const CARD = 'flex w-full max-w-2xl flex-col gap-5 rounded-xl border border-line bg-panel-2 p-6 text-fg shadow-2xl';
 const FIELD = 'w-full rounded-lg border border-line bg-panel p-2.5 text-sm text-fg outline-none focus:border-accent';
-const LABEL = 'flex flex-col gap-1.5 text-[11px] font-bold tracking-wider text-fg/60 uppercase';
+const LABEL = 'flex flex-col gap-1.5 text-[11px] font-bold tracking-wider text-muted uppercase';
 
 const STYLE_LABELS: Record<string, string> = { plain: 'Plain', italic: 'Italic', boxed: 'Boxed', callout: 'Callout' };
 const POSITION_LABELS: Record<string, string> = { bottom: 'Bottom', top: 'Top', center: 'Center', full: 'Full' };
@@ -128,11 +128,11 @@ export function AddBibleVerseModal({ onAdd, onClose }: {
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Add Bible Verse" className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" aria-label="Add Bible Verse" className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className={CARD}>
         <header className="flex items-center justify-between gap-4">
           <h2 className="text-lg font-bold tracking-tight text-fg">Add Bible Verse</h2>
-          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-md border border-fg/20 text-fg/60 hover:text-fg">
+          <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 place-items-center rounded-md border border-fg/20 text-muted hover:text-fg">
             <X size={16} aria-hidden />
           </button>
         </header>

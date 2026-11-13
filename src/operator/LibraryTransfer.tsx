@@ -77,7 +77,7 @@ function ExportSection() {
           <input type="checkbox" checked={options.lyrics} onChange={(e) => setOptions({ ...options, lyrics: e.target.checked })} className="size-4 accent-accent" />
           Include lyrics (off by default)
         </label>
-        <p className={`text-xs ${options.lyrics ? 'text-accent' : 'text-fg/60'}`}>
+        <p className={`text-xs ${options.lyrics ? 'text-accent' : 'text-muted'}`}>
           Warning: lyrics leave this laptop in this file. Only share the file with people you trust.
         </p>
       </div>
@@ -136,7 +136,7 @@ function ImportSection() {
 
   return (
     <Section title="Import">
-      <p className="text-xs text-fg/60">Imports add only what is new. Nothing is deleted, and nothing is saved until you press Import.</p>
+      <p className="text-xs text-muted">Imports add only what is new. Nothing is deleted, and nothing is saved until you press Import.</p>
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={open} disabled={busy} className={BUTTON}>
           Choose file…
@@ -148,7 +148,7 @@ function ImportSection() {
           <p className="text-base font-semibold">
             {preview.totals.new} new, {preview.totals.same} already here (skipped), {preview.totals.changed} changed (you choose)
           </p>
-          <p className="text-xs text-fg/60">
+          <p className="text-xs text-muted">
             From {preview.laptop || 'another laptop'}, exported {new Date(preview.exportedAt).toLocaleString()}.{' '}
             {preview.includesLyrics ? 'The file includes lyrics.' : 'The file has no lyrics.'}
           </p>
@@ -241,19 +241,19 @@ export function LibraryTransferDialog({ onClose }: { onClose: () => void }) {
       role="dialog"
       aria-modal="true"
       aria-label="Export and import the library"
-      className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 grid place-items-center bg-black/75 backdrop-blur-sm p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) close();
       }}
     >
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-5 overflow-y-auto rounded-xl border border-fg/20 bg-panel-2 p-6 text-fg shadow-2xl">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-5 overflow-y-auto rounded-xl border border-fg/20 bg-surface-2 p-6 text-fg shadow-2xl">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold tracking-tight">Library: export and import</h2>
           <button type="button" onClick={close} className={BUTTON}>
             Close
           </button>
         </div>
-        <p className="text-xs text-fg/60">Plans, setlists, Praise &amp; Worship sessions, songs and the parish&apos;s Holy Mass Order texts move between laptops in one .apccmma file.</p>
+        <p className="text-xs text-muted">Plans, setlists, Praise &amp; Worship sessions, songs and the parish&apos;s Holy Mass Order texts move between laptops in one .apccmma file.</p>
         <ExportSection />
         <ImportSection />
       </div>

@@ -18,7 +18,7 @@ export function DatabaseStatus({ collapsed }: { collapsed: boolean }) {
   const detail = state?.status.error ?? state?.databasePath ?? '';
   const pill =
     state === null
-      ? 'border-transparent bg-fg/5 text-fg/50'
+      ? 'border-transparent bg-fg/5 text-faint'
       : healthy
         ? 'border-transparent bg-transparent text-ok'
         : 'border-danger/40 bg-danger/10 text-danger';

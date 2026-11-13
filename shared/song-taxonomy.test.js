@@ -98,7 +98,7 @@ test('a filter keeps Mass and Praise & Worship apart, lets General songs through
 
 test('the pages: one dropdown pair is used in the song form, the batch import, both filters, and scopes are labelled in all three languages', () => {
   assert.match(read('src/lyrics/AddSongModal.tsx'), /<CategorySelectGroup/);
-  assert.match(read('src/lyrics/BatchImportView.tsx'), /<CategorySelectGroup/);
+  assert.match(read('src/lyrics/DocxImportView.tsx'), /<CategorySelectGroup/);
   assert.match(read('src/lyrics/SongLyrics.tsx'), /<SongFilterBar/);
   assert.match(read('src/lyrics/SongFilterBar.tsx'), /<CategorySelectGroup/);
   assert.match(read('src/praise-worship/Library.tsx'), /<CategorySelectGroup/);

@@ -138,7 +138,7 @@ export function Sidebar() {
                 {churchName}
               </span>
             )}
-            <span title={ministryName} className="mt-0.5 truncate text-[8.5px] leading-tight font-semibold tracking-wide text-fg/60 uppercase">
+            <span title={ministryName} className="mt-0.5 truncate text-[8.5px] leading-tight font-semibold tracking-wide text-muted uppercase">
               {ministryName}
             </span>
           </span>
@@ -168,7 +168,7 @@ export function Sidebar() {
                     collapsed ? 'justify-center px-0' : 'px-3'
                   } my-px ${
                     soon
-                      ? 'cursor-not-allowed border-transparent font-medium text-fg/40 opacity-50'
+                      ? 'cursor-not-allowed border-transparent font-medium text-faint opacity-50'
                       : active
                         ? 'border-accent bg-gradient-to-r from-accent/20 to-accent/5 font-semibold text-accent'
                         : 'border-transparent font-medium text-fg/85 hover:bg-fg/[0.06] hover:text-fg'
@@ -178,7 +178,7 @@ export function Sidebar() {
                   {!collapsed && short && <span className="flex-1 truncate text-left"><span className="hidden xl:inline">{t(label)}</span><span className="xl:hidden">{t(short)}</span></span>}
                   {!collapsed && onAir && <Activity size={18} aria-hidden className="shrink-0 animate-pulse text-ok" />}
                   {/* Coming-soon items are muted: plain small text, no pill, so they never compete with working tools. */}
-                  {!collapsed && soon && <span className="text-[10px] font-medium tracking-wide text-fg/40 uppercase">{t('nav.comingSoon')}</span>}
+                  {!collapsed && soon && <span className="text-[10px] font-medium tracking-wide text-faint uppercase">{t('nav.comingSoon')}</span>}
                 </button>
               );
             })}
@@ -241,7 +241,7 @@ export function Sidebar() {
         </div>
 
         {!collapsed && license?.statusText && (
-          <p title={license.statusText} className={`truncate px-3 pt-2 text-center text-[11px] ${license.canProject ? 'text-fg/60' : 'text-danger'}`}>
+          <p title={license.statusText} className={`truncate px-3 pt-2 text-center text-[11px] ${license.canProject ? 'text-muted' : 'text-danger'}`}>
             {license.statusText}
           </p>
         )}
@@ -249,7 +249,7 @@ export function Sidebar() {
         {/* Licensing footer. Subtle on purpose: it identifies the licensed build without competing with the operator's tools. */}
         <p
           title={FOOTER_TEXT}
-          className="mt-1 truncate border-t border-fg/[0.08] px-3 pt-2 pb-1 text-center text-[10px] tracking-wide text-fg/45"
+          className="mt-1 truncate border-t border-fg/[0.08] px-3 pt-2 pb-1 text-center text-[10px] tracking-wide text-faint"
         >
           {collapsed ? '©' : FOOTER_TEXT}
         </p>

@@ -105,9 +105,9 @@ export function MediaContextMenu({ state, onClose, actions }: { state: MediaMenu
       // A click inside the menu must not reach the window listener, which would close it before the item runs.
       onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={onMenuKey}
-      className="fixed z-50 flex w-64 flex-col rounded-lg border border-fg/20 bg-panel p-1 shadow-2xl"
+      className="fixed z-50 flex w-64 flex-col rounded-lg border border-fg/20 bg-surface p-1 shadow-2xl"
     >
-      <div className="truncate px-3 pt-1.5 pb-1 text-[11px] font-semibold tracking-wider text-fg/50 uppercase" title={m.filename}>
+      <div className="truncate px-3 pt-1.5 pb-1 text-[11px] font-semibold tracking-wider text-faint uppercase" title={m.filename}>
         {m.filename}
       </div>
       {groups.map((group, i) => (

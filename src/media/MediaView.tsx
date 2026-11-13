@@ -235,7 +235,7 @@ const writePrefs = (prefs: Prefs) => {
 
 const BTN =
   'flex h-8 items-center gap-1.5 rounded-md border border-fg/15 bg-panel-2 px-3 text-[11px] font-bold tracking-wide uppercase text-fg/85 transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
-const SECTION = 'px-3 pt-4 pb-1.5 text-[10px] font-bold tracking-[0.14em] text-fg/50 uppercase';
+const SECTION = 'px-3 pt-4 pb-1.5 text-[10px] font-bold tracking-[0.14em] text-faint uppercase';
 
 const hasMediaDrag = (e: DragEvent) => e.dataTransfer.types.includes(MEDIA_DRAG);
 const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files');
@@ -594,7 +594,7 @@ export function MediaView() {
         >
           <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
             <div className="relative min-w-48 flex-1">
-              <Search size={14} aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-fg/45" />
+              <Search size={14} aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
               <input
                 ref={searchRef}
                 type="search"
@@ -603,7 +603,7 @@ export function MediaView() {
                 onKeyDown={(e) => e.key === 'Escape' && setQuery('')}
                 placeholder="Search media (Ctrl+F)"
                 aria-label="Search media"
-                className="h-8 w-full rounded-md border border-fg/15 bg-panel-2 pr-8 pl-8 text-sm text-fg outline-none placeholder:text-fg/40 focus:border-accent focus:ring-1 focus:ring-accent/40 [&::-webkit-search-cancel-button]:hidden"
+                className="h-8 w-full rounded-md border border-fg/15 bg-panel-2 pr-8 pl-8 text-sm text-fg outline-none placeholder:text-faint focus:border-accent focus:ring-1 focus:ring-accent/40 [&::-webkit-search-cancel-button]:hidden"
               />
               {query && (
                 <button
@@ -613,13 +613,13 @@ export function MediaView() {
                     searchRef.current?.focus();
                   }}
                   aria-label="Clear search"
-                  className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 place-items-center rounded text-fg/55 hover:bg-fg/10 hover:text-fg"
+                  className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 place-items-center rounded text-faint hover:bg-fg/10 hover:text-fg"
                 >
                   <X size={12} aria-hidden />
                 </button>
               )}
             </div>
-            <label className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-fg/60 uppercase">
+            <label className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted uppercase">
               Sort
               <select
                 value={prefs.sort}
@@ -645,7 +645,7 @@ export function MediaView() {
                     aria-label={mode === 'grid' ? 'Grid' : 'Compact list'}
                     title={mode === 'grid' ? 'Grid' : 'Compact list'}
                     onClick={() => updatePrefs({ mode })}
-                    className={`grid h-6 w-7 place-items-center rounded transition ${prefs.mode === mode ? 'bg-accent text-on-accent' : 'text-fg/60 hover:text-fg'}`}
+                    className={`grid h-6 w-7 place-items-center rounded transition ${prefs.mode === mode ? 'bg-accent text-on-accent' : 'text-muted hover:text-fg'}`}
                   >
                     <Icon size={14} aria-hidden />
                   </button>
@@ -665,7 +665,7 @@ export function MediaView() {
 
           <div className="flex items-baseline justify-between gap-3 px-4 pt-3">
             <h1 className="truncate text-sm font-bold text-fg">{scopeLabel}</h1>
-            <span className="shrink-0 font-mono text-[11px] text-fg/50 tabular-nums">
+            <span className="shrink-0 font-mono text-[11px] text-faint tabular-nums">
               {visible.length} item{visible.length === 1 ? '' : 's'}
             </span>
           </div>
@@ -686,7 +686,7 @@ export function MediaView() {
             {!loaded ? null : items.length === 0 ? (
               <EmptyLibrary title={t('emptyTitle')} body={t('emptyBody')} busy={busy} importLabel={busy ? t('importing') : t('importMedia')} onImport={() => void runImport(null)} />
             ) : visible.length === 0 ? (
-              <p className="py-10 text-center text-sm text-fg/55">{query ? `Nothing in ${scopeLabel} matches "${query}".` : `${scopeLabel} is empty. Drag media here from the grid, or import into it.`}</p>
+              <p className="py-10 text-center text-sm text-faint">{query ? `Nothing in ${scopeLabel} matches "${query}".` : `${scopeLabel} is empty. Drag media here from the grid, or import into it.`}</p>
             ) : (
               <ul className={prefs.mode === 'grid' ? 'grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3' : 'flex flex-col gap-1'}>
                 {visible.map((m) => (
@@ -716,7 +716,7 @@ export function MediaView() {
               <div className="flex flex-col items-center gap-2 text-accent">
                 <Upload size={28} aria-hidden />
                 <span className="text-sm font-bold">Drop to import{prefs.selection.kind === 'folder' ? ` into ${scopeLabel}` : ''}</span>
-                <span className="text-xs text-fg/60">PNG, JPG, GIF, MP4, WebM, WAV, MP3 and more</span>
+                <span className="text-xs text-muted">PNG, JPG, GIF, MP4, WebM, WAV, MP3 and more</span>
               </div>
             </div>
           )}
@@ -771,10 +771,10 @@ function StatusBar({
       <div className="flex min-w-0 items-center gap-2.5">
         <span className="shrink-0 rounded bg-warn/15 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wider text-warn uppercase">{labels.staged}</span>
         <span className="grid aspect-video h-7 shrink-0 place-items-center overflow-hidden rounded border border-line bg-canvas">
-          {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" /> : staged ? <Film size={12} aria-hidden className="text-fg/50" /> : null}
+          {thumb ? <img src={thumb} alt="" className="h-full w-full object-cover" /> : staged ? <Film size={12} aria-hidden className="text-faint" /> : null}
         </span>
         <span className="max-w-[18ch] truncate text-sm font-semibold text-fg" title={staged?.title}>
-          {staged?.title ?? <span className="font-normal text-fg/50">{labels.nothing}</span>}
+          {staged?.title ?? <span className="font-normal text-faint">{labels.nothing}</span>}
         </span>
         {stagedIsNew && (
           <button type="button" onClick={onTakeStaged} title="Put the staged background on the screen" className="flex h-6 items-center gap-1 rounded bg-danger px-2 text-[10px] font-extrabold tracking-wide text-white uppercase hover:brightness-110">
@@ -786,7 +786,7 @@ function StatusBar({
       <span aria-hidden className="h-5 w-px bg-line" />
 
       <div className="flex min-w-0 items-center gap-2.5">
-        <span className="shrink-0 text-[10px] font-extrabold tracking-wider text-fg/55 uppercase">{labels.live}</span>
+        <span className="shrink-0 text-[10px] font-extrabold tracking-wider text-faint uppercase">{labels.live}</span>
         {live ? (
           <>
             <span className="flex shrink-0 items-center gap-1 rounded bg-danger px-1.5 py-0.5 text-[10px] font-extrabold tracking-wider text-white uppercase">
@@ -797,7 +797,7 @@ function StatusBar({
             </span>
           </>
         ) : (
-          <span className="text-sm text-fg/50">{labels.none}</span>
+          <span className="text-sm text-faint">{labels.none}</span>
         )}
       </div>
 
@@ -889,7 +889,7 @@ function FolderTree({
               >
                 <Icon size={14} aria-hidden className="shrink-0 opacity-80" />
                 <span className="min-w-0 flex-1 truncate">{q.label}</span>
-                <span className="font-mono text-[10px] text-fg/45 tabular-nums">{counts.quick[q.id]}</span>
+                <span className="font-mono text-[10px] text-faint tabular-nums">{counts.quick[q.id]}</span>
               </button>
             </li>
           );
@@ -903,7 +903,7 @@ function FolderTree({
           onClick={() => setAdding(true)}
           title="New folder"
           aria-label="New folder"
-          className="grid size-5 place-items-center rounded text-fg/55 hover:bg-fg/10 hover:text-fg"
+          className="grid size-5 place-items-center rounded text-faint hover:bg-fg/10 hover:text-fg"
         >
           <FolderPlus size={13} aria-hidden />
         </button>
@@ -923,7 +923,7 @@ function FolderTree({
               >
                 <FolderClosed size={14} aria-hidden className="shrink-0 opacity-80" />
                 <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                <span className={`font-mono text-[10px] text-fg/45 tabular-nums ${f.builtin ? '' : 'group-hover/folder:invisible'}`}>{counts.byFolder.get(f.id) ?? 0}</span>
+                <span className={`font-mono text-[10px] text-faint tabular-nums ${f.builtin ? '' : 'group-hover/folder:invisible'}`}>{counts.byFolder.get(f.id) ?? 0}</span>
               </button>
               {!f.builtin && (
                 <button
@@ -931,7 +931,7 @@ function FolderTree({
                   onClick={() => onDelete(f)}
                   aria-label={`Delete folder ${f.name}`}
                   title="Delete folder"
-                  className="absolute top-1/2 right-2 hidden size-5 -translate-y-1/2 place-items-center rounded text-fg/55 group-hover/folder:grid hover:text-danger focus-visible:grid"
+                  className="absolute top-1/2 right-2 hidden size-5 -translate-y-1/2 place-items-center rounded text-faint group-hover/folder:grid hover:text-danger focus-visible:grid"
                 >
                   <Trash2 size={12} aria-hidden />
                 </button>
@@ -966,12 +966,12 @@ function FolderTree({
             />
           </form>
         ) : (
-          <button type="button" onClick={() => setAdding(true)} className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-[13px] text-fg/60 hover:bg-fg/[0.06] hover:text-fg">
+          <button type="button" onClick={() => setAdding(true)} className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-[13px] text-muted hover:bg-fg/[0.06] hover:text-fg">
             <FolderPlus size={14} aria-hidden /> New Folder
           </button>
         )}
       </div>
-      <p className="mt-auto px-4 pt-4 text-[11px] leading-snug text-fg/45">Drag media onto a folder to file it. Drop files from your desktop on the grid to import.</p>
+      <p className="mt-auto px-4 pt-4 text-[11px] leading-snug text-faint">Drag media onto a folder to file it. Drop files from your desktop on the grid to import.</p>
     </nav>
   );
 }
@@ -1002,7 +1002,7 @@ function Thumb({ asset }: { asset: MediaAsset }) {
   }
   const Icon = asset.mediaType === 'audio' ? Music : asset.mediaType === 'video' ? Film : ImageIcon;
   return (
-    <div className="grid h-full place-items-center text-fg/45">
+    <div className="grid h-full place-items-center text-faint">
       <Icon size={24} strokeWidth={1.6} aria-hidden />
     </div>
   );
@@ -1073,7 +1073,7 @@ function AssetCard({
       aria-haspopup="menu"
       aria-label={`More actions for ${m.filename}`}
       title="More actions"
-      className="grid size-7 shrink-0 place-items-center rounded text-fg/60 opacity-70 transition group-hover:opacity-100 hover:bg-fg/10 hover:text-fg focus:opacity-100"
+      className="grid size-7 shrink-0 place-items-center rounded text-muted opacity-70 transition group-hover:opacity-100 hover:bg-fg/10 hover:text-fg focus:opacity-100"
     >
       <MoreHorizontal size={15} aria-hidden />
     </button>
@@ -1095,9 +1095,9 @@ function AssetCard({
             {m.filename}
           </span>
           {stateBadge}
-          <span className="hidden w-14 shrink-0 text-right font-mono text-[11px] text-fg/55 md:inline">{resolution ?? (isAudio ? 'Audio' : '')}</span>
-          <span className="w-12 shrink-0 text-right font-mono text-[11px] text-fg/55 tabular-nums">{duration ?? ''}</span>
-          <span className="hidden w-12 shrink-0 text-right font-mono text-[11px] text-fg/45 lg:inline">{format ?? ''}</span>
+          <span className="hidden w-14 shrink-0 text-right font-mono text-[11px] text-faint md:inline">{resolution ?? (isAudio ? 'Audio' : '')}</span>
+          <span className="w-12 shrink-0 text-right font-mono text-[11px] text-faint tabular-nums">{duration ?? ''}</span>
+          <span className="hidden w-12 shrink-0 text-right font-mono text-[11px] text-faint lg:inline">{format ?? ''}</span>
         </button>
         {menuButton}
       </li>
@@ -1146,7 +1146,7 @@ function AssetCard({
           onClick={onDelete}
           aria-label={deleteLabel}
           title={deleteLabel}
-          className="grid size-7 shrink-0 place-items-center rounded text-fg/60 opacity-0 transition group-hover:opacity-100 hover:text-danger focus:opacity-100"
+          className="grid size-7 shrink-0 place-items-center rounded text-muted opacity-0 transition group-hover:opacity-100 hover:text-danger focus:opacity-100"
         >
           <Trash2 size={13} aria-hidden />
         </button>
@@ -1163,7 +1163,7 @@ function EmptyLibrary({ title, body, busy, importLabel, onImport }: { title: str
       </div>
       <h2 className="mt-4 text-2xl font-bold tracking-tight text-fg">{title}</h2>
       <p className="mt-2 max-w-md text-sm text-fg/70">{body}</p>
-      <p className="mt-1 text-xs text-fg/50">Or drop files anywhere on this panel.</p>
+      <p className="mt-1 text-xs text-faint">Or drop files anywhere on this panel.</p>
       <button
         type="button"
         onClick={onImport}
@@ -1280,12 +1280,12 @@ function Inspector({
             </>
           ) : isAudio && asset ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-3">
-              <Music size={28} aria-hidden className="text-fg/50" />
+              <Music size={28} aria-hidden className="text-faint" />
               {/* The preview plays in this window only. Projector output is unaffected. */}
               <audio key={asset.src} src={asset.src} controls className="h-8 w-full" />
             </div>
           ) : (
-            <p className="absolute inset-0 grid place-items-center px-6 text-center text-xs text-white/50">Select media to preview it here.</p>
+            <p className="absolute inset-0 grid place-items-center px-6 text-center text-xs text-white/70">Select media to preview it here.</p>
           )}
           {isLive && (
             <span className="absolute top-1.5 left-1.5">
@@ -1302,18 +1302,18 @@ function Inspector({
 
       {asset && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-4 pt-3 text-xs">
-          <dt className="text-fg/50">Name</dt>
+          <dt className="text-faint">Name</dt>
           <dd className="truncate font-semibold text-fg" title={asset.filename}>
             {asset.filename}
           </dd>
-          <dt className="text-fg/50">Type</dt>
+          <dt className="text-faint">Type</dt>
           <dd className="text-fg/85">
             {isVideo ? 'Motion background' : isAudio ? 'Audio track' : 'Still image'}
             {extOf(asset.filename) ? ` · ${extOf(asset.filename)}` : ''}
           </dd>
           {meta?.width && meta.height ? (
             <>
-              <dt className="text-fg/50">Resolution</dt>
+              <dt className="text-faint">Resolution</dt>
               <dd className="font-mono text-fg/85">
                 {meta.width}×{meta.height} {resolutionLabel(meta) ? `(${resolutionLabel(meta)})` : ''}
               </dd>
@@ -1321,11 +1321,11 @@ function Inspector({
           ) : null}
           {formatDuration(meta?.duration) && (
             <>
-              <dt className="text-fg/50">Duration</dt>
+              <dt className="text-faint">Duration</dt>
               <dd className="font-mono text-fg/85">{formatDuration(meta?.duration)}</dd>
             </>
           )}
-          <dt className="self-center text-fg/50">Folder</dt>
+          <dt className="self-center text-faint">Folder</dt>
           <dd>
             <select
               value={asset.folderId ?? ''}
@@ -1404,7 +1404,7 @@ function Inspector({
         <button type="button" onClick={onClear} disabled={!liveFrame && !stagedFrame} className={`${BTN} h-9 justify-center`}>
           <X size={13} aria-hidden /> Clear staged / live
         </button>
-        <p className="pt-1 text-center text-[10px] leading-snug text-fg/45">Double-click a card to stage · Shift+click to take live</p>
+        <p className="pt-1 text-center text-[10px] leading-snug text-faint">Double-click a card to stage · Shift+click to take live</p>
       </div>
     </aside>
   );

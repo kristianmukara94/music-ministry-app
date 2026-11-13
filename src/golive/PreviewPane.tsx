@@ -46,7 +46,7 @@ export function PreviewPane({ label, slides, index, onStep }: { label: string; s
           </button>
         </div>
       </div>
-      <p className="text-xs text-fg/60">{t('previewHint')}</p>
+      <p className="text-xs text-muted">{t('previewHint')}</p>
       <SlidePreview text={slides.pages[index] ?? ''} bgSrc={null} style={slides.style} className="mx-auto aspect-video w-full max-w-3xl rounded-[10px] border border-fg/15" />
     </section>
   );

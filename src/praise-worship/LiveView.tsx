@@ -199,14 +199,14 @@ export function LiveView() {
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-[10px] border border-line bg-panel px-4 py-3">
         <span
           className={`inline-flex min-h-9 items-center gap-2 rounded-full border px-4 text-sm font-extrabold tracking-[0.18em] uppercase ${
-            onAir ? 'border-danger/60 bg-danger/15 text-danger' : 'border-fg/20 bg-fg/[0.06] text-fg/60'
+            onAir ? 'border-danger/60 bg-danger/15 text-danger' : 'border-fg/20 bg-fg/[0.06] text-muted'
           }`}
         >
           <span aria-hidden className={`size-2 rounded-full ${onAir ? 'animate-pulse bg-danger' : 'bg-fg/50'}`} />
           {onAir ? t('liveBadge') : t('offAir')}
         </span>
         <span className="flex items-baseline gap-2">
-          <span className="text-xs text-fg/60">{t('sessionTime')}</span>
+          <span className="text-xs text-muted">{t('sessionTime')}</span>
           <span className="font-mono text-2xl tabular-nums text-fg">{clock(pw.liveSince ? now - pw.liveSince : 0)}</span>
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-4">
@@ -340,7 +340,7 @@ export function LiveView() {
               {live.lowerThird.live ? (
                 <LowerThirdStage value={live.lowerThird.live} lyricBottomShare={lyricBottomOf(live.projector.live)} />
               ) : (
-                <div className="absolute inset-0 grid place-items-center px-3 text-center text-xs text-fg/50">{t('lowerThirdToggle')}: {t('off')}</div>
+                <div className="absolute inset-0 grid place-items-center px-3 text-center text-xs text-faint">{t('lowerThirdToggle')}: {t('off')}</div>
               )}
             </div>
           </section>

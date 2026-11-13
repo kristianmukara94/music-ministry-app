@@ -60,7 +60,7 @@ export function DeleteSelectedDialog({
   const more = count - shown.length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !busy && onCancel()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => !busy && onCancel()}>
       <div
         ref={boxRef}
         role="alertdialog"
@@ -90,7 +90,7 @@ export function DeleteSelectedDialog({
                 {title || 'Untitled slide'}
               </li>
             ))}
-            {more > 0 && <li className="text-fg/55">and {more} more…</li>}
+            {more > 0 && <li className="text-faint">and {more} more…</li>}
           </ul>
         </div>
         <div className="flex justify-end gap-2">

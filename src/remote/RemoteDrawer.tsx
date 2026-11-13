@@ -320,7 +320,7 @@ export function badgeState(status: RemoteViewStatus | null): { tone: 'connected'
 
 function StatusBadge({ status }: { status: RemoteViewStatus | null }) {
   const { tone, text } = badgeState(status);
-  const color = tone === 'connected' ? 'bg-ok/20 text-ok' : tone === 'listening' ? 'bg-fg/10 text-fg/70' : 'bg-fg/5 text-fg/45';
+  const color = tone === 'connected' ? 'bg-ok/20 text-ok' : tone === 'listening' ? 'bg-fg/10 text-fg/70' : 'bg-fg/5 text-faint';
   return (
     <span aria-live="polite" className={`rounded-full px-2 py-0.5 font-mono text-xs font-bold tabular-nums ${color}`}>
       {text}
@@ -433,7 +433,7 @@ function OpenRemoteDrawer() {
               type="button"
               onClick={close}
               aria-label="Close remote control"
-              className="grid size-8 place-items-center rounded-md border border-line text-fg/60 transition hover:border-fg/30 hover:text-fg focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+              className="grid size-8 place-items-center rounded-md border border-line text-muted transition hover:border-fg/30 hover:text-fg focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
             >
               <X size={16} aria-hidden />
             </button>

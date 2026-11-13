@@ -6,8 +6,8 @@ import { RotateCcw, type LucideIcon } from 'lucide-react';
 export const FOCUS = 'focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none';
 export const CARD = 'flex flex-col gap-4 rounded-xl border border-line bg-panel-2/60 p-5 shadow-lg';
 export const HEADING = 'text-[11px] font-semibold tracking-wider text-fg/70 uppercase';
-export const SUB = 'text-xs text-fg/60';
-const RESET = `flex shrink-0 items-center gap-1.5 rounded text-[11px] font-bold tracking-wider whitespace-nowrap text-fg/60 uppercase transition-colors hover:text-accent disabled:cursor-default disabled:opacity-40 disabled:hover:text-fg/60 ${FOCUS}`;
+export const SUB = 'text-xs text-muted';
+const RESET = `flex shrink-0 items-center gap-1.5 rounded text-[11px] font-bold tracking-wider whitespace-nowrap text-muted uppercase transition-colors hover:text-accent disabled:cursor-default disabled:opacity-40 disabled:hover:text-fg/60 ${FOCUS}`;
 
 /** A segmented control: one of the options is lit gold. */
 export function Segmented<T extends string>({ label, value, options, onChange, disabled = false }: {
@@ -30,7 +30,7 @@ export function Segmented<T extends string>({ label, value, options, onChange, d
             disabled={disabled}
             onClick={() => onChange(o.id)}
             className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-bold tracking-wider whitespace-nowrap uppercase transition-colors disabled:cursor-not-allowed ${FOCUS} ${
-              value === o.id ? 'border border-accent/40 bg-accent/20 text-accent' : 'border border-transparent text-fg/60 hover:text-fg/90'
+              value === o.id ? 'border border-accent/40 bg-accent/20 text-accent' : 'border border-transparent text-muted hover:text-fg/90'
             }`}
           >
             {Icon && <Icon size={13} aria-hidden />}

@@ -368,6 +368,11 @@ contextBridge.exposeInMainWorld('apcc', {
       ipcRenderer.on('config:migrationProgress', handler);
       return () => ipcRenderer.removeListener('config:migrationProgress', handler);
     },
+    onThemeChanged: (callback) => {
+      const handler = (_event, theme) => callback(theme);
+      ipcRenderer.on('config:themeChanged', handler);
+      return () => ipcRenderer.removeListener('config:themeChanged', handler);
+    },
   },
 
   // The parish profile: name and logo (electron/church-profile.js).

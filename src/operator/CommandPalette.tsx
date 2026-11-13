@@ -57,8 +57,8 @@ export function CommandPalette() {
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/60 pt-[14vh]" onClick={close}>
-      <div role="dialog" aria-label={t('side.search')} className="w-[560px] overflow-hidden rounded-xl border border-line-strong bg-panel shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/75 backdrop-blur-sm pt-[14vh]" onClick={close}>
+      <div role="dialog" aria-label={t('side.search')} className="w-[560px] overflow-hidden rounded-xl border border-line-strong bg-surface shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-3 border-b border-line px-4">
           <Search size={16} className="text-muted" aria-hidden />
           <input

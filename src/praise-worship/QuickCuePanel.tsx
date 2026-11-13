@@ -160,7 +160,7 @@ export function QuickCuePanel({ quick, t, focused = false }: { quick: QuickLive;
                 disabled={hot.busy}
                 aria-label={t('editWords', { name: stanza.stanzaType })}
                 title={t('editWords', { name: stanza.stanzaType })}
-                className="absolute top-2 right-2 grid size-7 place-items-center rounded-md border border-fg/15 bg-panel-2 text-muted opacity-60 transition group-hover:opacity-100 hover:border-accent hover:text-accent focus-visible:opacity-100"
+                className="absolute top-2 right-2 grid size-7 place-items-center rounded-md border border-fg/15 bg-surface-2 text-muted opacity-60 transition group-hover:opacity-100 hover:border-accent hover:text-accent focus-visible:opacity-100"
               >
                 <Pencil size={13} aria-hidden />
               </button>

@@ -6,7 +6,7 @@ import { ProjectorView } from '../output/ProjectorView';
 import { frameKey, previewBadge } from '../../shared/stage-plan-row.js';
 import { lyricsPositionLabel } from '../../shared/lyrics-live.js';
 
-const ICON = 'grid size-7 place-items-center rounded-lg p-1 text-fg/60 transition hover:bg-fg/10 hover:text-fg';
+const ICON = 'grid size-7 place-items-center rounded-lg p-1 text-muted transition hover:bg-fg/10 hover:text-fg';
 
 /** The pinned lock: a gold outline and fill, so it is clear the header is held open. */
 const PINNED_ICON = 'grid size-7 place-items-center rounded-lg border border-accent/50 bg-accent/20 p-1 text-accent transition hover:bg-accent/30';
@@ -126,7 +126,7 @@ function Grip({ corner, onDown, onMove, onUp }: {
       onPointerMove={onMove}
       onPointerUp={onUp}
       onPointerCancel={onUp}
-      className={`absolute z-30 grid size-5 place-items-center text-fg/40 opacity-0 transition-[opacity,color] group-hover:opacity-100 hover:text-accent ${place} ${cursor}`}
+      className={`absolute z-30 grid size-5 place-items-center text-faint opacity-0 transition-[opacity,color] group-hover:opacity-100 hover:text-accent ${place} ${cursor}`}
     >
       <svg width="10" height="10" viewBox="0 0 10 10" style={{ transform: flip }} aria-hidden>
         <path d="M1 9 L1 1 L9 1" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" />
@@ -227,7 +227,7 @@ export function PreviewPanel() {
     <section
       aria-label="Live preview"
       style={frame}
-      className="group fixed z-50 flex flex-col overflow-hidden rounded-xl border border-line/80 bg-panel shadow-2xl shadow-black/40"
+      className="group fixed z-50 flex flex-col overflow-hidden rounded-xl border border-line/80 bg-surface shadow-2xl shadow-black/40"
     >
       {/* The header is a band of its own, above the picture, so the picture (and its text) never sits under it. */}
       <header
@@ -241,7 +241,7 @@ export function PreviewPanel() {
           <Eye size={16} className="shrink-0 text-accent" aria-hidden />
           <div className="flex min-w-0 flex-col">
             <h2 className="text-[11px] font-semibold tracking-wider text-fg/70 uppercase">Preview</h2>
-            <span className="text-[11px] text-fg/60">Live preview</span>
+            <span className="text-[11px] text-muted">Live preview</span>
           </div>
           {/* While the projector is paused, the audience keeps the frame on air. Edits show here only, until the projector resumes. */}
           {stagePeek && !paused && (
@@ -269,7 +269,7 @@ export function PreviewPanel() {
               badge.id === 'live'
                 ? 'live-breathe border-accent/50 bg-accent/20 text-accent shadow-lg shadow-black/50'
                 : badge.id === 'off'
-                  ? 'border-line bg-panel-2/80 text-fg/50'
+                  ? 'border-line bg-panel-2/80 text-faint'
                   : 'border-info/50 bg-info/15 text-info'
             }`}
           >

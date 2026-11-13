@@ -342,7 +342,7 @@ export function LiveSlideEditor({
           ) : null
         }
       />
-      <p className="text-xs text-fg/55">{layout === 'window' ? t('editorWindowHint') : t('editorHint')}</p>
+      <p className="text-xs text-faint">{layout === 'window' ? t('editorWindowHint') : t('editorHint')}</p>
     </div>
   );
 
@@ -386,7 +386,7 @@ export function LiveSlideEditor({
         <header className="flex shrink-0 items-center justify-between gap-4 border-b border-line px-6 py-3">
           <div className="flex min-w-0 flex-col">
             <h1 className="text-base font-bold tracking-tight">{t('editorHeading')}</h1>
-            <p className="truncate text-sm text-fg/65" title={draft.title}>
+            <p className="truncate text-sm text-muted" title={draft.title}>
               {draft.title || '—'}
             </p>
           </div>
@@ -412,7 +412,7 @@ export function LiveSlideEditor({
       <header className="flex shrink-0 items-start justify-between gap-3 border-b border-line px-5 py-4">
         <div className="flex min-w-0 flex-col gap-1">
           <h2 className="text-lg font-bold tracking-tight text-fg">{t('editorHeading')}</h2>
-          <p className="truncate text-sm text-fg/65" title={slide.title}>
+          <p className="truncate text-sm text-muted" title={slide.title}>
             {draft.title || '—'}
           </p>
         </div>

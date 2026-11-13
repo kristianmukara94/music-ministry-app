@@ -10,7 +10,7 @@ const HOTKEY = 'Ctrl+Shift+B';
 type Look = 'standby' | 'starting' | 'active' | 'engaged' | 'parked';
 
 const LOOK: Record<Look, { pill: string; dot: string }> = {
-  standby: { pill: 'border-fg/20 bg-fg/[0.06] text-fg/60', dot: 'bg-fg/40' },
+  standby: { pill: 'border-fg/20 bg-fg/[0.06] text-muted', dot: 'bg-fg/40' },
   starting: { pill: 'border-fg/25 bg-fg/[0.06] text-fg/75', dot: 'bg-fg/50' },
   active: { pill: 'border-ok/60 bg-ok/15 text-ok', dot: 'bg-ok' },
   engaged: { pill: 'border-danger/70 bg-danger/20 text-danger motion-safe:animate-pulse', dot: 'bg-danger' },
@@ -140,12 +140,12 @@ export function WatchdogBadge() {
         <div
           role="dialog"
           aria-label={label}
-          className="absolute top-12 right-0 z-40 w-80 rounded-[10px] border border-line bg-panel p-4 text-sm text-fg shadow-xl"
+          className="absolute top-12 right-0 z-40 w-80 rounded-[10px] border border-line bg-surface p-4 text-sm text-fg shadow-xl"
         >
           <p className="leading-snug text-fg/85">{hint}</p>
-          {status && status.recoveries > 0 && <p className="mt-2 text-xs text-fg/60">{t('watchdogRecoveries', { n: status.recoveries })}</p>}
+          {status && status.recoveries > 0 && <p className="mt-2 text-xs text-muted">{t('watchdogRecoveries', { n: status.recoveries })}</p>}
           <fieldset className="mt-4" disabled={busy}>
-            <legend className="text-[11px] font-semibold tracking-wider text-fg/60 uppercase">{t('failoverModeLabel')}</legend>
+            <legend className="text-[11px] font-semibold tracking-wider text-muted uppercase">{t('failoverModeLabel')}</legend>
             <div className="mt-2 grid grid-cols-2 gap-2">
               {(['emblem', 'blackout'] as const).map((mode) => (
                 <label

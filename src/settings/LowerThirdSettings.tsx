@@ -11,10 +11,10 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
 
 const CARD = 'flex flex-col gap-4 rounded-xl border border-line bg-panel-2/60 p-5 shadow-lg';
 const HEADING = 'text-[11px] font-semibold tracking-wider text-fg/70 uppercase';
-const SUB = 'text-xs text-fg/60';
+const SUB = 'text-xs text-muted';
 const PRIMARY = 'flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold tracking-wider text-on-accent uppercase shadow-md shadow-black/40 transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40';
 const SECONDARY = 'flex items-center gap-2 rounded-lg border border-fg/20 bg-panel-2 px-3 py-2 text-xs font-bold tracking-wider text-fg/90 uppercase transition-colors hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40';
-const RESET = 'flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-fg/60 uppercase transition-colors hover:text-accent';
+const RESET = 'flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-muted uppercase transition-colors hover:text-accent';
 const FIELD = 'h-9 rounded-lg border border-fg/20 bg-panel px-3 text-sm text-fg outline-none focus:border-accent';
 
 /** Gold switch, lit when on. */
@@ -45,7 +45,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
           aria-checked={value === o.id}
           onClick={() => onChange(o.id)}
           className={`rounded-md px-3 py-1.5 text-[11px] font-bold tracking-wider uppercase transition-colors ${
-            value === o.id ? 'border border-accent/40 bg-accent/20 text-accent' : 'border border-transparent text-fg/60 hover:text-fg/90'
+            value === o.id ? 'border border-accent/40 bg-accent/20 text-accent' : 'border border-transparent text-muted hover:text-fg/90'
           }`}
         >
           {o.text}
@@ -249,9 +249,9 @@ export function LowerThirdSettings() {
       {/* Header, the OBS status banner, and the note that OBS is optional. */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="text-[11px] font-bold tracking-[0.2em] text-fg/50 uppercase">Output</div>
+          <div className="text-[11px] font-bold tracking-[0.2em] text-faint uppercase">Output</div>
           <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">Lower 3rd &amp; OBS</h1>
-          <p className="mt-2 max-w-xl text-sm text-fg/60">Style the lower 3rd overlay for your stream and connect to OBS.</p>
+          <p className="mt-2 max-w-xl text-sm text-muted">Style the lower 3rd overlay for your stream and connect to OBS.</p>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-panel-2/80 px-3 py-1 text-xs font-semibold text-accent/90 shadow-sm">
           <CheckCircle2 size={13} aria-hidden /> Changes save automatically
@@ -269,12 +269,12 @@ export function LowerThirdSettings() {
           <div>
             <span
               className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-bold tracking-wider uppercase ${
-                connected ? 'border-accent/40 bg-accent/20 text-accent' : 'border-fg/20 bg-fg/10 text-fg/60'
+                connected ? 'border-accent/40 bg-accent/20 text-accent' : 'border-fg/20 bg-fg/10 text-muted'
               }`}
             >
               {connected ? '● Connected' : '○ Not connected'}
             </span>
-            <p className="mt-1.5 text-sm text-fg/60">Optional connection at {conn.address}:{conn.port}</p>
+            <p className="mt-1.5 text-sm text-muted">Optional connection at {conn.address}:{conn.port}</p>
           </div>
         </div>
         <button type="button" onClick={connect} disabled={connected || obsStatus === 'connecting'} className={PRIMARY}>
@@ -298,7 +298,7 @@ export function LowerThirdSettings() {
               const value = i === 0 ? urls?.local ?? '' : urls?.lan ?? '';
               return (
                 <label key={label} className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold tracking-wider text-fg/60 uppercase">{label}</span>
+                  <span className="text-xs font-bold tracking-wider text-muted uppercase">{label}</span>
                   <div className="flex flex-wrap gap-2">
                     <input readOnly value={value || 'Not available: no network connection found'} aria-label={label} className={`${FIELD} min-w-[12rem] flex-1 font-mono text-xs`} />
                     <button type="button" onClick={() => copy(value)} disabled={!value} className={SECONDARY}>
@@ -333,7 +333,7 @@ export function LowerThirdSettings() {
                 }`}
               >
                 <span className="text-sm font-bold text-fg">No window</span>
-                <span className="text-[11px] text-fg/60">OBS browser source only</span>
+                <span className="text-[11px] text-muted">OBS browser source only</span>
                 {style.target === null && <span className="mt-1 rounded border border-accent/40 bg-accent/20 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-accent uppercase">Selected</span>}
               </button>
               {displays.map((d) => {
@@ -355,7 +355,7 @@ export function LowerThirdSettings() {
                     <span className="flex items-center gap-2 text-sm font-bold text-fg">
                       <Monitor size={14} aria-hidden /> Display {d.index}
                     </span>
-                    <span className="font-mono text-[11px] text-fg/60">
+                    <span className="font-mono text-[11px] text-muted">
                       {d.width} × {d.height}
                     </span>
                     {d.primary && <span className="rounded border border-fg/30 bg-fg/10 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-fg/80 uppercase">Console screen · not available</span>}
@@ -385,7 +385,7 @@ export function LowerThirdSettings() {
                   className="flex flex-col items-start gap-1 rounded-lg border border-line bg-panel/60 p-3 text-left transition hover:border-accent/40 hover:bg-fg/10"
                 >
                   <span className="text-sm font-bold text-fg">{preset.label}</span>
-                  <span className="text-[11px] leading-snug text-fg/60">{preset.description}</span>
+                  <span className="text-[11px] leading-snug text-muted">{preset.description}</span>
                 </button>
               ))}
             </div>
@@ -499,11 +499,11 @@ export function LowerThirdSettings() {
             <h2 id="ws-heading" className={HEADING}>OBS WebSocket connection</h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_8rem]">
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-bold tracking-wider text-fg/60 uppercase">Address</span>
+                <span className="text-xs font-bold tracking-wider text-muted uppercase">Address</span>
                 <input value={conn.address} onChange={(e) => changeConn({ ...conn, address: e.target.value })} className={`${FIELD} font-mono`} />
               </label>
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-bold tracking-wider text-fg/60 uppercase">Port</span>
+                <span className="text-xs font-bold tracking-wider text-muted uppercase">Port</span>
                 <input
                   type="number"
                   min={1}
@@ -515,7 +515,7 @@ export function LowerThirdSettings() {
               </label>
             </div>
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-bold tracking-wider text-fg/60 uppercase">Password (optional)</span>
+              <span className="text-xs font-bold tracking-wider text-muted uppercase">Password (optional)</span>
               <input
                 type="password"
                 autoComplete="off"
@@ -532,7 +532,7 @@ export function LowerThirdSettings() {
               <button type="button" onClick={connect} disabled={connected || obsStatus === 'connecting'} className={PRIMARY}>
                 Connect
               </button>
-              <span className="self-center text-xs text-fg/60">{statusLabel}</span>
+              <span className="self-center text-xs text-muted">{statusLabel}</span>
             </div>
             <Callout>In OBS, enable WebSocket server in Tools, then match the address, port, and password here.</Callout>
           </section>
@@ -550,10 +550,10 @@ export function LowerThirdSettings() {
             </span>
           </div>
           <div className="relative aspect-video w-full max-w-full overflow-hidden rounded-lg border border-accent/30 bg-gradient-to-br from-fg/10 to-panel [container-type:inline-size]">
-            <div className="absolute inset-0 flex items-center justify-center text-xs tracking-widest text-fg/40 uppercase">Screen</div>
+            <div className="absolute inset-0 flex items-center justify-center text-xs tracking-widest text-faint uppercase">Screen</div>
             <LowerThirdStage value={{ ...SAMPLE, template: SAMPLE.template }} />
           </div>
-          <p className="text-[11px] text-fg/50">
+          <p className="text-[11px] text-faint">
             {lowerLive ? 'A lower third is on the output now.' : 'Nothing is on the output. The preview uses sample text.'}
           </p>
         </aside>

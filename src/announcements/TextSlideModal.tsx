@@ -172,8 +172,8 @@ export function TextSlideModal({
     'flex h-9 items-center gap-2 rounded-md border border-fg/15 px-3 text-xs font-bold uppercase hover:bg-fg/10 disabled:opacity-40';
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-6" role="dialog" aria-modal="true" aria-label={tr('modalTitle')}>
-      <div className="flex max-h-full w-full max-w-[1200px] flex-col overflow-hidden rounded-xl border border-fg/15 bg-panel">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 backdrop-blur-sm p-6" role="dialog" aria-modal="true" aria-label={tr('modalTitle')}>
+      <div className="flex max-h-full w-full max-w-[1200px] flex-col overflow-hidden rounded-xl border border-fg/15 bg-surface">
         <header className="flex items-center justify-between border-b border-line px-6 py-4">
           <h2 className="text-2xl font-bold tracking-tight">{tr('modalTitle')}</h2>
           <button type="button" onClick={cancel} aria-label={tr('cancel')} className="text-muted hover:text-fg">

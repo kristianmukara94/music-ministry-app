@@ -104,7 +104,7 @@ function useChecks(): Check[] {
 function CheckRow({ check }: { check: Check }) {
   const t = useT();
   const { icon: Icon } = check;
-  const tone = check.ok === null ? 'text-fg/50' : check.ok ? 'text-ok' : 'text-warn';
+  const tone = check.ok === null ? 'text-faint' : check.ok ? 'text-ok' : 'text-warn';
   return (
     <li className="flex min-w-0 items-center gap-3 rounded-lg border border-fg/10 bg-fg/[0.03] px-3 py-2.5">
       <span className={`grid size-8 shrink-0 place-items-center rounded-md bg-fg/[0.06] ${tone}`}>
@@ -116,7 +116,7 @@ function CheckRow({ check }: { check: Check }) {
           {check.ok === false && <AlertTriangle size={14} aria-hidden className="shrink-0 text-warn" />}
           <span className="truncate">{t(check.label)}</span>
         </div>
-        <div className="truncate text-xs text-fg/65" title={check.detail}>{check.ok === null ? t('ready.checking') : check.detail}</div>
+        <div className="truncate text-xs text-muted" title={check.detail}>{check.ok === null ? t('ready.checking') : check.detail}</div>
       </div>
       {check.fix && (
         <button type="button" onClick={check.fix.run} disabled={check.fix.locked} title={check.fix.locked ? LICENSE_LOCKED_TIP : undefined}
@@ -158,7 +158,7 @@ function MassTimesEditor({ onDone }: { onDone: () => void }) {
             <input type="time" aria-label={t('count.title')} className={`${field} w-28`} value={row.time}
               onChange={(e) => update(rows.map((r, j) => (j === i ? { ...r, time: e.target.value } : r)))} />
             <button type="button" aria-label={t('count.remove')} title={t('count.remove')} onClick={() => update(rows.filter((_, j) => j !== i))}
-              className="grid size-8 shrink-0 place-items-center rounded-md text-fg/60 hover:bg-fg/10 hover:text-fg">
+              className="grid size-8 shrink-0 place-items-center rounded-md text-muted hover:bg-fg/10 hover:text-fg">
               <X size={14} />
             </button>
           </li>
@@ -173,7 +173,7 @@ function MassTimesEditor({ onDone }: { onDone: () => void }) {
         <button type="button" onClick={() => { setUi({ massTimes: sanitizeMassTimes(rows) }); onDone(); }}
           className="rounded-md bg-accent px-3 py-1 text-xs font-extrabold uppercase text-on-accent">{t('count.done')}</button>
       </div>
-      <p className="text-[11px] text-fg/50">{t('count.zoneNote')}</p>
+      <p className="text-[11px] text-faint">{t('count.zoneNote')}</p>
     </div>
   );
 }
@@ -192,7 +192,7 @@ function Countdown() {
   if (!next) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-        <Clock size={28} strokeWidth={1.5} aria-hidden className="text-fg/50" />
+        <Clock size={28} strokeWidth={1.5} aria-hidden className="text-faint" />
         <div className="text-sm font-semibold text-fg/80">{t('count.none')}</div>
         <button type="button" onClick={() => setEditing(true)} className="rounded-md bg-fg px-3 py-1.5 text-xs font-bold text-canvas hover:brightness-110">
           {t('count.set')}
@@ -211,13 +211,13 @@ function Countdown() {
         <div className="text-2xl font-bold text-ok">{t('count.started')}</div>
       ) : (
         <>
-          <div className="text-xs text-fg/60">{t('count.startsIn')}</div>
+          <div className="text-xs text-muted">{t('count.startsIn')}</div>
           <div className={`font-mono text-4xl leading-none font-bold tabular-nums ${soon ? 'text-warn' : 'text-fg'}`} aria-live="off">
             {formatCountdown(next.at - now.getTime())}
           </div>
         </>
       )}
-      <button type="button" onClick={() => setEditing(true)} className="mt-1 text-xs font-semibold text-fg/55 underline-offset-2 hover:text-fg hover:underline">
+      <button type="button" onClick={() => setEditing(true)} className="mt-1 text-xs font-semibold text-faint underline-offset-2 hover:text-fg hover:underline">
         {t('count.edit')}
       </button>
     </div>
@@ -238,7 +238,7 @@ export function PreServiceWidget() {
     ? 'border-ok/60 bg-ok/15 text-ok'
     : settled
       ? 'border-warn/60 bg-warn/15 text-warn'
-      : 'border-fg/20 bg-fg/5 text-fg/60';
+      : 'border-fg/20 bg-fg/5 text-muted';
   return (
     <section aria-labelledby="pre-service-title" className="grid shrink-0 grid-cols-1 overflow-hidden rounded-[10px] border border-fg/[0.12] bg-panel lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="flex min-w-0 flex-col">

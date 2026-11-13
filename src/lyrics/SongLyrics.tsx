@@ -646,7 +646,7 @@ export function SongLyrics() {
           ) : (
           <>
           <ul ref={listRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
-            {hymns.length === 0 && <li className="p-4 text-sm text-fg/60">{t('noHymns')}</li>}
+            {hymns.length === 0 && <li className="p-4 text-sm text-muted">{t('noHymns')}</li>}
             {hymns.map((h) => {
               const songLive = onAir !== null && !onAir.blackout && onAir.hymnId === h.id;
               const armed = goNowArmed === h.id;
@@ -672,8 +672,8 @@ export function SongLyrics() {
                     {inSetlist.has(h.id) && <Check size={13} className="shrink-0 text-ok" aria-label={t('inSetlist')} />}
                     {songLive && <span aria-label={t('live')} title={t('live')} className="size-2 shrink-0 animate-pulse rounded-full bg-danger" />}
                   </div>
-                  {h.composer && <div className="truncate text-[11px] text-fg/60">{h.composer}</div>}
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-fg/65">
+                  {h.composer && <div className="truncate text-[11px] text-muted">{h.composer}</div>}
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted">
                     {h.musicalKey && <span className="font-mono font-bold text-accent">{t('keyMeta', { key: h.musicalKey })}</span>}
                     <span>{t(`lang_${h.language}`)}</span>
                     <span className="rounded border border-fg/15 bg-fg/[0.06] px-1.5 py-px text-[10px] font-semibold text-fg/80">{h.songCategory || t(`cat_${h.category}`)}</span>
@@ -870,8 +870,8 @@ export function SongLyrics() {
 
           {setlistId != null && (
             <ol className="min-h-0 flex-1 overflow-y-auto p-2" onDragLeave={() => setDropAt(null)}>
-              {entries.length === 0 && <li className="grid min-h-40 place-items-center rounded-[10px] border-2 border-dashed border-fg/20 p-6 text-center text-sm text-fg/60">{t('dropHere')}</li>}
-              {entries.length > 0 && shownEntries.length === 0 && <li className="p-4 text-center text-sm text-fg/60">{t('noSetlistMatch')}</li>}
+              {entries.length === 0 && <li className="grid min-h-40 place-items-center rounded-[10px] border-2 border-dashed border-fg/20 p-6 text-center text-sm text-muted">{t('dropHere')}</li>}
+              {entries.length > 0 && shownEntries.length === 0 && <li className="p-4 text-center text-sm text-muted">{t('noSetlistMatch')}</li>}
               {/* `i` is the row's place in the whole setlist, so a filtered row keeps its number and drops land in the right slot. */}
               {shownEntries.map(({ entry, index: i }) => (
                 <li
@@ -900,10 +900,10 @@ export function SongLyrics() {
                         : 'border-l-transparent hover:bg-fg/[0.06]'
                   }`}
                 >
-                  <span aria-hidden title={t('dragHandle')} className="-mr-1 shrink-0 cursor-grab text-fg/35 transition group-hover:text-fg/70 active:cursor-grabbing">
+                  <span aria-hidden title={t('dragHandle')} className="-mr-1 shrink-0 cursor-grab text-faint transition group-hover:text-fg/70 active:cursor-grabbing">
                     <GripVertical size={14} />
                   </span>
-                  <span className="w-8 shrink-0 text-center font-mono text-xs font-bold text-fg/50 tabular-nums">
+                  <span className="w-8 shrink-0 text-center font-mono text-xs font-bold text-faint tabular-nums">
                     {rowOnAir(entry, i) ? <span className={`mx-auto block size-2.5 animate-pulse rounded-full ${goLive ? 'bg-danger' : 'bg-ok'}`} title={t('live')} /> : rowNumber(i)}
                   </span>
                   <button
@@ -928,10 +928,10 @@ export function SongLyrics() {
                   </button>
                   {/* The move arrows take no room until the row is hovered or one of them has focus, so the title keeps the width in a narrow column. */}
                   <div className="flex w-0 shrink-0 overflow-hidden opacity-0 transition-opacity group-hover:w-auto group-hover:opacity-100 focus-within:w-auto focus-within:opacity-100">
-                    <button type="button" onClick={() => moveEntry(i, -1)} disabled={i === 0} aria-label={t('moveUp')} title={t('moveUp')} className="grid size-7 place-items-center rounded text-fg/60 hover:text-fg disabled:opacity-30">
+                    <button type="button" onClick={() => moveEntry(i, -1)} disabled={i === 0} aria-label={t('moveUp')} title={t('moveUp')} className="grid size-7 place-items-center rounded text-muted hover:text-fg disabled:opacity-30">
                       <ArrowUp size={13} aria-hidden />
                     </button>
-                    <button type="button" onClick={() => moveEntry(i, 1)} disabled={i === entries.length - 1} aria-label={t('moveDown')} title={t('moveDown')} className="grid size-7 place-items-center rounded text-fg/60 hover:text-fg disabled:opacity-30">
+                    <button type="button" onClick={() => moveEntry(i, 1)} disabled={i === entries.length - 1} aria-label={t('moveDown')} title={t('moveDown')} className="grid size-7 place-items-center rounded text-muted hover:text-fg disabled:opacity-30">
                       <ArrowDown size={13} aria-hidden />
                     </button>
                   </div>
@@ -1009,7 +1009,7 @@ export function SongLyrics() {
                         aria-hidden
                         data-hotkey-badge
                         className={`pointer-events-none absolute -top-2 -right-2 grid size-4 place-items-center rounded-full border bg-canvas font-mono text-[9px] leading-none font-bold tabular-nums shadow-sm ${
-                          isLive(i) ? 'border-danger text-danger' : cue === i ? 'border-fg/50 text-fg' : 'border-fg/25 text-fg/60'
+                          isLive(i) ? 'border-danger text-danger' : cue === i ? 'border-fg/50 text-fg' : 'border-fg/25 text-muted'
                         }`}
                       >
                         {i + 1}
@@ -1114,8 +1114,8 @@ export function SongLyrics() {
               </div>
             </>
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-fg/60">
-              <span className="grid size-12 place-items-center rounded-[10px] border border-line text-fg/50">
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm text-muted">
+              <span className="grid size-12 place-items-center rounded-[10px] border border-line text-faint">
                 <Music size={22} aria-hidden />
               </span>
               <p className="max-w-xs">{t('selectHint')}</p>
@@ -1135,13 +1135,6 @@ export function SongLyrics() {
           }}
           onSaved={() => void afterSave()}
           onImported={() => void reloadHymns()}
-          onOpenSong={(id) => {
-            // A song added from a file opens in the cue controller, ready to go live; it is not put on the projector.
-            setAdding(null);
-            setSelected(null);
-            setFocusedId(id);
-            setQueueRequest((n) => n + 1);
-          }}
         />
       )}
     </div>

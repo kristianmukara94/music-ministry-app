@@ -194,7 +194,7 @@ export function WhiteboardCard({ t }: { t: GoLiveT }) {
             aria-label={t(open ? 'whiteboardCollapse' : 'whiteboardExpand', { folder: name })}
             className="flex min-w-0 items-center gap-2 rounded-md py-1 pr-2 text-left focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none"
           >
-            {open ? <ChevronDown size={16} className="shrink-0 text-fg/60" aria-hidden /> : <ChevronRight size={16} className="shrink-0 text-fg/60" aria-hidden />}
+            {open ? <ChevronDown size={16} className="shrink-0 text-muted" aria-hidden /> : <ChevronRight size={16} className="shrink-0 text-muted" aria-hidden />}
             <Icon size={16} className="shrink-0 text-accent" aria-hidden />
             <span className="truncate text-base font-bold text-fg">{name}</span>
             <span className="rounded-full border border-fg/15 bg-panel-2 px-2 py-0.5 font-mono text-xs text-fg/70 tabular-nums">{group.length}</span>
@@ -222,9 +222,9 @@ export function WhiteboardCard({ t }: { t: GoLiveT }) {
           <h2 id="whiteboard-card-heading" className="text-lg font-bold tracking-tight text-fg">
             {t('whiteboardHeading')}
           </h2>
-          <p className="text-sm text-fg/65">{t('whiteboardIntro')}</p>
+          <p className="text-sm text-muted">{t('whiteboardIntro')}</p>
         </div>
-        <span className="text-xs font-semibold text-fg/60">{slides ? t('whiteboardCount', { n: count }) : ''}</span>
+        <span className="text-xs font-semibold text-muted">{slides ? t('whiteboardCount', { n: count }) : ''}</span>
       </header>
 
       {/* The Whiteboard's folders. Shown once there is more than one way to look at the slides. */}

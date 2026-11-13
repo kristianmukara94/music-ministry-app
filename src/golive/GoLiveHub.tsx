@@ -18,7 +18,7 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
 
 // The same surfaces as the dashboard: cards on the panel colour, hairline borders, dark ghost buttons, an accent focus ring.
 const CARD = 'rounded-[10px] border border-line bg-panel';
-const LABEL = 'text-[11px] font-semibold tracking-wider text-fg/60 uppercase';
+const LABEL = 'text-[11px] font-semibold tracking-wider text-muted uppercase';
 const INPUT = 'h-10 rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none focus:border-accent focus:ring-1 focus:ring-accent/40';
 const BTN =
   'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-4 text-sm font-semibold text-fg/85 transition hover:bg-fg/10 hover:text-fg';
@@ -45,12 +45,12 @@ function EntryChoice({ entry, checked, onChoose, t }: { entry: GoLiveEntry; chec
       }`}
     >
       <input type="radio" name="golive-choice" checked={checked} onChange={onChoose} className="sr-only" />
-      <span className={`grid size-9 shrink-0 place-items-center rounded-lg border ${checked ? 'border-accent/40 bg-accent/15 text-accent' : 'border-fg/15 text-fg/60'}`}>
+      <span className={`grid size-9 shrink-0 place-items-center rounded-lg border ${checked ? 'border-accent/40 bg-accent/15 text-accent' : 'border-fg/15 text-muted'}`}>
         <KindIcon kind={entry.kind} />
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className={`truncate text-[15px] font-semibold ${checked ? 'text-accent' : 'text-fg'}`}>{entry.name}</span>
-        <span className="text-[11px] font-semibold tracking-wider text-fg/60 uppercase">{kindLabel(entry.kind, t)}</span>
+        <span className="text-[11px] font-semibold tracking-wider text-muted uppercase">{kindLabel(entry.kind, t)}</span>
       </span>
     </label>
   );
@@ -61,7 +61,7 @@ const TONE: Record<Tone, string> = {
   ok: 'border-ok/60 bg-ok/15 text-ok',
   warn: 'border-warn/60 bg-warn/15 text-warn',
   danger: 'border-danger/60 bg-danger/15 text-danger',
-  idle: 'border-fg/20 bg-fg/[0.06] text-fg/60',
+  idle: 'border-fg/20 bg-fg/[0.06] text-muted',
 };
 
 /** One line of the "before you go live" panel: what it is, and whether it is ready. */
@@ -178,7 +178,7 @@ export function GoLivePrepare() {
         <section aria-labelledby="golive-saved" className={`${CARD} flex flex-col gap-3 p-4`}>
           <div className="flex items-center justify-between gap-2">
             <h2 id="golive-saved" className={LABEL}>{t('savedHeading')}</h2>
-            <span className="text-xs text-fg/60">{dateLabel}</span>
+            <span className="text-xs text-muted">{dateLabel}</span>
           </div>
           {entries.length === 0 ? (
             <div className="flex flex-col items-center gap-3 px-2 py-6 text-center">
@@ -194,7 +194,7 @@ export function GoLivePrepare() {
             </div>
           ) : (
             <>
-              {entries.length > 1 && <p className="text-xs text-fg/60">{t('chooseHint')}</p>}
+              {entries.length > 1 && <p className="text-xs text-muted">{t('chooseHint')}</p>}
               <div role="radiogroup" aria-labelledby="golive-saved" className="flex flex-col gap-1">
                 {entries.map((entry) => (
                   <EntryChoice
@@ -243,7 +243,7 @@ export function GoLivePrepare() {
               </div>
             </>
           ) : (
-            <p className="py-8 text-center text-sm text-fg/60">{t('pickDate')}</p>
+            <p className="py-8 text-center text-sm text-muted">{t('pickDate')}</p>
           )}
         </section>
       </div>

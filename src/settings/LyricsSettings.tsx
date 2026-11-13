@@ -151,7 +151,7 @@ function RecentlyDeletedCard({ onRestored, version }: { onRestored: () => void; 
               <li key={h.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5">
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold text-fg">{h.title}</div>
-                  <div className={`text-xs ${left <= 3 ? 'text-warn' : 'text-fg/60'}`}>
+                  <div className={`text-xs ${left <= 3 ? 'text-warn' : 'text-muted'}`}>
                     {t('deletedOn', { date: new Date(h.deletedAt).toLocaleDateString() })} · {left === 0 ? 'removed today' : `${left} ${left === 1 ? 'day' : 'days'} left`}
                   </div>
                 </div>

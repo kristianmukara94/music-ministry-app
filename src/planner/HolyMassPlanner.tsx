@@ -129,16 +129,16 @@ export function HolyMassPlan({ t, lang, date, items, onFill, onClear, onDropOnSl
                 {name}
               </span>
               {slot.sundayOnly && (
-                <span className="rounded-full border border-fg/15 px-1.5 text-[10px] font-semibold text-fg/60">{t('slotSundayOnly')}</span>
+                <span className="rounded-full border border-fg/15 px-1.5 text-[10px] font-semibold text-muted">{t('slotSundayOnly')}</span>
               )}
               {slot.optional && (
-                <span className="rounded-full border border-fg/15 px-1.5 text-[10px] font-semibold text-fg/60">{t('slotOptional')}</span>
+                <span className="rounded-full border border-fg/15 px-1.5 text-[10px] font-semibold text-muted">{t('slotOptional')}</span>
               )}
               {row?.stale && <AlertTriangle size={13} className="text-danger" aria-label={t('stale')} />}
             </div>
             {row ? (
               <div className="flex min-w-0 items-center gap-2">
-                <span className={`min-w-0 truncate text-sm font-semibold ${row.stale ? 'text-fg/50 line-through' : 'text-fg'}`}>{row.label}</span>
+                <span className={`min-w-0 truncate text-sm font-semibold ${row.stale ? 'text-faint line-through' : 'text-fg'}`}>{row.label}</span>
                 {row.stale && <span className="shrink-0 text-[11px] text-danger">{row.deleted ? t('deletedHymnStatus') : t('stale')}</span>}
               </div>
             ) : (
@@ -230,7 +230,7 @@ export function HolyMassPlan({ t, lang, date, items, onFill, onClear, onDropOnSl
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-        <p role="status" className="text-xs text-fg/60">
+        <p role="status" className="text-xs text-muted">
           <span className="font-mono font-bold text-accent tabular-nums">{filledTotal}</span> / {MASS_SLOTS.length}
         </p>
         <button
@@ -286,7 +286,7 @@ export function HolyMassPlan({ t, lang, date, items, onFill, onClear, onDropOnSl
 
                 {(anyExtra || dropHere) && (
                   <div className="mt-1 border-t border-line pt-2">
-                    <p className="px-1 text-[11px] font-semibold tracking-wider text-fg/60 uppercase">{t('additionalItems')}</p>
+                    <p className="px-1 text-[11px] font-semibold tracking-wider text-muted uppercase">{t('additionalItems')}</p>
                     <ol className="flex flex-col">
                       {extras.flatMap(({ block, rows }) => rows.map((row, slot) => renderAdditional(row, rows, slot, block)))}
                     </ol>

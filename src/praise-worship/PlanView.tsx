@@ -75,7 +75,7 @@ function NewSessionForm({ onDone }: { onDone?: () => void }) {
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-1 rounded-[10px] border border-line bg-panel px-4 py-3">
-      <span className="text-[11px] font-semibold tracking-wider text-fg/60 uppercase">{label}</span>
+      <span className="text-[11px] font-semibold tracking-wider text-muted uppercase">{label}</span>
       {children}
     </div>
   );
@@ -112,7 +112,7 @@ export function PlanView() {
 
       {/* Which session: switch, start a new one, or delete this one. */}
       <div className={`flex-wrap items-center gap-2 ${focused ? 'hidden' : 'flex'}`}>
-        <label className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-fg/60 uppercase">
+        <label className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-muted uppercase">
           {t('session')}
           <select
             value={session.id}
@@ -181,7 +181,7 @@ export function PlanView() {
           </Stat>
           <div className="col-span-2 flex min-w-0 flex-col gap-2 rounded-[10px] border border-line bg-panel px-4 py-3 sm:col-span-1">
             <div className="flex items-center justify-between gap-3">
-              <span id="pw-ready-label" className="text-[11px] font-semibold tracking-wider text-fg/60 uppercase">{t('stat_ready')}</span>
+              <span id="pw-ready-label" className="text-[11px] font-semibold tracking-wider text-muted uppercase">{t('stat_ready')}</span>
               <span className="inline-flex items-center gap-2 font-mono text-lg font-bold whitespace-nowrap text-fg">
                 {ready === total && total > 0 && <span aria-hidden className="inline-flex items-center rounded-full border border-ok/40 bg-ok/15 px-2 py-0.5 text-[10px] font-bold text-ok">✓</span>}
                 {ready} / {total}

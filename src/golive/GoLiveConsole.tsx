@@ -23,7 +23,7 @@ import { WhiteboardCard } from './WhiteboardCard';
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 const CARD = 'rounded-[10px] border border-line bg-panel';
-const LABEL = 'text-[11px] font-semibold tracking-wider text-fg/60 uppercase';
+const LABEL = 'text-[11px] font-semibold tracking-wider text-muted uppercase';
 const SELECT =
   'h-10 min-w-0 rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm text-fg outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 disabled:opacity-50';
 const BTN_GO =
@@ -38,7 +38,7 @@ const TAB = (on: boolean) =>
 const PILL = {
   on: 'border-ok/60 bg-ok/15 text-ok',
   black: 'border-warn/60 bg-warn/15 text-warn',
-  off: 'border-fg/20 bg-fg/[0.06] text-fg/60',
+  off: 'border-fg/20 bg-fg/[0.06] text-muted',
 } as const;
 
 type Tab = 'pw' | 'mass' | 'prepare';

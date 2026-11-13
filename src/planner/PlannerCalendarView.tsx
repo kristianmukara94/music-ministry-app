@@ -562,7 +562,7 @@ function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlot
 
   const option = 'flex w-full items-start gap-3 rounded-xl border-2 p-4 text-left transition focus-visible:ring-2 focus-visible:ring-[var(--cal-gold)] focus-visible:outline-none disabled:cursor-wait disabled:opacity-60';
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4 backdrop-blur-sm">
       <div
         ref={panel}
         role="dialog"
@@ -655,7 +655,7 @@ function DayNoteDialog({ t, dateLabel, ordoName, current, color, onSave, onClose
 
   const button = 'inline-flex h-10 items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-extrabold transition focus-visible:ring-2 focus-visible:ring-[var(--cal-gold)] focus-visible:outline-none disabled:cursor-wait disabled:opacity-60';
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4 backdrop-blur-sm">
       <div
         ref={panel}
         role="dialog"

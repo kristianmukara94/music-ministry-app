@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { parseLyrics } from '../../shared/lyrics-parser.js';
+import { duplicateSlide, lyricSlides, moveSlide, removeSlide, setSlidePart, slidesToSaved, slidesToText, withContinuations, type LyricSlide } from '../../shared/lyric-slides.js';
 import { isSongCategoryMissing, isSongCategoryRefusal } from '../../shared/hymn-category.js';
 import { bridge } from '../live/bridge';
 import type { Hymn, HymnLanguage, NewHymn, PrimaryCategory, SongCategory } from './types';
@@ -30,16 +30,27 @@ interface StoredDraft {
   savedAt: number;
 }
 
-/** One stanza as it will be cued: its label and its lines. */
-export interface PreviewStanza {
-  stanzaType: string;
-  lyricsText: string;
+/** One slide as it will be cued: its label, its lines, and whether it carries on the part before it. */
+export type PreviewStanza = LyricSlide;
+
+/** Where this computer keeps the "Auto-split long stanzas" choice. */
+const AUTO_SPLIT_KEY = 'apcc.lyricsAutoSplit';
+function readAutoSplit(): boolean {
+  try {
+    return window.localStorage.getItem(AUTO_SPLIT_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+function writeAutoSplit(on: boolean) {
+  try {
+    window.localStorage.setItem(AUTO_SPLIT_KEY, on ? 'on' : 'off');
+  } catch {
+    // A blocked store only means the choice is not remembered.
+  }
 }
 
 export type SongProblem = 'titleMissing' | 'noStanzas' | 'songCategoryMissing';
-
-/** Stanzas as lyrics, each under its label written out ([Verse 1], [Chorus]), the way the form asks them to be typed. */
-const toTagged = (stanzas: PreviewStanza[]) => stanzas.map((s) => `[${s.stanzaType}]\n${s.lyricsText}`).join('\n\n');
 
 const fieldsOf = (hymn: Hymn | null | undefined): SongFields => ({
   title: hymn?.title ?? '',
@@ -48,7 +59,7 @@ const fieldsOf = (hymn: Hymn | null | undefined): SongFields => ({
   language: hymn?.language ?? 'EN',
   songCategory: hymn?.songCategory ?? '',
   primaryCategory: normalizePrimary(hymn?.primaryCategory),
-  raw: hymn ? toTagged(hymn.stanzas) : '',
+  raw: hymn ? slidesToText(withContinuations(hymn.stanzas)) : '',
 });
 
 const same = (a: SongFields, b: SongFields) => (Object.keys(a) as (keyof SongFields)[]).every((k) => a[k] === b[k]);
@@ -135,8 +146,13 @@ export function useSongEditor(hymn: Hymn | null | undefined) {
     setError(null);
   };
 
-  const parsed = useMemo(() => parseLyrics(fields.raw), [fields.raw]);
-  const stanzas: PreviewStanza[] = parsed.stanzas;
+  const [autoSplit, setAutoSplitState] = useState(readAutoSplit);
+  const setAutoSplit = (on: boolean) => {
+    setAutoSplitState(on);
+    writeAutoSplit(on);
+  };
+  const parsed = useMemo(() => lyricSlides(fields.raw, { autoSplit }), [fields.raw, autoSplit]);
+  const stanzas: PreviewStanza[] = parsed.slides;
   const parseError = fields.raw.trim() ? parsed.errors[0] ?? null : null;
 
   const problems: SongProblem[] = [];
@@ -145,18 +161,17 @@ export function useSongEditor(hymn: Hymn | null | undefined) {
   if (isSongCategoryMissing(fields.songCategory)) problems.push('songCategoryMissing');
   const canSave = !busy && problems.length === 0 && !parseError;
 
-  /** Rewrites the lyrics from a new list of stanzas, each under its tag, so the box and the cards always agree. */
-  const setStanzas = (next: PreviewStanza[]) => set('raw', toTagged(next));
+  /** Rewrites the lyrics from a new list of slides, each part under its tag, so the box and the cards always agree. */
+  const setStanzas = (next: PreviewStanza[]) => set('raw', slidesToText(next));
   const stanzaActions = {
     move: (from: number, to: number) => {
       if (to < 0 || to >= stanzas.length) return;
-      const next = [...stanzas];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      setStanzas(next);
+      setStanzas(moveSlide(stanzas, from, to));
     },
-    remove: (index: number) => setStanzas(stanzas.filter((_, i) => i !== index)),
-    duplicate: (index: number) => setStanzas([...stanzas.slice(0, index + 1), { ...stanzas[index] }, ...stanzas.slice(index + 1)]),
+    remove: (index: number) => setStanzas(removeSlide(stanzas, index)),
+    duplicate: (index: number) => setStanzas(duplicateSlide(stanzas, index)),
+    /** Gives slide `index` a part, or CONTINUATION to carry on the part before it; the tags in the lyrics box follow. */
+    setPart: (index: number, part: string) => setStanzas(setSlidePart(stanzas, index, part)),
   };
 
   /** Clears the draft and puts the form back as it started. */
@@ -176,7 +191,8 @@ export function useSongEditor(hymn: Hymn | null | undefined) {
     setBusy(true);
     setError(null);
     try {
-      const input: NewHymn = { ...fields };
+      // The slides are saved as shown: every slide under its own tag, a continuation under the part it carries on.
+      const input: NewHymn = { ...fields, raw: slidesToSaved(stanzas) };
       if (hymn) await api.editHymn(hymn.id, input);
       else await api.createHymn(input);
       window.clearTimeout(timer.current);
@@ -214,6 +230,9 @@ export function useSongEditor(hymn: Hymn | null | undefined) {
     draftSavedAt,
     discardChanges,
     stanzaActions,
+    /** Whether a part longer than four lines is cut into slides of up to four. Remembered on this computer. */
+    autoSplit,
+    setAutoSplit,
     save,
   };
 }

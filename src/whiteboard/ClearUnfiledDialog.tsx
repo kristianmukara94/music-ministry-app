@@ -21,14 +21,14 @@ export function ClearUnfiledDialog({ count, busy, onConfirm, onCancel }: { count
   }, [busy, onCancel]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => !busy && onCancel()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => !busy && onCancel()}>
       <div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="clear-unfiled-title"
         aria-describedby="clear-unfiled-message"
         onClick={(e) => e.stopPropagation()}
-        className="flex w-full max-w-md flex-col gap-5 rounded-xl border border-danger/40 bg-panel p-6 shadow-2xl"
+        className="flex w-full max-w-md flex-col gap-5 rounded-xl border border-danger/40 bg-surface p-6 shadow-2xl"
       >
         <div className="flex items-center gap-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-lg border border-danger/40 bg-danger/15 text-danger">

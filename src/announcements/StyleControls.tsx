@@ -51,7 +51,7 @@ export function ColorField({
 
   return (
     <div role="group" aria-label={label} className="flex flex-wrap items-center gap-1.5">
-      {prefix && <span className="mr-1 text-[11px] font-semibold tracking-wider uppercase text-fg/60">{prefix}</span>}
+      {prefix && <span className="mr-1 text-[11px] font-semibold tracking-wider uppercase text-muted">{prefix}</span>}
       {presets.map((p) => (
         <button
           key={p.hex}

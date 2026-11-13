@@ -105,11 +105,11 @@ export function MassTemplates({ t, lang, items, onApply, onError, onNotice, onCl
   };
 
   return (
-    <div ref={box} role="dialog" aria-label={t('templatesTitle')} className="absolute top-full right-0 z-40 mt-2 flex w-[min(28rem,92vw)] flex-col gap-3 rounded-xl border border-line-strong bg-panel p-4 shadow-2xl shadow-black/50">
+    <div ref={box} role="dialog" aria-label={t('templatesTitle')} className="absolute top-full right-0 z-40 mt-2 flex w-[min(28rem,92vw)] flex-col gap-3 rounded-xl border border-line-strong bg-surface p-4 shadow-2xl shadow-black/50">
       <header className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-bold tracking-wide uppercase">{t('templatesTitle')}</h2>
-          <p className="text-xs text-fg/60">{t('templatesIntro')}</p>
+          <p className="text-xs text-muted">{t('templatesIntro')}</p>
         </div>
         <button type="button" onClick={onClose} aria-label={t('templateClose')} title={t('templateClose')} className="grid size-7 shrink-0 place-items-center rounded-md border border-fg/15 text-muted hover:text-fg">
           <X size={13} aria-hidden />
@@ -122,7 +122,7 @@ export function MassTemplates({ t, lang, items, onApply, onError, onNotice, onCl
           <div key={tpl.id} className="flex items-center gap-2 rounded-lg border border-line bg-panel-2 px-3 py-2">
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold">{t(`template_${tpl.id}`)}</div>
-              <div className="text-[11px] text-fg/60">{t(`template_${tpl.id}Hint`)}</div>
+              <div className="text-[11px] text-muted">{t(`template_${tpl.id}Hint`)}</div>
             </div>
             <button type="button" onClick={() => loadBuiltIn(tpl.id)} disabled={busy} className={BTN}>
               <Download size={13} aria-hidden />
@@ -134,12 +134,12 @@ export function MassTemplates({ t, lang, items, onApply, onError, onNotice, onCl
 
       <section aria-label={t('templatesSaved')} className="flex flex-col gap-1.5">
         <h3 className="text-[10px] font-bold tracking-wider text-muted uppercase">{t('templatesSaved')}</h3>
-        {saved.length === 0 && <p className="rounded-lg border border-dashed border-fg/20 px-3 py-3 text-xs text-fg/60">{t('templatesNone')}</p>}
+        {saved.length === 0 && <p className="rounded-lg border border-dashed border-fg/20 px-3 py-3 text-xs text-muted">{t('templatesNone')}</p>}
         {saved.map((tpl) => (
           <div key={tpl.id} className="flex items-center gap-2 rounded-lg border border-line bg-panel-2 px-3 py-2">
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold">{tpl.name}</div>
-              <div className="text-[11px] text-fg/60 tabular-nums">{tpl.count}</div>
+              <div className="text-[11px] text-muted tabular-nums">{tpl.count}</div>
             </div>
             <button type="button" onClick={() => void loadSaved(tpl)} disabled={busy} className={BTN}>
               <Download size={13} aria-hidden />

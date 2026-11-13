@@ -118,7 +118,7 @@ export function OutputSettingsPanel({ settings, save, isDefault, resetTo }: Prop
             onBlur={() => fadeDraft !== settings.fadeMs && void save({ fadeMs: fadeDraft })}
             className={`h-1.5 w-full cursor-pointer accent-accent disabled:cursor-not-allowed ${FOCUS}`}
           />
-          <div className="flex justify-between font-mono text-[10px] text-fg/50" aria-hidden>
+          <div className="flex justify-between font-mono text-[10px] text-faint" aria-hidden>
             <span>{FADE_MIN_MS}ms</span>
             <span>{FADE_MAX_MS}ms</span>
           </div>
@@ -189,7 +189,7 @@ export function OutputSettingsPanel({ settings, save, isDefault, resetTo }: Prop
           }
         >
           <div className="flex items-center gap-2">
-            <Contrast size={14} className={settings.autoLegibility ? 'text-accent' : 'text-fg/40'} aria-hidden />
+            <Contrast size={14} className={settings.autoLegibility ? 'text-accent' : 'text-faint'} aria-hidden />
             <GoldSwitch label="Auto legibility" on={settings.autoLegibility} onChange={(autoLegibility) => void save({ autoLegibility })} />
           </div>
         </Row>
@@ -212,7 +212,7 @@ export function OutputSettingsPanel({ settings, save, isDefault, resetTo }: Prop
         />
         <Row title="Advanced mode" detail={advanced ? 'On: the styling below is drawn on the projector now.' : 'Off: each slide keeps its own look. The styling below is kept for when it is turned on.'}>
           <div className="flex items-center gap-2">
-            <Zap size={14} className={advanced ? 'text-accent' : 'text-fg/40'} aria-hidden />
+            <Zap size={14} className={advanced ? 'text-accent' : 'text-faint'} aria-hidden />
             <GoldSwitch label="Advanced mode" on={advanced} onChange={(advancedOutput) => void save({ advancedOutput })} />
           </div>
         </Row>
@@ -226,7 +226,7 @@ export function OutputSettingsPanel({ settings, save, isDefault, resetTo }: Prop
                 disabled={!advanced}
                 onClick={() => pickColour(null)}
                 className={`h-8 rounded-md border px-3 text-[11px] font-bold tracking-wider uppercase disabled:cursor-not-allowed ${FOCUS} ${
-                  settings.textColor === null ? 'border-accent/40 bg-accent/20 text-accent' : 'border-line text-fg/60 hover:text-fg'
+                  settings.textColor === null ? 'border-accent/40 bg-accent/20 text-accent' : 'border-line text-muted hover:text-fg'
                 }`}
               >
                 Keep each slide's colours
