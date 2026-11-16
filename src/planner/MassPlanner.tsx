@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Info, ListMusic, Play, Plus, Search, Trash2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, Eye, EyeOff, Info, ListMusic, PenLine, Play, Plus, Search, Trash2, X } from 'lucide-react';
 import { calendarDayOf } from '../../shared/liturgical-calendar.js';
 import { clearSlot, moveToSlot, placeInSlot, additionalIn, slotById } from '../../shared/mass-slots.js';
 import { withAllReadings } from '../../shared/daily-readings.js';
@@ -22,7 +23,10 @@ import { sundayCycle } from '../liturgy/lectionary';
 import { deckRow, decksOf } from '../../shared/flow-insert.js';
 import { formatRuns, formatSourceId, parsePassageInput, stripHits } from '../../shared/bible-ref.js';
 import type { Translation } from '../bible/types';
-import type { PrimaryCategory, SongCategory } from '../lyrics/types';
+import type { Hymn, PrimaryCategory, SongCategory } from '../lyrics/types';
+import { AddSongModal } from '../lyrics/AddSongModal';
+import { songSlotFor } from '../../shared/planner-library.js';
+import { PlannerSongDrawer } from './PlannerSongDrawer';
 import { categoryModeLookup, suggestedFor } from '../lyrics/songTaxonomy';
 import { GOSPEL_ACCLAMATION } from '../lectionary/types';
 import { blockRows, moveInto, queueFromPlan, type DragSource } from './logic';
@@ -84,6 +88,8 @@ const MODULE_TONE: Record<string, string> = {
   notice: 'border-sky-500/60 bg-sky-500/15 text-fg',
 };
 const toneOf = (module: string) => MODULE_TONE[module] ?? MODULE_TONE.custom;
+/** A library song card's small buttons: Show / Hide Lyrics, Edit Song and Add. */
+const LIB_ICON_BTN = 'grid size-7 shrink-0 place-items-center rounded-md border transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none';
 
 /** A saved entry's kind: a private operator note, or what the congregation sees, by its Content Hub section (prayer, Holy Mass flow, notice). */
 const KIND_OF_SECTION: Record<string, NoteKind> = { prayers: 'prayer', massFlow: 'flow', announcements: 'notice' };
@@ -178,6 +184,9 @@ export async function loadLibrary(
         sourceId: String(h.id),
         label: h.title,
         sub: [h.composer, h.category, h.language].filter(Boolean).join(' · '),
+        hymnId: h.id,
+        // Every category the song is filed under, so a song in two categories is badged with both.
+        categories: h.categories,
       }));
     }
     case 'lectionary': {
@@ -321,7 +330,8 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
   // The step row being filled from the library or by typed text, and the text typed for it.
   const [choosing, setChoosing] = useState<number | null>(null);
   const [typedText, setTypedText] = useState('');
-  // The song category the song list is filtered by while a song step is being filled. Empty means all songs.
+  // The song category the song list is filtered by. A song step being filled starts it on the step's own category. Empty means every
+  // category; a song filed under several categories is listed under each of them (the hymn query reads categories_json).
   const [songFilter, setSongFilter] = useState('');
   const [songCategories, setSongCategories] = useState<SongCategory[]>([]);
   // The song type the song list shows: Holy Mass by default in the planner, or Praise & Worship, or all songs (General).
@@ -339,6 +349,22 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
   });
   const dragRef = useRef<DragSource | null>(null);
   const fail = (err: unknown) => setError(errorText(err));
+  // The song cards whose lyrics drawer is open, by song id. Several can be open at once, as in the Praise & Worship Library.
+  const [openLyrics, setOpenLyrics] = useState<number[]>([]);
+  const toggleLyrics = (hymnId: number) => setOpenLyrics((open) => (open.includes(hymnId) ? open.filter((id) => id !== hymnId) : [...open, hymnId]));
+  // The song open in the Edit Hymn form, over the planner. Null when the form is closed.
+  const [editing, setEditing] = useState<Hymn | null>(null);
+  /**
+   * Opens a song in the Edit Hymn form. A save sends lyrics:changed to every window, so this library, any open lyrics drawer, the plan's song
+   * rows (lyricsRevision) and the song on the projector (src/live/liveSongEdits.ts) all read it again.
+   */
+  const editSong = (hymnId: number) => {
+    setError(null);
+    bridge.lyrics
+      .getHymn(hymnId)
+      .then((h) => (h ? setEditing(h) : setError(t('libLyricsMissing'))))
+      .catch(fail);
+  };
 
   /** Reloads the plan list and opens `prefer`, when given. */
   const reloadPlans = (prefer: number | null) =>
@@ -584,6 +610,20 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
   const pickFromLibrary = (item: LibraryItem) => {
     if (choosing == null) return;
     replaceAt(choosing, { block: items[choosing].block, module: item.module, sourceId: item.sourceId, label: item.label });
+  };
+
+  /**
+   * Where a song card's Add puts the song: the step being filled, when one is; otherwise the first empty song slot filed under one of the
+   * song's categories, or the first empty song slot (shared/planner-library.js). The button names it, so the operator sees where it goes.
+   */
+  const addTarget = (item: LibraryItem): { label: string; add: (() => void) | null } => {
+    if (choosing != null) return { label: t('libAddToStep'), add: () => pickFromLibrary(item) };
+    const slot = planId == null ? null : songSlotFor(items, item.categories);
+    if (!slot) return { label: t('libAddNoSlot'), add: null };
+    return {
+      label: t('libAddToSlot', { slot: slotLabel(slot, planLang) }),
+      add: () => fillSlot(slot.id, { module: item.module, sourceId: item.sourceId, label: item.label }),
+    };
   };
 
   const dropAt = (block: LiturgicalBlock, slot: number) => {
@@ -851,8 +891,10 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
 
       <div key="editor" className="planner-view-in grid min-h-0 flex-1 grid-cols-1 items-start gap-5 px-5 pb-6 xl:grid-cols-[400px_minmax(0,1fr)]">
         {/* ── Left: library browser ── */}
-        <section className="flex min-h-[480px] flex-col overflow-hidden rounded-[10px] border border-line bg-panel xl:sticky xl:top-5 xl:max-h-[calc(100vh-9rem)]">
-          <div className="flex flex-col gap-3 border-b border-line p-4">
+        {/* Sticky on wide screens: while a long plan scrolls on the right, the search, the filters and the results stay in view. Only the result
+            list scrolls inside it, and it stops short of the window's bottom edge. */}
+        <section data-planner-library className="flex min-h-[480px] flex-col overflow-hidden rounded-[10px] border border-line bg-panel xl:sticky xl:top-4 xl:self-start xl:max-h-[calc(100vh-9rem)]">
+          <div className="flex shrink-0 flex-col gap-3 border-b border-line p-4">
             <div role="tablist" className="flex flex-wrap gap-1">
               {TABS.map((tb) => (
                 <button
@@ -927,15 +969,16 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
             )}
           </div>
 
-          {choosing != null && tab === 'lyrics' && (
-            <label className="flex items-center gap-2 border-t border-line px-3 py-2">
-              <span className="eyebrow shrink-0">{t('songFilterLabel')}</span>
+          {tab === 'lyrics' && (
+            <div className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-2">
+              <label htmlFor="planner-song-category" className="eyebrow shrink-0">{t('songFilterLabel')}</label>
               <select
+                id="planner-song-category"
                 value={songFilter}
                 onChange={(e) => setSongFilter(e.target.value)}
-                className="h-8 min-w-0 flex-1 rounded-md border border-fg/15 bg-panel-2 px-2 text-sm outline-none focus:border-accent"
+                className="h-8 min-w-0 flex-1 rounded-md border border-line-strong bg-surface-2 px-2 text-sm text-fg outline-none focus:border-accent"
               >
-                <option value="">{t('songFilterAll')}</option>
+                <option value="">{t('songCategoryAll')}</option>
                 {/* Only the categories for the scope tab chosen above (Holy Mass, Praise & Worship or All), plus the one in use. */}
                 {songCategories
                   .filter((c) => c.name === songFilter || suggestedFor(songScope, c.name, songCategoryModes))
@@ -943,7 +986,18 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
                     <option key={c.id} value={c.name}>{c.name}</option>
                   ))}
               </select>
-            </label>
+              {songFilter && (
+                <button
+                  type="button"
+                  onClick={() => setSongFilter('')}
+                  aria-label={t('songCategoryClear')}
+                  title={t('songCategoryClear')}
+                  className="grid size-8 shrink-0 place-items-center rounded-md border border-line-strong bg-surface-2 text-muted transition hover:border-accent hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none"
+                >
+                  <X size={14} aria-hidden />
+                </button>
+              )}
+            </div>
           )}
           {tab === 'notes' && (
             // Read-only: every prayer, Mass flow text and announcement is written in the Liturgical Content Hub. This list reads the same notes
@@ -958,9 +1012,14 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
               </span>
             </p>
           )}
-          <ul className="min-h-0 flex-1 overflow-y-auto p-2">
+          <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
             {library.length === 0 && <li className="p-4 text-sm text-muted">{t('nothingHere')}</li>}
-            {library.map((item) => (
+            {library.map((item) => {
+              const hymnId = item.hymnId;
+              const lyricsOpen = hymnId != null && openLyrics.includes(hymnId);
+              // A song card has its own Add, which names where the song goes. Other rows keep the plain drag mark.
+              const target = hymnId != null ? addTarget(item) : null;
+              return (
               <li
                 key={`${item.module}:${item.sourceId}`}
                 draggable
@@ -972,7 +1031,7 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
                   setDrop(null);
                 }}
                 onClick={() => pickFromLibrary(item)}
-                className="group flex cursor-grab items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-fg/[0.06]"
+                className={`group flex cursor-grab flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-2 py-2 transition ${lyricsOpen ? 'bg-fg/[0.06]' : 'hover:bg-fg/[0.06]'}`}
               >
                 {item.kind ? (
                   <span className={`${TAG} ${noteTag(item.kind, t).tone}`}>{noteTag(item.kind, t).text}</span>
@@ -982,14 +1041,86 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-fg">{item.label}</div>
                   <div className="truncate text-[11px] text-muted">{item.sub}</div>
+                  {item.categories && item.categories.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {item.categories.map((c) => (
+                        <span
+                          key={c}
+                          className={`rounded-full border px-1.5 py-px text-[10px] font-semibold ${
+                            c.toLowerCase() === songFilter.toLowerCase() ? 'border-accent/60 bg-accent/15 text-accent' : 'border-line-strong bg-surface-2 text-fg/80'
+                          }`}
+                        >
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-md border border-fg/15 text-muted opacity-60 transition group-hover:border-accent group-hover:text-accent group-hover:opacity-100">
-                  <Plus size={14} />
-                </span>
+                {hymnId != null && (
+                  <>
+                    <button
+                      type="button"
+                      aria-expanded={lyricsOpen}
+                      aria-label={`${lyricsOpen ? t('libHideLyrics') : t('libShowLyrics')}: ${item.label}`}
+                      title={lyricsOpen ? t('libHideLyrics') : t('libShowLyrics')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleLyrics(hymnId);
+                      }}
+                      className={`${LIB_ICON_BTN} ${lyricsOpen ? 'border-accent bg-accent/15 text-accent' : 'border-fg/15 text-muted hover:border-accent hover:text-fg'}`}
+                    >
+                      {lyricsOpen ? <EyeOff size={14} aria-hidden /> : <Eye size={14} aria-hidden />}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${t('libEditSong')}: ${item.label}`}
+                      title={t('libEditSong')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        editSong(hymnId);
+                      }}
+                      className={`${LIB_ICON_BTN} border-fg/15 text-muted hover:border-accent hover:text-fg`}
+                    >
+                      <PenLine size={14} aria-hidden />
+                    </button>
+                  </>
+                )}
+                {target ? (
+                  <button
+                    type="button"
+                    disabled={!target.add}
+                    aria-label={`${target.label}: ${item.label}`}
+                    title={target.label}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      target.add?.();
+                    }}
+                    className={`${LIB_ICON_BTN} border-fg/15 text-muted opacity-60 group-hover:border-accent group-hover:text-accent group-hover:opacity-100 focus-visible:opacity-100 disabled:cursor-not-allowed disabled:opacity-30`}
+                  >
+                    <Plus size={14} aria-hidden />
+                  </button>
+                ) : (
+                  <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-md border border-fg/15 text-muted opacity-60 transition group-hover:border-accent group-hover:text-accent group-hover:opacity-100">
+                    <Plus size={14} />
+                  </span>
+                )}
+                {lyricsOpen && hymnId != null && target && (
+                  <PlannerSongDrawer
+                    hymnId={hymnId}
+                    query={query}
+                    revision={lyricsRevision}
+                    t={t}
+                    addLabel={target.label}
+                    canAdd={Boolean(target.add)}
+                    onAdd={() => target.add?.()}
+                    onEdit={() => editSong(hymnId)}
+                  />
+                )}
               </li>
-            ))}
+              );
+            })}
           </ul>
-          <p className="border-t border-line p-3 text-[11px] text-muted">{t('dragHintLeft')}</p>
+          <p className="shrink-0 border-t border-line p-3 text-[11px] text-muted">{t('dragHintLeft')}</p>
         </section>
 
         {/* ── Right: the plan ── */}
@@ -1094,6 +1225,12 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
           )}
         </section>
       </div>
+      {/* On document.body: the Planner's blurred panels would otherwise be the containing block of the form's fixed overlay. */}
+      {editing &&
+        createPortal(
+          <AddSongModal key={editing.id} hymn={editing} onClose={() => setEditing(null)} onSaved={() => setEditing(null)} onImported={() => setEditing(null)} />,
+          document.body,
+        )}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import { CategorySelectGroup } from './CategorySelectGroup';
 import { useSongEditor, type PreviewStanza, type SongEditor } from './useSongEditor';
 import { PartSelect } from './PartSelect';
 import { slidePart } from '../../shared/lyric-slides.js';
+import { canStepFontScale, fontScalePercent, previewFontCqw, stepFontScale } from '../../shared/song-filing.js';
 
 const api = bridge.lyrics;
 
@@ -36,18 +37,43 @@ const ICON = 'grid size-7 place-items-center rounded-md text-muted transition ho
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
 /**
- * One stanza as the projector shows it: white lines centred on black, sized to fit the screen. The size follows the longest line and the
- * number of lines, so a long stanza is seen to shrink, as it will live.
+ * One stanza as the projector shows it: white lines centred on black, at the theme's lyric size times the song's font scale. Long lines wrap
+ * and a long stanza steps down to fit (see previewFontCqw), as it will live, so the scale shows in full on a short stanza.
  */
-function CuePreview({ stanza }: { stanza: PreviewStanza }) {
-  const lines = stanza.lyricsText.split('\n');
-  const longest = Math.max(8, ...lines.map((l) => l.length));
-  const size = `min(${(88 / (longest * 0.55)).toFixed(2)}cqw, ${(82 / (lines.length * 1.3)).toFixed(2)}cqh, 11cqh)`;
+function CuePreview({ stanza, fontScale }: { stanza: PreviewStanza; fontScale: number }) {
+  const size = `${previewFontCqw(stanza.lyricsText, fontScale)}cqw`;
   return (
     <div className="relative aspect-video w-full overflow-hidden rounded-md bg-black" style={{ containerType: 'size' }}>
-      <div className="absolute inset-0 flex items-center justify-center px-[5%] text-center leading-[1.3] font-semibold whitespace-pre-line text-white" style={{ fontSize: size }}>
+      <div className="absolute inset-0 flex items-center justify-center px-[6%] text-center leading-[1.3] font-semibold whitespace-pre-line text-white" style={{ fontSize: size }} data-font-scale={fontScale}>
         {stanza.lyricsText}
       </div>
+    </div>
+  );
+}
+
+/** A- and A+ for the song's projector font size, with the size as a percentage and a Reset back to 100%. */
+function FontScaleControl({ value, onChange, t }: { value: number; onChange: (scale: number) => void; t: LyT }) {
+  const percent = fontScalePercent(value);
+  const step = 'grid h-7 min-w-8 place-items-center px-2 text-xs font-bold text-fg transition hover:bg-fg/10 hover:text-accent focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-30';
+  return (
+    <div role="group" aria-label={t('fontScaleField')} title={t('fontScaleHint')} className="flex flex-wrap items-center gap-2">
+      <span className={CAPTION}>{t('fontScaleField')}</span>
+      <div className="inline-flex items-center overflow-hidden rounded-md border border-line-strong bg-surface-2">
+        <button type="button" onClick={() => onChange(stepFontScale(value, -1))} disabled={!canStepFontScale(value, -1)} aria-label={t('fontScaleDown')} title={t('fontScaleDown')} className={step}>
+          A−
+        </button>
+        <output aria-live="polite" className="w-12 border-x border-line-strong text-center font-mono text-xs text-fg tabular-nums">
+          {percent}%
+        </output>
+        <button type="button" onClick={() => onChange(stepFontScale(value, 1))} disabled={!canStepFontScale(value, 1)} aria-label={t('fontScaleUp')} title={t('fontScaleUp')} className={`${step} text-sm`}>
+          A+
+        </button>
+      </div>
+      {percent !== 100 && (
+        <button type="button" onClick={() => onChange(1)} className="h-7 rounded-md px-2 text-[11px] font-semibold text-muted transition hover:bg-fg/10 hover:text-fg">
+          {t('fontScaleReset')}
+        </button>
+      )}
     </div>
   );
 }
@@ -228,7 +254,9 @@ function SongComposer({
               scope={fields.primaryCategory}
               onScope={(scope) => set('primaryCategory', scope)}
               songCategory={fields.songCategory}
-              onSongCategory={(name) => set('songCategory', name)}
+              onSongCategory={(name) => e.setCategories(name ? [name] : [])}
+              categoryList={fields.categories}
+              onCategories={e.setCategories}
               categories={e.songCategories}
               invalid={showProblem('songCategoryMissing')}
             />
@@ -294,6 +322,7 @@ function SongComposer({
               <input type="checkbox" checked={e.autoSplit} onChange={(ev) => e.setAutoSplit(ev.target.checked)} className="size-3.5 accent-[var(--color-accent)]" />
               {t('autoSplit')} <span className="text-faint">(4)</span>
             </label>
+            <FontScaleControl value={fields.fontScale} onChange={e.setFontScale} t={t} />
           </div>
           {e.stanzas.length === 0 ? (
             <div className={`grid min-h-40 place-items-center rounded-[10px] border-2 border-dashed p-6 text-center text-sm text-muted ${showProblem('noStanzas') ? 'border-danger/60' : 'border-fg/20'}`}>
@@ -322,7 +351,7 @@ function SongComposer({
                       </button>
                     </div>
                   </div>
-                  <CuePreview stanza={s} />
+                  <CuePreview stanza={s} fontScale={fields.fontScale} />
                 </li>
               ))}
             </ol>

@@ -24,6 +24,8 @@ export interface ProjectorSettings {
   slideFont: string | null;
   defaultIntroSlideMode: 'title' | 'black';
   slideFontScale: number;
+  /** Long lyric and prayer lines are broken into even lines at phrase breaks. On by default. */
+  balanceLines: boolean;
   showSlotTitle: boolean;
   backgroundEverywhere: boolean;
   advancedOutput: boolean;

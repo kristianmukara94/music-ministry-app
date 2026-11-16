@@ -11,6 +11,7 @@ import { ChurchEmblem } from '../church/ChurchEmblem';
 import { getSlideImageUrl, onSlideImageError } from './slideImage';
 import { LowerThirdOverlay } from './LowerThirdView';
 import { customSizes, fontCss, scaledSize, slideFontCss } from '../../shared/text-style.js';
+import { clampFontScale } from '../../shared/song-filing.js';
 import { charsPerLine, slideLine, slideText } from '../../shared/text-wrap.js';
 import { OVERLAP_TRANSITIONS, aspectRatioOf, type ProjectorSettings } from '../../shared/projector-settings.js';
 import { NoteCallout } from './NoteCallout';
@@ -27,6 +28,7 @@ import { SanctuaryAlertOverlay } from './SanctuaryAlertOverlay';
 import { useTextAutoFit } from './useTextAutoFit';
 import { useProjectorTextAutoFit } from './useProjectorTextAutoFit';
 import { useHeadedTextFit } from './useHeadedTextFit';
+import { useBalanceAfterFit, useBalancedText } from './useBalancedLines';
 import { lineCountOf, lineHeightFor } from '../../shared/text-fit.js';
 import { LegibilityContext, gradientShadeStyle, legibilityShadowVars, useBackgroundLegibility, type BackgroundAsset, type ShadeChoice, type ShadeTarget } from '../components/ContrastEngine';
 
@@ -35,6 +37,29 @@ const useSlideFont = (): string | undefined => useOutput((s) => slideFontCss(s.s
 
 /** The operator's slide text size, as a share of normal: 0.7 to 1.5. Each text surface multiplies its size by it. */
 const useSlideScale = (): number => useOutput((s) => s.settings.slideFontScale);
+/** Whether long lines are balanced at phrase breaks (the projector setting; on unless the operator turned it off). */
+const useBalanceLines = (): boolean => useOutput((s) => s.settings.balanceLines !== false);
+
+/**
+ * Balancing for a block of one <p> per line (prayers, readings, text slides): the block is the last child of the element `wrapRef` is on, and
+ * the safe box is the nearest SafeFit (or the parent when the block is drawn without one). Called in the component that renders SafeFit, so it
+ * measures after SafeFit's fit has run (a child's layout effects run first). Lines `skip` returns true for are drawn as they are.
+ */
+function useBalancedBlock(texts: string[], wrapRef: RefObject<HTMLDivElement | null>, deps: unknown[], skip: (index: number) => boolean = () => false): string[] {
+  const balanced = useBalancedText(texts, useBalanceLines());
+  useBalanceAfterFit(balanced, {
+    elementFor: (i) => (skip(i) ? null : (wrapRef.current?.lastElementChild?.children[i] as HTMLElement | undefined)),
+    boxFor: () => (wrapRef.current?.closest('[data-safe-fit]') as HTMLElement | null) ?? wrapRef.current?.parentElement,
+    deps,
+  });
+  return balanced.lines;
+}
+
+/** A paragraph's added "\n" breaks as <br>s, for text drawn without `white-space: pre-line`. */
+function withBreaks(text: string): ReactNode {
+  if (!text.includes('\n')) return text;
+  return text.split('\n').flatMap((part, i) => (i === 0 ? [part] : [<br key={i} />, part]));
+}
 
 /** How long clearing the foreground takes to fade out. Keep in step with `duration-300` below. */
 export const FOREGROUND_FADE_MS = 300;
@@ -93,8 +118,10 @@ function TextLines({ lines, serif = false, style = null, safe = false, inset = t
   const sizes = customSizes(style);
   const chars = charsPerLine(0.86, sizes ? sizes.body : 4.1 * 19.2);
   const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'min(4.1cqw,88px)', slideScale);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const shownLines = useBalancedBlock(lines, wrapRef, [naturalSize, style, slideFont, safe, inset]);
   const body = (textRef?: RefObject<HTMLDivElement>) => (
-    <div className="relative shrink-0">
+    <div ref={wrapRef} className="relative shrink-0">
       <div aria-hidden className={BACKING} />
       <div
         ref={textRef}
@@ -108,15 +135,15 @@ function TextLines({ lines, serif = false, style = null, safe = false, inset = t
           fontSize: naturalSize,
         }}
       >
-        {lines.map((line, i) => (
+        {shownLines.map((line, i) => (
           <p key={i} className={LEGIBLE}>
-            {slideLine(line, chars) || ' '}
+            {withBreaks(slideLine(line, chars)) || ' '}
           </p>
         ))}
       </div>
     </div>
   );
-  return safe ? <SafeFit inset={inset} naturalSize={naturalSize} deps={[lines.join('\n'), style, slideFont]} render={body} /> : body();
+  return safe ? <SafeFit inset={inset} naturalSize={naturalSize} deps={[shownLines.join('\n'), style, slideFont]} render={body} /> : body();
 }
 
 /** The safe margins of a headed slide, as shares of the stage's height: clear of the edge at the top, and of the page count at the bottom. */
@@ -193,8 +220,16 @@ function Slide({ lines, style = null, safe = false, header = true }: { lines: Sl
   const sizes = customSizes(style);
   const chars = charsPerLine(0.86, sizes ? sizes.body : 4.1 * 19.2);
   const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'min(4.1cqw,88px)', slideScale);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  // Responses (drawn after their ℟) and citations are short and keep their own breaks.
+  const shownTexts = useBalancedBlock(
+    lines.map((l) => l.text),
+    wrapRef,
+    [naturalSize, style, slideFont, safe, header],
+    (i) => lines[i]?.role === 'response' || lines[i]?.role === 'cite',
+  );
   const body = (textRef?: RefObject<HTMLDivElement>) => (
-    <div className="relative shrink-0">
+    <div ref={wrapRef} className="relative shrink-0">
       <div aria-hidden className={BACKING} />
       <div
         ref={textRef}
@@ -206,14 +241,14 @@ function Slide({ lines, style = null, safe = false, header = true }: { lines: Sl
           return (
             <p key={i} className={`${LINE_STYLE[line.role]} ${LEGIBLE}`} style={color ? { color } : undefined}>
               {line.role === 'response' && <span className="mr-[0.4em]">℟</span>}
-              {slideLine(line.text, chars) || ' '}
+              {withBreaks(slideLine(shownTexts[i] ?? line.text, chars)) || ' '}
             </p>
           );
         })}
       </div>
     </div>
   );
-  return safe ? <SafeFit header={header} naturalSize={naturalSize} deps={[JSON.stringify(lines), style, slideFont]} render={body} /> : body();
+  return safe ? <SafeFit header={header} naturalSize={naturalSize} deps={[JSON.stringify(lines), shownTexts.join('\n'), style, slideFont]} render={body} /> : body();
 }
 
 /**
@@ -360,7 +395,7 @@ function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBa
         </>
       );
     case 'lyrics':
-      return <SongLyricsSlide label={showSlotTitle ? frame.label : ''} text={frame.text} style={frame.style ?? null} slideFont={slideFont} slideScale={slideScale} song={frame.song ?? null} />;
+      return <SongLyricsSlide label={showSlotTitle ? frame.label : ''} text={frame.text} style={frame.style ?? null} slideFont={slideFont} slideScale={slideScale} fontScale={clampFontScale(frame.fontScale)} song={frame.song ?? null} />;
     case 'text': {
       const headingHidden = Boolean(frame.headline) && !showSlotTitle && frame.text.trim().length > 0;
       // A prayer's page shares a top with its other pages. A short one is centred in the text area, at whatever size its block is drawn.
@@ -524,16 +559,23 @@ function useFadedFrame(live: Frame, fadeMs: number, overlap = false) {
  * when it is too long for the slide: it stays inside 90% of the room left by a padding of 4% top and bottom and 6% at the sides, centred both
  * ways, and is clipped there at worst, never past the slide's edge (see useTextAutoFit). A short chorus keeps its size; a long verse gets
  * tighter line spacing as well as a smaller size. Centred by default. The shadow keeps the text legible over moving backgrounds. A song's own
- * style replaces the default size, face, colour and alignment, and keeps the shadow.
+ * style replaces the default size, face, colour and alignment, and keeps the shadow. The song's own font scale (set in the song form, 75% to
+ * 150%) multiplies that size, with the operator's text scale; the fit still shrinks a stanza that would run off the slide.
  */
-function SongLyricsSlide({ label, text, style, slideFont, slideScale, song }: { label: string; text: string; style: TextStyle | null; slideFont: string | undefined; slideScale: number; song: { hymnId: number; position: number } | null }) {
+function SongLyricsSlide({ label, text, style, slideFont, slideScale, fontScale = 1, song }: { label: string; text: string; style: TextStyle | null; slideFont: string | undefined; slideScale: number; fontScale?: number; song: { hymnId: number; position: number } | null }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLParagraphElement>(null);
   const sizes = customSizes(style);
-  const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'min(4.6cqw,96px)', slideScale);
-  const shown = slideText(text, charsPerLine(0.88, sizes ? sizes.body : 4.6 * 19.2));
-  const { isTruncated } = useTextAutoFit({ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: [shown, style, slideFont, label] });
+  const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'min(4.6cqw,96px)', slideScale * fontScale);
+  // Lines are wrapped for the size the text is set at, the song's own font scale and the operator's included.
+  const wrapped = slideText(text, charsPerLine(0.88, (sizes ? sizes.body : 4.6 * 19.2) * fontScale));
+  // Long lines are balanced at phrase breaks (see useBalancedText). The fit sizes what is drawn; the balancing then measures at that size and
+  // redraws the same number of lines, evenly, so the fit still holds.
+  const balanced = useBalancedText([wrapped], useBalanceLines());
+  const shown = balanced.lines[0];
+  const { isTruncated } = useTextAutoFit({ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: [shown, style, slideFont, label, fontScale] });
+  useBalanceAfterFit(balanced, { elementFor: () => textRef.current, boxFor: () => boxRef.current, deps: [naturalSize, style, slideFont, label] });
   // True on the congregation's projector, false on the operator's mirror and previews. The warning is for the operator only.
   const audience = useContext(OnAirLook);
   return (
@@ -547,7 +589,7 @@ function SongLyricsSlide({ label, text, style, slideFont, slideScale, song }: { 
           color: style?.textColor,
           fontFamily: fontCss(style) ?? slideFont,
           fontSize: naturalSize,
-          lineHeight: lineHeightFor(lineCountOf(shown)),
+          lineHeight: lineHeightFor(lineCountOf(wrapped)),
           textAlign: style?.textAlign ?? 'center',
         }}
       >

@@ -3,7 +3,8 @@ import { CATEGORIES, LANGUAGES, parseLyrics, toTaggedLyrics } from '../shared/ly
 import { arrangementWithSplit } from '../shared/pw-hot-edit.js';
 import { parseTextStyle, sanitizeTextStyle } from '../shared/text-style.js';
 import { SONG_CATEGORY_REQUIRED_EN, isSongCategoryMissing } from '../shared/hymn-category.js';
-import { createSongCategoryService, resolveSongCategory } from './song-categories.js';
+import { createSongCategoryService, resolveSongCategories } from './song-categories.js';
+import { categoriesOf, clampFontScale, normalizeCategories } from '../shared/song-filing.js';
 import { matchStanzaIds } from '../shared/stanza-ids.js';
 import { isPrimaryCategory, legacyCategoryFor, normalizePrimary, scopesShownBy, DEFAULT_PRIMARY } from '../shared/song-taxonomy.js';
 
@@ -83,6 +84,30 @@ export const HYMN_DELETE_MIGRATIONS = [
    CREATE INDEX idx_hymns_deleted ON hymns (deleted_at);`,
 ];
 
+/**
+ * A song can be filed under several song categories, and has its own projector font size. `categories_json` holds the full list; the primary
+ * one (the first) stays in `song_category`, so exports, the cloud sync and older queries keep working. Null means a song saved before the
+ * list existed: it reads as its one `song_category`. `font_scale` multiplies the theme's lyric size on the projector (1 = the theme's own).
+ * Appended to the end of the migration list only.
+ */
+export const HYMN_FILING_MIGRATIONS = [
+  `ALTER TABLE hymns ADD COLUMN categories_json TEXT;
+   ALTER TABLE hymns ADD COLUMN font_scale REAL NOT NULL DEFAULT 1.0 CHECK (font_scale >= 0.75 AND font_scale <= 1.5);`,
+];
+
+/** A hymn row with its two filing columns read into `categories` (primary first) and `fontScale`. */
+const withFiling = ({ categoriesJson, fontScale, ...row }) => ({ ...row, categories: categoriesOf(row.songCategory, categoriesJson), fontScale: clampFontScale(fontScale) });
+
+/**
+ * The categories a form or import asks for, primary first. `categories` is the full list; a caller that sends only `songCategory` (an older
+ * form, a file import) files the song under that one. A `songCategory` that is not first in the list is put first.
+ */
+function requestedCategories(input) {
+  const list = Array.isArray(input.categories) ? input.categories : [];
+  const primary = String(input.songCategory ?? '').trim();
+  return normalizeCategories(primary ? [primary, ...list] : list);
+}
+
 /** Validates hymn metadata and parses the lyrics. Shared by create and edit so the rules cannot drift. */
 function checkedHymnInput(input) {
   const title = String(input.title ?? '').trim();
@@ -96,10 +121,12 @@ function checkedHymnInput(input) {
   const language = requireOneOf(input.language, LANGUAGES, 'Language');
   // The musical key, as written: C, Bb, F#m, and so on.
   const musicalKey = String(input.musicalKey ?? '').trim().slice(0, MAX_KEY);
+  // The projector font size: missing means unchanged on an edit, and the theme's own size on a new song.
+  const fontScale = input.fontScale == null ? null : clampFontScale(input.fontScale);
 
   const parsed = parseLyrics(input.raw);
   if (parsed.errors.length) throw new Error(parsed.errors[0]);
-  return { title, composer, category, primaryCategory, language, musicalKey, stanzas: parsed.stanzas, warnings: parsed.warnings };
+  return { title, composer, category, primaryCategory, language, musicalKey, fontScale, stanzas: parsed.stanzas, warnings: parsed.warnings };
 }
 
 /** Data access and lyric parsing for Song Lyrics. Pure: takes a database handle. */
@@ -130,12 +157,15 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
   const q = {
     list: db.prepare(`
       SELECT h.id, h.title, h.composer, h.category, h.language, h.musical_key AS musicalKey, h.song_category AS songCategory, h.primary_category AS primaryCategory,
+             h.categories_json AS categoriesJson, h.font_scale AS fontScale,
              (SELECT COUNT(*) FROM hymn_stanzas s WHERE s.hymn_id = h.id) AS stanzaCount
       FROM hymns h
       WHERE h.deleted_at IS NULL
         AND (@category IS NULL OR h.category = @category)
         AND (@language IS NULL OR h.language = @language)
-        AND (@songCategory IS NULL OR h.song_category = @songCategory COLLATE NOCASE)
+        AND (@songCategory IS NULL OR h.song_category = @songCategory COLLATE NOCASE
+             OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(h.categories_json) THEN h.categories_json END) c
+                        WHERE c.type = 'text' AND c.value = @songCategory COLLATE NOCASE))
         AND (@scopeA IS NULL OR h.primary_category IN (@scopeA, @scopeB))
         AND (@term IS NULL
              OR h.title LIKE @term ESCAPE '\\'
@@ -143,7 +173,7 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
              OR h.musical_key LIKE @term ESCAPE '\\'
              OR EXISTS (SELECT 1 FROM hymn_stanzas s WHERE s.hymn_id = h.id AND s.lyrics_text LIKE @term ESCAPE '\\'))
       ORDER BY h.title COLLATE NOCASE`),
-    hymn: db.prepare('SELECT id, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory, primary_category AS primaryCategory, style AS styleJson, deleted_at AS deletedAt FROM hymns WHERE id = ?'),
+    hymn: db.prepare('SELECT id, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory, primary_category AS primaryCategory, categories_json AS categoriesJson, font_scale AS fontScale, style AS styleJson, deleted_at AS deletedAt FROM hymns WHERE id = ?'),
     // A hymn in the library: not deleted. Used by the plans, so a deleted hymn is shown as deleted rather than as present.
     liveHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NULL'),
     deletedHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NOT NULL'),
@@ -158,14 +188,14 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
     stanzas: db.prepare(`
       SELECT id, stanza_type AS stanzaType, lyrics_text AS lyricsText, display_order AS "order"
       FROM hymn_stanzas WHERE hymn_id = ? ORDER BY display_order, id`),
-    insertHymn: db.prepare('INSERT INTO hymns (title, composer, category, language, musical_key, song_category, primary_category) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+    insertHymn: db.prepare('INSERT INTO hymns (title, composer, category, language, musical_key, song_category, primary_category, categories_json, font_scale) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     insertStanza: db.prepare('INSERT INTO hymn_stanzas (hymn_id, stanza_type, lyrics_text, display_order) VALUES (?, ?, ?, ?)'),
     // An edit keeps each stanza's id, so an id is passed in; null gives the stanza a new one.
     insertStanzaWithId: db.prepare('INSERT INTO hymn_stanzas (id, hymn_id, stanza_type, lyrics_text, display_order) VALUES (?, ?, ?, ?, ?)'),
     stanzaIds: db.prepare(`
       SELECT id, stanza_type AS stanzaType, lyrics_text AS lyricsText, display_order AS position
       FROM hymn_stanzas WHERE hymn_id = ? ORDER BY display_order, id`),
-    updateHymn: db.prepare('UPDATE hymns SET title = ?, composer = ?, category = ?, language = ?, musical_key = ?, song_category = ?, primary_category = ? WHERE id = ?'),
+    updateHymn: db.prepare('UPDATE hymns SET title = ?, composer = ?, category = ?, language = ?, musical_key = ?, song_category = ?, primary_category = ?, categories_json = ?, font_scale = ? WHERE id = ?'),
     clearStanzas: db.prepare('DELETE FROM hymn_stanzas WHERE hymn_id = ?'),
     setlists: db.prepare('SELECT id, date, name FROM setlists ORDER BY date DESC, id DESC'),
     setlist: db.prepare('SELECT id, date, name FROM setlists WHERE id = ?'),
@@ -182,8 +212,11 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
     insertItem: db.prepare('INSERT INTO setlist_items (setlist_id, hymn_id, position) VALUES (?, ?, ?)'),
   };
 
-  const insertHymnWithStanzas = db.transaction((title, composer, category, language, musicalKey, songCategory, primaryCategory, stanzas) => {
-    const { lastInsertRowid } = q.insertHymn.run(title, composer, category, language, musicalKey, songCategory, primaryCategory);
+  // The list is stored only when there is one; an empty filing stays null, as before.
+  const categoriesJson = (categories) => (categories.length ? JSON.stringify(categories) : null);
+
+  const insertHymnWithStanzas = db.transaction((hymn, stanzas) => {
+    const { lastInsertRowid } = q.insertHymn.run(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, hymn.songCategory, hymn.primaryCategory, categoriesJson(hymn.categories), hymn.fontScale);
     stanzas.forEach((s, i) => q.insertStanza.run(lastInsertRowid, s.stanzaType, s.lyricsText, i + 1));
     return Number(lastInsertRowid);
   });
@@ -246,7 +279,7 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
     const before = q.stanzaIds.all(id);
     const ids = matchStanzaIds(before, hymn.stanzas);
     const dropped = before.filter((o) => !ids.includes(o.id));
-    q.updateHymn.run(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, hymn.songCategory, hymn.primaryCategory, id);
+    q.updateHymn.run(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, hymn.songCategory, hymn.primaryCategory, categoriesJson(hymn.categories), hymn.fontScale, id);
     q.clearStanzas.run(id);
     const saved = hymn.stanzas.map((s, i) => {
       const result = q.insertStanzaWithId.run(ids[i], id, s.stanzaType, s.lyricsText, i + 1);
@@ -279,7 +312,8 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
       const escaped = term.replace(/[\\%_]/g, (ch) => `\\${ch}`);
       // A filter scope limits the list to that scope's songs and the General ones. General, or no scope, limits nothing.
       const [scopeA = null, scopeB = null] = scopesShownBy(normalizePrimary(filter.primaryCategory)) ?? [];
-      return q.list.all({
+      return q.list
+        .all({
         scopeA,
         scopeB,
         category: CATEGORIES.includes(filter.category) ? filter.category : null,
@@ -287,25 +321,29 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
         // Exactly this song category (letter case aside): no prefix, no part of a name. Blank, or nothing, means every category.
         songCategory: String(filter.songCategory ?? '').trim() || null,
         term: term ? `%${escaped}%` : null,
-      });
+        })
+        .map(withFiling);
     },
 
     getHymn(id) {
       const hymn = q.hymn.get(id);
       if (!hymn) return null;
       // The style is stored as JSON. It is checked on the way out, as it is on the way in.
-      const { styleJson, ...details } = hymn;
+      const { styleJson, ...details } = withFiling(hymn);
       return { ...details, style: parseTextStyle(styleJson), stanzas: q.stanzas.all(id) };
     },
 
     /** Parses the pasted lyrics and stores the hymn with its stanzas in one transaction. */
     createHymn(input = {}) {
       // Refused before anything is parsed or written: a hymn needs a song category.
-      if (isSongCategoryMissing(input.songCategory)) throw new Error(SONG_CATEGORY_REQUIRED_EN);
+      const requested = requestedCategories(input);
+      if (isSongCategoryMissing(requested[0])) throw new Error(SONG_CATEGORY_REQUIRED_EN);
       const hymn = checkedHymnInput(input);
-      const songCategory = resolveSongCategory(db, input.songCategory);
-      hymn.category ??= legacyCategoryFor(hymn.primaryCategory, songCategory);
-      const id = insertHymnWithStanzas(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, songCategory, hymn.primaryCategory, hymn.stanzas);
+      hymn.categories = resolveSongCategories(db, requested);
+      hymn.songCategory = hymn.categories[0];
+      hymn.fontScale ??= 1;
+      hymn.category ??= legacyCategoryFor(hymn.primaryCategory, hymn.songCategory);
+      const id = insertHymnWithStanzas(hymn, hymn.stanzas);
       changed(id);
       return { id, warnings: hymn.warnings };
     },
@@ -333,12 +371,20 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
     editHymn(id, input = {}, { wordsOnly = false } = {}) {
       // Refused before anything is written: saving an existing hymn needs a song category too. Hymns already saved without one are
       // left as they are until they are next saved in the song form. A change to the words alone keeps the song's filing, whatever it is.
-      if (!wordsOnly && isSongCategoryMissing(input.songCategory)) throw new Error(SONG_CATEGORY_REQUIRED_EN);
-      const current = q.hymn.get(id);
+      const row = q.hymn.get(id);
+      const current = row ? withFiling(row) : null;
+      // A caller that names no list (an older form) keeps the song's other categories behind the primary one it sends.
+      const requested = Array.isArray(input.categories)
+        ? requestedCategories(input)
+        : normalizeCategories([String(input.songCategory ?? '').trim(), ...(current?.categories.slice(1) ?? [])]);
+      if (!wordsOnly && isSongCategoryMissing(requested[0])) throw new Error(SONG_CATEGORY_REQUIRED_EN);
       if (!current) throw new Error('That hymn no longer exists.');
       if (current.deletedAt) throw new Error('That hymn was deleted. Undo the delete to change it.');
       const hymn = checkedHymnInput(input);
-      hymn.songCategory = resolveSongCategory(db, input.songCategory, current.songCategory);
+      // Names the song already carries stay allowed even after they leave the category list, so editing other details never fails.
+      hymn.categories = resolveSongCategories(db, requested, current.categories);
+      hymn.songCategory = hymn.categories[0] ?? '';
+      hymn.fontScale ??= current.fontScale;
       // Untouched scope and song category keep the slot the song has, so an edit to the lyrics never changes where the lineup finds it. A change
       // to either follows the new pair.
       const sameFiling = current.primaryCategory === hymn.primaryCategory && current.songCategory.toLowerCase() === hymn.songCategory.toLowerCase();
@@ -368,6 +414,8 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
           language: hymn.language,
           musicalKey: hymn.musicalKey,
           songCategory: hymn.songCategory,
+          categories: hymn.categories,
+          fontScale: hymn.fontScale,
           primaryCategory: hymn.primaryCategory,
           raw,
         },

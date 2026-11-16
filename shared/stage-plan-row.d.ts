@@ -18,6 +18,8 @@ export interface StageHymn {
   id: number;
   title: string;
   style?: unknown;
+  /** The song's own projector font size, as a multiple of the theme's (1 or missing: the theme's own). */
+  fontScale?: number;
   deletedAt?: string | null;
   stanzas: { stanzaType: string; lyricsText: string }[];
 }

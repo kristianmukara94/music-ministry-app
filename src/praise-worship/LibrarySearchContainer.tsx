@@ -3,6 +3,7 @@ import type { LibraryDragBatch } from '../../shared/pw-attach.js';
 import { setPwState } from './store';
 import { isTextEntry } from './textEntry';
 import { SongSearchResultCard, type LibraryRow } from './SongSearchResultCard';
+import { SongLyricsPreview } from './SongLyricsPreview';
 import type { QuickLive } from './useQuickLiveController';
 import type { PwT } from './strings';
 
@@ -23,6 +24,10 @@ interface Props {
   canInsert: (row: LibraryRow | null) => boolean;
   onActivate: (row: LibraryRow) => void;
   onCardClick: (e: MouseEvent, index: number, row: LibraryRow) => void;
+  /** The search as typed, marked inside an open lyrics preview. */
+  query?: string;
+  /** Opens the Edit Hymn form for a song, over the planner. */
+  onEditSong?: (hymnId: number) => void;
 }
 
 /** A small label to drag in place of the card when several are dragged together. */
@@ -44,12 +49,15 @@ function dragBadge(text: string): HTMLElement {
  * It also draws each song's Go Live state from the quick-live controller.
  */
 export const LibrarySearchContainer = forwardRef<LibrarySearchHandle, Props>(function LibrarySearchContainer(
-  { rows, tab, ticked, quick, t, replacing, segmentName, canInsert, onActivate, onCardClick },
+  { rows, tab, ticked, quick, t, replacing, segmentName, canInsert, onActivate, onCardClick, query = '', onEditSong },
   ref,
 ) {
   const rowButtons = useRef<(HTMLButtonElement | null)[]>([]);
   // The rows being dragged, so they can show it.
   const [draggingKeys, setDraggingKeys] = useState<string[]>([]);
+  // The song cards whose lyrics are open, by row key. Each opens and closes on its own.
+  const [openLyrics, setOpenLyrics] = useState<string[]>([]);
+  const toggleLyrics = (key: string) => setOpenLyrics((open) => (open.includes(key) ? open.filter((k) => k !== key) : [...open, key]));
 
   useImperativeHandle(ref, () => ({ focusRow: (index) => rowButtons.current[index]?.focus() }), []);
 
@@ -84,6 +92,8 @@ export const LibrarySearchContainer = forwardRef<LibrarySearchHandle, Props>(fun
       {rows.length === 0 && tab === 'prayer' && <li className="p-3 text-sm text-muted">{t('noPrayers')}</li>}
       {rows.map((row, i) => {
         const hymnId = row.hymnId;
+        const lyricsOpen = openLyrics.includes(row.key);
+        const edit = () => hymnId != null && onEditSong?.(hymnId);
         return (
           <SongSearchResultCard
             key={row.key}
@@ -132,6 +142,17 @@ export const LibrarySearchContainer = forwardRef<LibrarySearchHandle, Props>(fun
             onRowKey={(e) => onRowKey(e, row, i)}
             onGoLive={(immediate) => goLive(row, immediate)}
             labels={{ fits: t('fits'), live: t('currentlyLive'), goLive: t('goLiveNow'), confirm: t('goLiveConfirm'), showing: t('onScreen') }}
+            lyrics={
+              hymnId == null || !onEditSong
+                ? undefined
+                : {
+                    open: lyricsOpen,
+                    onToggle: () => toggleLyrics(row.key),
+                    onEdit: edit,
+                    labels: { show: t('showLyrics'), hide: t('hideLyrics'), edit: t('editSong') },
+                    preview: lyricsOpen ? <SongLyricsPreview hymnId={hymnId} query={query} t={t} canAdd={canInsert(row)} onAdd={() => row.insert()} onEdit={edit} /> : null,
+                  }
+            }
           />
         );
       })}

@@ -43,3 +43,98 @@ export function lineHeightFor(lineCount) {
 
 /** How many lines a text shows, counting a blank line as one. */
 export const lineCountOf = (text) => String(text ?? '').split('\n').length;
+
+/**
+ * Short words a projected line should not end on: articles, conjunctions and prepositions in English, Tagalog and Cebuano. A break after one
+ * leaves it hanging at the end of a line, cut off from the word it belongs to.
+ */
+export const WEAK_LINE_ENDS = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'to', 'of', 'for', 'ng', 'sa', 'ug', 'na', 'ang', 'mga']);
+
+/** A word that closes a clause: ends in . , ; : ? ! or a dash, perhaps followed by a closing quote or bracket. A good place to break. */
+const CLAUSE_END = /[.,;:?!—–](["'”’)\]]*)$/;
+
+// The weights of the line-break choice. A line's distance from the even share is measured as a share of the width and squared, so these are
+// in the same units: a weak word at a line end costs about as much as being a word and a half off balance on a six-word line, a clause break
+// earns about a word's worth, and a lone word on a line costs more than any imbalance short of a full line.
+const WEAK_END_COST = 0.06;
+const CLAUSE_END_BONUS = 0.04;
+const LONE_WORD_COST = 0.25;
+
+const bareWord = (word) => word.toLowerCase().replace(/[^\p{L}]/gu, '');
+
+/**
+ * One line of slide text broken into balanced lines, each at most `maxWidth` wide as `measure` measures it. A line that fits is returned
+ * whole. Otherwise it takes exactly as many lines as the browser's own wrap would (so the slide is no taller, and the fit that sized it still
+ * holds), but the words are shared out evenly: seven words come out as four and three, not six and one. Among even splits it prefers to break
+ * after a clause (a comma, a full stop, a dash) and avoids leaving a short word such as "the", "and", "ng" or "sa" at a line's end.
+ *
+ * A line with a word wider than `maxWidth` on its own is returned whole: the browser breaks that word where text-wrap.js allows it.
+ */
+export function balanceLine(line, maxWidth, measure) {
+  const text = String(line ?? '');
+  if (!(maxWidth > 0) || measure(text) <= maxWidth) return [text];
+  const words = text.trim().split(/ +/);
+  const n = words.length;
+  if (n < 2) return [text];
+  const widths = words.map((w) => measure(w));
+  if (widths.some((w) => w > maxWidth)) return [text];
+  const space = measure(' ');
+  const prefix = [0];
+  for (const w of widths) prefix.push(prefix[prefix.length - 1] + w);
+  const span = (a, b) => prefix[b] - prefix[a] + space * (b - a - 1);
+
+  // How many lines the browser would use: fill each line greedily.
+  let count = 1;
+  for (let i = 1, run = widths[0]; i < n; i += 1) {
+    if (run + space + widths[i] <= maxWidth) run += space + widths[i];
+    else (count += 1), (run = widths[i]);
+  }
+  if (count === 1) return [text];
+
+  const share = span(0, n) / count;
+  const cost = (a, b, last) => {
+    const width = span(a, b);
+    if (width > maxWidth) return Infinity;
+    let c = ((width - share) / maxWidth) ** 2;
+    if (b - a === 1 && n > count) c += LONE_WORD_COST;
+    if (!last) {
+      const end = words[b - 1];
+      if (CLAUSE_END.test(end)) c -= CLAUSE_END_BONUS;
+      else if (WEAK_LINE_ENDS.has(bareWord(end))) c += WEAK_END_COST;
+    }
+    return c;
+  };
+
+  // best[j][i]: the lowest cost of setting the first i words on j lines; from[j][i] is where the j-th line starts.
+  const best = Array.from({ length: count + 1 }, () => new Array(n + 1).fill(Infinity));
+  const from = Array.from({ length: count + 1 }, () => new Array(n + 1).fill(-1));
+  best[0][0] = 0;
+  for (let j = 1; j <= count; j += 1) {
+    for (let i = j; i <= n - (count - j); i += 1) {
+      for (let a = j - 1; a < i; a += 1) {
+        if (best[j - 1][a] === Infinity) continue;
+        const c = best[j - 1][a] + cost(a, i, j === count);
+        if (c < best[j][i]) (best[j][i] = c), (from[j][i] = a);
+      }
+    }
+  }
+  if (best[count][n] === Infinity) return [text];
+  const lines = [];
+  for (let j = count, i = n; j > 0; j -= 1) {
+    const a = from[j][i];
+    lines.unshift(words.slice(a, i).join(' '));
+    i = a;
+  }
+  return lines;
+}
+
+/**
+ * A whole slide text with every line that is too wide balanced (see balanceLine). The text's own line breaks are kept, blank lines included;
+ * the added breaks are newlines, so the slide draws them with `white-space: pre-line` or as separate lines.
+ */
+export function balanceProjectorLines(text, maxWidth, measure) {
+  return String(text ?? '')
+    .split('\n')
+    .map((line) => balanceLine(line, maxWidth, measure).join('\n'))
+    .join('\n');
+}

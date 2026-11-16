@@ -1,5 +1,5 @@
 import type { DragEvent, KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react';
-import { AlertTriangle, Radio, Zap } from 'lucide-react';
+import { AlertTriangle, Eye, EyeOff, PenLine, Radio, Zap } from 'lucide-react';
 import type { LibraryDrag } from '../../shared/pw-attach.js';
 import type { QuickLiveNotice } from './useQuickLiveController';
 
@@ -49,13 +49,21 @@ interface Props {
   /** `immediate` skips the confirm click. */
   onGoLive: (immediate: boolean) => void;
   labels: { fits: string; live: string; goLive: string; confirm: string; showing: string };
+  /**
+   * Song rows only: the Show Lyrics toggle and the Edit Song button, and the preview drawn under the card while it is open. Neither button
+   * ticks the card or adds the song.
+   */
+  lyrics?: { open: boolean; onToggle: () => void; onEdit: () => void; labels: { show: string; hide: string; edit: string }; preview: ReactNode };
 }
 
 /**
  * A library result card. A song card has two actions: Add (quiet, queues it in the open lineup card) and Go Live (loud, shows stanza 1 on the
  * projector now). The song on the projector wears a pulsing badge and a glow, so the operator sees what the congregation sees.
  */
-export function SongSearchResultCard({ row, selected, dragging, addLabel, addAria, canAdd, quick, buttonRef, onActivate, onCardClick, onDragStart, onDragEnd, onRowKey, onGoLive, labels }: Props) {
+const ICON_BTN =
+  'grid size-11 shrink-0 place-items-center rounded-lg border transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none';
+
+export function SongSearchResultCard({ row, selected, dragging, addLabel, addAria, canAdd, quick, buttonRef, onActivate, onCardClick, onDragStart, onDragEnd, onRowKey, onGoLive, labels, lyrics }: Props) {
   const isLive = quick?.isLive ?? false;
   const notice = quick?.notice ?? null;
   return (
@@ -95,6 +103,35 @@ export function SongSearchResultCard({ row, selected, dragging, addLabel, addAri
         <span className="w-full truncate font-semibold">{row.title}</span>
         <span className="w-full truncate text-xs text-muted">{row.sub}</span>
       </button>
+      {lyrics && (
+        <>
+          <button
+            type="button"
+            aria-expanded={lyrics.open}
+            aria-label={`${lyrics.open ? lyrics.labels.hide : lyrics.labels.show}: ${row.title}`}
+            title={lyrics.open ? lyrics.labels.hide : lyrics.labels.show}
+            onClick={(e) => {
+              e.stopPropagation();
+              lyrics.onToggle();
+            }}
+            className={`${ICON_BTN} ${lyrics.open ? 'border-accent bg-accent/15 text-accent' : 'border-fg/15 text-muted hover:border-accent hover:text-fg'}`}
+          >
+            {lyrics.open ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
+          </button>
+          <button
+            type="button"
+            aria-label={`${lyrics.labels.edit}: ${row.title}`}
+            title={lyrics.labels.edit}
+            onClick={(e) => {
+              e.stopPropagation();
+              lyrics.onEdit();
+            }}
+            className={`${ICON_BTN} border-fg/15 text-muted hover:border-accent hover:text-fg`}
+          >
+            <PenLine size={16} aria-hidden />
+          </button>
+        </>
+      )}
       {row.extra}
       {/* Add goes straight to the open lineup card and leaves the selection as it is. It shows on hover, and on focus for the keyboard. */}
       <button
@@ -133,6 +170,7 @@ export function SongSearchResultCard({ row, selected, dragging, addLabel, addAri
           {isLive ? labels.showing : quick.armed ? labels.confirm : labels.goLive}
         </button>
       )}
+      {lyrics?.open && lyrics.preview}
       {notice && (
         <p role="alert" className={`flex basis-full items-center gap-1.5 px-2 text-xs ${notice.kind === 'screen' ? 'text-warn' : 'text-danger'}`}>
           <AlertTriangle size={13} aria-hidden className="shrink-0" />

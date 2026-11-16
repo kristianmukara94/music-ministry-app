@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { bridge } from '../live/bridge';
 import { useLyT, type LyT } from './strings';
 import { DEFAULT_TARGET_MODE, TARGET_MODE_OPTIONS } from './songTaxonomy';
@@ -76,6 +76,7 @@ export function SongCategoriesEditor({ onChanged }: { onChanged?: () => void }) 
   const [editing, setEditing] = useState<{ id: number; name: string; targetMode: CategoryTargetMode } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const newInput = useRef<HTMLInputElement>(null);
 
   const load = () =>
     api
@@ -107,10 +108,29 @@ export function SongCategoriesEditor({ onChanged }: { onChanged?: () => void }) 
     }
   };
 
-  // The mode chosen for the last new category stays chosen, so a run of Praise & Worship categories is added without re-picking it.
+  /**
+   * Adds the typed category. The field is cleared and focused at once, before the save returns, so the next name can be typed straight away,
+   * after Enter or after a click on Add. Nothing here is ever disabled while a save runs: a disabled button that has focus (the one just
+   * clicked) throws focus out of the form, and the next keys were lost until the field was clicked again. The new category joins the list as
+   * soon as it is saved. A refused name (a repeat, too long) comes back into the field, unless something else has been typed there since.
+   * The mode chosen for the last new category stays chosen, so a run of Praise & Worship categories is added without re-picking it.
+   */
   const add = async (e: FormEvent) => {
     e.preventDefault();
-    if (await run(() => api.createSongCategory({ name: newName, targetMode: newMode }))) setNewName('');
+    const name = newName.trim();
+    if (!name) return;
+    setNewName('');
+    setError(null);
+    newInput.current?.focus();
+    try {
+      const created = await api.createSongCategory({ name, targetMode: newMode });
+      setCategories((list) => (list.some((c) => c.id === created.id) ? list : [...list, created]));
+      onChanged?.();
+      void load();
+    } catch (err) {
+      setError(errorText(err));
+      setNewName((now) => (now === '' ? name : now));
+    }
   };
 
   const save = async (e: FormEvent) => {
@@ -130,6 +150,7 @@ export function SongCategoriesEditor({ onChanged }: { onChanged?: () => void }) 
 
       <form onSubmit={add} className="flex flex-wrap gap-2">
         <input
+          ref={newInput}
           aria-label={t('songCategoryNew')}
           placeholder={t('songCategoryNew')}
           maxLength={40}
@@ -137,8 +158,9 @@ export function SongCategoriesEditor({ onChanged }: { onChanged?: () => void }) 
           onChange={(e) => setNewName(e.target.value)}
           className={field}
         />
-        <TargetModeToggle t={t} idPrefix="cat-new-mode" value={newMode} onChange={setNewMode} disabled={busy} />
-        <button type="submit" disabled={busy || !newName.trim()} className={button}>
+        <TargetModeToggle t={t} idPrefix="cat-new-mode" value={newMode} onChange={setNewMode} />
+        {/* Never disabled by a save in flight (see add): an empty field just does nothing. */}
+        <button type="submit" aria-disabled={!newName.trim() || undefined} className={`${button} aria-disabled:opacity-40`}>
           {t('songCategoryAdd')}
         </button>
       </form>

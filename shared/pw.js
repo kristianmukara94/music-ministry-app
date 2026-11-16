@@ -2,6 +2,7 @@ import { normalizeSplit } from './prayer-split.js';
 import { PRAYER_MAX_PX, pageTops, prayerSlidesFor } from './prayer-slides.js';
 import { LINEUP_PRAYER_FIT, prayerPages } from './prayer-fit.js';
 import { lyricPagesFor } from './lyric-area.js';
+import { clampFontScale } from './song-filing.js';
 import { PW_LINEUP } from './lineup-templates.js';
 
 // Praise & Worship: the lineup model, shared by the main process (validation, seeding) and the renderer
@@ -149,7 +150,42 @@ export function fitsSegment(hymn, segment, tags) {
  * field still follows the lineup. A segment the template does not list holds only its own type.
  */
 export function typesFor(segment) {
-  return DEFAULT_TEMPLATE.segments.find((t) => t.key === segment.key)?.types ?? [segment.type];
+  const listed = DEFAULT_TEMPLATE.segments.find((t) => t.key === segment.key)?.types ?? [];
+  // A card the operator switched to another function holds that type too, whatever the template lists.
+  return listed.includes(segment.type) ? listed : [segment.type, ...listed];
+}
+
+/**
+ * The segment fields that give a card another function (song, prayer or scripture), or null when it already has it or the type is
+ * unknown. Nothing assigned is lost: the songs stay, the chain stays, and the card's first prayer or reading moves into the chain when
+ * the card stops being that kind. Becoming a prayer or scripture card takes the first prayer or reading from the chain as its first item
+ * (an empty prayer slot or a title slide otherwise). A title slide is dropped when the card becomes a song or prayer card, so the songs
+ * project on their own on Go Live.
+ */
+export function withCardType(segment, type) {
+  if (!PW_TYPES.includes(type) || segment.type === type) return null;
+  const hymnIds = songsOf(segment);
+  const first = primaryOf(segment);
+  // Every prayer and reading the card holds, its first item first, each with the minutes a chained item carries.
+  const pool = [...(first ? [{ ...first, minutes: 0 }] : []), ...chainOf(segment)];
+  const take = (kind) => {
+    const at = pool.findIndex((item) => item.kind === kind);
+    return at < 0 ? null : pool.splice(at, 1)[0];
+  };
+  let content;
+  if (type === 'song') {
+    const template = DEFAULT_TEMPLATE.segments.find((t) => t.key === segment.key)?.content;
+    const own = segment.content.kind === 'song' ? segment.content : template?.kind === 'song' ? template : null;
+    content = { kind: 'song', hymnIds, maxSongs: Math.max(1, hymnIds.length, own?.maxSongs ?? 1), category: own?.category ?? null };
+  } else if (type === 'prayer') {
+    const prayer = take('prayer');
+    content = { kind: 'prayer', noteId: prayer ? prayer.noteId : null, hymnIds };
+  } else {
+    const reading = take('lectionary');
+    content = reading ? { kind: 'lectionary', readingType: reading.readingType, hymnIds } : { kind: 'title', hymnIds };
+  }
+  if (pool.length) content.more = pool;
+  return { type, content, arrangement: segment.arrangement };
 }
 
 /** Whether items from a library tab (song, prayer or scripture) may go into this segment. */
@@ -370,6 +406,9 @@ function songSlides(segment, hymns, { band, scale, withTitle }) {
   const slides = [];
   if (withTitle) slides.push({ kind: 'title', label: segment.name, subtitle: list.map((h) => h.title).join(' · ') });
   for (const hymn of list) {
+    // The song's own font size scales its pages with the operator's: a larger song gets more, shorter pages. Missing is the theme's own size.
+    const fontScale = clampFontScale(hymn.fontScale);
+    const songScale = scale * fontScale;
     // The song's slides are one group: its normal slides share one top, and a short one is centred (see shared/text-area.js).
     const entries = [];
     for (const sectionId of sectionOrder(hymn, segment.arrangement)) {
@@ -377,16 +416,16 @@ function songSlides(segment, hymns, { band, scale, withTitle }) {
       // The stanza's position in the song, and the song's stanza count, let the projector follow an edit while this slide is live.
       // A stanza longer than a lineup slide is split under the same rule as a prayer. Each page keeps the stanza's text, in order.
       // The band, when it is on, only changes how the stanza is split: the text and its size stay the same.
-      const pages = lyricPagesFor(stanza.lyricsText, band, scale);
+      const pages = lyricPagesFor(stanza.lyricsText, band, songScale);
       entries.push({ sectionId, stanza, list: pages.length ? pages : [''] });
     }
-    const tops = pageTops(entries.flatMap((e) => e.list), PRAYER_MAX_PX * scale);
+    const tops = pageTops(entries.flatMap((e) => e.list), PRAYER_MAX_PX * songScale);
     let k = 0;
     for (const { sectionId, stanza, list } of entries) {
       for (const [part, text] of list.entries()) {
         const { top, centred } = tops[k];
         k += 1;
-        slides.push({ kind: 'lyrics', label: stanza.stanzaType, chip: sectionChip(stanza.stanzaType), text, hymnId: hymn.id, hymnTitle: hymn.title, sectionId, position: hymn.stanzas.indexOf(stanza), stanzaCount: hymn.stanzas.length, part, parts: list.length, fontPx: 96, top, centred, align: hymn.style?.textAlign ?? 'center' });
+        slides.push({ kind: 'lyrics', label: stanza.stanzaType, chip: sectionChip(stanza.stanzaType), text, hymnId: hymn.id, hymnTitle: hymn.title, sectionId, position: hymn.stanzas.indexOf(stanza), stanzaCount: hymn.stanzas.length, part, parts: list.length, fontPx: 96, top, centred, align: hymn.style?.textAlign ?? 'center', ...(fontScale !== 1 ? { fontScale } : {}) });
       }
     }
   }

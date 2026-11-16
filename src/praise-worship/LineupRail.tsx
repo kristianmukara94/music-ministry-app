@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, BookOpen, Cross, FileText, GripVertical, Music, Pencil, Plus, Presentation, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, BookOpen, FileText, GripVertical, Music, Pencil, Plus, Presentation, Trash2, X } from 'lucide-react';
 import {
   chainOf,
   groupMinutes,
@@ -26,8 +26,10 @@ import { attachItems, describeAttach, parseDrag, type LibraryDragBatch } from '.
 import { exchangeSlots, itemOf } from '../../shared/pw-slots.js';
 import { addCard, commitSegments, removeCard, setPwState, updateSegment, usePw } from './store';
 import { usePwT, type PwT } from './strings';
+import { CardTypeBadge, CardTypePicker, switchCardType } from './CardTypePicker';
+import { TYPE_ICON } from './cardTypeIcons';
 
-export const TYPE_ICON = { prayer: Cross, song: Music, scripture: BookOpen } as const;
+export { TYPE_ICON };
 
 /** Status colours, from the theme. Ready is the ok tone, gaps use the accent, deleted content the danger tone. */
 export const STATUS_TONE: Record<PwStatus, string> = {
@@ -350,8 +352,13 @@ export function LineupRail() {
                 index += 1;
                 const i = index;
                 const status = segmentStatus(segment);
-                const Icon = TYPE_ICON[segment.type];
                 const active = i === selected;
+                // A new function saves at once; the card is selected, so the Library's tab follows it.
+                const changeType = (type: PwType) => {
+                  if (!switchCardType(i, segment, type)) return;
+                  setPwState({ selected: i, replacing: null });
+                  setAnnounce(t('cardTypeChanged', { name: segment.name, type: t(`type_${type}`) }));
+                };
                 const chain = chainOf(segment);
                 // A card with more than one song lists them one by one; a single song keeps the plain card.
                 const songs = songsOf(segment);
@@ -454,7 +461,7 @@ export function LineupRail() {
                         <GripVertical size={16} aria-hidden />
                       </button>
                       {renaming === segment.key ? (
-                        <div className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2 pr-2">
+                        <div className="flex min-h-14 min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 py-2 pr-2">
                           <span className="w-6 shrink-0 font-mono text-sm text-muted">{pad2(i + 1)}</span>
                           <input
                             autoFocus
@@ -480,8 +487,17 @@ export function LineupRail() {
                             }}
                             className="min-w-0 flex-1 rounded-lg border border-fg/15 bg-panel px-2 py-1 text-[15px] font-semibold text-fg/90"
                           />
+                          {/* The card's function, beside its name: Song, Prayer or Scripture. */}
+                          <div className="flex w-full flex-wrap items-center gap-2 pl-9">
+                            <span className="text-[11px] font-semibold tracking-wider text-muted uppercase">{t('cardFunction')}</span>
+                            <CardTypePicker value={segment.type} onChange={changeType} t={t} label={t('cardFunctionFor', { name: segment.name })} />
+                          </div>
                         </div>
                       ) : (
+                        <>
+                        <span className="mr-3 w-6 shrink-0 font-mono text-sm text-muted">{pad2(i + 1)}</span>
+                        {/* The type icon is its own button: one click opens Song / Prayer / Scripture for this card. */}
+                        <CardTypeBadge segment={segment} onChange={changeType} t={t} />
                         <button
                           type="button"
                           draggable={itemOf(segment) !== null}
@@ -494,12 +510,8 @@ export function LineupRail() {
                           onClick={() => setPwState({ selected: i, replacing: null })}
                           onDoubleClick={() => startRename(segment)}
                           aria-current={active ? 'true' : undefined}
-                          className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-r-xl py-2 pr-3 text-left"
+                          className="ml-3 flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-r-xl py-2 pr-3 text-left"
                         >
-                          <span className="w-6 shrink-0 font-mono text-sm text-muted">{pad2(i + 1)}</span>
-                          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-panel-2 text-accent">
-                            <Icon size={16} aria-hidden />
-                          </span>
                           <span className="flex min-w-0 flex-1 flex-col">
                             <span className="text-[15px] leading-tight font-semibold text-fg/90">{segment.name}</span>
                             <span className="truncate text-xs text-muted">{items.length + primaryCount > 1 ? t('itemsCount', { n: items.length + primaryCount }) : assignedLabel(segment, t, names)}</span>
@@ -511,6 +523,7 @@ export function LineupRail() {
                             <span className="font-mono text-xs text-muted">{runtimeOf(segment)} {t('minutes')}</span>
                           </span>
                         </button>
+                        </>
                       )}
                       <button
                         type="button"

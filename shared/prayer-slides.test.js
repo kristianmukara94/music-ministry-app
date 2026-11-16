@@ -109,5 +109,5 @@ test('the full-screen view, the lineup and the projector show the same split for
 });
 
 test('the lyrics are not part of this split: lyric slides keep their own rule', () => {
-  assert.match(read('shared/pw.js'), /lyricPagesFor\(stanza\.lyricsText, band, scale\)/, 'lyric pages still come from the lyric rule, at the operator\'s size');
+  assert.match(read('shared/pw.js'), /lyricPagesFor\(stanza\.lyricsText, band, songScale\)/, 'lyric pages still come from the lyric rule, at the operator\'s size times the song\'s own');
 });

@@ -47,6 +47,11 @@ export const PROJECTOR_SETTINGS_DEFAULTS = {
   /** How large slide text is drawn, as a share of its normal size. 1 is the normal size. */
   slideFontScale: 1,
   /**
+   * Whether a lyric or prayer line too long for the slide is broken into even lines at natural phrase breaks (see balanceProjectorLines in
+   * text-fit.js), rather than filled to the edge with a word left alone on the next line. Off draws the browser's own wrap.
+   */
+  balanceLines: true,
+  /**
    * Whether a slide shows the small banner naming its Holy Mass slot or reading ("FIRST READING", "CONGREGATION RESPONSE") above its text.
    * A Holy Mass plan can override it for its own Mass (see slotTitleShown in live.js).
    */
@@ -104,6 +109,7 @@ export function sanitizeProjectorSettings(raw) {
     slideFont: SLIDE_FONTS.includes(p.slideFont) ? p.slideFont : null,
     defaultIntroSlideMode: INTRO_SLIDE_MODES.includes(p.defaultIntroSlideMode) ? p.defaultIntroSlideMode : PROJECTOR_SETTINGS_DEFAULTS.defaultIntroSlideMode,
     slideFontScale: nearestScale(p.slideFontScale),
+    balanceLines: typeof p.balanceLines === 'boolean' ? p.balanceLines : PROJECTOR_SETTINGS_DEFAULTS.balanceLines,
     showSlotTitle: typeof p.showSlotTitle === 'boolean' ? p.showSlotTitle : PROJECTOR_SETTINGS_DEFAULTS.showSlotTitle,
     backgroundEverywhere: typeof p.backgroundEverywhere === 'boolean' ? p.backgroundEverywhere : PROJECTOR_SETTINGS_DEFAULTS.backgroundEverywhere,
     advancedOutput: typeof p.advancedOutput === 'boolean' ? p.advancedOutput : PROJECTOR_SETTINGS_DEFAULTS.advancedOutput,

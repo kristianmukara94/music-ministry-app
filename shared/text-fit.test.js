@@ -78,9 +78,14 @@ test('the page counts sit over the text margin and never take a click', () => {
 test('the projector, the mirror and the previews draw a song stanza through the fitted slide', () => {
   const view = read('src/output/ProjectorView.tsx');
   assert.match(view, /case 'lyrics':\s+return <SongLyricsSlide /);
-  assert.match(view, /useTextAutoFit\(\{ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: \[shown, style, slideFont, label\] \}\);/, 'it fits again when the label is hidden or shown');
+  assert.match(view, /useTextAutoFit\(\{ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: \[shown, style, slideFont, label, fontScale\] \}\);/, 'it fits again when the label is hidden or shown, or the song font size changes');
   assert.match(view, /className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden px-\[6cqw\] py-\[4cqh\] text-center"/, 'centred both ways, padded 4% and 6%, and clipped');
-  assert.match(view, /lineHeight: lineHeightFor\(lineCountOf\(shown\)\)/);
+  // Line spacing follows the stanza's own lines: the breaks that balancing adds do not tighten it.
+  assert.match(view, /lineHeight: lineHeightFor\(lineCountOf\(wrapped\)\)/);
+  // Balancing measures after the fit has sized the stanza (layout effects run in the order they are declared).
+  const fitAt = view.indexOf('useTextAutoFit({ boxRef, textRef, reservedRef: labelRef');
+  const balanceAt = view.indexOf('useBalanceAfterFit(balanced, { elementFor: () => textRef.current');
+  assert.ok(fitAt > 0 && balanceAt > fitAt, 'the balancing runs after the fit');
   const hook = read('src/output/useTextAutoFit.ts');
   assert.match(hook, /export const FIT_HEIGHT_SHARE = 0\.9;/, 'the text takes at most 90% of the room');
   assert.match(hook, /new ResizeObserver\(\(\) => fit\(\)\)/, 'it fits again when the window changes size');

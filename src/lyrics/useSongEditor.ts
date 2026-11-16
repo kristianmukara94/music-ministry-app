@@ -4,6 +4,7 @@ import { isSongCategoryMissing, isSongCategoryRefusal } from '../../shared/hymn-
 import { bridge } from '../live/bridge';
 import type { Hymn, HymnLanguage, NewHymn, PrimaryCategory, SongCategory } from './types';
 import { normalizePrimary } from './songTaxonomy';
+import { clampFontScale, normalizeCategories, withCategory, withoutCategory } from '../../shared/song-filing.js';
 
 const api = bridge.lyrics;
 
@@ -17,7 +18,12 @@ export interface SongFields {
   composer: string;
   musicalKey: string;
   language: HymnLanguage;
+  /** The primary song category: always the first of `categories`, kept for the code that reads one category. */
   songCategory: string;
+  /** Every song category the song is filed under, primary first. */
+  categories: string[];
+  /** The projector font size, as a multiple of the theme's lyric size (1 = the theme's own). */
+  fontScale: number;
   /** Where the song is used: General, Mass, or Praise & Worship. */
   primaryCategory: PrimaryCategory;
   raw: string;
@@ -58,11 +64,14 @@ const fieldsOf = (hymn: Hymn | null | undefined): SongFields => ({
   musicalKey: hymn?.musicalKey ?? '',
   language: hymn?.language ?? 'EN',
   songCategory: hymn?.songCategory ?? '',
+  categories: normalizeCategories(hymn?.categories ?? [hymn?.songCategory]),
+  fontScale: clampFontScale(hymn?.fontScale),
   primaryCategory: normalizePrimary(hymn?.primaryCategory),
   raw: hymn ? slidesToText(withContinuations(hymn.stanzas)) : '',
 });
 
-const same = (a: SongFields, b: SongFields) => (Object.keys(a) as (keyof SongFields)[]).every((k) => a[k] === b[k]);
+const same = (a: SongFields, b: SongFields) =>
+  (Object.keys(a) as (keyof SongFields)[]).every((k) => (Array.isArray(a[k]) ? JSON.stringify(a[k]) === JSON.stringify(b[k]) : a[k] === b[k]));
 
 /** The draft for this song in this browser, read safely: a blocked or damaged store simply has none. */
 function readDraft(key: string): StoredDraft | null {
@@ -75,7 +84,9 @@ function readDraft(key: string): StoredDraft | null {
     // followed the song category carries a slot, which is dropped so the form never sends it.
     const clean = (f: SongFields): SongFields => {
       const { category: _slot, ...rest } = f as SongFields & { category?: unknown };
-      return { ...rest, primaryCategory: normalizePrimary(rest.primaryCategory) };
+      // A draft from before songs had several categories or their own font size has one category and the theme's size.
+      const categories = normalizeCategories(Array.isArray(rest.categories) ? rest.categories : [rest.songCategory]);
+      return { ...rest, categories, songCategory: categories[0] ?? '', fontScale: clampFontScale(rest.fontScale), primaryCategory: normalizePrimary(rest.primaryCategory) };
     };
     return { ...draft, fields: clean(draft.fields), base: clean(draft.base ?? draft.fields) };
   } catch {
@@ -146,6 +157,17 @@ export function useSongEditor(hymn: Hymn | null | undefined) {
     setError(null);
   };
 
+  /** Files the song under these categories, the first being the primary one. */
+  const setCategories = (list: string[]) => {
+    const categories = normalizeCategories(list);
+    setFields((f) => ({ ...f, categories, songCategory: categories[0] ?? '' }));
+    setError(null);
+  };
+  const addCategory = (name: string) => setCategories(withCategory(fields.categories, name));
+  /** Takes a category off the song. The last one stays: a song needs at least one. */
+  const removeCategory = (name: string) => setCategories(withoutCategory(fields.categories, name));
+  const setFontScale = (scale: number) => set('fontScale', clampFontScale(scale));
+
   const [autoSplit, setAutoSplitState] = useState(readAutoSplit);
   const setAutoSplit = (on: boolean) => {
     setAutoSplitState(on);
@@ -158,7 +180,7 @@ export function useSongEditor(hymn: Hymn | null | undefined) {
   const problems: SongProblem[] = [];
   if (!fields.title.trim()) problems.push('titleMissing');
   if (stanzas.length === 0) problems.push('noStanzas');
-  if (isSongCategoryMissing(fields.songCategory)) problems.push('songCategoryMissing');
+  if (isSongCategoryMissing(fields.categories[0])) problems.push('songCategoryMissing');
   const canSave = !busy && problems.length === 0 && !parseError;
 
   /** Rewrites the lyrics from a new list of slides, each part under its tag, so the box and the cards always agree. */
@@ -192,7 +214,7 @@ export function useSongEditor(hymn: Hymn | null | undefined) {
     setError(null);
     try {
       // The slides are saved as shown: every slide under its own tag, a continuation under the part it carries on.
-      const input: NewHymn = { ...fields, raw: slidesToSaved(stanzas) };
+      const input: NewHymn = { ...fields, songCategory: fields.categories[0] ?? '', raw: slidesToSaved(stanzas) };
       if (hymn) await api.editHymn(hymn.id, input);
       else await api.createHymn(input);
       window.clearTimeout(timer.current);
@@ -223,6 +245,10 @@ export function useSongEditor(hymn: Hymn | null | undefined) {
     setError,
     dirty,
     songCategories,
+    setCategories,
+    addCategory,
+    removeCategory,
+    setFontScale,
     /** When the form came back with a draft from an earlier visit: the time it was put aside. */
     draftNotice,
     dismissDraftNotice: () => setDraftNotice(null),

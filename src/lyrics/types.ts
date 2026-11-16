@@ -22,6 +22,10 @@ export interface HymnSummary {
   songCategory: string;
   /** Where the song is used: General (everywhere), Mass, or Praise & Worship. */
   primaryCategory: PrimaryCategory;
+  /** Every song category the song is filed under, the primary one (songCategory) first. Empty when none is set. */
+  categories: string[];
+  /** The song's projector font size, as a multiple of the theme's lyric size (0.75 to 1.5; 1 is the theme's own). */
+  fontScale: number;
   category: HymnCategory;
   language: HymnLanguage;
   stanzaCount: number;
@@ -44,6 +48,10 @@ export interface Hymn {
   /** The song category for the Mass, from the operator's list. Empty when none is set. */
   songCategory: string;
   primaryCategory: PrimaryCategory;
+  /** Every song category the song is filed under, the primary one (songCategory) first. */
+  categories: string[];
+  /** The song's projector font size, as a multiple of the theme's lyric size (0.75 to 1.5; 1 is the theme's own). */
+  fontScale: number;
   /** How the song is set on the projector. Null keeps the default look. */
   style: TextStyle | null;
   stanzas: Stanza[];
@@ -68,8 +76,12 @@ export interface NewHymn {
   category?: HymnCategory;
   language: HymnLanguage;
   musicalKey: string;
-  /** Must be on the song category list, or empty. */
+  /** Must be on the song category list, or empty. The primary category: put first in `categories`. */
   songCategory?: string;
+  /** Every category to file the song under, each on the song category list. Left out, an edit keeps the song's other categories. */
+  categories?: string[];
+  /** The projector font size (0.75 to 1.5). Left out: 1 for a new song, unchanged on an edit. */
+  fontScale?: number;
   /** Left out, the song is saved as General. */
   primaryCategory?: PrimaryCategory;
   raw: string;

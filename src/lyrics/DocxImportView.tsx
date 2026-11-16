@@ -207,7 +207,8 @@ export function DocxImportView({
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [caseMode, setCaseMode] = useState<CaseMode>('sentence');
   const [queueToo, setQueueToo] = useState(true);
-  const [filing, setFiling] = useState<{ primaryCategory: PrimaryCategory; songCategory: string }>({ primaryCategory: 'GENERAL', songCategory: '' });
+  // Every new song from the file is filed under the same scope and categories (one or more; the first is the primary one).
+  const [filing, setFiling] = useState<{ primaryCategory: PrimaryCategory; categories: string[] }>({ primaryCategory: 'GENERAL', categories: [] });
   const [categories, setCategories] = useState<SongCategory[]>([]);
   const [existing, setExisting] = useState<{ id: number; title: string }[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -306,7 +307,7 @@ export function DocxImportView({
   const selected = songs.filter((s) => s.selected && s.action !== 'skip');
   const blocked = selected.some((s) => issuesOf.get(s.key)?.some((i) => i.level === 'error'));
   const needsCategory = selected.some((s) => s.action === 'new' || s.duplicate.existingId == null);
-  const categoryMissing = needsCategory && !filing.songCategory.trim();
+  const categoryMissing = needsCategory && filing.categories.length === 0;
   const canImport = selected.length > 0 && !blocked && !categoryMissing;
 
   /** Saves the ticked songs: new ones are added, duplicates marked Update replace that song's words, and all go to the queue if asked. */
@@ -326,7 +327,8 @@ export function DocxImportView({
             composer: '',
             language: s.language as HymnLanguage,
             musicalKey: '',
-            songCategory: filing.songCategory,
+            songCategory: filing.categories[0] ?? '',
+            categories: filing.categories,
             primaryCategory: filing.primaryCategory,
             raw: songToTaggedLyrics(s, opts),
           })),
@@ -469,8 +471,10 @@ export function DocxImportView({
                   idPrefix="docx"
                   scope={filing.primaryCategory}
                   onScope={(scope) => setFiling((f) => ({ ...f, primaryCategory: scope }))}
-                  songCategory={filing.songCategory}
-                  onSongCategory={(name) => setFiling((f) => ({ ...f, songCategory: name }))}
+                  songCategory={filing.categories[0] ?? ''}
+                  onSongCategory={(name) => setFiling((f) => ({ ...f, categories: name ? [name] : [] }))}
+                  categoryList={filing.categories}
+                  onCategories={(list) => setFiling((f) => ({ ...f, categories: list }))}
                   categories={categories}
                   invalid={categoryMissing}
                 />

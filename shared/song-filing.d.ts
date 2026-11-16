@@ -1,0 +1,16 @@
+export const FONT_SCALE_MIN: number;
+export const FONT_SCALE_MAX: number;
+export const FONT_SCALE_DEFAULT: number;
+export const FONT_SCALE_STEP_MIN: number;
+export const FONT_SCALE_STEP: number;
+export const MAX_SONG_CATEGORIES: number;
+export function clampFontScale(value: unknown): number;
+export function stepFontScale(scale: number, direction: 1 | -1): number;
+export function canStepFontScale(scale: number, direction: 1 | -1): boolean;
+export function fontScalePercent(scale: number): number;
+export function normalizeCategories(names: readonly unknown[] | null | undefined): string[];
+export function categoriesOf(songCategory: string | null | undefined, categoriesJson: string | null | undefined): string[];
+export function hasCategory(categories: readonly string[] | null | undefined, name: string): boolean;
+export function withCategory(categories: readonly string[] | null | undefined, name: string): string[];
+export function withoutCategory(categories: readonly string[] | null | undefined, name: string): string[];
+export function previewFontCqw(text: string, scale?: number): number;

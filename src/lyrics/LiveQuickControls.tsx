@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AArrowDown, AArrowUp, FileX, MonitorOff, PanelBottom } from 'lucide-react';
+import { AArrowDown, AArrowUp, FileX, MonitorOff, PanelBottom, WrapText } from 'lucide-react';
 import { SLIDE_FONT_SCALES } from '../../shared/projector-settings.js';
 import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
@@ -41,6 +41,34 @@ function FontSizeStepper({ t }: { t: LyT }) {
         <AArrowUp size={15} aria-hidden />
       </button>
     </div>
+  );
+}
+
+/**
+ * Balance lines: long lyric and prayer lines broken evenly at phrase breaks on the projector, the TV and every preview (balanceLines, on by
+ * default). Off draws the browser's own wrap. A projector setting like the text size beside it, so it is kept for the next service.
+ */
+function BalanceLinesSwitch({ t }: { t: LyT }) {
+  const on = useLive((s) => s.state.settings.balanceLines !== false);
+  const [error, setError] = useState<string | null>(null);
+  const toggle = () => {
+    setError(null);
+    bridge.projector.save({ balanceLines: !on }).catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+  };
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={toggle}
+      title={error ?? t('balanceLinesHint')}
+      className={`${BTN} ${error ? 'border-danger text-danger' : on ? 'border-accent bg-accent/20 text-accent' : OFF}`}
+    >
+      <WrapText size={13} aria-hidden /> {t('balanceLines')}
+      <span aria-hidden className={`relative ml-0.5 h-3.5 w-6 rounded-full transition ${on ? 'bg-accent' : 'bg-fg/25'}`}>
+        <span className={`absolute top-0.5 size-2.5 rounded-full bg-canvas transition-all ${on ? 'left-3' : 'left-0.5'}`} />
+      </span>
+    </button>
   );
 }
 
@@ -118,7 +146,8 @@ export function LiveQuickControls({ hymn, keys, t }: { hymn: Hymn | null; keys: 
           <span className={`absolute top-0.5 size-2.5 rounded-full bg-canvas transition-all ${lowerLive ? 'left-3' : 'left-0.5'}`} />
         </span>
       </button>
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-1.5">
+        <BalanceLinesSwitch t={t} />
         <FontSizeStepper t={t} />
       </div>
     </div>

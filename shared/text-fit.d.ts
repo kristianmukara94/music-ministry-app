@@ -4,3 +4,6 @@ export const TITLE_MAX_SHARE: number;
 export function titleFits(heightPx: number, fontPx: number, leading: number, roomPx: number): boolean;
 export function lineHeightFor(lineCount: number): number;
 export function lineCountOf(text: string): number;
+export const WEAK_LINE_ENDS: Set<string>;
+export function balanceLine(line: string, maxWidth: number, measure: (text: string) => number): string[];
+export function balanceProjectorLines(text: string, maxWidth: number, measure: (text: string) => number): string;

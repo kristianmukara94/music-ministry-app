@@ -134,8 +134,8 @@ export function PwSlideFace({
       {!hideTitle && <div className="absolute top-[3.938cqw] left-[6cqw] text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{slideLine(slide.label, charsPerLine(0.88, 1.6 * 19.2))}</div>}
       {!hideTitle && <div className="absolute top-[3.938cqw] right-[6cqw] text-[1.6cqw] text-muted">{segmentName}</div>}
       {/* Lyrics: the same rule as the prayer, at the slide's top. */}
-      <FittedFaceText className="font-serif text-[5cqw] font-semibold whitespace-pre-line" place={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slide.align ?? 'center' }} fontFamily={slideFont} naturalSize={scaledSize('5cqw', slideScale)}>
-        {slideText(slide.text, charsPerLine(0.88, 5 * 19.2))}
+      <FittedFaceText className="font-serif text-[5cqw] font-semibold whitespace-pre-line" place={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slide.align ?? 'center' }} fontFamily={slideFont} naturalSize={scaledSize('5cqw', (slideScale ?? 1) * (slide.fontScale ?? 1))}>
+        {slideText(slide.text, charsPerLine(0.88, 5 * 19.2 * (slide.fontScale ?? 1)))}
       </FittedFaceText>
       <div className="absolute bottom-[3.938cqw] left-[6cqw] text-[1.6cqw] text-muted">{footer}</div>
       {position && <div className="pointer-events-none absolute right-[6cqw] bottom-[3.938cqw] z-20 font-mono text-[1.6cqw] text-muted">{position}</div>}

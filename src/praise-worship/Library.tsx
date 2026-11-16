@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, Tag } from 'lucide-react';
 import { fitsSegment, GOSPEL_ACCLAMATION, holdsItem, songAssignment, songsOf, type PwSegment } from '../../shared/pw.js';
 import { attachMany, describeAttach, type LibraryDrag } from '../../shared/pw-attach.js';
@@ -14,6 +15,10 @@ import type { LibraryRow as Row } from './SongSearchResultCard';
 import type { QuickLive } from './useQuickLiveController';
 import { QuickCuePanel } from './QuickCuePanel';
 import { isGoLiveCopy } from '../notes/slideCopies';
+import { switchCardType } from './CardTypePicker';
+import { AddSongModal } from '../lyrics/AddSongModal';
+import { bridge } from '../live/bridge';
+import type { Hymn } from '../lyrics/types';
 
 type LibTab = 'song' | 'prayer' | 'scripture';
 const TABS: { id: LibTab; key: string }[] = [
@@ -65,6 +70,8 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [addNote, setAddNote] = useState<string | null>(null);
   const results = useRef<LibrarySearchHandle>(null);
+  // The song open in the Edit Hymn form, over the planner. Null when the form is closed.
+  const [editing, setEditing] = useState<Hymn | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
 
   // The tab follows the selected segment's type, so Add is ready for it.
@@ -90,6 +97,18 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
   }, []);
 
   const fail = (err: unknown) => setError(errorText(err));
+
+  /**
+   * Opens a song in the Edit Hymn form. A save tells every window the song changed, so the lineup cards that use it, the song on the
+   * projector, this list and any open lyrics preview all read it again (see songChanged in the store and SongLyricsPreview).
+   */
+  const editSong = (hymnId: number) => {
+    setError(null);
+    bridge.lyrics
+      .getHymn(hymnId)
+      .then((h) => (h ? setEditing(h) : setError(t('lyricsMissing'))))
+      .catch(fail);
+  };
   const replacingHere = replacing?.segment === selected;
   const q = query.trim().toLowerCase();
 
@@ -173,6 +192,8 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
   }, [tab, songs, prayers, tags, segment, selected, q, replacingHere, replacing]);
 
   const active = rows.find((r) => r.key === activeKey) ?? null;
+  // The tab shows items of another kind than the card's function: offer to switch the card, so its icon, status and slides follow.
+  const mismatch = segment && tab !== segment.type ? tab : null;
   const canInsert = (row: Row | null) => Boolean(row && segment && !row.added);
 
   const activate = (row: Row) => setActiveKey(row.key);
@@ -294,6 +315,18 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
           </button>
         )}
       </div>
+      {mismatch && segment && (
+        <p className="flex flex-wrap items-center gap-2 px-1 text-xs text-muted">
+          <span>{t('cardIsType', { type: t(`type_${segment.type}`) })}</span>
+          <button
+            type="button"
+            onClick={() => switchCardType(selected, segment, mismatch)}
+            className="rounded-md border border-accent/50 px-2 py-0.5 font-semibold text-accent transition hover:bg-accent/10 focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none"
+          >
+            {t(`switchTo_${mismatch}`)}
+          </button>
+        </p>
+      )}
       {addNote && <p role="status" className="px-1 text-sm text-muted">{addNote}</p>}
       {(error ?? filter.error) && <p role="alert" className="px-1 text-sm text-danger">{error ?? filter.error}</p>}
 
@@ -309,6 +342,8 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
         canInsert={canInsert}
         onActivate={activate}
         onCardClick={handleCardClick}
+        query={query}
+        onEditSong={editSong}
       />
       {/* In the Go Live focus view the cues are drawn in the takeover instead, so they are never mounted twice. */}
       {!focused && <QuickCuePanel quick={quick} t={t} />}
@@ -327,6 +362,12 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
       )}
 
       <p className="px-1 text-xs leading-relaxed text-muted">{t('libraryFootnote')}</p>
+      {/* On document.body: a blurred panel above would otherwise be the containing block of the form's fixed overlay. */}
+      {editing &&
+        createPortal(
+          <AddSongModal key={editing.id} hymn={editing} onClose={() => setEditing(null)} onSaved={() => setEditing(null)} onImported={() => setEditing(null)} />,
+          document.body,
+        )}
     </section>
   );
 }

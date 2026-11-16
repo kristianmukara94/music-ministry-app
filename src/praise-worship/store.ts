@@ -333,7 +333,7 @@ export function resolvedFor(segment: PwSegment, state: Pick<PwState, 'hymns' | '
   const hymns = c.hymnIds
     .map((id) => state.hymns[id])
     .filter((h): h is Hymn => Boolean(h))
-    .map((h) => ({ id: h.id, title: h.title, category: h.category, stanzas: h.stanzas, style: h.style ?? null }));
+    .map((h) => ({ id: h.id, title: h.title, category: h.category, stanzas: h.stanzas, style: h.style ?? null, fontScale: h.fontScale }));
   // The chained items resolve in the same order as the chain, so each entry lines up with its item.
   const more = chainOf(segment).map((item) => {
     if (item.kind === 'prayer') return { prayer: prayerFor(item.noteId, state) };

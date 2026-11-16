@@ -7,6 +7,7 @@
 //   - anything else (a song, a Mass Order part, a reading, a Bible passage…): opened in the module that owns it, as before.
 
 import { splitDeck } from './projector-autofit.js';
+import { clampFontScale } from './song-filing.js';
 
 /**
  * The slide for a text response: titled with the slot's name, with the words as its body. Text that would not fit one screen, or that has
@@ -54,13 +55,23 @@ export function activeRowIndex({ queuePlanId, queueCursor }, planId) {
 
 /**
  * The projector frame for one stanza of a hymn, or null when there is no such stanza. The song and the stanza's position let the projector follow
- * an edit to this song while it is live.
+ * an edit to this song while it is live. A song with its own font size carries it as `fontScale`, which the projector multiplies into the
+ * theme's lyric size; a song at the theme's own size carries none, so its frame is as it always was.
  */
 export function lyricsStanzaFrame(hymn, index) {
   const stanza = hymn?.stanzas?.[index];
-  return stanza
-    ? { kind: 'lyrics', title: hymn.title, label: stanza.stanzaType, text: stanza.lyricsText, style: hymn.style, key: `song:${hymn.id}`, song: { hymnId: hymn.id, position: index, count: hymn.stanzas.length } }
-    : null;
+  if (!stanza) return null;
+  const fontScale = clampFontScale(hymn.fontScale);
+  return {
+    kind: 'lyrics',
+    title: hymn.title,
+    label: stanza.stanzaType,
+    text: stanza.lyricsText,
+    style: hymn.style,
+    key: `song:${hymn.id}`,
+    song: { hymnId: hymn.id, position: index, count: hymn.stanzas.length },
+    ...(fontScale !== 1 ? { fontScale } : {}),
+  };
 }
 
 /**

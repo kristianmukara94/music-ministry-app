@@ -99,6 +99,8 @@ export interface PwHymn {
   id: number;
   title: string;
   category?: string;
+  /** The song's own projector font size, as a multiple of the theme's (1 or missing: the theme's own). */
+  fontScale?: number;
   stanzas: { id: number; stanzaType: string; lyricsText: string }[];
 }
 
@@ -126,7 +128,7 @@ export interface PwResolved {
 
 export type PwSlide =
   | { kind: 'title'; label: string; subtitle: string }
-  | { kind: 'lyrics'; label: string; chip: string; text: string; hymnId: number; hymnTitle: string; sectionId: string; position?: number; stanzaCount?: number; part?: number; parts?: number; fontPx?: number; top?: number; centred?: boolean; align?: 'left' | 'center' | 'right' }
+  | { kind: 'lyrics'; label: string; chip: string; text: string; hymnId: number; hymnTitle: string; sectionId: string; position?: number; stanzaCount?: number; part?: number; parts?: number; fontPx?: number; top?: number; centred?: boolean; align?: 'left' | 'center' | 'right'; fontScale?: number }
   | { kind: 'prayer'; label: string; text: string; placeholder?: boolean; fontPx?: number; notice?: 'stale' | 'too-long'; part?: number; parts?: number; top?: number; centred?: boolean; align?: 'left' | 'center' | 'right' }
   /** A PowerPoint slide from the Whiteboard, shown as its picture. */
   | { kind: 'picture'; label: string; src: string };
@@ -168,6 +170,8 @@ export function groupMinutes(segments: PwSegment[], groupKey: string): number;
 export function formatRunTime(minutes: number): string;
 export function fitsSegment(hymn: { id: number; category?: string }, segment: PwSegment, tags: PwHymnTag[]): boolean;
 export function typesFor(segment: PwSegment): PwType[];
+/** The segment fields that give a card another function, or null when it already has it. Songs, chain, and a first prayer or reading are kept. */
+export function withCardType(segment: PwSegment, type: PwType): Pick<PwSegment, 'type' | 'content' | 'arrangement'> | null;
 export function acceptsTab(segment: PwSegment, tab: PwType): boolean;
 export function songAssignment(segment: PwSegment, hymnId: number, replacing: number | null): Pick<PwSegment, 'type' | 'content' | 'arrangement'> | null;
 export function scriptureAssignment(segment: PwSegment, content: PwContent): Pick<PwSegment, 'type' | 'content' | 'arrangement'> | null;

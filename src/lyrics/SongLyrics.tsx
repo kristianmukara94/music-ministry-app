@@ -676,7 +676,12 @@ export function SongLyrics() {
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted">
                     {h.musicalKey && <span className="font-mono font-bold text-accent">{t('keyMeta', { key: h.musicalKey })}</span>}
                     <span>{t(`lang_${h.language}`)}</span>
-                    <span className="rounded border border-fg/15 bg-fg/[0.06] px-1.5 py-px text-[10px] font-semibold text-fg/80">{h.songCategory || t(`cat_${h.category}`)}</span>
+                    {/* Every category the song is filed under, so a song in several shows each of them. */}
+                    {(h.categories?.length ? h.categories : [h.songCategory || t(`cat_${h.category}`)]).map((name) => (
+                      <span key={name} className="rounded border border-fg/15 bg-fg/[0.06] px-1.5 py-px text-[10px] font-semibold text-fg/80">
+                        {name}
+                      </span>
+                    ))}
                     <span className="tabular-nums">{t('stanzaCount', { n: h.stanzaCount })}</span>
                   </div>
                 </div>
@@ -974,7 +979,7 @@ export function SongLyrics() {
                 <h2 className="mt-1 min-w-0 truncate text-2xl font-bold tracking-tight">{hymn.title}</h2>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
                   <KeyStepper musicalKey={hymn.musicalKey} semitones={transpose[keyId] ?? 0} onChange={setTranspose} t={t} />
-                  <span>{[hymn.composer, hymn.songCategory || t(`cat_${hymn.category}`), t(`lang_${hymn.language}`)].filter(Boolean).join(' · ')}</span>
+                  <span>{[hymn.composer, hymn.categories?.length ? hymn.categories.join(', ') : hymn.songCategory || t(`cat_${hymn.category}`), t(`lang_${hymn.language}`)].filter(Boolean).join(' · ')}</span>
                 </div>
               </>
             ) : (

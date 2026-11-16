@@ -62,6 +62,10 @@ export interface LibraryItem {
   sub: string;
   /** A Content Hub row: a prayer, a Holy Mass flow text or a notice the congregation sees, or a private operator note. */
   kind?: NoteKind;
+  /** A song row: the song's id, for its lyrics drawer and Edit Song. */
+  hymnId?: number;
+  /** A song row: every song category it is filed under, primary first (see shared/song-filing.js), shown as badges on its card. */
+  categories?: string[];
 }
 
 export interface PlansApi {

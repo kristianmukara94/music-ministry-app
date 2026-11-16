@@ -87,6 +87,33 @@ export function resolveSongCategory(db, raw, current = '') {
   return listed.name;
 }
 
+/**
+ * The names a hymn is filed under, each as resolveSongCategory gives it: on the list (saved as the list spells it), or one the hymn already
+ * carries in `current`. Repeats are dropped and the order is kept, so the first stays the primary category.
+ */
+export function resolveSongCategories(db, names, current = []) {
+  const kept = new Map(current.map((c) => [String(c).toLowerCase(), c]));
+  const out = [];
+  for (const raw of names) {
+    const name = String(raw ?? '').trim();
+    if (!name) continue;
+    const resolved = kept.get(name.toLowerCase()) ?? resolveSongCategory(db, name);
+    if (!out.some((n) => n.toLowerCase() === resolved.toLowerCase())) out.push(resolved);
+  }
+  return out;
+}
+
+/** The longest a category change waits for another program to release the database file. */
+export const CATEGORY_LOCK_WAIT_MS = 750;
+
+export const CATEGORY_BUSY_MESSAGE = 'The song library is busy (another copy of the app or a backup may be using it). Try again in a moment.';
+
+/** Whether an error is SQLite's "the file is locked by someone else", from better-sqlite3 (code) or node:sqlite (errcode). */
+const isBusy = (err) => err?.code === 'SQLITE_BUSY' || err?.code === 'SQLITE_LOCKED' || err?.errcode === 5 || err?.errcode === 6 || /database is (locked|busy)/i.test(String(err?.message));
+
+/** Whether the hymns table has the categories list (HYMN_FILING_MIGRATIONS in lyrics.js). A database built before it has not. */
+const hasCategoryList = (db) => Boolean(db.prepare("SELECT 1 FROM pragma_table_info('hymns') WHERE name = 'categories_json'").get());
+
 /** Data access for the category list. Pure: takes a database handle. */
 export function createSongCategoryService(db) {
   const q = {
@@ -100,12 +127,55 @@ export function createSongCategoryService(db) {
     renameHymns: db.prepare('UPDATE hymns SET song_category = ? WHERE song_category = ? COLLATE NOCASE'),
   };
 
-  const renameTransaction = db.transaction((id, oldName, newName, targetMode) => {
+  /** Renames the category inside every hymn's list of categories too, so a song filed under several keeps all of them. */
+  const renameInLists = (oldName, newName) => {
+    if (!hasCategoryList(db)) return;
+    const old = oldName.toLowerCase();
+    const rows = db.prepare('SELECT id, categories_json AS json FROM hymns WHERE categories_json IS NOT NULL').all();
+    const update = db.prepare('UPDATE hymns SET categories_json = ? WHERE id = ?');
+    for (const row of rows) {
+      let list;
+      try {
+        list = JSON.parse(row.json);
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(list) || !list.some((n) => String(n).toLowerCase() === old)) continue;
+      update.run(JSON.stringify(list.map((n) => (String(n).toLowerCase() === old ? newName : n))), row.id);
+    }
+  };
+
+  const renameWork = (id, oldName, newName, targetMode) => {
     q.rename.run(newName, targetMode, id);
-    if (newName !== oldName) q.renameHymns.run(newName, oldName);
-  });
+    if (newName !== oldName) {
+      q.renameHymns.run(newName, oldName);
+      renameInLists(oldName, newName);
+    }
+  };
 
   const duplicateMessage = (name) => `A song category named "${name}" already exists.`;
+
+  /**
+   * Runs one category change as a single write transaction that takes the write lock first (BEGIN IMMEDIATE), so a change that reads and then
+   * writes waits for the lock once, not twice. The wait is capped at CATEGORY_LOCK_WAIT_MS instead of the connection's 5 seconds: these run on
+   * Electron's main thread, which also carries the window's keyboard input on Windows, so a long wait froze typing in the whole window. While
+   * another program holds the file (a second copy of the app on the same database, a backup tool) the change is refused with a readable
+   * message, and the page puts the name back to try again.
+   */
+  const quickWrite = (work, ...args) => {
+    const was = db.prepare('PRAGMA busy_timeout').get();
+    const previous = Number(was?.timeout ?? Object.values(was ?? {})[0] ?? 5000);
+    db.exec(`PRAGMA busy_timeout = ${CATEGORY_LOCK_WAIT_MS}`);
+    try {
+      const tx = db.transaction(work);
+      return typeof tx.immediate === 'function' ? tx.immediate(...args) : tx(...args);
+    } catch (err) {
+      if (isBusy(err)) throw new Error(CATEGORY_BUSY_MESSAGE);
+      throw err;
+    } finally {
+      db.exec(`PRAGMA busy_timeout = ${Number.isFinite(previous) ? previous : 5000}`);
+    }
+  };
 
   return {
     listSongCategories() {
@@ -116,10 +186,12 @@ export function createSongCategoryService(db) {
     createSongCategory(input = {}) {
       const name = checkedSongCategoryName(input.name);
       const targetMode = checkedTargetMode(input.targetMode);
-      if (q.byName.get(name)) throw new Error(duplicateMessage(name));
-      const position = q.maxPosition.get().p + 1;
-      const { lastInsertRowid } = q.insert.run(name, position, targetMode);
-      return { id: Number(lastInsertRowid), name, position, targetMode };
+      return quickWrite(() => {
+        if (q.byName.get(name)) throw new Error(duplicateMessage(name));
+        const position = q.maxPosition.get().p + 1;
+        const { lastInsertRowid } = q.insert.run(name, position, targetMode);
+        return { id: Number(lastInsertRowid), name, position, targetMode };
+      });
     },
 
     /** Renames a category and the hymns that use it, and sets its target mode. A missing `targetMode` keeps the one it has. */
@@ -130,13 +202,13 @@ export function createSongCategoryService(db) {
       const targetMode = checkedTargetMode(input.targetMode, current.targetMode);
       const clash = q.byName.get(name);
       if (clash && clash.id !== id) throw new Error(duplicateMessage(name));
-      renameTransaction(id, current.name, name, targetMode);
+      quickWrite(renameWork, id, current.name, name, targetMode);
       return { id, name, position: current.position, targetMode };
     },
 
     /** Removes the category from the list. Hymns that used it keep their text. */
     deleteSongCategory(id) {
-      return q.remove.run(id).changes > 0;
+      return quickWrite(() => q.remove.run(id).changes > 0);
     },
   };
 }

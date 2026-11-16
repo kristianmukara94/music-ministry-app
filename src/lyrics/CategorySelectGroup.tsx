@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { Tag } from 'lucide-react';
+import { Tag, X } from 'lucide-react';
+import { hasCategory, withCategory, withoutCategory } from '../../shared/song-filing.js';
 import type { LyKey } from '../../shared/lyrics-i18n.js';
 import type { LyT } from './strings';
 import { PRIMARY_OPTIONS, SCOPE_HINT_KEY, categoryModeLookup, groupCategories, homeScopeOfCategory, type PrimaryCategory } from './songTaxonomy';
@@ -32,6 +33,12 @@ interface Props {
   scopeOnly?: boolean;
   /** Compact: smaller controls and no captions or notes, for a filter bar. */
   compact?: boolean;
+  /**
+   * Form only: the song's full list of categories, primary first. With `onCategories`, the category dropdown adds to this list instead of
+   * choosing one, and each chosen category is a removable pill under it.
+   */
+  categoryList?: readonly string[];
+  onCategories?: (list: string[]) => void;
 }
 
 /**
@@ -40,7 +47,7 @@ interface Props {
  * shows Praise & Worship and All, and General shows every category. The song's own category stays selectable even when it is for another
  * scope (shown under "Other categories"), so editing the song's other details never drops it.
  */
-export function CategorySelectGroup({ t, scope, onScope, songCategory, onSongCategory, categories, mode, invalid, required, idPrefix, scopeOnly, compact }: Props) {
+export function CategorySelectGroup({ t, scope, onScope, songCategory, onSongCategory, categories, mode, invalid, required, idPrefix, scopeOnly, compact, categoryList, onCategories }: Props) {
   const modes = useMemo(() => categoryModeLookup(categories), [categories]);
   const names = useMemo(() => categories.map((c) => c.name), [categories]);
   // A category the song already has but the list no longer holds stays selectable too.
@@ -83,7 +90,23 @@ export function CategorySelectGroup({ t, scope, onScope, songCategory, onSongCat
         {!compact && <p className="text-[11px] text-muted">{t(SCOPE_HINT_KEY[scope])}</p>}
       </div>
 
-      {!scopeOnly && (
+      {!scopeOnly && mode === 'form' && categoryList && onCategories && (
+        <MultiCategoryPicker
+          t={t}
+          id={categoryId}
+          list={categoryList}
+          onList={onCategories}
+          suggested={suggested}
+          names={names}
+          scopeLabel={scope === 'GENERAL' ? t('songCategoryField') : t('suggestedFor', { scope: scopeLabel })}
+          invalid={invalid}
+          required={required}
+          compact={compact}
+          size={size}
+        />
+      )}
+
+      {!scopeOnly && !(mode === 'form' && categoryList && onCategories) && (
         <div className="flex min-w-0 flex-col gap-1.5">
           {!compact && (
             <label htmlFor={categoryId} className={CAPTION}>
@@ -132,6 +155,103 @@ export function CategorySelectGroup({ t, scope, onScope, songCategory, onSongCat
             </p>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A song's categories as removable pills, with a dropdown that adds one more. The dropdown offers the categories that suit the song's scope
+ * first, then every other category on the list (a song can be both a Praise & Worship song and a Holy Mass one), leaving out the ones the song
+ * already has. The last pill cannot be removed: a song needs at least one category.
+ */
+function MultiCategoryPicker({
+  t,
+  id,
+  list,
+  onList,
+  suggested,
+  names,
+  scopeLabel,
+  invalid,
+  required,
+  compact,
+  size,
+}: {
+  t: LyT;
+  id: string;
+  list: readonly string[];
+  onList: (list: string[]) => void;
+  suggested: readonly string[];
+  names: readonly string[];
+  scopeLabel: string;
+  invalid?: boolean;
+  required?: boolean;
+  compact?: boolean;
+  size: string;
+}) {
+  const offeredFirst = suggested.filter((name) => !hasCategory(list, name));
+  const offeredOther = names.filter((name) => !hasCategory(list, name) && !suggested.includes(name));
+  const last = list.length <= 1;
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      {!compact && (
+        <label htmlFor={id} className={CAPTION}>
+          {t('songCategoriesField')} {required && <span className="text-danger" aria-hidden>*</span>}
+        </label>
+      )}
+      <select
+        id={id}
+        value=""
+        onChange={(e) => {
+          if (e.target.value) onList(withCategory(list, e.target.value));
+        }}
+        aria-label={t('addCategory')}
+        aria-invalid={invalid || undefined}
+        disabled={offeredFirst.length === 0 && offeredOther.length === 0}
+        className={`${FIELD} ${size} disabled:opacity-50 ${invalid ? '!border-danger' : ''}`}
+      >
+        <option value="">{t('addCategory')}</option>
+        {offeredFirst.length > 0 && (
+          <optgroup label={scopeLabel}>
+            {offeredFirst.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {offeredOther.length > 0 && (
+          <optgroup label={t('otherCategories')}>
+            {offeredOther.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </optgroup>
+        )}
+      </select>
+      {list.length > 0 ? (
+        <ul aria-label={t('songCategoriesField')} className="flex flex-wrap items-center gap-1.5">
+          {list.map((name) => (
+            <li key={name} className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 py-0.5 pr-1 pl-2 text-[11px] font-bold text-accent">
+              <Tag size={11} aria-hidden />
+              {name}
+              <button
+                type="button"
+                onClick={() => onList(withoutCategory(list, name))}
+                disabled={last}
+                aria-label={t('removeCategoryNamed', { name })}
+                title={last ? t('lastCategoryHint') : t('removeCategoryNamed', { name })}
+                className="grid size-4 place-items-center rounded-full transition hover:bg-accent/20 focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <X size={10} aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className={`text-[11px] ${invalid ? 'text-danger' : 'text-muted'}`}>{t('lastCategoryHint')}</p>
       )}
     </div>
   );

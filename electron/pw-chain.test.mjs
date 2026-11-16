@@ -7,7 +7,7 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { HYMN_DELETE_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } = await import('./lyrics.js');
+const { HYMN_DELETE_MIGRATIONS, HYMN_FILING_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } = await import('./lyrics.js');
 const { MASS_PLAN_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_LANGUAGE_MIGRATIONS, PLAN_NOTES_MIGRATIONS } = await import('./mass-plans.js');
 const { PW_MIGRATIONS, createPwService } = await import('./pw-sessions.js');
 const { SONG_CATEGORY_MIGRATIONS, SONG_CATEGORY_MODE_MIGRATIONS, SONG_SCOPE_MIGRATIONS } = await import('./song-categories.js');
@@ -35,7 +35,7 @@ function laptopDb() {
       throw err;
     }
   };
-  for (const sqlText of [...LYRICS_MIGRATIONS, ...LYRICS_STYLE_MIGRATIONS, ...HYMN_DELETE_MIGRATIONS, ...MASS_PLAN_MIGRATIONS, ...PLAN_LANGUAGE_MIGRATIONS, ...PLAN_BIBLE_MIGRATIONS,
+  for (const sqlText of [...LYRICS_MIGRATIONS, ...LYRICS_STYLE_MIGRATIONS, ...HYMN_DELETE_MIGRATIONS, ...HYMN_FILING_MIGRATIONS, ...MASS_PLAN_MIGRATIONS, ...PLAN_LANGUAGE_MIGRATIONS, ...PLAN_BIBLE_MIGRATIONS,
     ...PLAN_CUSTOM_MIGRATIONS, ...PLAN_NOTES_MIGRATIONS, ...PW_MIGRATIONS, ...PLAN_COMMUNION_MIGRATIONS, ...SONG_CATEGORY_MIGRATIONS, ...SONG_SCOPE_MIGRATIONS, ...SONG_CATEGORY_MODE_MIGRATIONS, ...TRANSFER_MIGRATIONS, ...PLAN_SYNC_MIGRATIONS,
     ...LECTIONARY_MIGRATIONS, ...MEDIA_MIGRATIONS, ...BIBLE_MIGRATIONS, ...PRAYER_NOTES_MIGRATIONS, ...PRAYER_NOTES_SPLIT_MIGRATIONS, ...NOTES_SLOT_MIGRATIONS, ...NOTES_COPY_MIGRATIONS]) {
     db.exec(sqlText);
@@ -192,4 +192,32 @@ test('a prayer card saves and reloads with songs and a chain on it, in one card'
   assert.equal(back.content.noteId, prayers[0]);
   assert.deepEqual(back.content.hymnIds, songIds);
   assert.deepEqual(back.content.more, [{ kind: 'lectionary', readingType: 'Gospel Acclamation', minutes: 1 }]);
+});
+
+test('a title-slide scripture card switched to Song saves as a song card, takes a song, and reloads without the title slide', async () => {
+  const { withCardType } = await import('../shared/pw.js');
+  const { attachMany } = await import('../shared/pw-attach.js');
+  const { pw, session, lyrics } = setup();
+  const songId = lyrics.createHymn(hymn('Sample Song')).id;
+  const segments = toSave(session.segments);
+  const i = segments.findIndex((s) => s.key === 'bible_enthronement');
+  assert.equal(segments[i].type, 'scripture');
+  assert.equal(segments[i].content.kind, 'title');
+  const switched = { ...segments[i], ...withCardType(segments[i], 'song') };
+  segments[i] = attachMany(switched, [{ type: 'song', id: songId, title: 'Sample Song' }]).segment;
+  pw.saveSession(session.id, { segments });
+  const reloaded = bySlot(pw.getSession(session.id).segments, 'bible_enthronement');
+  assert.equal(reloaded.type, 'song');
+  assert.equal(reloaded.content.kind, 'song');
+  assert.deepEqual(reloaded.content.hymnIds, [songId]);
+});
+
+test('any card can be switched to any function and the switch survives a save', async () => {
+  const { withCardType, PW_TYPES } = await import('../shared/pw.js');
+  const { pw, session } = setup();
+  for (const type of PW_TYPES) {
+    const segments = toSave(pw.getSession(session.id).segments).map((s) => (s.type === type ? s : { ...s, ...withCardType(s, type) }));
+    pw.saveSession(session.id, { segments });
+    assert.ok(pw.getSession(session.id).segments.every((s) => s.type === type), type);
+  }
 });

@@ -1,5 +1,7 @@
 // What the projector shows for a song or prayer that is live when it is edited. Plain JS with no React, so the operator console and the
-// tests share the rules. Nothing here changes the style of a live slide: a style change never alters what is on screen.
+// tests share the rules. Nothing here changes the style of a live slide: a style change never alters what is on screen. The song's own font
+// size is part of the song, saved with the song form, so a saved change to it does reach the live slide.
+import { clampFontScale } from './song-filing.js';
 
 /**
  * Where the operator's place in a song goes once the song has been edited. The place is a stanza position (0-based), because an edit
@@ -15,8 +17,8 @@ export function stanzaTarget(position, count, newCount) {
 /**
  * The live lyrics frame after its song was edited, or null when nothing on screen changes. `frame.song` says which song and stanza
  * position it shows. `hymn` is the song as it is now. A deleted song (or one with no stanzas) also gives null: the slide stays on
- * screen, and the caller warns the operator. The result keeps the frame's style, and reports `changed` only when its text or title
- * changed, so a style-only change is a no-op.
+ * screen, and the caller warns the operator. The result keeps the frame's style, and reports `changed` only when its text, title or font
+ * size changed, so a style-only change is a no-op. A hymn that does not say its font size keeps the frame's.
  */
 export function lyricsFrameAfterEdit(frame, hymn) {
   if (!frame || frame.kind !== 'lyrics' || !frame.song || !hymn) return null;
@@ -24,14 +26,17 @@ export function lyricsFrameAfterEdit(frame, hymn) {
   const target = stanzaTarget(frame.song.position, frame.song.count, hymn.stanzas.length);
   if (!target) return null;
   const stanza = hymn.stanzas[target.position];
+  const { fontScale: before, ...rest } = frame;
+  const fontScale = hymn.fontScale === undefined ? clampFontScale(before) : clampFontScale(hymn.fontScale);
   const next = {
-    ...frame,
+    ...rest,
+    ...(fontScale !== 1 ? { fontScale } : {}),
     title: hymn.title,
     label: stanza.stanzaType,
     text: stanza.lyricsText,
     song: { hymnId: hymn.id, position: target.position, count: hymn.stanzas.length },
   };
-  const changed = next.text !== frame.text || next.title !== frame.title || next.label !== frame.label;
+  const changed = next.text !== frame.text || next.title !== frame.title || next.label !== frame.label || fontScale !== clampFontScale(before);
   return { frame: next, moved: target.moved, changed };
 }
 
