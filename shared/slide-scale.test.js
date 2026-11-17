@@ -1,4 +1,4 @@
-// The slide text size: 70% to 150% in steps of 10%, applied on every text surface, and shown in the Live panel and the thumbnails. At 100% the
+// The slide text size: 50% to 250% in steps of 10%, applied on every text surface, and shown in the Live panel and the thumbnails. At 100% the
 // sizes are the ones the slides were laid out for. Run with: node --test shared/slide-scale.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,8 +12,12 @@ import { secondaryViewSnapshot } from './remote-view.js';
 const read = (rel) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), 'utf8');
 const run = (state, ...actions) => actions.reduce((s, a) => liveReducer(s, a), state);
 
-test('the scale steps from 70% to 150%, and starts at 100%', () => {
-  assert.deepEqual(SLIDE_FONT_SCALES, [0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5]);
+test('the scale steps from 50% to 250% in tens, and starts at 100%', () => {
+  assert.equal(SLIDE_FONT_SCALES[0], 0.5);
+  assert.equal(SLIDE_FONT_SCALES.at(-1), 2.5);
+  assert.equal(SLIDE_FONT_SCALES.length, 21);
+  SLIDE_FONT_SCALES.slice(1).forEach((s, i) => assert.equal(Math.round((s - SLIDE_FONT_SCALES[i]) * 10) / 10, 0.1));
+  assert.ok(SLIDE_FONT_SCALES.includes(1) && SLIDE_FONT_SCALES.includes(1.5) && SLIDE_FONT_SCALES.includes(2));
   assert.equal(PROJECTOR_SETTINGS_DEFAULTS.slideFontScale, 1);
 });
 
@@ -21,8 +25,11 @@ test('a saved scale that is a step is kept; anything else falls back to 100%', (
   assert.equal(sanitizeProjectorSettings({ slideFontScale: 1.2 }).slideFontScale, 1.2);
   assert.equal(sanitizeProjectorSettings({ slideFontScale: '0.8' }).slideFontScale, 0.8);
   assert.equal(sanitizeProjectorSettings({ slideFontScale: 1.23 }).slideFontScale, 1.2, 'a value between steps rounds to the nearest step');
-  assert.equal(sanitizeProjectorSettings({ slideFontScale: 2 }).slideFontScale, 1, 'above the range is refused');
-  assert.equal(sanitizeProjectorSettings({ slideFontScale: 0.5 }).slideFontScale, 1, 'below the range is refused');
+  assert.equal(sanitizeProjectorSettings({ slideFontScale: 2 }).slideFontScale, 2, '200% is a step');
+  assert.equal(sanitizeProjectorSettings({ slideFontScale: 2.5 }).slideFontScale, 2.5, '250% is kept, not clamped at 150%');
+  assert.equal(sanitizeProjectorSettings({ slideFontScale: 0.5 }).slideFontScale, 0.5, '50% is the smallest step');
+  assert.equal(sanitizeProjectorSettings({ slideFontScale: 3 }).slideFontScale, 1, 'above the range is refused');
+  assert.equal(sanitizeProjectorSettings({ slideFontScale: 0.3 }).slideFontScale, 1, 'below the range is refused');
   assert.equal(sanitizeProjectorSettings({}).slideFontScale, 1);
 });
 
@@ -59,7 +66,7 @@ test('the Live panel control saves the same settings as the Settings page, and s
   const control = read('src/praise-worship/SlideTypography.tsx');
   assert.match(control, /bridge\.projector\.save\(patch\)/, 'the same save path as the Settings page');
   assert.match(control, /aria-label="Slide font"/);
-  assert.match(control, /aria-label="Larger text"/);
-  assert.match(control, /aria-label="Smaller text"/);
+  assert.ok(control.includes("aria-label={t('typoLarger')}"));
+  assert.ok(control.includes("aria-label={t('typoSmaller')}"));
   assert.match(read('src/praise-worship/LiveView.tsx'), /<SlideTypography \/>/);
 });

@@ -9,6 +9,8 @@ import { charsPerLine, slideLine, slideText } from '../../shared/text-wrap.js';
 import { TEXT_FONTS, scaledSize } from '../../shared/text-style.js';
 import { BackgroundShade } from '../output/BackgroundMedia';
 import { useProjectorTextAutoFit } from '../output/useProjectorTextAutoFit';
+import { useTextAutoFit } from '../output/useTextAutoFit';
+import { EDGE_TO_EDGE, edgeToEdgeBox } from '../../shared/text-fit.js';
 
 const TYPE_ICON = { prayer: Cross, song: Music, scripture: BookOpen } as const;
 
@@ -39,6 +41,8 @@ export function PwSlideFace({
   slideFont,
   slideScale,
   hideTitle = false,
+  edgeToEdge = false,
+  bandOn = false,
 }: {
   slide: PwSlide;
   segmentName: string;
@@ -51,10 +55,14 @@ export function PwSlideFace({
   background?: WelcomeBackground | null;
   /** The font the operator chose for slides, as CSS. Undefined keeps the face each part of the slide already uses. */
   slideFont?: string;
-  /** The operator's slide text size, as a share of normal (0.7 to 1.5). Undefined keeps the normal size. */
+  /** The operator's slide text size, as a share of normal (0.5 to 2.5). Undefined keeps the normal size. */
   slideScale?: number;
   /** The operator's Title switch is off: no label or segment name above the text. A title card keeps its title, which is all that card says. */
   hideTitle?: boolean;
+  /** Edge-to-edge (the MAX pill): a lyric page fills the slide at the largest size that fits, with a thin clearance at the edges. */
+  edgeToEdge?: boolean;
+  /** A lower third is on screen: edge-to-edge text keeps the band's room clear at the bottom. */
+  bandOn?: boolean;
 }) {
   const position = total > 1 ? `${index + 1} / ${total}` : '';
   // The colour is painted only when the type is Colour. With a picture or a video selected, the slide must not paint over the layer behind it,
@@ -78,7 +86,7 @@ export function PwSlideFace({
 
   if (slide.kind === 'title') {
     const Icon = TYPE_ICON[type];
-    // Proportional across the whole 70%-150% range: no ceiling, so every A-/A+ step changes the title. Long titles (more than 25 characters,
+    // Proportional across the whole 50%-250% range: no ceiling, so every A-/A+ step changes the title. Long titles (more than 25 characters,
     // which wrap to three lines) start smaller, so they stay inside the frame. The line width follows the scaled size.
     const long = slide.label.length > 25;
     const titleCqw = (long ? 3.6 : 4.4) * (slideScale ?? 1);
@@ -133,12 +141,46 @@ export function PwSlideFace({
       {layers}
       {!hideTitle && <div className="absolute top-[3.938cqw] left-[6cqw] text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{slideLine(slide.label, charsPerLine(0.88, 1.6 * 19.2))}</div>}
       {!hideTitle && <div className="absolute top-[3.938cqw] right-[6cqw] text-[1.6cqw] text-muted">{segmentName}</div>}
-      {/* Lyrics: the same rule as the prayer, at the slide's top. */}
+      {/* Lyrics: the same rule as the prayer, at the slide's top. Edge-to-edge fills the slide instead, clear of the label, footer and band. */}
+      {edgeToEdge ? (
+        <EdgeToEdgeFaceText
+          box={edgeToEdgeBox({ header: !hideTitle, footer: Boolean(footer || position), lowerThird: bandOn })}
+          textAlign={slide.align ?? 'center'}
+          fontFamily={slideFont}
+        >
+          {slide.text}
+        </EdgeToEdgeFaceText>
+      ) : (
       <FittedFaceText className="font-serif text-[5cqw] font-semibold whitespace-pre-line" place={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slide.align ?? 'center' }} fontFamily={slideFont} naturalSize={scaledSize('5cqw', (slideScale ?? 1) * (slide.fontScale ?? 1))}>
         {slideText(slide.text, charsPerLine(0.88, 5 * 19.2 * (slide.fontScale ?? 1)))}
       </FittedFaceText>
+      )}
       <div className="absolute bottom-[3.938cqw] left-[6cqw] text-[1.6cqw] text-muted">{footer}</div>
       {position && <div className="pointer-events-none absolute right-[6cqw] bottom-[3.938cqw] z-20 font-mono text-[1.6cqw] text-muted">{position}</div>}
+    </div>
+  );
+}
+
+/**
+ * A lyric page edge-to-edge: centred in a box with a thin clearance at the slide's edges (room for the label, the footer and a lower third only
+ * when they are shown), starting from a size no stanza can take, so the fit ends at the largest size at which the whole page fits. The browser
+ * wraps the lines for that size. Offsets are in cqw only, as the rest of the face (see the note on PwSlideFace).
+ */
+function EdgeToEdgeFaceText({ box, textAlign, fontFamily, children }: { box: { left: number; right: number; top: number; bottom: number }; textAlign: CSSProperties['textAlign']; fontFamily?: string; children: string }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLParagraphElement>(null);
+  const naturalSize = `${EDGE_TO_EDGE.ceilingCqw}cqw`;
+  useTextAutoFit({ boxRef, textRef, naturalSize, deps: [children, fontFamily, box.top, box.bottom], heightShare: EDGE_TO_EDGE.heightShare });
+  return (
+    <div
+      ref={boxRef}
+      data-edge-to-edge
+      className="absolute flex items-center justify-center overflow-hidden"
+      style={{ left: `${box.left}cqw`, right: `${box.right}cqw`, top: `${box.top}cqw`, bottom: `${box.bottom}cqw` }}
+    >
+      <p ref={textRef} className="w-full font-serif font-semibold whitespace-pre-line" style={{ fontFamily, fontSize: naturalSize, lineHeight: EDGE_TO_EDGE.leading, textAlign }}>
+        {children}
+      </p>
     </div>
   );
 }

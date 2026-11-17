@@ -17,8 +17,11 @@ export const PROJECTOR_STARTUP = ['welcome', 'black', 'last'];
 export const TRANSITION_STYLES = ['fade', 'dissolve', 'push', 'slideLeft', 'slideRight', 'slideUp', 'zoomIn'];
 /** The transitions that keep the leaving slide on screen while it animates out. */
 export const OVERLAP_TRANSITIONS = ['dissolve', 'push'];
-/** The size scale for slide text: 70% to 150% in steps of 10%. 100% is the size each slide was laid out for. */
-export const SLIDE_FONT_SCALES = [0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5];
+/**
+ * The size scale for slide text: 50% to 250% in steps of 10%, so lyrics can be read from the back of a large church. 100% is the size each
+ * slide was laid out for. A long stanza still shrinks to fit at any step (see useTextAutoFit), so a large step never clips.
+ */
+export const SLIDE_FONT_SCALES = Array.from({ length: 21 }, (_, i) => Math.round((0.5 + i * 0.1) * 10) / 10);
 /** The first slide of a Praise & Worship item: its title card, or a solid black screen. */
 export const INTRO_SLIDE_MODES = ['title', 'black'];
 export const FADE_MIN_MS = 100;
@@ -47,6 +50,12 @@ export const PROJECTOR_SETTINGS_DEFAULTS = {
   defaultIntroSlideMode: 'title',
   /** How large slide text is drawn, as a share of its normal size. 1 is the normal size. */
   slideFontScale: 1,
+  /**
+   * Edge-to-edge (the Go Live MAX pill): song lyrics take almost the whole slide, with a thin clearance at the edges instead of the usual
+   * inset, and are drawn at the largest size at which the stanza still fits (see EDGE_TO_EDGE in text-fit.js). A short chorus becomes very
+   * large; a long verse still fits whole. Off by default.
+   */
+  edgeToEdge: false,
   /**
    * Whether a lyric or prayer line too long for the slide is broken into even lines at natural phrase breaks (see balanceProjectorLines in
    * text-fit.js), rather than filled to the edge with a word left alone on the next line. Off draws the browser's own wrap.
@@ -115,6 +124,7 @@ export function sanitizeProjectorSettings(raw) {
     slideFont: SLIDE_FONTS.includes(p.slideFont) ? p.slideFont : null,
     defaultIntroSlideMode: INTRO_SLIDE_MODES.includes(p.defaultIntroSlideMode) ? p.defaultIntroSlideMode : PROJECTOR_SETTINGS_DEFAULTS.defaultIntroSlideMode,
     slideFontScale: nearestScale(p.slideFontScale),
+    edgeToEdge: typeof p.edgeToEdge === 'boolean' ? p.edgeToEdge : PROJECTOR_SETTINGS_DEFAULTS.edgeToEdge,
     balanceLines: typeof p.balanceLines === 'boolean' ? p.balanceLines : PROJECTOR_SETTINGS_DEFAULTS.balanceLines,
     textCase: TEXT_CASES.includes(p.textCase) ? p.textCase : PROJECTOR_SETTINGS_DEFAULTS.textCase,
     showSlotTitle: typeof p.showSlotTitle === 'boolean' ? p.showSlotTitle : PROJECTOR_SETTINGS_DEFAULTS.showSlotTitle,

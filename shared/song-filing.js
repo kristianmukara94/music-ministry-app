@@ -1,21 +1,30 @@
 // A song's filing under several song categories, and its own projector font size. Plain JS with no Electron or React, so the main process
 // (which checks what is saved), the song form (which previews it) and the projector (which draws it) share one set of rules.
 
-/** The stored font scale's limits: 75% to 150% of the theme's lyric size. A value outside them is clamped, never refused. */
+/**
+ * The stored font scale's limits: 75% to 250% of the theme's lyric size, so a dense verse or a large-print song can go well past the theme. A
+ * value outside them is clamped, never refused.
+ */
 export const FONT_SCALE_MIN = 0.75;
-export const FONT_SCALE_MAX = 1.5;
+export const FONT_SCALE_MAX = 2.5;
 export const FONT_SCALE_DEFAULT = 1;
+/**
+ * The ceiling of the original `hymns.font_scale` column, whose CHECK constraint stops at 150%. A larger size is kept in `font_scale_wide`
+ * beside it (see fontScaleColumns), so the column and its constraint never need a table rebuild.
+ */
+export const FONT_SCALE_LEGACY_MAX = 1.5;
 /** The lowest size the song form's A- button reaches. A song stored lower (75%) keeps its size until the operator changes it. */
 export const FONT_SCALE_STEP_MIN = 0.8;
-/** One press of A- or A+: 5 percentage points. */
+/** One press of A- or A+: 5 percentage points up to 150%, then 10 points up to 250%, so the large sizes are a few presses away. */
 export const FONT_SCALE_STEP = 0.05;
+export const FONT_SCALE_WIDE_STEP = 0.1;
 
 /** How many song categories one song can carry. */
 export const MAX_SONG_CATEGORIES = 8;
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
-/** A font scale as stored: a number from 0.75 to 1.5, to two decimals. Anything missing or unreadable is 1 (the theme's own size). */
+/** A font scale as stored: a number from 0.75 to 2.5, to two decimals. Anything missing or unreadable is 1 (the theme's own size). */
 export function clampFontScale(value) {
   if (value == null || value === '') return FONT_SCALE_DEFAULT;
   const n = Number(value);
@@ -23,10 +32,22 @@ export function clampFontScale(value) {
   return round2(Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, n)));
 }
 
-/** The scale after one press of A+ (`direction` 1) or A- (-1), kept between 80% and 150%. */
+/** The scale after one press of A+ (`direction` 1) or A- (-1), kept between 80% and 250%. */
 export function stepFontScale(scale, direction) {
-  const next = round2(clampFontScale(scale) + Math.sign(direction) * FONT_SCALE_STEP);
+  const current = clampFontScale(scale);
+  const sign = Math.sign(direction);
+  const wide = sign > 0 ? current >= FONT_SCALE_LEGACY_MAX : current > FONT_SCALE_LEGACY_MAX;
+  const next = round2(current + sign * (wide ? FONT_SCALE_WIDE_STEP : FONT_SCALE_STEP));
   return round2(Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_STEP_MIN, next)));
+}
+
+/**
+ * A scale as the hymns table stores it: `fontScale` in the original column (at most 150%, its CHECK constraint) and `fontScaleWide`, the full
+ * size when it is past 150% and null otherwise. A reader takes `font_scale_wide` when it is set, else `font_scale`.
+ */
+export function fontScaleColumns(scale) {
+  const value = clampFontScale(scale);
+  return { fontScale: Math.min(value, FONT_SCALE_LEGACY_MAX), fontScaleWide: value > FONT_SCALE_LEGACY_MAX ? value : null };
 }
 
 /** Whether A- or A+ can still change the size. */

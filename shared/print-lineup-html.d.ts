@@ -1,4 +1,4 @@
-import type { PaperSize, PrintLayout, PrintLineup } from './print-lineup.js';
+import type { ColorMode, PaperSize, PrintLayout, PrintLineup } from './print-lineup.js';
 
 export interface PrintPage {
   landscape: boolean;
@@ -36,7 +36,7 @@ export function iconSvg(kind: string): string;
 /** The lineup as a standalone white-paper HTML document: the preview, the printed page and the PDF. */
 export function lineupDocument(
   lineup: PrintLineup,
-  options?: { layout?: PrintLayout | string; mode?: string; lang?: string; church?: string; paper?: PaperSize | string; paged?: boolean },
+  options?: { layout?: PrintLayout | string; mode?: string; lang?: string; church?: string; paper?: PaperSize | string; paged?: boolean; colorMode?: ColorMode | string },
 ): string;
 
 export interface CheckedPrintJob {
@@ -46,6 +46,7 @@ export interface CheckedPrintJob {
   lang: string;
   church: string;
   paper: PaperSize;
+  colorMode: ColorMode;
   /** The same paper, as Electron's print / printToPDF pageSize. */
   pageSize: PaperSize;
   landscape: boolean;

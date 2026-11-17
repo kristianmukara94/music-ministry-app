@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ExternalLink, FileDown, Maximize, Minus, Plus, Printer, X } from 'lucide-react';
-import { PAPER_SIZES, PRINT_LAYOUTS, paperSizeOf, printLayoutOf, type PaperSize, type PrintLayout, type PrintLineup } from '../../shared/print-lineup.js';
+import { COLOR_MODES, PAPER_SIZES, PRINT_LAYOUTS, colorModeOf, paperSizeOf, printLayoutOf, type ColorMode, type PaperSize, type PrintLayout, type PrintLineup } from '../../shared/print-lineup.js';
 import { lineupDocument, sheetOf } from '../../shared/print-lineup-html.js';
 import { TextCaseSwitch } from '../components/TextCaseSwitch';
 import { bridge, type LineupPrintJob } from '../live/bridge';
@@ -12,6 +12,7 @@ import { usePlannerT } from './strings';
 
 const LAYOUT_KEY = 'apcc.printLineupLayout';
 const PAPER_KEY = 'apcc.printLineupPaper';
+const COLOR_KEY = 'apcc.printLineupColorMode';
 const MM_TO_PX = 96 / 25.4;
 /**
  * The app window is frameless with the system's minimise / maximise / close buttons drawn over its top bar (titleBarOverlay, height
@@ -68,7 +69,7 @@ const DIVIDER = <span aria-hidden className="mx-1 hidden h-7 w-px shrink-0 bg-fg
 type Busy = 'print' | 'pdf' | 'open' | null;
 
 /**
- * The print studio. The sheet is shared/print-lineup-html.js, shown in a frame of its own exactly as it prints: white paper, black ink, none
+ * The print studio. The sheet is shared/print-lineup-html.js, shown in a frame of its own exactly as it prints: white paper, in colour or black and white, none
  * of the app's theme, at its real proportions (A4, Letter or Legal) on a dark desk. By default it holds two identical copies side by side on
  * a portrait sheet, in two columns (cut down the dashed line for two handouts); the bar switches to one copy across the sheet. Print… opens the system
  * Print dialog (already on the right orientation and paper), Save PDF writes a PDF, and Open PDF opens one in the system's PDF viewer, all
@@ -82,10 +83,11 @@ export function PrintLineupDialog({ lineup, onClose }: { lineup: PrintLineup; on
   const setMode = usePlannerTextCase((s) => s.set);
   const [layout, setLayout] = useState<PrintLayout>(() => readStored(LAYOUT_KEY, printLayoutOf, 'double'));
   const [paper, setPaper] = useState<PaperSize>(() => readStored(PAPER_KEY, paperSizeOf, 'A4'));
+  const [colorMode, setColorMode] = useState<ColorMode>(() => readStored(COLOR_KEY, colorModeOf, 'color'));
   const [busy, setBusy] = useState<Busy>(null);
   const [status, setStatus] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
-  const job: LineupPrintJob = useMemo(() => ({ lineup, layout, mode, lang, church, paper }), [lineup, layout, mode, lang, church, paper]);
-  const html = useMemo(() => lineupDocument(lineup, { layout, mode, lang, church, paper }), [lineup, layout, mode, lang, church, paper]);
+  const job: LineupPrintJob = useMemo(() => ({ lineup, layout, mode, lang, church, paper, colorMode }), [lineup, layout, mode, lang, church, paper, colorMode]);
+  const html = useMemo(() => lineupDocument(lineup, { layout, mode, lang, church, paper, colorMode }), [lineup, layout, mode, lang, church, paper, colorMode]);
 
   // The paper is drawn at its real size (mm at 96 dpi) and scaled: to fit the whole first page in the desk, or to a chosen zoom.
   const frame = useRef<HTMLIFrameElement>(null);
@@ -175,6 +177,10 @@ export function PrintLineupDialog({ lineup, onClose }: { lineup: PrintLineup; on
     setPaper(next);
     writeStored(PAPER_KEY, next);
   };
+  const pickColorMode = (next: ColorMode) => {
+    setColorMode(next);
+    writeStored(COLOR_KEY, next);
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm" data-print-lineup-backdrop>
@@ -212,6 +218,22 @@ export function PrintLineupDialog({ lineup, onClose }: { lineup: PrintLineup; on
                 {PAPER_SIZES.map((id) => (
                   <button key={id} type="button" role="radio" aria-checked={paper === id} data-paper={id} onClick={() => pickPaper(id)} className={segment(paper === id)}>
                     {id}
+                  </button>
+                ))}
+              </div>
+              <div role="radiogroup" aria-label={t('printColorMode')} className={SEGMENTS} data-color-mode={colorMode}>
+                {COLOR_MODES.map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={colorMode === id}
+                    data-color-mode-option={id}
+                    onClick={() => pickColorMode(id)}
+                    title={t(id === 'color' ? 'printColorHint' : 'printBwHint')}
+                    className={segment(colorMode === id)}
+                  >
+                    {t(id === 'color' ? 'printColor' : 'printBw')}
                   </button>
                 ))}
               </div>

@@ -636,6 +636,8 @@ export interface LineupPrintJob {
   church: string;
   /** The paper, locked in by the sheet's @page rule and passed to the Print dialog and the PDF writer. */
   paper: import('../../shared/print-lineup.js').PaperSize;
+  /** Coloured accents or black and white only; the paper is white either way. */
+  colorMode: import('../../shared/print-lineup.js').ColorMode;
 }
 
 export interface LineupPrintApi {

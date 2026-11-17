@@ -42,16 +42,54 @@ test('the paper is a complete light-mode document with no script and nothing loa
   assert.doesNotMatch(html, /https?:\/\//, 'no fonts, images or styles fetched from anywhere');
 });
 
-test('the paper is strictly black and white: every colour is a grey', () => {
-  const html = doc();
-  const colours = html.match(/#[0-9a-f]{6}\b/gi) ?? [];
+/** Every distinct #rrggbb in a document, and whether it is a grey (the neutral Tailwind greys have the faintest hint of blue). */
+const coloursOf = (html) => [...new Set((html.match(/#[0-9a-f]{6}\b/gi) ?? []).map((x) => x.toLowerCase()))];
+const isGrey = (c) => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+  return Math.max(r, g, b) - Math.min(r, g, b) <= 28;
+};
+
+test('B&W: the paper is strictly black and white, every colour a grey, with black-ruled grey section bands', () => {
+  const html = doc({ colorMode: 'bw' });
+  assert.match(html, /<body class="density-roomy" data-color-mode="bw">/);
+  const colours = coloursOf(html);
   assert.ok(colours.length > 0);
-  // Greys here are the neutral Tailwind greys (#111827 … #d1d5db, the faintest hint of blue) or pure black and white.
-  for (const c of new Set(colours.map((x) => x.toLowerCase()))) {
-    const [r, g, b] = [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
-    assert.ok(Math.max(r, g, b) - Math.min(r, g, b) <= 28, `${c} is a grey`);
-  }
+  for (const c of colours) assert.ok(isGrey(c), `${c} is a grey`);
   assert.doesNotMatch(html, /rgb\(|hsl\(/);
+  assert.match(html, /html, body \{ margin: 0; padding: 0; background: #ffffff;/, 'white paper');
+  assert.match(html, /\.section-head \{[^}]*background: #f3f4f6; border-top: 1\.5px solid #000000; border-bottom: 1px solid #000000; padding: 3px 6px; margin-top: 8px;[^}]*print-color-adjust: exact;/);
+  assert.match(html, /\.section-head h2, \.section-head \.mono \{ color: #000000; font-weight: 700; \}/, 'section name and minutes in solid black');
+  assert.doesNotMatch(html, /data-kind="song"\] > \.icon/, 'no colour-coded icon boxes');
+});
+
+test('Color (the default): white paper, a tinted section band, colour-coded icons and key pills, all kept in colour when printed', () => {
+  const html = doc();
+  assert.equal(html, doc({ colorMode: 'color' }), 'colour is the default');
+  assert.equal(doc({ colorMode: 'sepia' }), html, 'an unknown mode prints in colour');
+  assert.match(html, /data-color-mode="color"/);
+  assert.match(html, /html, body \{ margin: 0; padding: 0; background: #ffffff;/, 'still white paper');
+  assert.match(html, /\.sheet \{\n  position: relative; display: grid; align-items: stretch; background: #ffffff;/);
+  assert.match(html, /\.section-head \{[^}]*background: #fef9ec; border-left: 3px solid #b45309; border-bottom: 1px solid #d97706; padding: 3px 6px;[^}]*print-color-adjust: exact;/);
+  assert.match(html, /\.section-head h2, \.section-head \.mono \{ color: #111827; font-weight: 700; \}/);
+  assert.match(html, /\.row\[data-kind="song"\] > \.icon \{ border-color: #b45309; background: #fffbeb; \}/);
+  assert.match(html, /\.row\[data-kind="prayer"\] > \.icon \{ border-color: #4338ca; background: #eef2ff; \}/);
+  assert.match(html, /\.row\[data-kind="reading"\] > \.icon \{ border-color: #047857; background: #ecfdf5; \}/);
+  assert.match(html, /\.row\[data-kind="song"\] > \.icon svg, \.subcard\[data-kind="song"\] svg \{ stroke: #b45309; \}/, 'the notes in a multi-song card are amber too');
+  assert.match(html, /\.key \{ background: #eff6ff; border: 1px solid #1d4ed8; color: #1e3a8a; font-weight: 700; \}/);
+  assert.match(html, /\.badge, \.icon, \.icon svg, \.subcard svg, \.key \{ -webkit-print-color-adjust: exact; print-color-adjust: exact; \}/);
+  assert.ok(coloursOf(html).some((c) => !isGrey(c)), 'colour mode carries colour');
+  // The key pill still prints only a real key, in its own case.
+  assert.match(rowOf(html, 'Sample Song 1'), /<small>Key<\/small>Bb<\/span>/);
+  assert.doesNotMatch(rowOf(html, 'Sample Song 3'), /<small>Key<\/small>None/);
+});
+
+test('both modes: songs extra-bold black, slot labels and title cards normal-weight black', () => {
+  for (const colorMode of ['color', 'bw']) {
+    const html = doc({ colorMode });
+    assert.match(html, /\.title, \.song \{\n  font-weight: 800; color: #000000;/, colorMode);
+    assert.match(html, /\.role, \.text, \.under \{ font-weight: 400; color: #000000;[^}]*print-color-adjust: exact; \}/, colorMode);
+    assert.doesNotMatch(html, /\.(role|text|under)[^{]*\{[^}]*color: (?!#000000)/, `${colorMode}: no slot or card title in grey`);
+  }
 });
 
 test('the letterhead carries the parish, the lineup badge, the title, the date and the total runtime over a 1.5pt rule', () => {
@@ -71,7 +109,7 @@ test('each section heads its rows with its name and minutes; each row has a numb
   const html = doc();
   assert.match(html, /<div class="section-head"><h2>Sample Opening<\/h2><span class="mono">8 min<\/span><\/div>/);
   assert.match(html, /<div class="section-head"><h2>Sample Worship<\/h2><span class="mono">15 min<\/span><\/div>/);
-  assert.match(html, /\.icon \{\n  width: 18pt; height: 18pt; border: 1px solid #374151; border-radius: 4px;/, 'a short lineup prints roomy: an 18 pt rounded box');
+  assert.match(html, /\.icon \{\n  width: 18pt; height: 18pt; border: 1px solid #000000; border-radius: 4px;/, 'a short lineup prints roomy: an 18 pt rounded box with a black border');
   assert.match(rowOf(html, 'Sample Prayer'), /<span class="num mono">01<\/span><span class="icon">/);
   // The icon matches the item: a cross for a prayer, a note for a song, a book for a reading.
   assert.ok(rowOf(html, 'Sample Prayer').includes(iconSvg('prayer')));
@@ -98,10 +136,10 @@ test('song titles are solid bold black; slot labels and title-only cards are nor
   assert.match(rowOf(html, 'Sample Song 1'), /<span class="title">Sample Song 1<\/span>/);
   assert.match(rowOf(html, 'Sample Chained Segment'), /<span class="song">Sample Song 2<\/span>[^]*<span class="song">Sample Song 3<\/span>/);
   // Slot labels (above a song, under a prayer, heading a multi-song card) and title-only cards are never bold.
-  assert.match(html, /\.role \{ font-size: [\d.]+pt; font-weight: 400; letter-spacing: 0\.06em; color: var\(--label\);/);
-  assert.match(html, /\.under \{ font-size: [\d.]+pt; font-weight: 400; color: var\(--label\);/);
-  assert.match(html, /\.text \{ font-size: [\d.]+pt; font-weight: 400; color: var\(--ink-2\);/);
-  assert.match(html, /--ink-2: #111827;[^}]*--label: #374151;/);
+  // Solid pure black at normal weight, kept black where a printer would save ink.
+  assert.match(html, /\.role, \.text, \.under \{ font-weight: 400; color: #000000; overflow-wrap: anywhere; -webkit-print-color-adjust: exact; print-color-adjust: exact; \}/);
+  assert.match(html, /\.num \{ font-size: [\d.]+pt; font-weight: 700; color: #000000;/, 'row numbers in black');
+  assert.match(html, /\.subcard \.n \{[^}]*color: #1f2937;/, 'sub-card numbers in dark charcoal');
   assert.match(rowOf(html, 'Sample Title Slot'), /<span class="text">Sample Title Slot<\/span>/, 'a title-only card is normal weight');
   assert.match(rowOf(html, 'Sample Song 1'), /<span class="role">Sample Slot<\/span>/, 'the slot above a song is normal weight');
   assert.match(rowOf(html, 'Sample Chained Segment'), /<span class="role segment">Sample Chained Segment<\/span>/);
@@ -197,7 +235,7 @@ test('every word from the plan is escaped', () => {
 });
 
 test('the type steps down only as far as a usual lineup needs to fit one sheet', () => {
-  // Three parts, as a usual lineup has, with the cards shared among them. (Thresholds checked against real layout in Electron.)
+  // Three parts, as a usual lineup has, with the cards shared among them. (Thresholds checked against real layout in Electron printToPDF, A4/Letter/Legal, both inks.)
   const many = (n, title = 'Sample Song') => ({
     type: 'pw', title: 'Sample', subtitle: '', minutes: null,
     sections: [0, 1, 2].map((g) => ({ heading: `Sample ${g}`, minutes: null, entries: Array.from({ length: Math.ceil(n / 3) }, (_, i) => ({ number: '01', name: 'Sample Slot', kind: 'song', minutes: 3, items: [{ kind: 'song', title: `${title} ${i + 1}`, key: null }] })) })),
@@ -210,20 +248,21 @@ test('the type steps down only as far as a usual lineup needs to fit one sheet',
   assert.equal(fitDensity(many(21), 'double'), 'compact');
   assert.equal(fitDensity(many(22), 'double'), 'dense', 'a 22-card lineup still fits two copies on one sheet');
   assert.equal(fitDensity(many(22), 'double', 'Legal'), 'roomy', 'Legal paper is taller still');
-  assert.equal(fitDensity(many(15), 'single'), 'normal', 'one copy per page reads larger, so steps down sooner');
+  assert.equal(fitDensity(many(15), 'single'), 'roomy', 'one copy of 15 cards still prints roomy under the slimmer section bands');
+  assert.equal(fitDensity(many(18), 'single'), 'compact', 'one copy per page reads larger, so steps down sooner');
   assert.equal(fitDensity(many(15), 'single', 'Legal'), 'roomy');
   assert.equal(fitDensity(many(21), 'single', 'Letter'), 'dense');
   assert.equal(fitDensity(many(21), 'single'), 'dense');
   assert.equal(fitDensity(many(60), 'double'), 'tight', 'too long for one sheet: the tightest size, over more pages');
   const long = 'Sample Song With A Very Long Title That Wraps Onto Another Line';
-  assert.equal(fitDensity(many(12, long), 'double'), 'compact', 'long titles that wrap in a narrow column count against the room');
+  assert.equal(fitDensity(many(12, long), 'double'), 'dense', 'long titles that wrap in a narrow column count against the room');
   // Each step keeps the song title the largest word on a row, within the sizes a musician reads at a glance.
   for (const d of DENSITIES) {
     assert.ok(SIZES.double[d].title >= 9.5 && SIZES.double[d].title <= 11, `two copies, ${d}: 9.5–11 pt`);
     assert.ok(SIZES.single[d].title >= 11.5 && SIZES.single[d].title <= 13, `one copy, ${d}: 11.5–13 pt`);
     for (const l of ['double', 'single']) assert.ok(SIZES[l][d].title > SIZES[l][d].sub && SIZES[l][d].sub > SIZES[l][d].role);
   }
-  assert.match(lineupDocument(many(60), {}), /<body class="density-tight">/);
+  assert.match(lineupDocument(many(60), {}), /<body class="density-tight" data-color-mode="color">/);
 });
 
 test('a print job from the window is checked: known layout, case and language; a bounded, well-formed lineup', () => {
@@ -237,6 +276,9 @@ test('a print job from the window is checked: known layout, case and language; a
   assert.equal(job.church, 'Sample Parish');
   assert.equal(job.paper, 'A4', 'no paper prints on A4');
   assert.equal(job.pageSize, 'A4');
+  assert.equal(job.colorMode, 'color', 'no ink prints in colour');
+  assert.equal(checkPrintJob({ lineup, colorMode: 'bw' }).colorMode, 'bw');
+  assert.equal(checkPrintJob({ lineup, colorMode: 'rainbow' }).colorMode, 'color');
   assert.deepEqual(job.lineup, lineup, 'a good lineup passes through unchanged');
   for (const [given, paper] of [['Letter', 'Letter'], ['legal', 'Legal'], ['Tabloid', 'A4'], [42, 'A4']]) {
     const checked = checkPrintJob({ lineup, paper: given });
@@ -261,7 +303,9 @@ test('a saved PDF is offered as <Service-Title>-Lineup.pdf, safe as a Windows fi
 
 test('the preview shows this same document, in a frame that runs no script', () => {
   const dialog = read('src/planner/PrintLineup.tsx');
-  assert.match(dialog, /const html = useMemo\(\(\) => lineupDocument\(lineup, \{ layout, mode, lang, church, paper \}\)/);
+  assert.match(dialog, /const html = useMemo\(\(\) => lineupDocument\(lineup, \{ layout, mode, lang, church, paper, colorMode \}\)/);
+  assert.match(dialog, /const job: LineupPrintJob = useMemo\(\(\) => \(\{ lineup, layout, mode, lang, church, paper, colorMode \}\)/, 'Print and the PDFs get the same ink');
+  assert.match(dialog, /readStored\(COLOR_KEY, colorModeOf, 'color'\)/, 'the ink is remembered, colour by default');
   assert.match(dialog, /srcDoc=\{html\}/);
   assert.match(dialog, /sandbox="allow-same-origin allow-modals"/);
   assert.doesNotMatch(dialog, /allow-scripts/);

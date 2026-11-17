@@ -61,7 +61,7 @@ test('the Live preview, the Current and Next slides, and the projector all pass 
   assert.match(next, /<Face shown=\{next\} blackLabel=\{t\('previewBlack'\)\} background=\{background\} \/>/, 'the next slide');
   assert.match(read('src/output/ProjectorView.tsx'), /const ownBackground = welcomeBackground\(useOutput\(\(s\) => s\.welcome\.slideBackground\)\);/, 'the projector reads the Live slide background');
   assert.match(read('src/output/ProjectorView.tsx'), /const pwBackground = sharedBackground \? SEE_THROUGH : ownBackground;/, 'and uses it unless the Media Library background covers every slide');
-  assert.match(read('src/output/ProjectorView.tsx'), /footer=\{frame\.footer\} background=\{pwBackground\} \/>/, 'the projector passes it to the slide');
+  assert.match(read('src/output/ProjectorView.tsx'), /footer=\{frame\.footer\} background=\{pwBackground\} edgeToEdge=\{edgeToEdge\} bandOn=\{bandOn\} \/>/, 'the projector passes it to the slide');
   // The operator's Live preview is the projector itself (mirror), so it shows the same background.
   assert.match(read('src/operator/PreviewPanel.tsx'), /<ProjectorView mirror embedded \/>/);
 });

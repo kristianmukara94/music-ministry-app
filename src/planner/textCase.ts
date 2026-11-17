@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import { textCaseOf, type TextCase } from '../../shared/text-fit.js';
+import { plannerCaseReachesProjector, textCaseOf, type TextCase } from '../../shared/text-fit.js';
+import { bridge } from '../live/bridge';
+import { useLive } from '../live/store';
 
 const KEY = 'apcc.plannerTextCase';
 
@@ -14,7 +16,8 @@ function read(): TextCase {
 /**
  * The Planner's text case (Aa / AA / aa): how the lineup titles, the inline lyrics drawers and the printed lineup read in the Holy Mass
  * Planner and the Praise & Worship workspace. One choice for both planners, remembered on this computer. It is the operator's view only:
- * the projector has its own case in the Live Quick Controls, and nothing in the library is changed.
+ * the projector has its own case (the Go Live bar and the Live Quick Controls), which a toolbar pick also sets while nothing is on air (see
+ * pickPlannerTextCase). Nothing in the library is changed.
  */
 export const usePlannerTextCase = create<{ mode: TextCase; set: (mode: TextCase) => void }>((set) => ({
   mode: read(),
@@ -28,6 +31,20 @@ export const usePlannerTextCase = create<{ mode: TextCase; set: (mode: TextCase)
     }
   },
 }));
+
+/**
+ * The Planner toolbars' Aa / AA / aa: sets the Planner's case and, while nothing is on air (see plannerCaseReachesProjector), the projector's
+ * case too, so a service launched from the Planner goes live in the case the lineup was read in. On air, only the Planner's view changes: the
+ * congregation's screen is changed from the Go Live bar or the Live Quick Controls. The print studio sets the Planner's case only.
+ */
+export function pickPlannerTextCase(mode: TextCase): void {
+  const next = textCaseOf(mode);
+  usePlannerTextCase.getState().set(next);
+  const { state } = useLive.getState();
+  if (!plannerCaseReachesProjector(state.projector.live.kind) || textCaseOf(state.settings.textCase) === next) return;
+  // A failed save leaves the projector's case as it was; the live controls still show and change it.
+  bridge.projector.save({ textCase: next }).catch(() => undefined);
+}
 
 /** The Tailwind class that shows text in `mode` on screen: CSS only, so the words underneath (and copy and paste) stay as typed. */
 export function textCaseClass(mode: TextCase): string {

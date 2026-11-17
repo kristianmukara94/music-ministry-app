@@ -24,6 +24,8 @@ export interface ProjectorSettings {
   slideFont: string | null;
   defaultIntroSlideMode: 'title' | 'black';
   slideFontScale: number;
+  /** Edge-to-edge (MAX): lyrics fill the slide with a thin edge clearance, at the largest size that fits. Off by default. */
+  edgeToEdge: boolean;
   /** Long lyric and prayer lines are broken into even lines at phrase breaks. On by default. */
   balanceLines: boolean;
   /** The case slide text is drawn in: as typed, all capitals or all small letters. 'original' by default. */

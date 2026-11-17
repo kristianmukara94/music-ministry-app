@@ -36,6 +36,15 @@ export function paperSizeOf(value) {
   return PAPER_SIZES.find((p) => p.toLowerCase() === v) ?? DEFAULT_PAPER_SIZE;
 }
 
+/** The ink a lineup prints in: coloured accents on white paper (the default), or black and white only. */
+export const COLOR_MODES = ['color', 'bw'];
+export const DEFAULT_COLOR_MODE = 'color';
+
+/** A colour mode as one of COLOR_MODES; anything else is colour. */
+export function colorModeOf(value) {
+  return COLOR_MODES.includes(value) ? value : DEFAULT_COLOR_MODE;
+}
+
 /** Key values that mean "no key was set": printed as nothing at all, never as an empty badge or a dash. */
 const NO_KEY = new Set(['', 'none', 'n/a', 'na', '-', '--', '—', '–', 'null', 'undefined']);
 

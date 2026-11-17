@@ -36,7 +36,7 @@ import { goLiveLibraryItem, openQueueItem } from './routing';
 import { LiveButton } from '../components/LiveButton';
 import { TextCaseSwitch } from '../components/TextCaseSwitch';
 import { useArmedLive } from './useArmedLive';
-import { textCaseClass, usePlannerTextCase } from './textCase';
+import { pickPlannerTextCase, textCaseClass, usePlannerTextCase } from './textCase';
 import { PrintLineupButton, PrintLineupDialog } from './PrintLineup';
 import { massPrintLineup } from '../../shared/print-lineup.js';
 import { HolyMassPlan } from './HolyMassPlanner';
@@ -329,7 +329,8 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
   const [printing, setPrinting] = useState(false);
   // The Planner's text case (Aa / AA / aa) for the plan's rows, the lyrics drawers and the printed lineup. On-screen only.
   const textCase = usePlannerTextCase((s) => s.mode);
-  const setTextCase = usePlannerTextCase((s) => s.set);
+  // The toolbar pick also sets the projector case while nothing is on air (see pickPlannerTextCase).
+  const setTextCase = pickPlannerTextCase;
   const caseClass = textCaseClass(textCase);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   // Bumped when a note is saved or deleted in any window, so the Notes & Prayers tab is read again without a reload.

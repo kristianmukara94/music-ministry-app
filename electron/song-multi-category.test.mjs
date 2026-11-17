@@ -6,7 +6,7 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { HYMN_DELETE_MIGRATIONS, HYMN_FILING_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS, createLyricsService } = await import('./lyrics.js');
+const { HYMN_DELETE_MIGRATIONS, HYMN_FILING_MIGRATIONS, HYMN_FONT_SCALE_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS, createLyricsService } = await import('./lyrics.js');
 const { SONG_CATEGORY_MIGRATIONS, SONG_CATEGORY_MODE_MIGRATIONS, SONG_SCOPE_MIGRATIONS, createSongCategoryService } = await import('./song-categories.js');
 
 const RAW = '[Verse 1]\nSample line 1\nSample line 2\n\n[Chorus]\nSample line 3';
@@ -27,7 +27,7 @@ function setup({ filing = true } = {}) {
   for (const sql of [...LYRICS_MIGRATIONS, ...LYRICS_STYLE_MIGRATIONS, ...HYMN_DELETE_MIGRATIONS, ...SONG_CATEGORY_MIGRATIONS, ...SONG_SCOPE_MIGRATIONS, ...SONG_CATEGORY_MODE_MIGRATIONS]) db.exec(sql);
   const categories = createSongCategoryService(db);
   for (const name of ['Category A', 'Category B', 'Category C', 'Category D']) categories.createSongCategory({ name });
-  const migrate = () => HYMN_FILING_MIGRATIONS.forEach((sql) => db.exec(sql));
+  const migrate = () => [...HYMN_FILING_MIGRATIONS, ...HYMN_FONT_SCALE_MIGRATIONS].forEach((sql) => db.exec(sql));
   if (filing) migrate();
   return { db, categories, migrate, service: () => createLyricsService(db) };
 }
@@ -111,7 +111,7 @@ test('a category removed from the list stays on the songs that carry it, so thei
 
 test('the font scale is saved, read back, clamped, and kept by an edit that does not send it', () => {
   const service = setup().service();
-  for (const scale of [0.8, 1, 1.15, 1.3, 1.5]) {
+  for (const scale of [0.8, 1, 1.15, 1.3, 1.5, 1.6, 2, 2.5]) {
     const { id } = service.createHymn(input({ title: `Sample Song ${scale}`, songCategory: 'Category A', fontScale: scale }));
     assert.equal(service.getHymn(id).fontScale, scale);
   }
@@ -122,8 +122,32 @@ test('the font scale is saved, read back, clamped, and kept by an edit that does
   service.editHymn(id, input({ songCategory: 'Category A', title: 'Sample Song Edited' }));
   assert.equal(service.getHymn(id).fontScale, 1.25);
   service.editHymn(id, input({ songCategory: 'Category A', fontScale: 7 }));
-  assert.equal(service.getHymn(id).fontScale, 1.5);
-  assert.equal(service.listHymns({}).find((h) => h.id === id).fontScale, 1.5);
+  assert.equal(service.getHymn(id).fontScale, 2.5);
+  assert.equal(service.listHymns({}).find((h) => h.id === id).fontScale, 2.5);
+});
+
+test('a size past 150% is kept in font_scale_wide, the original column stays within its constraint, and a smaller size clears it', () => {
+  const { db, service: make } = setup();
+  const service = make();
+  const columns = (id) => db.prepare('SELECT font_scale AS base, font_scale_wide AS wide FROM hymns WHERE id = ?').get(id);
+  const { id } = service.createHymn(input({ title: 'Sample Song Title', songCategory: 'Category A', fontScale: 2.5 }));
+  assert.deepEqual({ ...columns(id) }, { base: 1.5, wide: 2.5 });
+  assert.equal(service.getHymn(id).fontScale, 2.5);
+  service.editHymn(id, input({ title: 'Sample Song Title', songCategory: 'Category A', fontScale: 1.2 }));
+  assert.deepEqual({ ...columns(id) }, { base: 1.2, wide: null });
+  assert.equal(service.getHymn(id).fontScale, 1.2);
+  // The wide column refuses anything outside 150%-250%, as the original refuses anything outside 75%-150%.
+  assert.throws(() => db.prepare('UPDATE hymns SET font_scale_wide = 3 WHERE id = ?').run(id));
+  assert.throws(() => db.prepare('UPDATE hymns SET font_scale_wide = 1.2 WHERE id = ?').run(id));
+});
+
+test('a song saved before the wide column reads at its stored size', () => {
+  const { db, service: make } = setup({ filing: false });
+  db.exec(HYMN_FILING_MIGRATIONS[0]);
+  db.prepare("INSERT INTO hymns (title, composer, category, language, musical_key, song_category, font_scale) VALUES ('Sample Song Title', '', 'Entrance', 'EN', '', 'Category A', 1.3)").run();
+  db.exec(HYMN_FONT_SCALE_MIGRATIONS[0]);
+  const service = make();
+  assert.equal(service.listHymns({})[0].fontScale, 1.3);
 });
 
 test('changing the words on air keeps the song categories and font size', () => {

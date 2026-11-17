@@ -2,12 +2,13 @@
 // SlidePreview draws one plain text slide for the Announcements, Bible, Lectionary and Song Lyrics decks, and its look is
 // theirs to keep. P&W slides have their own design (labels, footers, the title slide, the placeholders), which
 // PwSlideFace draws and the projector draws too. Merging the two would change one of those looks. Don't merge them.
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import type { PwSlide, PwType } from '../../shared/pw.js';
 import { useLive } from '../live/store';
 import { slotTitleShown } from '../../shared/live.js';
 import { welcomeBackground, type WelcomeBackground } from '../../shared/welcome-settings.js';
 import { slideFontCss } from '../../shared/text-style.js';
+import { applyPwSlideTextCase, applyTextCase, textCaseOf } from '../../shared/text-fit.js';
 import { PwSlideFace } from './PwSlideFace';
 import { SlideBackgroundLayer } from '../output/BackgroundMedia';
 import { slideFooter } from './SlideThumb';
@@ -31,7 +32,13 @@ function Face({ shown, blackLabel, background }: { shown: Shown; blackLabel: str
   const slideFont = useLive((s) => slideFontCss(s.state.settings.slideFont));
   const slideScale = useLive((s) => s.state.settings.slideFontScale);
   const titleShown = useLive((s) => slotTitleShown(s.state));
-  if (!shown.slide) {
+  // The projector's text case (Aa / AA / aa) and edge-to-edge (MAX), so the operator sees the congregation's slide 1:1. The case is applied to
+  // the words before PwSlideFace fits them, as the projector does, so UPPERCASE is measured as drawn.
+  const textCase = useLive((s) => textCaseOf(s.state.settings.textCase));
+  const edgeToEdge = useLive((s) => s.state.settings.edgeToEdge === true);
+  const bandOn = useLive((s) => s.state.lowerThird.live !== null);
+  const slide = useMemo(() => applyPwSlideTextCase(shown.slide, textCase), [shown.slide, textCase]);
+  if (!slide) {
     return (
       <div data-theme="default" className="absolute inset-0 grid place-items-center bg-canvas text-muted">
         {blackLabel}
@@ -40,16 +47,18 @@ function Face({ shown, blackLabel, background }: { shown: Shown; blackLabel: str
   }
   return (
     <PwSlideFace
-      slide={shown.slide}
-      segmentName={shown.segmentName}
+      slide={slide}
+      segmentName={applyTextCase(shown.segmentName, textCase)}
       type={shown.type}
       index={shown.index}
       total={shown.total}
-      footer={slideFooter(shown.slide, t('prayTogether'))}
+      footer={applyTextCase(slideFooter(slide, t('prayTogether')), textCase) || undefined}
       background={background}
       slideFont={slideFont}
       slideScale={slideScale}
       hideTitle={!titleShown}
+      edgeToEdge={edgeToEdge}
+      bandOn={bandOn}
     />
   );
 }

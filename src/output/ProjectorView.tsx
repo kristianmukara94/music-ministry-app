@@ -30,18 +30,20 @@ import { useTextAutoFit } from './useTextAutoFit';
 import { useProjectorTextAutoFit } from './useProjectorTextAutoFit';
 import { useHeadedTextFit } from './useHeadedTextFit';
 import { useBalanceAfterFit, useBalancedText } from './useBalancedLines';
-import { applyFrameTextCase, lineCountOf, lineHeightFor, textCaseOf } from '../../shared/text-fit.js';
+import { EDGE_TO_EDGE, applyFrameTextCase, lineCountOf, lineHeightFor, textCaseOf } from '../../shared/text-fit.js';
 import { LegibilityContext, gradientShadeStyle, legibilityShadowVars, useBackgroundLegibility, type BackgroundAsset, type ShadeChoice, type ShadeTarget } from '../components/ContrastEngine';
 
 /** The slide font the operator chose, as CSS. Undefined keeps each slide's own face. */
 const useSlideFont = (): string | undefined => useOutput((s) => slideFontCss(s.settings.slideFont));
 
-/** The operator's slide text size, as a share of normal: 0.7 to 1.5. Each text surface multiplies its size by it. */
+/** The operator's slide text size, as a share of normal: 0.5 to 2.5. Each text surface multiplies its size by it. */
 const useSlideScale = (): number => useOutput((s) => s.settings.slideFontScale);
 /** Whether long lines are balanced at phrase breaks (the projector setting; on unless the operator turned it off). */
 const useBalanceLines = (): boolean => useOutput((s) => s.settings.balanceLines !== false);
 /** The case slide text is drawn in (the projector setting): as typed, UPPERCASE or lowercase. */
 const useTextCase = () => useOutput((s) => textCaseOf(s.settings.textCase));
+/** Edge-to-edge (the Go Live MAX pill): song lyrics fill the slide at the largest size that fits (see EDGE_TO_EDGE in text-fit.js). */
+const useEdgeToEdge = (): boolean => useOutput((s) => s.settings.edgeToEdge === true);
 
 /**
  * Balancing for a block of one <p> per line (prayers, readings, text slides): the block is the last child of the element `wrapRef` is on, and
@@ -358,6 +360,9 @@ function FrameView({ frame: given, sharedBackground = false }: { frame: Frame; s
   // The title above a slide's text, on every kind of slide: the slot or reading banner, a prayer's or announcement's heading, a song's label. The
   // operator can hide it, for every slide or for one Holy Mass plan. A heading that is all the slide says stays, so hiding titles never blanks the screen.
   const showSlotTitle = useOutput(slotTitleShown);
+  const edgeToEdge = useEdgeToEdge();
+  // Edge-to-edge text reaches the bottom of the slide, so it keeps the band's room clear while a lower third is on.
+  const bandOn = useOutput((s) => s.lowerThird.live !== null);
   switch (frame.kind) {
     case 'idle':
     case 'blackout':
@@ -402,7 +407,7 @@ function FrameView({ frame: given, sharedBackground = false }: { frame: Frame; s
         </>
       );
     case 'lyrics':
-      return <SongLyricsSlide label={showSlotTitle ? frame.label : ''} text={frame.text} style={frame.style ?? null} slideFont={slideFont} slideScale={slideScale} fontScale={clampFontScale(frame.fontScale)} song={frame.song ?? null} />;
+      return <SongLyricsSlide label={showSlotTitle ? frame.label : ''} text={frame.text} style={frame.style ?? null} slideFont={slideFont} slideScale={slideScale} fontScale={clampFontScale(frame.fontScale)} song={frame.song ?? null} edgeToEdge={edgeToEdge} bandOn={bandOn} />;
     case 'text': {
       const headingHidden = Boolean(frame.headline) && !showSlotTitle && frame.text.trim().length > 0;
       // A prayer's page shares a top with its other pages. A short one is centred in the text area, at whatever size its block is drawn.
@@ -435,7 +440,7 @@ function FrameView({ frame: given, sharedBackground = false }: { frame: Frame; s
     }
     case 'pw':
       // A Praise & Worship slide. It draws its own background, so it fills the stage.
-      return <PwSlideFace slide={frame.slide} segmentName={frame.segmentName} hideTitle={!showSlotTitle} type={frame.type} index={frame.index} total={frame.total} slideFont={slideFont} slideScale={slideScale} footer={frame.footer} background={pwBackground} />;
+      return <PwSlideFace slide={frame.slide} segmentName={frame.segmentName} hideTitle={!showSlotTitle} type={frame.type} index={frame.index} total={frame.total} slideFont={slideFont} slideScale={slideScale} footer={frame.footer} background={pwBackground} edgeToEdge={edgeToEdge} bandOn={bandOn} />;
     case 'whiteboard':
       // Sized to the space the screen leaves, so the lower-third clearance on the parent shortens it too.
       return (
@@ -567,36 +572,47 @@ function useFadedFrame(live: Frame, fadeMs: number, overlap = false) {
  * ways, and is clipped there at worst, never past the slide's edge (see useTextAutoFit). A short chorus keeps its size; a long verse gets
  * tighter line spacing as well as a smaller size. Centred by default. The shadow keeps the text legible over moving backgrounds. A song's own
  * style replaces the default size, face, colour and alignment, and keeps the shadow. The song's own font scale (set in the song form, 75% to
- * 150%) multiplies that size, with the operator's text scale; the fit still shrinks a stanza that would run off the slide.
+ * 250%) multiplies that size, with the operator's text scale; the fit still shrinks a stanza that would run off the slide.
+ *
+ * Edge-to-edge (`edgeToEdge`, the MAX pill) keeps only a thin clearance at the slide's edges and starts the fit from a size larger than any
+ * stanza can take, so the stanza is drawn at the largest size at which it fits whole: a short chorus very large, a long verse still unclipped.
+ * The browser wraps the lines for that size (they are not pre-wrapped for the normal size), and the balancing then evens them out. The text
+ * arrives already in the operator's case (FrameView), so UPPERCASE is measured as drawn. While a lower third is on (`bandOn`), the bottom of
+ * the slide is kept clear for it.
  */
-function SongLyricsSlide({ label, text, style, slideFont, slideScale, fontScale = 1, song }: { label: string; text: string; style: TextStyle | null; slideFont: string | undefined; slideScale: number; fontScale?: number; song: { hymnId: number; position: number } | null }) {
+function SongLyricsSlide({ label, text, style, slideFont, slideScale, fontScale = 1, song, edgeToEdge = false, bandOn = false }: { label: string; text: string; style: TextStyle | null; slideFont: string | undefined; slideScale: number; fontScale?: number; song: { hymnId: number; position: number } | null; edgeToEdge?: boolean; bandOn?: boolean }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLParagraphElement>(null);
   const sizes = customSizes(style);
-  const naturalSize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'min(4.6cqw,96px)', slideScale * fontScale);
-  // Lines are wrapped for the size the text is set at, the song's own font scale and the operator's included.
-  const wrapped = slideText(text, charsPerLine(0.88, (sizes ? sizes.body : 4.6 * 19.2) * fontScale));
+  const naturalSize = edgeToEdge ? `${EDGE_TO_EDGE.ceilingCqw}cqw` : scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'min(4.6cqw,96px)', slideScale * fontScale);
+  // Lines are wrapped for the size the text is set at, the song's own font scale and the operator's included. Edge-to-edge has no set size.
+  const wrapped = edgeToEdge ? text : slideText(text, charsPerLine(0.88, (sizes ? sizes.body : 4.6 * 19.2) * fontScale));
   // Long lines are balanced at phrase breaks (see useBalancedText). The fit sizes what is drawn; the balancing then measures at that size and
   // redraws the same number of lines, evenly, so the fit still holds.
   const balanced = useBalancedText([wrapped], useBalanceLines());
   const shown = balanced.lines[0];
-  const { isTruncated } = useTextAutoFit({ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: [shown, style, slideFont, label, fontScale] });
-  useBalanceAfterFit(balanced, { elementFor: () => textRef.current, boxFor: () => boxRef.current, deps: [naturalSize, style, slideFont, label] });
+  const { isTruncated } = useTextAutoFit({ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: [shown, style, slideFont, label, fontScale, bandOn], heightShare: edgeToEdge ? EDGE_TO_EDGE.heightShare : undefined });
+  useBalanceAfterFit(balanced, { elementFor: () => textRef.current, boxFor: () => boxRef.current, deps: [naturalSize, style, slideFont, label, bandOn] });
   // True on the congregation's projector, false on the operator's mirror and previews. The warning is for the operator only.
   const audience = useContext(OnAirLook);
   return (
-    <div ref={boxRef} className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden px-[6cqw] py-[4cqh] text-center" style={{ textAlign: style?.textAlign ?? 'center' }}>
-      {label && <div ref={labelRef} className="mb-[3cqh] shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase">{label}</div>}
+    <div
+      ref={boxRef}
+      data-edge-to-edge={edgeToEdge || undefined}
+      className={`absolute inset-0 flex flex-col items-center justify-center overflow-hidden text-center ${edgeToEdge ? '' : 'px-[6cqw] py-[4cqh]'}`}
+      style={{ textAlign: style?.textAlign ?? 'center', ...(edgeToEdge ? edgeToEdgePadding(bandOn) : {}) }}
+    >
+      {label && <div ref={labelRef} className={`${edgeToEdge ? 'mb-[1.5cqh]' : 'mb-[3cqh]'} shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase`}>{label}</div>}
       <p
         ref={textRef}
-        className={`apcc-legible-stroke max-w-[88cqw] overflow-hidden font-bold whitespace-pre-line ${sizes ? '' : 'text-white'}`}
+        className={`apcc-legible-stroke ${edgeToEdge ? 'w-full max-w-none' : 'max-w-[88cqw]'} overflow-hidden font-bold whitespace-pre-line ${sizes ? '' : 'text-white'}`}
         style={{
           textShadow: LEGIBLE_TEXT_SHADOW,
           color: style?.textColor,
           fontFamily: fontCss(style) ?? slideFont,
           fontSize: naturalSize,
-          lineHeight: lineHeightFor(lineCountOf(wrapped)),
+          lineHeight: edgeToEdge ? EDGE_TO_EDGE.leading : lineHeightFor(lineCountOf(wrapped)),
           textAlign: style?.textAlign ?? 'center',
         }}
       >
@@ -605,6 +621,12 @@ function SongLyricsSlide({ label, text, style, slideFont, slideScale, fontScale 
       {!audience && isTruncated && song && <TextCutBadge song={song} />}
     </div>
   );
+}
+
+/** The edge-to-edge box's padding: the thin edge clearance, with the band's room kept at the bottom while a lower third is on. */
+function edgeToEdgePadding(bandOn: boolean) {
+  const bottom = bandOn ? EDGE_TO_EDGE.lowerThirdClearCqh : EDGE_TO_EDGE.padYcqh;
+  return { padding: `${EDGE_TO_EDGE.padYcqh}cqh ${EDGE_TO_EDGE.padXcqw}cqw ${bottom}cqh` };
 }
 
 /**

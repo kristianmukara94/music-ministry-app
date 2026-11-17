@@ -31,29 +31,40 @@ const song = (extra = {}) => ({
   ...extra,
 });
 
-test('the font scale is stored between 75% and 150%, and anything unreadable is the theme size', () => {
+test('the font scale is stored between 75% and 250%, and anything unreadable is the theme size', () => {
   assert.equal(clampFontScale(1.2), 1.2);
   assert.equal(clampFontScale(0.8), 0.8);
   assert.equal(clampFontScale(1.5), 1.5);
+  assert.equal(clampFontScale(2), 2, 'past 150% is no longer clamped');
+  assert.equal(clampFontScale(2.5), 2.5);
+  assert.equal(FONT_SCALE_MAX, 2.5);
   assert.equal(clampFontScale(3), FONT_SCALE_MAX);
   assert.equal(clampFontScale(0.1), FONT_SCALE_MIN);
   assert.equal(clampFontScale('1.15'), 1.15);
   for (const bad of [null, undefined, '', 'big', NaN, Infinity]) assert.equal(clampFontScale(bad), 1, String(bad));
 });
 
-test('A- and A+ move 5 points at a time between 80% and 150%, and stop at the ends', () => {
+test('A- and A+ move 5 points at a time up to 150%, then 10 points up to 250%, and stop at the ends', () => {
   assert.equal(stepFontScale(1, 1), 1.05);
   assert.equal(stepFontScale(1, -1), 0.95);
-  assert.equal(stepFontScale(1.5, 1), 1.5);
+  assert.equal(stepFontScale(1.5, 1), 1.6, 'A+ is no longer stopped at 150%');
+  assert.equal(stepFontScale(1.6, -1), 1.5);
+  assert.equal(stepFontScale(1.5, -1), 1.45);
+  assert.equal(stepFontScale(2.5, 1), 2.5);
   assert.equal(stepFontScale(0.8, -1), 0.8);
   // A song stored at 75% steps up into the form's range.
   assert.equal(stepFontScale(0.75, 1), 0.8);
-  assert.equal(canStepFontScale(1.5, 1), false);
+  assert.equal(canStepFontScale(1.5, 1), true);
+  assert.equal(canStepFontScale(2.5, 1), false);
   assert.equal(canStepFontScale(0.8, -1), false);
   assert.equal(canStepFontScale(1, 1), true);
-  // Repeated presses never drift off the 5-point grid.
+  // Repeated presses never drift off the grid: 14 presses of 5 points to 150%, then 10 of 10 points to 250%.
   let s = 0.8;
   for (let i = 0; i < 14; i += 1) s = stepFontScale(s, 1);
+  assert.equal(s, 1.5);
+  for (let i = 0; i < 10; i += 1) s = stepFontScale(s, 1);
+  assert.equal(s, 2.5);
+  for (let i = 0; i < 10; i += 1) s = stepFontScale(s, -1);
   assert.equal(s, 1.5);
   assert.deepEqual([1, 1.15, 1.3].map(fontScalePercent), [100, 115, 130]);
 });
@@ -103,8 +114,9 @@ test('a song at its own font size sends it to the projector; at the theme size t
   assert.equal(lyricsStanzaFrame(song({ fontScale: 1.3 }), 0).fontScale, 1.3);
   assert.equal('fontScale' in lyricsStanzaFrame(song(), 0), false);
   assert.equal('fontScale' in lyricsStanzaFrame(song({ fontScale: 1 }), 0), false);
-  // Out of range is clamped before it reaches the projector.
-  assert.equal(lyricsStanzaFrame(song({ fontScale: 9 }), 0).fontScale, 1.5);
+  // Up to 250% reaches the projector as it is; out of range is clamped before it gets there.
+  assert.equal(lyricsStanzaFrame(song({ fontScale: 2.5 }), 0).fontScale, 2.5);
+  assert.equal(lyricsStanzaFrame(song({ fontScale: 9 }), 0).fontScale, 2.5);
 });
 
 test('the projector multiplies the theme lyric size by the song font scale', () => {

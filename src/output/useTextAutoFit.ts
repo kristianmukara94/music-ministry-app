@@ -17,6 +17,8 @@ interface Options {
   naturalSize: string;
   /** Anything that changes what is drawn: the words, the style, the scale. A change fits the text again. */
   deps: unknown[];
+  /** The share of the room's height the text may take. FIT_HEIGHT_SHARE by default; edge-to-edge lets it take almost all of it. */
+  heightShare?: number;
 }
 
 /**
@@ -31,7 +33,7 @@ interface Options {
  * It returns `isTruncated`: true when the text is still too tall at the floor, so its last lines are clipped. Only the operator's views show
  * it; the state changes only when that answer does, so an ordinary fit never re-renders the slide.
  */
-export function useTextAutoFit({ boxRef, textRef, reservedRef, naturalSize, deps }: Options): { isTruncated: boolean } {
+export function useTextAutoFit({ boxRef, textRef, reservedRef, naturalSize, deps, heightShare = FIT_HEIGHT_SHARE }: Options): { isTruncated: boolean } {
   const [isTruncated, setTruncated] = useState(false);
   useLayoutEffect(() => {
     const box = boxRef.current;
@@ -46,7 +48,7 @@ export function useTextAutoFit({ boxRef, textRef, reservedRef, naturalSize, deps
       const style = getComputedStyle(box);
       const reserved = reservedRef?.current;
       const reservedHeight = reserved ? reserved.offsetHeight + parseFloat(getComputedStyle(reserved).marginTop) + parseFloat(getComputedStyle(reserved).marginBottom) : 0;
-      const roomHeight = (box.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)) * FIT_HEIGHT_SHARE - reservedHeight;
+      const roomHeight = (box.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)) * heightShare - reservedHeight;
       const roomWidth = box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
       if (!Number.isFinite(ceiling) || roomHeight <= 0 || roomWidth <= 0) return;
 
@@ -75,6 +77,6 @@ export function useTextAutoFit({ boxRef, textRef, reservedRef, naturalSize, deps
       cancelled = true;
       observer?.disconnect();
     };
-  }, [naturalSize, ...deps]);
+  }, [naturalSize, heightShare, ...deps]);
   return { isTruncated };
 }

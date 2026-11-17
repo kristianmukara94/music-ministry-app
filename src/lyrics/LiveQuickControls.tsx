@@ -18,7 +18,7 @@ const STEP =
   'grid size-8 place-items-center rounded-md border border-fg/15 bg-panel-2 text-fg/80 transition hover:bg-fg/10 hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40';
 
 /**
- * The slide text size, from 70% to 150%. It is the projector setting the Holy Mass and Praise & Worship consoles step too (slideFontScale), so
+ * The slide text size, from 50% to 250%. It is the projector setting the Holy Mass and Praise & Worship consoles step too (slideFontScale), so
  * the projector, the TV and every preview follow it at once. It never changes the song in the library.
  */
 function FontSizeStepper({ t }: { t: LyT }) {

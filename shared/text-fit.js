@@ -162,7 +162,25 @@ export function applyTextCase(text, mode) {
   return s;
 }
 
-/** A Praise & Worship slide with its words in `mode`: the title card's label and subtitle, and a lyric or prayer page's text. */
+/**
+ * Whether a text case picked in a Planner (Aa / AA / aa) should also become the projector's case: only while nothing is on air, that is while
+ * the projector shows nothing, black or the welcome screen. Going live then starts in the case the operator was just reading the lineup in,
+ * with no mismatch. Once a service is on air the projector's case changes only from the live controls, so a planner choice never restyles the
+ * congregation's screen mid-service.
+ */
+export function plannerCaseReachesProjector(liveFrameKind) {
+  return liveFrameKind == null || ['idle', 'black', 'blackout', 'welcome'].includes(liveFrameKind);
+}
+
+/**
+ * A Praise & Worship slide with its words in `mode`: the title card's label and subtitle, and a lyric or prayer page's text. The Go Live
+ * console's CURRENT SLIDE and NEXT SLIDE previews draw it, as the projector does, so the operator sees the congregation's case 1:1.
+ */
+export function applyPwSlideTextCase(slide, mode) {
+  const m = textCaseOf(mode);
+  return m === 'original' ? slide : caseSlide(slide, m);
+}
+
 function caseSlide(slide, mode) {
   if (!slide || typeof slide !== 'object') return slide;
   if (slide.kind === 'title') return { ...slide, label: applyTextCase(slide.label, mode), subtitle: applyTextCase(slide.subtitle, mode) };
@@ -195,10 +213,35 @@ export function applyFrameTextCase(frame, mode) {
     case 'psalm':
       return { ...frame, title: c(frame.title), response: c(frame.response), pages: Array.isArray(frame.pages) ? frame.pages.map(c) : frame.pages };
     case 'pw':
-      return { ...frame, segmentName: c(frame.segmentName), slide: caseSlide(frame.slide, m) };
+      return { ...frame, segmentName: c(frame.segmentName), footer: c(frame.footer), slide: caseSlide(frame.slide, m) };
     default:
       return frame;
   }
+}
+
+/**
+ * Edge-to-edge (the projector setting `edgeToEdge`, the Go Live MAX pill): how a song's stanza is laid out when it should fill the slide. Every
+ * length is a share of the slide's width (cqw), or of its height for `padYcqh` on the projector's own stage.
+ * - `padXcqw` / `padYcqh`: the thin clearance kept at the slide's edges, in place of the usual 6% inset.
+ * - `ceilingCqw`: the size the fit starts from. It is larger than any stanza can be drawn at, so the fit always ends at the largest size that
+ *   fits the room (a one-line chorus is limited by the width, a six-line verse by the height), never at a fixed size.
+ * - `leading`: tighter line spacing, so a large stanza has no wasted gaps between lines.
+ * - `heightShare`: the share of the room's height the text may take (the normal fit keeps 90%).
+ * - `footerClearCqw`: kept free at the bottom of a Praise & Worship slide when its song title footer or page count is shown, so the text never
+ *   meets them; `headerClearCqw` likewise at the top when its label is shown.
+ * - `lowerThirdClearCqh` / `lowerThirdClearCqw`: kept free at the bottom while a lower third (or a note or alert banner) is on screen, the same
+ *   18% of the height the projector clears for other text, so the band never covers the last line.
+ */
+export const EDGE_TO_EDGE = Object.freeze({ padXcqw: 1.5, padYcqh: 1.5, ceilingCqw: 22, leading: 1.12, heightShare: 0.98, footerClearCqw: 6.6, headerClearCqw: 6.6, lowerThirdClearCqh: 18, lowerThirdClearCqw: 10.2 });
+
+/**
+ * The box a Praise & Worship lyric is fitted in when edge-to-edge is on, as offsets from the slide's edges in cqw: thin at every side, with
+ * room kept for the label at the top and the footer at the bottom only when they are shown.
+ */
+export function edgeToEdgeBox({ header = false, footer = false, lowerThird = false } = {}) {
+  const edge = EDGE_TO_EDGE.padXcqw;
+  const bottom = Math.max(edge, footer ? EDGE_TO_EDGE.footerClearCqw : 0, lowerThird ? EDGE_TO_EDGE.lowerThirdClearCqw : 0);
+  return { left: edge, right: edge, top: header ? EDGE_TO_EDGE.headerClearCqw : edge, bottom };
 }
 
 /** A lower third with its words in `mode`: the tag and both lines. 'original' gives back the same value. */

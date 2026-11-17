@@ -35,7 +35,7 @@ test('the same face and the same layer draw Colour, Image and Video on every sur
   assert.match(panels, /<Face shown=\{current\} blackLabel=\{t\('previewBlack'\)\} background=\{background\} \/>/);
   assert.match(panels, /<Face shown=\{next\} blackLabel=\{t\('previewBlack'\)\} background=\{background\} \/>/);
   assert.match(read('src/output/ProjectorView.tsx'), /<SlideBackgroundLayer media=\{slideMedia\}/);
-  assert.match(read('src/output/ProjectorView.tsx'), /footer=\{frame\.footer\} background=\{pwBackground\} \/>/);
+  assert.match(read('src/output/ProjectorView.tsx'), /footer=\{frame\.footer\} background=\{pwBackground\} edgeToEdge=\{edgeToEdge\} bandOn=\{bandOn\} \/>/);
 });
 
 test('the Welcome background is unaffected by the slide type', () => {

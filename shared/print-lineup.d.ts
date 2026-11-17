@@ -12,6 +12,11 @@ export const DEFAULT_PAPER_SIZE: PaperSize;
 export const PAPER_MM: Readonly<Record<PaperSize, { width: number; height: number }>>;
 export function paperSizeOf(value: unknown): PaperSize;
 
+export type ColorMode = 'color' | 'bw';
+export const COLOR_MODES: readonly ColorMode[];
+export const DEFAULT_COLOR_MODE: ColorMode;
+export function colorModeOf(value: unknown): ColorMode;
+
 /** The song's key as it prints, or null when none was set (null, "", "None", "-", "N/A" …). */
 export function songKeyLabel(key: unknown): string | null;
 

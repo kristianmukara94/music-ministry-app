@@ -4,7 +4,7 @@ import { arrangementWithSplit } from '../shared/pw-hot-edit.js';
 import { parseTextStyle, sanitizeTextStyle } from '../shared/text-style.js';
 import { SONG_CATEGORY_REQUIRED_EN, isSongCategoryMissing } from '../shared/hymn-category.js';
 import { createSongCategoryService, resolveSongCategories } from './song-categories.js';
-import { categoriesOf, clampFontScale, normalizeCategories } from '../shared/song-filing.js';
+import { categoriesOf, clampFontScale, fontScaleColumns, normalizeCategories } from '../shared/song-filing.js';
 import { matchStanzaIds } from '../shared/stanza-ids.js';
 import { isPrimaryCategory, legacyCategoryFor, normalizePrimary, scopesShownBy, DEFAULT_PRIMARY } from '../shared/song-taxonomy.js';
 
@@ -95,6 +95,16 @@ export const HYMN_FILING_MIGRATIONS = [
    ALTER TABLE hymns ADD COLUMN font_scale REAL NOT NULL DEFAULT 1.0 CHECK (font_scale >= 0.75 AND font_scale <= 1.5);`,
 ];
 
+/**
+ * A song's projector font size past 150%, up to 250%. `font_scale`'s CHECK constraint stops at 150% and SQLite cannot change a constraint
+ * without rebuilding the table (whose stanzas, setlists and sessions cascade from it), so the larger size has its own nullable column:
+ * `font_scale` keeps min(size, 150%) for older readers, and `font_scale_wide` holds the full size when it is past 150% (see fontScaleColumns
+ * in shared/song-filing.js). Readers take COALESCE(font_scale_wide, font_scale). Appended to the end of the migration list only.
+ */
+export const HYMN_FONT_SCALE_MIGRATIONS = [
+  `ALTER TABLE hymns ADD COLUMN font_scale_wide REAL CHECK (font_scale_wide IS NULL OR (font_scale_wide > 1.5 AND font_scale_wide <= 2.5));`,
+];
+
 /** A hymn row with its two filing columns read into `categories` (primary first) and `fontScale`. */
 const withFiling = ({ categoriesJson, fontScale, ...row }) => ({ ...row, categories: categoriesOf(row.songCategory, categoriesJson), fontScale: clampFontScale(fontScale) });
 
@@ -157,7 +167,7 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
   const q = {
     list: db.prepare(`
       SELECT h.id, h.title, h.composer, h.category, h.language, h.musical_key AS musicalKey, h.song_category AS songCategory, h.primary_category AS primaryCategory,
-             h.categories_json AS categoriesJson, h.font_scale AS fontScale,
+             h.categories_json AS categoriesJson, COALESCE(h.font_scale_wide, h.font_scale) AS fontScale,
              (SELECT COUNT(*) FROM hymn_stanzas s WHERE s.hymn_id = h.id) AS stanzaCount
       FROM hymns h
       WHERE h.deleted_at IS NULL
@@ -173,7 +183,7 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
              OR h.musical_key LIKE @term ESCAPE '\\'
              OR EXISTS (SELECT 1 FROM hymn_stanzas s WHERE s.hymn_id = h.id AND s.lyrics_text LIKE @term ESCAPE '\\'))
       ORDER BY h.title COLLATE NOCASE`),
-    hymn: db.prepare('SELECT id, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory, primary_category AS primaryCategory, categories_json AS categoriesJson, font_scale AS fontScale, style AS styleJson, deleted_at AS deletedAt FROM hymns WHERE id = ?'),
+    hymn: db.prepare('SELECT id, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory, primary_category AS primaryCategory, categories_json AS categoriesJson, COALESCE(font_scale_wide, font_scale) AS fontScale, style AS styleJson, deleted_at AS deletedAt FROM hymns WHERE id = ?'),
     // A hymn in the library: not deleted. Used by the plans, so a deleted hymn is shown as deleted rather than as present.
     liveHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NULL'),
     deletedHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NOT NULL'),
@@ -188,14 +198,14 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
     stanzas: db.prepare(`
       SELECT id, stanza_type AS stanzaType, lyrics_text AS lyricsText, display_order AS "order"
       FROM hymn_stanzas WHERE hymn_id = ? ORDER BY display_order, id`),
-    insertHymn: db.prepare('INSERT INTO hymns (title, composer, category, language, musical_key, song_category, primary_category, categories_json, font_scale) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+    insertHymn: db.prepare('INSERT INTO hymns (title, composer, category, language, musical_key, song_category, primary_category, categories_json, font_scale, font_scale_wide) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     insertStanza: db.prepare('INSERT INTO hymn_stanzas (hymn_id, stanza_type, lyrics_text, display_order) VALUES (?, ?, ?, ?)'),
     // An edit keeps each stanza's id, so an id is passed in; null gives the stanza a new one.
     insertStanzaWithId: db.prepare('INSERT INTO hymn_stanzas (id, hymn_id, stanza_type, lyrics_text, display_order) VALUES (?, ?, ?, ?, ?)'),
     stanzaIds: db.prepare(`
       SELECT id, stanza_type AS stanzaType, lyrics_text AS lyricsText, display_order AS position
       FROM hymn_stanzas WHERE hymn_id = ? ORDER BY display_order, id`),
-    updateHymn: db.prepare('UPDATE hymns SET title = ?, composer = ?, category = ?, language = ?, musical_key = ?, song_category = ?, primary_category = ?, categories_json = ?, font_scale = ? WHERE id = ?'),
+    updateHymn: db.prepare('UPDATE hymns SET title = ?, composer = ?, category = ?, language = ?, musical_key = ?, song_category = ?, primary_category = ?, categories_json = ?, font_scale = ?, font_scale_wide = ? WHERE id = ?'),
     clearStanzas: db.prepare('DELETE FROM hymn_stanzas WHERE hymn_id = ?'),
     setlists: db.prepare('SELECT id, date, name FROM setlists ORDER BY date DESC, id DESC'),
     setlist: db.prepare('SELECT id, date, name FROM setlists WHERE id = ?'),
@@ -214,9 +224,14 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
 
   // The list is stored only when there is one; an empty filing stays null, as before.
   const categoriesJson = (categories) => (categories.length ? JSON.stringify(categories) : null);
+  // The font size as its two columns: the original (to 150%) and the wide one (past 150%, else null).
+  const scaleColumns = (scale) => {
+    const { fontScale, fontScaleWide } = fontScaleColumns(scale);
+    return [fontScale, fontScaleWide];
+  };
 
   const insertHymnWithStanzas = db.transaction((hymn, stanzas) => {
-    const { lastInsertRowid } = q.insertHymn.run(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, hymn.songCategory, hymn.primaryCategory, categoriesJson(hymn.categories), hymn.fontScale);
+    const { lastInsertRowid } = q.insertHymn.run(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, hymn.songCategory, hymn.primaryCategory, categoriesJson(hymn.categories), ...scaleColumns(hymn.fontScale));
     stanzas.forEach((s, i) => q.insertStanza.run(lastInsertRowid, s.stanzaType, s.lyricsText, i + 1));
     return Number(lastInsertRowid);
   });
@@ -279,7 +294,7 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
     const before = q.stanzaIds.all(id);
     const ids = matchStanzaIds(before, hymn.stanzas);
     const dropped = before.filter((o) => !ids.includes(o.id));
-    q.updateHymn.run(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, hymn.songCategory, hymn.primaryCategory, categoriesJson(hymn.categories), hymn.fontScale, id);
+    q.updateHymn.run(hymn.title, hymn.composer, hymn.category, hymn.language, hymn.musicalKey, hymn.songCategory, hymn.primaryCategory, categoriesJson(hymn.categories), ...scaleColumns(hymn.fontScale), id);
     q.clearStanzas.run(id);
     const saved = hymn.stanzas.map((s, i) => {
       const result = q.insertStanzaWithId.run(ids[i], id, s.stanzaType, s.lyricsText, i + 1);

@@ -14,7 +14,7 @@ import { createSession, deleteSession, errorText, flushSave, openSession, setPwS
 import { usePwT } from './strings';
 import { TextCaseSwitch } from '../components/TextCaseSwitch';
 import { PrintLineupButton, PrintLineupDialog } from '../planner/PrintLineup';
-import { usePlannerTextCase } from '../planner/textCase';
+import { pickPlannerTextCase, usePlannerTextCase } from '../planner/textCase';
 import { usePlannerT } from '../planner/strings';
 import { pwPrintLineup } from '../../shared/print-lineup.js';
 
@@ -101,7 +101,8 @@ export function PlanView() {
   const pt = usePlannerT();
   // The Planner's text case (Aa / AA / aa), shared with the Holy Mass Planner: the Lineup, the lyrics drawers and the printed lineup.
   const textCase = usePlannerTextCase((s) => s.mode);
-  const setTextCase = usePlannerTextCase((s) => s.set);
+  // The toolbar pick also sets the projector case while nothing is on air (see pickPlannerTextCase).
+  const setTextCase = pickPlannerTextCase;
   const [printing, setPrinting] = useState(false);
 
   if (!session) {

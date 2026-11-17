@@ -78,10 +78,10 @@ test('the page counts sit over the text margin and never take a click', () => {
 test('the projector, the mirror and the previews draw a song stanza through the fitted slide', () => {
   const view = read('src/output/ProjectorView.tsx');
   assert.match(view, /case 'lyrics':\s+return <SongLyricsSlide /);
-  assert.match(view, /useTextAutoFit\(\{ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: \[shown, style, slideFont, label, fontScale\] \}\);/, 'it fits again when the label is hidden or shown, or the song font size changes');
-  assert.match(view, /className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden px-\[6cqw\] py-\[4cqh\] text-center"/, 'centred both ways, padded 4% and 6%, and clipped');
-  // Line spacing follows the stanza's own lines: the breaks that balancing adds do not tighten it.
-  assert.match(view, /lineHeight: lineHeightFor\(lineCountOf\(wrapped\)\)/);
+  assert.match(view, /useTextAutoFit\(\{ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: \[shown, style, slideFont, label, fontScale, bandOn\], heightShare: edgeToEdge \? EDGE_TO_EDGE\.heightShare : undefined \}\);/, 'it fits again when the label is hidden or shown, the song font size changes or a lower third comes on');
+  assert.match(view, /absolute inset-0 flex flex-col items-center justify-center overflow-hidden text-center \$\{edgeToEdge \? '' : 'px-\[6cqw\] py-\[4cqh\]'\}/, 'centred both ways, padded 4% and 6% (thin edges when edge-to-edge), and clipped');
+  // Line spacing follows the stanza's own lines: the breaks that balancing adds do not tighten it. Edge-to-edge uses its tighter spacing.
+  assert.match(view, /lineHeight: edgeToEdge \? EDGE_TO_EDGE\.leading : lineHeightFor\(lineCountOf\(wrapped\)\)/);
   // Balancing measures after the fit has sized the stanza (layout effects run in the order they are declared).
   const fitAt = view.indexOf('useTextAutoFit({ boxRef, textRef, reservedRef: labelRef');
   const balanceAt = view.indexOf('useBalanceAfterFit(balanced, { elementFor: () => textRef.current');

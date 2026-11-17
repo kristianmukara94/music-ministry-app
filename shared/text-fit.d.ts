@@ -13,3 +13,7 @@ export function textCaseOf(mode: unknown): TextCase;
 export function applyTextCase(text: string | null | undefined, mode: TextCase | string | null | undefined): string;
 export function applyFrameTextCase<F>(frame: F, mode: TextCase | string | null | undefined): F;
 export function applyLowerThirdCase<L>(value: L, mode: TextCase | string | null | undefined): L;
+export function applyPwSlideTextCase<S>(slide: S, mode: TextCase | string | null | undefined): S;
+export const EDGE_TO_EDGE: Readonly<{ padXcqw: number; padYcqh: number; ceilingCqw: number; leading: number; heightShare: number; footerClearCqw: number; headerClearCqw: number; lowerThirdClearCqh: number; lowerThirdClearCqw: number }>;
+export function edgeToEdgeBox(options?: { header?: boolean; footer?: boolean; lowerThird?: boolean }): { left: number; right: number; top: number; bottom: number };
+export function plannerCaseReachesProjector(liveFrameKind: string | null | undefined): boolean;

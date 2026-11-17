@@ -1,8 +1,8 @@
-// The printed lineup as paper: one standalone HTML document, black ink on white, laid out like the on-screen Lineup (numbered rows with an
+// The printed lineup as paper: one standalone HTML document, white paper in colour or black and white, laid out like the on-screen Lineup (numbered rows with an
 // icon box, section headings with their minutes, a song card's songs as indented sub-cards). The same document is shown in the Print Lineup
 // preview (an <iframe srcdoc>), printed from a hidden window with the system Print dialog, and saved as a PDF (electron/print-lineup.js), so
 // the preview, the paper and the PDF match. It carries no script, and every word in it is escaped. Pure: the tests run it under Node.
-import { PAPER_MM, casePrintLineup, copiesFor, paperSizeOf, printLayoutOf, songKeyLabel } from './print-lineup.js';
+import { PAPER_MM, casePrintLineup, colorModeOf, copiesFor, paperSizeOf, printLayoutOf, songKeyLabel } from './print-lineup.js';
 import { PLANNER_LANGS, plannerT } from './planner-i18n.js';
 import { textCaseOf } from './text-fit.js';
 
@@ -58,21 +58,22 @@ export function iconSvg(kind) {
 }
 
 // The type sizes, in points, per layout and density. A song title is the largest word on a row: 9.5–11 pt in a two-copy column (about
-// 89–92 mm wide), 11.5–13 pt across one copy. Smaller steps shrink the padding, the icons and the labels before the song titles.
+// 89–92 mm wide), 11.5–13 pt across one copy. Smaller steps shrink the padding, the icons and the labels before the song titles; `gap` is
+// the space (px) above each section band: 8 px, narrowing only at the two tightest steps so a long lineup still fits one sheet.
 export const SIZES = {
   double: {
-    roomy: { h1: 15, title: 11, sub: 10, role: 7.5, num: 10, meta: 8, icon: 18, pad: 4, sec: 3.4 },
-    normal: { h1: 14, title: 10.75, sub: 9.75, role: 7.25, num: 9.5, meta: 7.75, icon: 16, pad: 3, sec: 2.6 },
-    compact: { h1: 13, title: 10.25, sub: 9.25, role: 7, num: 9, meta: 7.5, icon: 14, pad: 2, sec: 2 },
-    dense: { h1: 12, title: 9.75, sub: 8.75, role: 6.75, num: 8.5, meta: 7.25, icon: 12, pad: 1.1, sec: 1.4 },
-    tight: { h1: 11, title: 9.5, sub: 8.5, role: 6.5, num: 8, meta: 7, icon: 11, pad: 0.5, sec: 1 },
+    roomy: { h1: 15, title: 11, sub: 10, role: 7.5, num: 10, meta: 8, icon: 18, pad: 4, gap: 8 },
+    normal: { h1: 14, title: 10.75, sub: 9.75, role: 7.25, num: 9.5, meta: 7.75, icon: 16, pad: 3, gap: 8 },
+    compact: { h1: 13, title: 10.25, sub: 9.25, role: 7, num: 9, meta: 7.5, icon: 14, pad: 2, gap: 8 },
+    dense: { h1: 12, title: 9.75, sub: 8.75, role: 6.75, num: 8.5, meta: 7.25, icon: 12, pad: 1.1, gap: 6 },
+    tight: { h1: 11, title: 9.5, sub: 8.5, role: 6.5, num: 8, meta: 7, icon: 11, pad: 0.5, gap: 4 },
   },
   single: {
-    roomy: { h1: 18, title: 13, sub: 12, role: 8.75, num: 12, meta: 9.5, icon: 22, pad: 5.2, sec: 4.2 },
-    normal: { h1: 16.5, title: 12.5, sub: 11.5, role: 8.25, num: 11, meta: 9, icon: 20, pad: 4, sec: 3.2 },
-    compact: { h1: 15, title: 12, sub: 11, role: 7.75, num: 10, meta: 8.5, icon: 17, pad: 2.5, sec: 2.2 },
-    dense: { h1: 14, title: 11.75, sub: 10.5, role: 7.25, num: 9.5, meta: 8, icon: 14, pad: 1.5, sec: 1.4 },
-    tight: { h1: 13, title: 11.5, sub: 10, role: 7, num: 9, meta: 7.5, icon: 12, pad: 0.8, sec: 1 },
+    roomy: { h1: 18, title: 13, sub: 12, role: 8.75, num: 12, meta: 9.5, icon: 22, pad: 5.2, gap: 8 },
+    normal: { h1: 16.5, title: 12.5, sub: 11.5, role: 8.25, num: 11, meta: 9, icon: 20, pad: 4, gap: 8 },
+    compact: { h1: 15, title: 12, sub: 11, role: 7.75, num: 10, meta: 8.5, icon: 17, pad: 2.5, gap: 8 },
+    dense: { h1: 14, title: 11.75, sub: 10.5, role: 7.25, num: 9.5, meta: 8, icon: 14, pad: 1.5, gap: 6 },
+    tight: { h1: 13, title: 11.5, sub: 10, role: 7, num: 9, meta: 7.5, icon: 12, pad: 0.8, gap: 4 },
   },
 };
 
@@ -101,7 +102,8 @@ function estimateHeight(lineup, layout, s, sheet) {
   let h = (s.meta + 0.5) * 1.3 + 4 + linesOf(lineup.title, s.h1, column) * s.h1 * 1.12 + (s.meta * 1.25 + 3) + 24;
   if (lineup.sections.length === 0) h += s.sub * 1.3;
   for (const section of lineup.sections) {
-    h += s.sec * PT_PER_MM + (s.role + 0.5) * 1.25 + 5;
+    // The section band: its top margin (`gap` px), 3px padding above and below, its two rules, the heading line and the gap under it.
+    h += s.gap * 0.75 + 4.5 + 2 + (s.role + 0.5) * 1.25 + 0.6 * PT_PER_MM;
     for (const entry of section.entries) {
       const items = entry.items;
       let row;
@@ -140,9 +142,10 @@ export function fitDensity(lineup, layout, paper = 'A4') {
   return DENSITIES.find((d) => estimateHeight(lineup, l, SIZES[l][d], sheet) <= room * (d === 'roomy' ? ROOMY_ALLOWANCE[l] : 1)) ?? 'tight';
 }
 
-function styles(layout, density, mode, paper, paged) {
+function styles(layout, density, mode, paper, paged, colorMode) {
   const page = sheetOf(layout, paper);
   const s = SIZES[layout][density];
+  const ink = INK[colorMode];
   // Labels (part headings, slot names, the badge) are small capitals, unless the operator asked for lowercase.
   const labelCase = mode === 'lowercase' ? 'none' : 'uppercase';
   // One sheet: the @page margin is 0 and the sheet pads itself, exactly as on screen. A lineup that runs onto more pages is laid out again
@@ -203,15 +206,18 @@ h1 { margin: 0; font-size: ${s.h1}pt; font-weight: 800; line-height: 1.12; color
 .meta .total { font-weight: 700; color: var(--ink-2); }
 .empty { color: var(--muted); font-style: italic; }
 
-.section { margin-top: ${s.sec}mm; }
+/* Each part opens on a tinted band, its name and minutes in solid dark type, so a section break shows at a glance on paper. The band's
+   own top margin is the gap between parts. */
 .section-head {
   display: flex; align-items: baseline; justify-content: space-between; gap: 3mm;
-  border-bottom: 1px solid var(--rule); padding-bottom: 0.8mm; margin-bottom: 0.6mm;
+  ${ink.band} padding: 3px 6px; margin-top: ${s.gap}px; margin-bottom: 0.6mm;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
   break-after: avoid; page-break-after: avoid;
 }
-h2 { margin: 0; font-size: ${s.role + 0.5}pt; font-weight: 800; letter-spacing: 0.11em; color: var(--ink-2); text-transform: ${labelCase}; }
+.section-head h2, .section-head .mono { color: ${ink.bandText}; font-weight: 700; }
+h2 { margin: 0; font-size: ${s.role + 0.5}pt; letter-spacing: 0.11em; text-transform: ${labelCase}; }
 .mono { font-family: 'Cascadia Mono', Consolas, 'Courier New', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-.section-head .mono { font-size: ${s.meta}pt; color: var(--muted); white-space: nowrap; }
+.section-head .mono { font-size: ${s.meta}pt; white-space: nowrap; }
 ol { list-style: none; margin: 0; padding: 0; }
 
 .row {
@@ -220,24 +226,25 @@ ol { list-style: none; margin: 0; padding: 0; }
   break-inside: avoid; page-break-inside: avoid;
 }
 .row:last-child { border-bottom: none; }
-.num { font-size: ${s.num}pt; font-weight: 700; color: var(--ink-2); text-align: right; }
+.num { font-size: ${s.num}pt; font-weight: 700; color: #000000; text-align: right; }
 .icon {
-  width: ${s.icon}pt; height: ${s.icon}pt; border: 1px solid #374151; border-radius: 4px;
+  width: ${s.icon}pt; height: ${s.icon}pt; border: 1px solid #000000; border-radius: 4px;
   display: grid; place-items: center; background: #ffffff;
 }
 .icon svg { width: 62%; height: 62%; }
 .body { min-width: 0; display: flex; flex-direction: column; }
-/* Songs are solid bold black, the largest words on a row; slot names and title-only cards are normal weight, so a slot's name never
-   reads as a song. */
+/* Songs are solid bold black, the largest words on a row. Slot names, title-only cards, prayers and readings are solid black too but
+   normal weight, so a slot's name never reads as a song and nothing prints faint. */
 .title, .song {
   font-weight: 800; color: #000000; overflow-wrap: anywhere; line-height: 1.15;
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 .title { font-size: ${s.title}pt; }
 .song { font-size: ${s.sub}pt; }
-.role { font-size: ${s.role}pt; font-weight: 400; letter-spacing: 0.06em; color: var(--label); text-transform: ${labelCase}; overflow-wrap: anywhere; }
-.text { font-size: ${s.sub}pt; font-weight: 400; color: var(--ink-2); overflow-wrap: anywhere; line-height: 1.15; }
-.under { font-size: ${s.role}pt; font-weight: 400; color: var(--label); overflow-wrap: anywhere; }
+.role, .text, .under { font-weight: 400; color: #000000; overflow-wrap: anywhere; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.role { font-size: ${s.role}pt; letter-spacing: 0.06em; text-transform: ${labelCase}; }
+.text { font-size: ${s.sub}pt; line-height: 1.15; }
+.under { font-size: ${s.role}pt; }
 .count { font-size: ${s.role}pt; color: var(--muted); }
 .writein { display: block; height: ${s.title * 1.2}pt; border-bottom: 1px solid var(--ink); margin-right: 2mm; }
 .aside { display: flex; flex-direction: column; align-items: flex-end; gap: 0.6mm; }
@@ -257,15 +264,43 @@ ol { list-style: none; margin: 0; padding: 0; }
   border: 1px solid var(--hair); border-radius: 4px; padding: ${Math.max(1, s.pad * 0.6)}pt 2mm;
   break-inside: avoid; page-break-inside: avoid;
 }
-.subcard .n { font-size: ${s.role + 0.5}pt; font-weight: 700; color: var(--muted); text-align: right; }
+.subcard .n { font-size: ${s.role + 0.5}pt; font-weight: 700; color: #1f2937; text-align: right; }
 .subcard svg { width: ${Math.round(s.icon * 0.6)}pt; height: ${Math.round(s.icon * 0.6)}pt; }
 
 .foot {
   margin-top: auto; padding-top: 2.5mm; display: flex; justify-content: space-between; gap: 3mm;
   font-size: ${Math.max(6, s.meta - 1)}pt; color: var(--muted);
 }
-`;
+${ink.accents}`;
 }
+
+/**
+ * The ink of each colour mode. The paper is white in both, and every title stays solid black: colour only marks the letterhead badge,
+ * the section bands, the icon boxes (amber for a song, indigo for a prayer, emerald for a reading) and the key pills. B&W is greys and
+ * black alone.
+ */
+const ICON_INK = { song: ['#b45309', '#fffbeb'], prayer: ['#4338ca', '#eef2ff'], reading: ['#047857', '#ecfdf5'] };
+const INK = {
+  bw: {
+    band: 'background: #f3f4f6; border-top: 1.5px solid #000000; border-bottom: 1px solid #000000;',
+    bandText: '#000000',
+    accents: '',
+  },
+  color: {
+    band: 'background: #fef9ec; border-left: 3px solid #b45309; border-bottom: 1px solid #d97706;',
+    bandText: '#111827',
+    accents: `/* Colour mode: accents only, kept in colour where a printer would save ink. */
+.head { border-bottom-color: #111827; }
+.badge, .icon, .icon svg, .subcard svg, .key { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.badge { border-color: #b45309; background: #fef3c7; color: #78350f; }
+${Object.entries(ICON_INK)
+  .map(([kind, [stroke, fill]]) => `.row[data-kind="${kind}"] > .icon { border-color: ${stroke}; background: ${fill}; }\n.row[data-kind="${kind}"] > .icon svg, .subcard[data-kind="${kind}"] svg { stroke: ${stroke}; }`)
+  .join('\n')}
+.key { background: #eff6ff; border: 1px solid #1d4ed8; color: #1e3a8a; font-weight: 700; }
+.key small { color: #1e3a8a; }
+`,
+  },
+};
 
 /** The key pill, only when a key was set; its case is kept as written (Bb, F#m). */
 function keyPill(key, label) {
@@ -344,8 +379,9 @@ function copyHtml(lineup, { t, church, index, copies }) {
  * Letter or Legal, locked in by the @page rule (always portrait). `paged` lays out a lineup that runs past one page with its margins in
  * @page instead (see styles), for the PDF with page numbers.
  */
-export function lineupDocument(lineup, { layout = 'double', mode = 'original', lang = 'en', church = '', paper = 'A4', paged = false } = {}) {
+export function lineupDocument(lineup, { layout = 'double', mode = 'original', lang = 'en', church = '', paper = 'A4', paged = false, colorMode = 'color' } = {}) {
   const size = paperSizeOf(paper);
+  const ink = colorModeOf(colorMode);
   const l = printLayoutOf(layout);
   const m = textCaseOf(mode);
   const language = PLANNER_LANGS.includes(lang) ? lang : 'en';
@@ -361,9 +397,9 @@ export function lineupDocument(lineup, { layout = 'double', mode = 'original', l
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
 <title>${esc(lineup.title || t('printLineup'))}</title>
-<style>${styles(l, density, m, size, paged === true)}</style>
+<style>${styles(l, density, m, size, paged === true, ink)}</style>
 </head>
-<body class="density-${density}">
+<body class="density-${density}" data-color-mode="${ink}">
 <main class="sheet" data-layout="${l}" data-paper="${size}" data-copies="${copies}">${cut}${sheet}</main>
 </body>
 </html>`;
@@ -414,6 +450,7 @@ export function checkPrintJob(input) {
     lang: PLANNER_LANGS.includes(input.lang) ? input.lang : 'en',
     church: str(input.church, 120).trim(),
     paper,
+    colorMode: colorModeOf(input.colorMode),
     /** Electron's print / printToPDF pageSize: the same paper the @page rule names. */
     pageSize: paper,
     /** Every layout prints portrait, on every paper. */

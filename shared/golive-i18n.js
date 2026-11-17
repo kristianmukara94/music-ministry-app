@@ -321,6 +321,16 @@ const STRINGS = {
     editorFlowHeading: 'Edit this text on the slide',
     editorFlowInfo: 'This slide\'s title and text are laid out for it. Turn them into text boxes to move, resize and style them here.',
     editorFlowButton: 'Turn into text boxes',
+    // The Go Live bottom bar's slide typography (shared by the Holy Mass and Praise & Worship consoles).
+    typoTextCase: 'Text case',
+    typoTextCaseOriginal: 'Original (as typed)',
+    typoTextCaseUpper: 'UPPERCASE',
+    typoTextCaseLower: 'lowercase',
+    typoSmaller: 'Smaller text',
+    typoLarger: 'Larger text',
+    typoReset: 'Reset font size to 100%',
+    typoEdgeToEdge: 'MAX',
+    typoEdgeToEdgeHint: 'Edge-to-Edge: lyrics fill the whole screen at the largest size that still fits',
   },
   tl: {
     eyebrow: 'Mag-live',
@@ -552,6 +562,15 @@ const STRINGS = {
     editorFlowHeading: 'I-edit ang tekstong ito sa slide',
     editorFlowInfo: 'Awtomatikong inaayos ang pamagat at teksto ng slide na ito. Gawin itong mga text box para ilipat, palakihin at ayusin dito.',
     editorFlowButton: 'Gawing mga text box',
+    typoTextCase: 'Anyo ng titik',
+    typoTextCaseOriginal: 'Orihinal (gaya ng pagkakasulat)',
+    typoTextCaseUpper: 'MALALAKING TITIK',
+    typoTextCaseLower: 'maliliit na titik',
+    typoSmaller: 'Paliitin ang teksto',
+    typoLarger: 'Palakihin ang teksto',
+    typoReset: 'Ibalik sa 100% ang laki ng font',
+    typoEdgeToEdge: 'MAX',
+    typoEdgeToEdgeHint: 'Gilid-sa-gilid: pinupuno ng lyrics ang buong screen sa pinakamalaking laking kasya pa',
   },
   // DRAFT Cebuano, for a native speaker to check.
   ceb: {
@@ -784,6 +803,15 @@ const STRINGS = {
     editorFlowHeading: 'I-edit kini nga teksto sa slide',
     editorFlowInfo: 'Awtomatikong gihan-ay ang titulo ug teksto niini nga slide. Himoa kini nga mga text box aron ibalhin, usbon ang gidak-on ug istilo dinhi.',
     editorFlowButton: 'Himoa nga mga text box',
+    typoTextCase: 'Porma sa letra',
+    typoTextCaseOriginal: 'Orihinal (sama sa pagkasulat)',
+    typoTextCaseUpper: 'DAGKONG LETRA',
+    typoTextCaseLower: 'gagmay nga letra',
+    typoSmaller: 'Pagamya ang teksto',
+    typoLarger: 'Padakoa ang teksto',
+    typoReset: 'Ibalik sa 100% ang gidak-on sa font',
+    typoEdgeToEdge: 'MAX',
+    typoEdgeToEdgeHint: 'Ngilit-sa-ngilit: pun-on sa lyrics ang tibuok screen sa labing dakong gidak-on nga mohaum pa',
   },
 };
 
