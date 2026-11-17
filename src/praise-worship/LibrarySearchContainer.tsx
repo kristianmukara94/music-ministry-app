@@ -28,6 +28,8 @@ interface Props {
   query?: string;
   /** Opens the Edit Hymn form for a song, over the planner. */
   onEditSong?: (hymnId: number) => void;
+  /** The Song Category the list is filtered by: that badge is highlighted on each song card. Empty for all categories. */
+  activeCategory?: string;
 }
 
 /** A small label to drag in place of the card when several are dragged together. */
@@ -49,7 +51,7 @@ function dragBadge(text: string): HTMLElement {
  * It also draws each song's Go Live state from the quick-live controller.
  */
 export const LibrarySearchContainer = forwardRef<LibrarySearchHandle, Props>(function LibrarySearchContainer(
-  { rows, tab, ticked, quick, t, replacing, segmentName, canInsert, onActivate, onCardClick, query = '', onEditSong },
+  { rows, tab, ticked, quick, t, replacing, segmentName, canInsert, onActivate, onCardClick, query = '', onEditSong, activeCategory = '' },
   ref,
 ) {
   const rowButtons = useRef<(HTMLButtonElement | null)[]>([]);
@@ -87,7 +89,14 @@ export const LibrarySearchContainer = forwardRef<LibrarySearchHandle, Props>(fun
   };
 
   return (
-    <ul id="pw-lib-panel" role="tabpanel" aria-labelledby={`pw-lib-tab-${tab}`} className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto pr-1">
+    // Stacked, the list is capped at 60% of the window. In the pinned two-column panel it takes the room the locked controls leave, and only it
+    // scrolls; overscroll-contain keeps a scroll at its end from moving the page behind it.
+    <ul
+      id="pw-lib-panel"
+      role="tabpanel"
+      aria-labelledby={`pw-lib-tab-${tab}`}
+      className="flex max-h-[60vh] min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain pr-1 @4xl/pw:max-h-none @4xl/pw:min-h-40"
+    >
       {rows.length === 0 && tab === 'song' && <li className="p-3 text-sm text-muted">{t('noSongs')}</li>}
       {rows.length === 0 && tab === 'prayer' && <li className="p-3 text-sm text-muted">{t('noPrayers')}</li>}
       {rows.map((row, i) => {
@@ -99,6 +108,7 @@ export const LibrarySearchContainer = forwardRef<LibrarySearchHandle, Props>(fun
             key={row.key}
             row={row}
             selected={ticked.includes(row.key)}
+            activeCategory={activeCategory}
             dragging={draggingKeys.includes(row.key)}
             addLabel={replacing && tab === 'song' ? t('replace') : t('add')}
             addAria={segmentName ? t('addTo', { title: row.title, segment: segmentName }) : t('add')}

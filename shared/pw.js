@@ -117,6 +117,17 @@ export function songsOf(segment) {
 }
 
 /**
+ * The songs on a card with their titles, in sung order, for the Live lineup: one row per song. A song whose title is not loaded yet (or
+ * whose song has been deleted) is left out, so the row never shows a bare number. `hymns` maps a song id to at least its title.
+ */
+export function lineupSongs(segment, hymns) {
+  return songsOf(segment).flatMap((id) => {
+    const title = hymns?.[id]?.title;
+    return typeof title === 'string' && title.trim() ? [{ id, title }] : [];
+  });
+}
+
+/**
  * A card's runtime: its own minutes (the operator's figure, which can be overridden) plus the minutes of each chained item.
  * Each chained item carries its own minutes, so the total follows what is attached.
  */

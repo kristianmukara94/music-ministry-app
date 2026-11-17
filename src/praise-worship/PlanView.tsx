@@ -205,15 +205,19 @@ export function PlanView() {
       </header>
 
       {/*
-        Song List on the left, Lineup on the right, the segment editor across the bottom. Narrower than that, everything stacks
-        with the Lineup first. Sized by the module's width, not the window's.
+        The Library on the left; the Lineup and, under it, the segment editor on the right. The Library's column spans both rows and stretches
+        to their height, so the panel inside stays pinned in view (sticky) all the way down the Lineup and the editor. Any spare height goes to
+        the editor's row, never between the Lineup and the editor. Narrower than that, everything stacks with the Lineup first. Sized by the
+        module's width, not the window's.
       */}
-      <div className={`grid-cols-1 items-start gap-5 @4xl/pw:grid-cols-2 ${focused ? 'hidden' : 'grid'}`}>
-        <LineupRail />
-        <div className="@4xl/pw:col-span-2">
+      <div className={`grid-cols-1 items-start gap-5 @4xl/pw:grid-cols-2 @4xl/pw:grid-rows-[auto_1fr] ${focused ? 'hidden' : 'grid'}`}>
+        <div className="min-w-0 @4xl/pw:col-start-2 @4xl/pw:row-start-1">
+          <LineupRail />
+        </div>
+        <div className="min-w-0 @4xl/pw:col-start-2 @4xl/pw:row-start-2">
           <SegmentEditor />
         </div>
-        <div className="@4xl/pw:order-first">
+        <div data-pw-library-column className="min-w-0 @4xl/pw:col-start-1 @4xl/pw:row-span-2 @4xl/pw:row-start-1 @4xl/pw:self-stretch">
           <Library quick={quick} focused={focused} />
         </div>
       </div>

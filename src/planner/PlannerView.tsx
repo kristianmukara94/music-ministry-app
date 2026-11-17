@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
-import { CalendarDays, ClipboardList, Lock } from 'lucide-react';
+import { CalendarDays, ClipboardList, Guitar, Lock } from 'lucide-react';
 import { monthGrid } from '../../shared/liturgical-calendar.js';
 import { DEFAULT_TEMPLATE, readiness } from '../../shared/pw.js';
+import { calendarForPlan, calendarPlans, type PlannerCalendar } from '../../shared/planner-calendars.js';
 import { bridge } from '../live/bridge';
 import { setUi, useUi } from '../state/ui';
 import { useRegion } from '../state/useRegion';
@@ -20,10 +21,12 @@ const monthOfIso = (iso: string): CalendarMonth => ({ year: Number(iso.slice(0, 
  * the Planner for another module and coming back finds it where it was. Not persisted: after a restart the editor stays locked until a plan
  * is picked on the calendar.
  */
-const usePlannerNav = create<{ mode: 'calendar' | 'editor'; active: PlanRef | null; month: CalendarMonth | null }>(() => ({
+const usePlannerNav = create<{ mode: 'calendar' | 'editor'; active: PlanRef | null; month: CalendarMonth | null; calendar: PlannerCalendar }>(() => ({
   mode: 'calendar',
   active: null,
   month: null,
+  // Which calendar shows: the Liturgical Calendar (Holy Mass plans) or the Praise & Worship Calendar (Praise & Worship sessions).
+  calendar: 'mass',
 }));
 const setNav = usePlannerNav.setState;
 
@@ -42,7 +45,7 @@ export function PlannerView() {
   const pendingMassPlanId = useUi((s) => s.pendingMassPlanId);
   const region = useRegion();
   const today = todayIn(region.timeZone);
-  const { mode, active, month: savedMonth } = usePlannerNav();
+  const { mode, active, month: savedMonth, calendar } = usePlannerNav();
   const sessions = usePw((s) => s.sessions);
   const pwSessionId = usePw((s) => s.sessionId);
   const pwFocused = usePw((s) => s.isGoLiveFocused);
@@ -100,9 +103,9 @@ export function PlannerView() {
     }
   }, [showPw, pwSessionId]);
 
-  // Each Praise & Worship session on the calendar's month: how many of its slots are ready. Read while the calendar shows.
+  // Each Praise & Worship session on the calendar's month: how many of its slots are ready. Read while the Praise & Worship Calendar shows.
   useEffect(() => {
-    if (editorOpen) return;
+    if (editorOpen || calendar !== 'pw') return;
     const grid = monthGrid(month.year, month.month);
     const first = grid[0][0];
     const last = grid[grid.length - 1][6];
@@ -121,7 +124,7 @@ export function PlannerView() {
     return () => {
       cancelled = true;
     };
-  }, [editorOpen, sessions, month.year, month.month]);
+  }, [editorOpen, calendar, sessions, month.year, month.month]);
 
   /** Opens a plan in the Plan Editor: a Mass plan in the Mass editor, a Praise & Worship session in its module, on its Plan tab. */
   const openPlan = async (plan: PlanRef) => {
@@ -162,8 +165,11 @@ export function PlannerView() {
     setUi({ view: 'praiseWorship' });
   };
 
-  /** Back to the calendar, on the month of the plan that was open. */
-  const showCalendar = () => {
+  /**
+   * Back to a calendar, on the month of the plan that was open. Without a choice it is that plan's own calendar: a Holy Mass plan returns to
+   * the Liturgical Calendar, a Praise & Worship session to the Praise & Worship Calendar.
+   */
+  const showCalendar = (which?: PlannerCalendar) => {
     const date =
       active?.kind === 'mass'
         ? massPlans.find((p) => p.id === active.id)?.liturgicalDate
@@ -171,20 +177,25 @@ export function PlannerView() {
           ? (usePw.getState().session?.liturgicalDate ?? sessions.find((s) => s.id === active.id)?.liturgicalDate)
           : undefined;
     if (showPw) void flushSave();
-    setNav({ mode: 'calendar', ...(date ? { month: monthOfIso(date) } : {}) });
+    setNav({ mode: 'calendar', calendar: which ?? (active ? calendarForPlan(active) : calendar), ...(date ? { month: monthOfIso(date) } : {}) });
     if (view !== 'planner') setUi({ view: 'planner' });
     reloadLists();
   };
 
+  // The open plan's day is marked only on the calendar that holds it.
   const selectedDate =
-    active?.kind === 'mass'
+    active?.kind !== calendar
+      ? null
+      : active.kind === 'mass'
       ? (massPlans.find((p) => p.id === active.id)?.liturgicalDate ?? null)
       : active?.kind === 'pw'
         ? (sessions.find((s) => s.id === active.id)?.liturgicalDate ?? null)
         : null;
 
   const title = showMass ? t('title') : showPw ? t('pwPlanTitle') : t('plannerTitle');
-  const subtitle = showMass ? t('subtitle') : t('plannerSubtitle');
+  const subtitle = showMass ? t('subtitle') : editorOpen ? t('plannerSubtitle') : calendar === 'pw' ? t('plannerSubtitlePw') : t('plannerSubtitleMass');
+  // Each calendar holds one kind of service only, so Holy Mass plans and Praise & Worship sessions never share a day cell.
+  const shown = calendarPlans(calendar, massPlans, sessions);
   const tab = 'inline-flex h-10 items-center gap-2 rounded-full px-5 text-sm font-bold tracking-wide transition focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none';
 
   return (
@@ -201,12 +212,21 @@ export function PlannerView() {
           <div role="group" aria-label={t('viewSwitch')} className="ml-auto flex rounded-full border border-fg/15 bg-panel-2 p-1 shadow-inner shadow-black/20 backdrop-blur">
             <button
               type="button"
-              aria-pressed={!editorOpen}
-              onClick={showCalendar}
-              className={`${tab} ${!editorOpen ? 'bg-accent text-on-accent shadow' : 'text-fg/80 hover:bg-fg/10 hover:text-fg'}`}
+              aria-pressed={!editorOpen && calendar === 'mass'}
+              onClick={() => showCalendar('mass')}
+              className={`${tab} ${!editorOpen && calendar === 'mass' ? 'bg-accent text-on-accent shadow' : 'text-fg/80 hover:bg-fg/10 hover:text-fg'}`}
             >
               <CalendarDays size={16} aria-hidden />
               {t('viewCalendar')}
+            </button>
+            <button
+              type="button"
+              aria-pressed={!editorOpen && calendar === 'pw'}
+              onClick={() => showCalendar('pw')}
+              className={`${tab} ${!editorOpen && calendar === 'pw' ? 'bg-accent text-on-accent shadow' : 'text-fg/80 hover:bg-fg/10 hover:text-fg'}`}
+            >
+              <Guitar size={16} aria-hidden />
+              {t('viewPwCalendar')}
             </button>
             {/* Locked until a plan is picked or created on the calendar. A disabled button takes no pointer events, so its wrapper shows the tooltip. */}
             <span className={`group relative inline-flex ${active ? '' : 'cursor-not-allowed'}`}>
@@ -240,14 +260,16 @@ export function PlannerView() {
       {!editorOpen && (
         <div key="calendar" className="planner-view-in px-5 pt-3 pb-6">
           <PlannerCalendarView
+            key={calendar}
+            kind={calendar}
             t={t}
             lang={lang}
             today={today}
             month={month}
             onMonthChange={(next) => setNav({ month: next })}
             selectedDate={selectedDate}
-            massPlans={massPlans}
-            pwSessions={sessions}
+            massPlans={shown.mass}
+            pwSessions={shown.pw}
             dayNotes={dayNotes}
             onSaveDayNote={saveDayNote}
             pwProgress={pwProgress}
@@ -271,7 +293,7 @@ export function PlannerView() {
                 setNav({ active: { kind: 'mass', id } });
               }
             }}
-            onShowCalendar={showCalendar}
+            onShowCalendar={() => showCalendar()}
           />
         </div>
       )}

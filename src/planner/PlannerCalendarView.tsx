@@ -94,6 +94,12 @@ interface DayPlan extends PlanRef {
 }
 
 interface Props {
+  /**
+   * Which calendar this is: 'mass' is the Liturgical Calendar (Holy Mass plans only), 'pw' the Praise & Worship Calendar (Praise & Worship
+   * sessions only). The Planner passes each calendar only its own plans (shared/planner-calendars.js); this sets the hint, the legend and the
+   * kind of plan Create a plan makes.
+   */
+  kind: PlanKind;
   t: PlannerT;
   lang: 'en' | 'tl' | 'ceb';
   /** Today, as "YYYY-MM-DD" in the parish's region. */
@@ -120,11 +126,11 @@ interface Props {
 
 /**
  * The Planner's landing view: a month of the liturgical calendar, Sunday to Saturday, under a banner naming the month's devotion and the
- * seasons it falls in. Each day shows its Ordo name, its liturgical colour as a ribbon and its rank, and a badge for each Holy Mass plan and
- * Praise & Worship session saved for it. Picking a day with one plan opens it; a day with several asks which; a day with none offers to
- * create a Holy Mass or a Praise & Worship plan.
+ * seasons it falls in. Each day shows its Ordo name, its liturgical colour as a ribbon and its rank, and a badge for each plan saved for it:
+ * Holy Mass plans on the Liturgical Calendar, Praise & Worship sessions on the Praise & Worship Calendar (`kind`). Picking a day with one plan
+ * opens it; a day with several asks which; a day with none offers to create a plan of the calendar's kind.
  */
-export function PlannerCalendarView({ t, lang, today, month, onMonthChange, selectedDate, massPlans, pwSessions, dayNotes, onSaveDayNote, pwProgress, pwSlotCount, onOpen, onCreate }: Props) {
+export function PlannerCalendarView({ kind, t, lang, today, month, onMonthChange, selectedDate, massPlans, pwSessions, dayNotes, onSaveDayNote, pwProgress, pwSlotCount, onOpen, onCreate }: Props) {
   const locale = LOCALE[lang] ?? 'en-US';
   const weeks = useMemo(() => monthGrid(month.year, month.month), [month.year, month.month]);
   const seasons = useMemo(() => seasonsOfMonth(month.year, month.month), [month.year, month.month]);
@@ -265,7 +271,7 @@ export function PlannerCalendarView({ t, lang, today, month, onMonthChange, sele
           </div>
         </div>
         <p className={`mt-3 font-serif text-xl italic xl:text-2xl ${TEXT}`}>{t(monthDedicationKey(month.month))}</p>
-        <p className={`mt-1 text-sm ${MUTED}`}>{t('calHint')}</p>
+        <p className={`mt-1 text-sm ${MUTED}`}>{kind === 'pw' ? t('calHintPw') : t('calHintMass')}</p>
       </div>
 
       {/* ── The month ── */}
@@ -407,8 +413,8 @@ export function PlannerCalendarView({ t, lang, today, month, onMonthChange, sele
           </span>
         ))}
         <span className="ml-auto inline-flex flex-wrap items-center gap-3 font-semibold">
-          <span className="inline-flex items-center gap-1"><Church size={13} aria-hidden /> {t('calBadgeMass')}</span>
-          <span className={`inline-flex items-center gap-1 ${GOLD}`}><Guitar size={13} aria-hidden /> {t('calBadgePw')}</span>
+          {kind === 'mass' && <span className="inline-flex items-center gap-1"><Church size={13} aria-hidden /> {t('calBadgeMass')}</span>}
+          {kind === 'pw' && <span className={`inline-flex items-center gap-1 ${GOLD}`}><Guitar size={13} aria-hidden /> {t('calBadgePw')}</span>}
           <span className="inline-flex items-center gap-1 text-ok"><Check size={13} strokeWidth={3} aria-hidden /> {t('calReady')}</span>
         </span>
       </div>
@@ -443,7 +449,8 @@ export function PlannerCalendarView({ t, lang, today, month, onMonthChange, sele
           suggestedName={customNoteOf(createFor) ?? days.get(createFor)?.name ?? ordoDay(createFor).name}
           color={(days.get(createFor) ?? calendarDayOf(createFor)).color}
           pwSlotCount={pwSlotCount}
-          onCreate={(kind, name) => onCreate(kind, createFor, name)}
+          kinds={[kind]}
+          onCreate={(made, name) => onCreate(made, createFor, name)}
           onClose={() => setCreateFor(null)}
         />,
         document.body,
@@ -530,8 +537,10 @@ function DayPlansPopover({ t, title, plans, top, left, onOpen, onCreate, onClose
 }
 
 /** Create a plan for a day: a Holy Mass plan (its four parts, with the day's readings) or a Praise & Worship session (the built-in lineup). */
-function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlotCount, onCreate, onClose }: {
+function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlotCount, kinds, onCreate, onClose }: {
   t: PlannerT; dateLabel: string; ordoName: string; suggestedName: string; color: LiturgicalColor; pwSlotCount: number;
+  /** The kinds of plan offered: the calendar's own kind, so each calendar only makes its own plans. */
+  kinds: readonly PlanKind[];
   onCreate: (kind: PlanKind, name: string) => Promise<void>; onClose: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
@@ -557,7 +566,7 @@ function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlot
   };
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    void create('mass');
+    void create(kinds[0] ?? 'mass');
   };
 
   const option = 'flex w-full items-start gap-3 rounded-xl border-2 p-4 text-left transition focus-visible:ring-2 focus-visible:ring-[var(--cal-gold)] focus-visible:outline-none disabled:cursor-wait disabled:opacity-60';
@@ -596,6 +605,7 @@ function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlot
           </label>
 
           <div className="flex flex-col gap-2.5">
+            {kinds.includes('mass') && (
             <button type="submit" disabled={busy !== null || !name.trim()} className={`${option} border-[var(--cal-border-hover)] bg-[var(--cal-cell)] hover:border-[var(--cal-date)]`}>
               <span className={`grid size-11 shrink-0 place-items-center rounded-lg border-l-4 bg-[var(--cal-badge)] ${COLOR_EDGE[color]} ${TEXT}`}>
                 {busy === 'mass' ? <Loader2 size={20} className="animate-spin" aria-hidden /> : <Church size={20} aria-hidden />}
@@ -605,7 +615,9 @@ function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlot
                 <span className={`mt-0.5 block text-sm ${MUTED}`}>{t('createMassSub')}</span>
               </span>
             </button>
-            <button type="button" onClick={() => void create('pw')} disabled={busy !== null || !name.trim()} className={`${option} border-[var(--cal-gold)]/50 bg-[var(--cal-gold)]/10 hover:border-[var(--cal-gold)]`}>
+            )}
+            {kinds.includes('pw') && (
+            <button type={kinds[0] === 'pw' ? 'submit' : 'button'} onClick={(e) => { e.preventDefault(); void create('pw'); }} disabled={busy !== null || !name.trim()} className={`${option} border-[var(--cal-gold)]/50 bg-[var(--cal-gold)]/10 hover:border-[var(--cal-gold)]`}>
               <span className={`grid size-11 shrink-0 place-items-center rounded-lg bg-[var(--cal-gold)]/20 ${GOLD}`}>
                 {busy === 'pw' ? <Loader2 size={20} className="animate-spin" aria-hidden /> : <Guitar size={20} aria-hidden />}
               </span>
@@ -614,6 +626,7 @@ function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlot
                 <span className={`mt-0.5 block text-sm ${MUTED}`}>{t('createPwSub', { n: pwSlotCount })}</span>
               </span>
             </button>
+            )}
           </div>
 
           {error && <p role="alert" className="rounded-lg border border-danger/50 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}

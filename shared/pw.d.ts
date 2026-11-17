@@ -144,6 +144,8 @@ export function readiness(segments: PwSegment[]): { ready: number; total: number
 export function chainOf(segment: PwSegment): PwChainItem[];
 /** The songs on a card, in sung order. */
 export function songsOf(segment: PwSegment): number[];
+/** The card's songs with their loaded titles, in sung order. Songs without a loaded title are left out. */
+export function lineupSongs(segment: PwSegment, hymns: Readonly<Record<number, { title: string } | undefined>>): { id: number; title: string }[];
 /** The card's own minutes plus each chained item's minutes. */
 export function runtimeOf(segment: PwSegment): number;
 export function totalMinutes(segments: { minutes: number }[]): number;

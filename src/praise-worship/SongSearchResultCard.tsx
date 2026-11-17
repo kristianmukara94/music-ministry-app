@@ -15,6 +15,8 @@ export interface LibraryRow {
   tickable?: boolean;
   /** Set on a song row: the song can go straight to the projector, without being in the lineup. */
   hymnId?: number;
+  /** Set on a song row: every song category the song is filed under, primary first. Each is badged on the card. */
+  categories?: string[];
   insert: () => void;
   added: boolean;
   extra?: ReactNode;
@@ -34,6 +36,8 @@ const GO_LIVE = 'inline-flex h-9 shrink-0 items-center justify-center gap-1.5 ro
 interface Props {
   row: LibraryRow;
   selected: boolean;
+  /** The Song Category the Library is filtered by: its badge is highlighted. Empty when every category is shown. */
+  activeCategory?: string;
   dragging: boolean;
   /** The label of the Add button: Add, or Replace while a song is being swapped. */
   addLabel: string;
@@ -63,7 +67,7 @@ interface Props {
 const ICON_BTN =
   'grid size-11 shrink-0 place-items-center rounded-lg border transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none';
 
-export function SongSearchResultCard({ row, selected, dragging, addLabel, addAria, canAdd, quick, buttonRef, onActivate, onCardClick, onDragStart, onDragEnd, onRowKey, onGoLive, labels, lyrics }: Props) {
+export function SongSearchResultCard({ row, selected, activeCategory = '', dragging, addLabel, addAria, canAdd, quick, buttonRef, onActivate, onCardClick, onDragStart, onDragEnd, onRowKey, onGoLive, labels, lyrics }: Props) {
   const isLive = quick?.isLive ?? false;
   const notice = quick?.notice ?? null;
   return (
@@ -102,6 +106,21 @@ export function SongSearchResultCard({ row, selected, dragging, addLabel, addAri
         {!isLive && row.fits && <span className="text-[10px] font-extrabold tracking-[0.18em] text-ok uppercase">{labels.fits}</span>}
         <span className="w-full truncate font-semibold">{row.title}</span>
         <span className="w-full truncate text-xs text-muted">{row.sub}</span>
+        {row.categories && row.categories.length > 0 && (
+          <span className="mt-1 flex flex-wrap gap-1">
+            {row.categories.map((c) => (
+              <span
+                key={c}
+                data-active-category={c.toLowerCase() === activeCategory.toLowerCase() || undefined}
+                className={`rounded-full border px-1.5 py-px text-[10px] font-semibold ${
+                  c.toLowerCase() === activeCategory.toLowerCase() ? 'border-accent/60 bg-accent/15 text-accent' : 'border-line-strong bg-surface-2 text-fg/80'
+                }`}
+              >
+                {c}
+              </span>
+            ))}
+          </span>
+        )}
       </button>
       {lyrics && (
         <>

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Tag } from 'lucide-react';
+import { Search, Tag, X } from 'lucide-react';
 import { fitsSegment, GOSPEL_ACCLAMATION, holdsItem, songAssignment, songsOf, type PwSegment } from '../../shared/pw.js';
 import { attachMany, describeAttach, type LibraryDrag } from '../../shared/pw-attach.js';
 import { CategorySelectGroup } from '../lyrics/CategorySelectGroup';
 import { useSongFilter } from '../lyrics/useSongFilter';
 import { useLyT } from '../lyrics/strings';
+import { categoryModeLookup, suggestedFor } from '../lyrics/songTaxonomy';
 import { pad2 } from './LineupRail';
 import { commitSegments, errorText, setPwState, setTag, updateSegment, usePw } from './store';
 import { clickTick } from '../../shared/library-ticks.js';
@@ -29,6 +30,13 @@ const TABS: { id: LibTab; key: string }[] = [
 
 const PRIMARY_BTN = 'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-accent bg-accent px-4 text-xs font-extrabold tracking-wide uppercase text-on-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40';
 const INSERT_BTN = 'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-4 text-xs font-semibold tracking-wide uppercase text-fg/85 transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
+/**
+ * The Library panel. In the two-column layout it is pinned to the top of the workspace while the Lineup and the segment editor scroll on the
+ * right, and it stops short of the window's bottom edge (the top bar's height is --topbar-h). Its header, search, filters and buttons stay put;
+ * only the result list scrolls inside it. Stacked (narrow), it is an ordinary panel.
+ */
+export const LIBRARY_PANEL =
+  'flex min-w-0 flex-col gap-3 rounded-[10px] border border-line bg-panel p-4 @4xl/pw:sticky @4xl/pw:top-4 @4xl/pw:self-start @4xl/pw:max-h-[calc(100vh-var(--topbar-h,3rem)-2.5rem)] @4xl/pw:overflow-y-auto';
 
 /** Puts a song into the selected segment: replacing the one marked for Replace, filling a single slot, or adding the next one. */
 function assignSong(index: number, segment: PwSegment, hymnId: number, replacing: number | null) {
@@ -63,6 +71,10 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
   const filter = useSongFilter({ refreshKey: libraryRevision });
   const { query, hymns: songs } = filter;
   const lt = useLyT();
+  // The Song Category dropdown offers the categories that suit the chosen scope, plus the one in use. The hymn query matches a song's primary
+  // category or any of its other categories (categories_json), so a song filed under two categories is listed under each.
+  const categoryModes = useMemo(() => categoryModeLookup(filter.categories), [filter.categories]);
+  const categoryOptions = filter.categories.filter((c) => c.name === filter.songCategory || suggestedFor(filter.scope, c.name, categoryModes));
   const [error, setError] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [ticked, setTicked] = useState<string[]>([]);
@@ -131,6 +143,8 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
           key: `song-${h.id}`,
           title: h.title,
           sub: [h.category, h.language, h.musicalKey].filter(Boolean).join(' · '),
+          // Every category the song is filed under, badged on its card.
+          categories: h.categories,
           fits,
           drag: { type: 'song', id: h.id, title: h.title },
           hymnId: h.id,
@@ -230,7 +244,9 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
   };
 
   return (
-    <section aria-labelledby="pw-library-heading" className="flex min-w-0 flex-col gap-3 rounded-[10px] border border-line bg-panel p-4">
+    <section aria-labelledby="pw-library-heading" data-pw-library className={LIBRARY_PANEL}>
+      {/* Locked: the header, the search, the filters and the buttons. Only the result list below scrolls. */}
+      <div className="flex shrink-0 flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
         <h2 id="pw-library-heading" className="text-lg font-bold tracking-tight text-fg">{t('library')}</h2>
         {segment && (
@@ -281,6 +297,37 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
           categories={filter.categories}
         />
       )}
+      {tab === 'song' && (
+        <div className="flex items-center gap-2">
+          <label htmlFor="pw-lib-song-category" className="shrink-0 px-1 text-[11px] font-semibold tracking-wider text-muted uppercase">
+            {t('songCategory')}
+          </label>
+          <select
+            id="pw-lib-song-category"
+            value={filter.songCategory}
+            onChange={(e) => filter.setSongCategory(e.target.value)}
+            className="h-9 min-w-0 flex-1 rounded-lg border border-line-strong bg-surface-2 px-3 text-xs text-fg outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+          >
+            <option value="">{t('allCategories')}</option>
+            {categoryOptions.map((c) => (
+              <option key={c.id} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          {filter.songCategory && (
+            <button
+              type="button"
+              onClick={() => filter.setSongCategory('')}
+              aria-label={t('clearCategory')}
+              title={t('clearCategory')}
+              className="grid size-9 shrink-0 place-items-center rounded-lg border border-line-strong bg-surface-2 text-muted transition hover:border-accent hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none"
+            >
+              <X size={14} aria-hidden />
+            </button>
+          )}
+        </div>
+      )}
       <p id="pw-lib-keys" className="sr-only">{t('resultKeys')}</p>
 
       <div role="tablist" aria-label={t('library')} className="flex border-b border-line">
@@ -329,6 +376,7 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
       )}
       {addNote && <p role="status" className="px-1 text-sm text-muted">{addNote}</p>}
       {(error ?? filter.error) && <p role="alert" className="px-1 text-sm text-danger">{error ?? filter.error}</p>}
+      </div>
 
       <LibrarySearchContainer
         ref={results}
@@ -344,7 +392,9 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
         onCardClick={handleCardClick}
         query={query}
         onEditSong={editSong}
+        activeCategory={tab === 'song' ? filter.songCategory : ''}
       />
+      <div className="flex shrink-0 flex-col gap-3">
       {/* In the Go Live focus view the cues are drawn in the takeover instead, so they are never mounted twice. */}
       {!focused && <QuickCuePanel quick={quick} t={t} />}
       {quick.toast && <p role="status" className="px-1 text-sm font-semibold text-ok">{quick.toast}</p>}
@@ -362,6 +412,7 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
       )}
 
       <p className="px-1 text-xs leading-relaxed text-muted">{t('libraryFootnote')}</p>
+      </div>
       {/* On document.body: a blurred panel above would otherwise be the containing block of the form's fixed overlay. */}
       {editing &&
         createPortal(

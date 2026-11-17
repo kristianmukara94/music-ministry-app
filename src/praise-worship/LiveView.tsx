@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { AlertTriangle, Check, Maximize2, Play, X } from 'lucide-react';
-import { livePosition, readiness, runtimeOf, segmentStatus, step } from '../../shared/pw.js';
+import { AlertTriangle, Check, Maximize2, Music, Play, X } from 'lucide-react';
+import { lineupSongs, livePosition, readiness, runtimeOf, segmentStatus, step } from '../../shared/pw.js';
 import { blackoutOverPw, welcomeOverPw } from '../../shared/live.js';
 import { dispatch, useLive } from '../live/store';
 import { ProjectorView } from '../output/ProjectorView';
@@ -78,7 +78,12 @@ function chipGroups(steps: LiveStep[], t: PwT): StageChipGroup[] {
   return groups;
 }
 
-function LiveLineup({ session, segment }: { session: PwSession; segment: number }) {
+/**
+ * The Live lineup: every segment, done, current or to come. Each row lists the titles of the songs assigned to it, in sung order (one line per
+ * song when a card chains several), so the operator sees the whole set list without opening a segment. On the current segment the song on the
+ * projector is highlighted. A song segment with no song keeps its No song badge.
+ */
+function LiveLineup({ session, segment, hymns, playingHymn }: { session: PwSession; segment: number; hymns: Readonly<Record<number, { title: string } | undefined>>; playingHymn: number | null }) {
   const t = usePwT();
   return (
     <section aria-labelledby="pw-live-lineup" className="flex min-w-0 flex-col rounded-[10px] border border-line bg-panel p-4">
@@ -91,13 +96,14 @@ function LiveLineup({ session, segment }: { session: PwSession; segment: number 
           const done = i < segment;
           const current = i === segment;
           const noSong = segmentStatus(s) === 'needs_song';
+          const songs = lineupSongs(s, hymns);
           return (
             <li key={`${s.key}-${i}`}>
               <button
                 type="button"
                 onClick={() => jumpTo(i)}
                 aria-current={current ? 'step' : undefined}
-                className={`flex min-h-12 w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition ${
+                className={`flex min-h-12 w-full items-start gap-3 rounded-lg border px-3 py-2 text-left transition ${
                   current ? 'border-accent bg-gradient-to-r from-accent/20 to-accent/5' : 'border-transparent hover:bg-fg/[0.06]'
                 }`}
               >
@@ -108,9 +114,36 @@ function LiveLineup({ session, segment }: { session: PwSession; segment: number 
                 >
                   {done ? <Check size={14} aria-label={t('done')} /> : pad2(i + 1)}
                 </span>
-                <span className={`min-w-0 flex-1 text-[15px] leading-tight ${done ? 'text-muted' : 'font-semibold'}`}>{s.name}</span>
-                {noSong && <span className="shrink-0 text-[11px] font-extrabold tracking-wide text-accent uppercase">{t('noSongBadge')}</span>}
-                <span className="shrink-0 font-mono text-xs text-muted">{runtimeOf(s)}m</span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className={`flex min-h-8 items-center text-[15px] leading-tight ${done ? 'text-muted' : 'font-semibold'}`}>{s.name}</span>
+                  {/* Spans, not a list: a button may only hold phrasing content. The button's name still reads every title. */}
+                  {songs.length > 0 && (
+                    <span data-lineup-songs className="mt-0.5 flex flex-col gap-0.5">
+                      {songs.map((song) => {
+                        const onAir = current && song.id === playingHymn;
+                        return (
+                          <span
+                            key={song.id}
+                            data-on-air={onAir || undefined}
+                            className={`flex min-w-0 items-center gap-1.5 text-[13px] leading-snug ${
+                              onAir ? 'font-bold text-accent' : done ? 'text-muted' : 'text-fg/85'
+                            }`}
+                          >
+                            {onAir ? (
+                              <span aria-hidden className="size-2 shrink-0 animate-pulse rounded-full bg-accent" />
+                            ) : (
+                              <Music size={12} aria-hidden className="shrink-0 opacity-70" />
+                            )}
+                            <span className="truncate" title={song.title}>{song.title}</span>
+                            {onAir && <span className="sr-only"> ({t('songOnAir')})</span>}
+                          </span>
+                        );
+                      })}
+                    </span>
+                  )}
+                </span>
+                {noSong && <span className="flex min-h-8 shrink-0 items-center text-[11px] font-extrabold tracking-wide text-accent uppercase">{t('noSongBadge')}</span>}
+                <span className="flex min-h-8 shrink-0 items-center font-mono text-xs text-muted">{runtimeOf(s)}m</span>
               </button>
             </li>
           );
@@ -176,7 +209,7 @@ export function LiveView() {
   const segment = session.segments[segmentIndex];
   const steps = deck[segmentIndex] ?? [];
   const group = session.groups.find((g) => g.key === segment?.group)?.name ?? '';
-  const songs = segment ? segment.content.hymnIds.filter((id) => hymns[id]).map((id) => ({ id, title: hymns[id].title })) : [];
+  const songs = segment ? lineupSongs(segment, hymns) : [];
   const nowStep = steps[at.slide];
   const playingHymn = nowStep?.kind === 'slide' && nowStep.slide.kind === 'lyrics' ? nowStep.slide.hymnId : null;
   const planned = (segment ? runtimeOf(segment) : 0) * 60_000;
@@ -252,7 +285,7 @@ export function LiveView() {
             : '@4xl/pw:grid-cols-[minmax(240px,300px)_minmax(0,1fr)] @6xl/pw:grid-cols-[minmax(240px,300px)_minmax(0,1fr)_minmax(260px,320px)]'
         }`}
       >
-        {!focused && <LiveLineup session={session} segment={segmentIndex} />}
+        {!focused && <LiveLineup session={session} segment={segmentIndex} hymns={hymns} playingHymn={playingHymn} />}
 
         {segment && (
           <section aria-labelledby="pw-live-title" className="flex min-w-0 flex-col gap-4 rounded-[10px] border border-line bg-panel p-5">
