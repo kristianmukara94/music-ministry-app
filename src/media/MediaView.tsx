@@ -12,12 +12,17 @@ import {
   Music,
   Play,
   Search,
+  SlidersHorizontal,
   Trash2,
   Upload,
   X,
   Zap,
 } from 'lucide-react';
 import type { MediaFrame } from '../../shared/live.js';
+import { MEDIA_EDIT_RANGES, normalizeMediaEditSettings, type MediaEditSettings } from '../../shared/media-editor.js';
+import { EditedMediaRenderer } from './EditedMediaRenderer';
+import { MediaStudioModal, type StudioResult } from './MediaStudioModal';
+import { assetFrame } from './frame';
 import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
 import { setUi, useUi } from '../state/ui';
@@ -36,15 +41,21 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
 // ---------------------------------------------------------------------------------------------------------------------------------------
 
 type Playback = NonNullable<MediaFrame['playback']>;
-type Rate = 0.5 | 1 | 1.5;
 interface Look {
   /** Dark tint behind the text, 0 to 80 (percent). */
   tint: number;
-  rate: Rate;
+  /** Video speed for this showing, 0.25x to 2x. It starts at the speed saved in the Media Studio (1x for an unedited clip). */
+  rate: number;
   playback: Playback;
 }
 const DEFAULT_LOOK: Look = { tint: 0, rate: 1, playback: 'loop' };
-const RATES: Rate[] = [0.5, 1, 1.5];
+const RATES = [0.5, 1, 1.5];
+const clampRate = (r: unknown) => {
+  const n = Number(r);
+  return Number.isFinite(n) ? Math.min(2, Math.max(0.25, n)) : 1;
+};
+/** The speed a clip plays at unless the operator picks another for this showing. */
+const editedRate = (m: MediaAsset) => clampRate(m.edit?.playbackSpeed ?? 1);
 const PLAYBACKS: { id: Playback; label: string; hint: string }[] = [
   { id: 'loop', label: 'Loop', hint: 'Plays over and over.' },
   { id: 'once', label: 'Play once', hint: 'Plays to the end, then the background clears from the screen.' },
@@ -55,7 +66,7 @@ const lookOf = (frame: MediaFrame | null): Look =>
   frame
     ? {
         tint: Math.round(Math.min(0.8, Math.max(0, frame.tint ?? 0)) * 100),
-        rate: frame.rate === 0.5 || frame.rate === 1.5 ? frame.rate : 1,
+        rate: clampRate(frame.rate ?? frame.edit?.playbackSpeed ?? 1),
         playback: frame.playback ?? 'loop',
       }
     : DEFAULT_LOOK;
@@ -64,13 +75,17 @@ const lookOf = (frame: MediaFrame | null): Look =>
 let lastCue = 0;
 const nextCue = () => (lastCue = Math.max(Date.now(), lastCue + 1));
 
-/** A library item as a background frame, with the inspector's look. Audio is never a background, so it has no frame. */
-const toFrame = (m: MediaAsset, look: Look = DEFAULT_LOOK): MediaFrame | null => {
-  if (m.mediaType === 'audio') return null;
-  const frame: MediaFrame = { kind: 'media', mediaType: m.mediaType, src: m.src, title: m.filename };
-  // Only what differs from the default is carried, so a plain background looks exactly as it always did.
+/**
+ * A library item as a background frame, with its saved Studio edits and the inspector's look. Audio is never a background, so it has no
+ * frame. With no look given, a clip plays at its edited speed.
+ */
+const toFrame = (m: MediaAsset, look: Look = { ...DEFAULT_LOOK, rate: editedRate(m) }): MediaFrame | null => {
+  const frame = assetFrame(m);
+  if (!frame) return null;
+  // Only what differs from the default is carried, so a plain background looks exactly as it always did. The speed is carried only when it
+  // differs from the Studio's, so a later Studio save still changes a showing that uses the edited speed.
   if (look.tint > 0) frame.tint = look.tint / 100;
-  if (m.mediaType === 'video' && look.rate !== 1) frame.rate = look.rate;
+  if (m.mediaType === 'video' && look.rate !== editedRate(m)) frame.rate = look.rate;
   if (m.mediaType === 'video' && look.playback !== 'loop') frame.playback = look.playback;
   // Each staging of a "play once" clip is its own showing, so taking it again after it ended plays it again.
   if (frame.playback === 'once') frame.cue = nextCue();
@@ -271,6 +286,11 @@ export function MediaView() {
   const [look, setLook] = useState<Look>(DEFAULT_LOOK);
   const [menu, setMenu] = useState<MediaMenuState | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  /** The item open in the Media Studio, or null. */
+  const [studioId, setStudioId] = useState<number | null>(null);
+  /** The inspector's quick Blur / Vignette while they are being saved, so the preview follows the slider at once. */
+  const [quickEdit, setQuickEdit] = useState<{ id: number; edit: MediaEditSettings } | null>(null);
+  const quickTimer = useRef<number | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -364,6 +384,7 @@ export function MediaView() {
   }, [loaded, folders, prefs.selection]);
 
   const selected = items.find((m) => m.id === selectedId) ?? null;
+  const studioAsset = studioId === null ? null : (items.find((m) => m.id === studioId) ?? null);
   const findBySrc = (src: string | undefined) => (src ? (items.find((m) => m.src === src) ?? null) : null);
 
   /**
@@ -373,7 +394,7 @@ export function MediaView() {
   const lookFor = (m: MediaAsset): Look => {
     if (m.id === selectedId) return look;
     const onScreen = background.live?.src === m.src ? background.live : background.staged?.src === m.src ? background.staged : null;
-    return onScreen ? lookOf(onScreen) : { ...look, rate: 1, playback: 'loop' };
+    return onScreen ? lookOf(onScreen) : { ...look, rate: editedRate(m), playback: 'loop' };
   };
 
   /** Selects an item and returns the look it now has, so an action in the same click uses exactly what the inspector will show. */
@@ -476,7 +497,42 @@ export function MediaView() {
     }
   };
 
+  // ---- Media Studio. Edits live on the library record; the main process restyles a staged or live showing of the item at once. -------
+
+  const openStudio = (m: MediaAsset) => {
+    if (m.mediaType === 'audio') return;
+    select(m);
+    setStudioId(m.id);
+  };
+
+  const onStudioSaved = (result: StudioResult) => {
+    const before = items.find((m) => m.id === result.asset.id);
+    // A showing that used the old edited speed moves to the new one.
+    if (result.kind === 'edit' && before && result.asset.id === selectedId) {
+      setLook((l) => (l.rate === editedRate(before) ? { ...l, rate: editedRate(result.asset) } : l));
+    }
+    showNotice(result.message);
+    void reload();
+  };
+
+  /** The inspector's quick sliders write the item's saved edits, a moment after the slider settles. */
+  const quickSave = (m: MediaAsset, patch: Partial<MediaEditSettings>) => {
+    const base = quickEdit?.id === m.id ? quickEdit.edit : m.edit;
+    const edit = normalizeMediaEditSettings({ ...base, ...patch });
+    setQuickEdit({ id: m.id, edit });
+    window.clearTimeout(quickTimer.current);
+    quickTimer.current = window.setTimeout(() => {
+      api
+        .saveEditSettings(m.id, edit)
+        .then(() => reload())
+        .then(() => setQuickEdit((current) => (current?.edit === edit ? null : current)))
+        .catch(fail);
+    }, 250);
+  };
+  useEffect(() => () => window.clearTimeout(quickTimer.current), []);
+
   const menuActions: MediaMenuActions = {
+    onEdit: (m) => openStudio(m),
     onStage: (m) => stage(m, select(m)),
     onTakeLive: (m) => takeLive(m, select(m)),
     onDefaultMass: (m) =>
@@ -704,7 +760,10 @@ export function MediaView() {
                     onMenu={(e) => openMenu(e, m)}
                     onMenuButton={(e) => openMenuFromButton(e, m)}
                     onDelete={() => void remove(m)}
+                    onEdit={() => openStudio(m)}
                     deleteLabel={t('deleteLabel', { name: m.filename })}
+                    editedLabel={t('edited')}
+                    editLabel={t('editInStudio')}
                   />
                 ))}
               </ul>
@@ -724,6 +783,10 @@ export function MediaView() {
 
         <Inspector
           asset={selected}
+          edit={selected ? (quickEdit?.id === selected.id ? quickEdit.edit : selected.edit) : null}
+          onQuickEdit={(patch) => selected && quickSave(selected, patch)}
+          onOpenStudio={() => selected && openStudio(selected)}
+          t={t}
           meta={selected ? meta.get(selected.src) : undefined}
           folders={folders}
           look={look}
@@ -737,8 +800,10 @@ export function MediaView() {
         />
       </div>
 
-      {menu && <MediaContextMenu state={menu} onClose={closeMenu} actions={menuActions} />}
+      {menu && <MediaContextMenu state={menu} onClose={closeMenu} actions={menuActions} editLabel={t('editInStudio')} />}
       <LowerThirdDrawer open={drawerOpen} onClose={closeDrawer} />
+      {/* Portalled to <body> by the modal itself, so nothing on this page can trap or blur it. */}
+      {studioAsset && <MediaStudioModal key={studioAsset.id} asset={studioAsset} onClose={() => setStudioId(null)} onSaved={onStudioSaved} />}
     </div>
   );
 }
@@ -1008,8 +1073,9 @@ function Thumb({ asset }: { asset: MediaAsset }) {
   );
 }
 
-function Badge({ children, tone = 'plain' }: { children: ReactNode; tone?: 'plain' | 'live' | 'staged' }) {
-  const cls = tone === 'live' ? 'bg-danger text-white' : tone === 'staged' ? 'bg-warn text-canvas' : 'bg-black/70 text-white';
+function Badge({ children, tone = 'plain' }: { children: ReactNode; tone?: 'plain' | 'live' | 'staged' | 'edited' }) {
+  const cls =
+    tone === 'live' ? 'bg-danger text-white' : tone === 'staged' ? 'bg-warn text-canvas' : tone === 'edited' ? 'bg-accent text-on-accent' : 'bg-black/70 text-white';
   return <span className={`rounded px-1.5 py-0.5 text-[10px] leading-none font-bold tracking-wide ${cls}`}>{children}</span>;
 }
 
@@ -1026,7 +1092,10 @@ function AssetCard({
   onMenu,
   onMenuButton,
   onDelete,
+  onEdit,
   deleteLabel,
+  editedLabel,
+  editLabel,
 }: {
   asset: MediaAsset;
   mode: ViewMode;
@@ -1040,7 +1109,10 @@ function AssetCard({
   onMenu: (e: MouseEvent) => void;
   onMenuButton: (e: MouseEvent<HTMLButtonElement>) => void;
   onDelete: () => void;
+  onEdit: () => void;
   deleteLabel: string;
+  editedLabel: string;
+  editLabel: string;
 }) {
   const [hover, setHover] = useState(false);
   const isAudio = m.mediaType === 'audio';
@@ -1094,6 +1166,7 @@ function AssetCard({
           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-fg" title={m.filename}>
             {m.filename}
           </span>
+          {m.edited && <Badge tone="edited">{editedLabel}</Badge>}
           {stateBadge}
           <span className="hidden w-14 shrink-0 text-right font-mono text-[11px] text-faint md:inline">{resolution ?? (isAudio ? 'Audio' : '')}</span>
           <span className="w-12 shrink-0 text-right font-mono text-[11px] text-faint tabular-nums">{duration ?? ''}</span>
@@ -1127,7 +1200,10 @@ function AssetCard({
         {hover && m.mediaType === 'video' && (
           <video src={m.src} autoPlay muted loop playsInline preload="auto" aria-hidden className="absolute inset-0 h-full w-full object-cover" />
         )}
-        <span className="absolute top-1.5 left-1.5 flex gap-1">{stateBadge}</span>
+        <span className="absolute top-1.5 left-1.5 flex gap-1">
+          {stateBadge}
+          {m.edited && <Badge tone="edited">{editedLabel}</Badge>}
+        </span>
         <span className="absolute right-1.5 bottom-1.5 left-1.5 flex items-end justify-between gap-1">
           <span className="flex gap-1">
             {isAudio ? <Badge>Audio</Badge> : resolution && <Badge>{resolution}</Badge>}
@@ -1136,10 +1212,8 @@ function AssetCard({
           {duration && <Badge>{duration}</Badge>}
         </span>
       </button>
-      <div className="flex items-center gap-1 px-2.5 py-1.5">
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-fg" title={m.filename}>
-          {m.filename}
-        </span>
+      <div className="flex items-center gap-1 px-2.5 py-1.5" onDoubleClick={() => !isAudio && onEdit()} title={isAudio ? undefined : `${m.filename} · ${editLabel} (double-click)`}>
+        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-fg">{m.filename}</span>
         {menuButton}
         <button
           type="button"
@@ -1209,6 +1283,10 @@ function Segmented<T extends string | number>({ label, value, options, onChange,
 
 function Inspector({
   asset,
+  edit,
+  onQuickEdit,
+  onOpenStudio,
+  t,
   meta,
   folders,
   look,
@@ -1221,6 +1299,11 @@ function Inspector({
   onMove,
 }: {
   asset: MediaAsset | null;
+  /** The item's saved Studio edits (or the quick sliders' unsaved values). */
+  edit: MediaEditSettings | null;
+  onQuickEdit: (patch: Partial<MediaEditSettings>) => void;
+  onOpenStudio: () => void;
+  t: ReturnType<typeof useMediaT>;
   meta: Meta | undefined;
   folders: MediaFolder[];
   look: Look;
@@ -1248,31 +1331,45 @@ function Inspector({
   const tint = look.tint / 100;
 
   const takeLabel = isLive ? (liveLookDiffers ? 'Update Live' : 'On Air') : 'Take Live';
+  const isEdited = Boolean(asset && !isAudio && asset.edited);
+  // The speeds on offer: the usual three, plus the Studio's speed when it is something else.
+  const editSpeed = edit ? Math.min(2, Math.max(0.25, edit.playbackSpeed)) : 1;
+  const rateOptions = [...RATES, ...(RATES.includes(editSpeed) ? [] : [editSpeed])].sort((a, b) => a - b);
+  const quickRange = MEDIA_EDIT_RANGES;
 
   return (
     <aside aria-label="Inspector" className="flex w-72 flex-none flex-col overflow-y-auto bg-panel/60 xl:w-80">
-      <div className={SECTION}>Stage preview</div>
+      <div className={`${SECTION} flex items-center justify-between gap-2`}>
+        <span className="flex items-center gap-1.5">
+          Stage preview
+          {isEdited && <Badge tone="edited">{t('edited')}</Badge>}
+        </span>
+        <button
+          type="button"
+          onClick={onOpenStudio}
+          disabled={!asset || isAudio}
+          title={t('editInStudio')}
+          className="flex h-6 items-center gap-1 rounded border border-accent/60 px-2 text-[10px] font-extrabold tracking-wide text-accent normal-case transition hover:bg-accent hover:text-on-accent disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <SlidersHorizontal size={11} aria-hidden /> {t('editMedia')}
+        </button>
+      </div>
       <div className="px-3">
-        {/* The preview applies the look exactly as the projector will: the media, then the tint, then sample text. */}
+        {/* The preview applies the look exactly as the projector will: the media with its Studio edits, then the tint, then sample text. */}
         <div className="relative aspect-video overflow-hidden rounded-md border border-line bg-black [container-type:inline-size]">
           {asset && !isAudio ? (
             <>
-              {isVideo ? (
-                <video
-                  ref={previewRef}
-                  key={`${asset.src}|${look.playback}`}
-                  src={asset.src}
-                  autoPlay
-                  muted
-                  loop={look.playback === 'loop'}
-                  playsInline
-                  onLoadedMetadata={(e) => (e.currentTarget.playbackRate = look.rate)}
-                  onEnded={() => look.playback === 'once' && setPreviewEnded(true)}
-                  className={`absolute inset-0 h-full w-full object-cover ${previewEnded ? 'invisible' : ''}`}
-                />
-              ) : (
-                <img src={asset.src} alt="" className="absolute inset-0 h-full w-full object-cover" />
-              )}
+              <EditedMediaRenderer
+                key={`${asset.src}|${look.playback}`}
+                mediaType={isVideo ? 'video' : 'image'}
+                src={asset.src}
+                edit={edit}
+                playback={isVideo ? look.playback : 'loop'}
+                rate={look.rate}
+                videoRef={previewRef}
+                onEnded={() => look.playback === 'once' && setPreviewEnded(true)}
+                className={`absolute inset-0 ${previewEnded ? 'invisible' : ''}`}
+              />
               <div aria-hidden data-testid="tint-overlay" className="absolute inset-0 bg-black transition-opacity" style={{ opacity: tint }} />
               <p aria-hidden className="absolute inset-x-0 top-1/2 -translate-y-1/2 px-[6cqw] text-center text-[6cqw] leading-tight font-bold text-white [text-shadow:0_2px_10px_rgba(0,0,0,0.8)]">
                 Glory to God in the highest
@@ -1363,9 +1460,45 @@ function Inspector({
             className="w-full accent-[var(--color-accent)] disabled:opacity-40"
           />
         </label>
+        {/* Quick backdrop softening. These change the item's saved edits, so a staged or live showing softens at once. */}
+        {(['blur', 'vignette'] as const).map((field) => {
+          const value = edit?.[field] ?? 0;
+          const label = field === 'blur' ? t('backdropBlur') : t('vignette');
+          return (
+            <label key={field} className="flex flex-col gap-1.5">
+              <span className="flex items-center justify-between text-xs text-fg/70">
+                {label}
+                <span className="font-mono text-fg tabular-nums">{field === 'blur' ? `${value}px` : `${value}%`}</span>
+              </span>
+              <input
+                type="range"
+                min={quickRange[field].min}
+                max={quickRange[field].max}
+                step={field === 'blur' ? 1 : 5}
+                value={value}
+                disabled={!asset || isAudio}
+                onChange={(e) => onQuickEdit({ [field]: Number(e.target.value) })}
+                onDoubleClick={() => onQuickEdit({ [field]: 0 })}
+                aria-valuetext={`${label} ${value}`}
+                title={t('sliderResetHint')}
+                className="w-full accent-[var(--color-accent)] disabled:opacity-40"
+              />
+            </label>
+          );
+        })}
         <div className="flex flex-col gap-1.5">
           <span className="text-xs text-fg/70">Playback speed</span>
-          <Segmented label="Playback speed" value={look.rate} options={RATES.map((r) => ({ id: r, label: `${r.toFixed(1)}×` }))} onChange={(rate) => onLook({ rate })} disabled={!isVideo} />
+          <Segmented
+            label="Playback speed"
+            value={look.rate}
+            options={rateOptions.map((r) => ({
+              id: r,
+              label: RATES.includes(r) ? `${r.toFixed(1)}×` : `${r.toFixed(2)}×`,
+              hint: r === editSpeed && editSpeed !== 1 ? `${t('editedSpeed')} (${t('studioTitle')})` : undefined,
+            }))}
+            onChange={(rate) => onLook({ rate })}
+            disabled={!isVideo}
+          />
         </div>
         <div className="flex flex-col gap-1.5">
           <span className="text-xs text-fg/70">At the end</span>

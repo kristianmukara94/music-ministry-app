@@ -1,5 +1,6 @@
 import type { DragEvent, KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react';
-import { AlertTriangle, Eye, EyeOff, PenLine, Radio, Zap } from 'lucide-react';
+import { AlertTriangle, Eye, EyeOff, PenLine } from 'lucide-react';
+import { LiveButton } from '../components/LiveButton';
 import type { LibraryDrag } from '../../shared/pw-attach.js';
 import type { QuickLiveNotice } from './useQuickLiveController';
 
@@ -17,6 +18,11 @@ export interface LibraryRow {
   hymnId?: number;
   /** Set on a song row: every song category the song is filed under, primary first. Each is badged on the card. */
   categories?: string[];
+  /**
+   * Set on a prayer or scripture row: LIVE puts it on the projector now, without adding it to the lineup. A song row goes live through
+   * `hymnId` and the quick-live controller instead.
+   */
+  goLive?: () => Promise<void>;
   insert: () => void;
   added: boolean;
   extra?: ReactNode;
@@ -30,8 +36,8 @@ export interface QuickLiveView {
   notice: QuickLiveNotice | null;
 }
 
-const ADD = 'grid h-9 min-w-16 shrink-0 place-items-center rounded-md border border-fg/15 bg-panel-2 px-4 text-xs font-bold tracking-wide uppercase text-fg/85 transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40';
-const GO_LIVE = 'inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border px-3 text-xs font-extrabold tracking-wide uppercase transition focus-visible:ring-2 focus-visible:ring-danger/60 focus-visible:outline-none disabled:cursor-wait disabled:opacity-60';
+// Compact actions: small padding and gaps, so the song title keeps the row's width.
+const ADD = 'grid h-8 shrink-0 place-items-center rounded-md border border-fg/15 bg-panel-2 px-2 text-[11px] font-bold tracking-wide uppercase text-fg/85 transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40';
 
 interface Props {
   row: LibraryRow;
@@ -52,7 +58,10 @@ interface Props {
   onRowKey: (e: KeyboardEvent<HTMLButtonElement>) => void;
   /** `immediate` skips the confirm click. */
   onGoLive: (immediate: boolean) => void;
-  labels: { fits: string; live: string; goLive: string; confirm: string; showing: string };
+  /** `goLive` is the tooltip (Go Live Now); `liveShort` is the button's own label (LIVE). */
+  labels: { fits: string; live: string; goLive: string; liveShort: string; confirm: string; showing: string };
+  /** A prayer or scripture row's LIVE state: armed for a second press, or showing. Null for a row without LIVE. */
+  direct?: { armed: boolean; pending: boolean; onPress: (immediate: boolean) => void } | null;
   /**
    * Song rows only: the Show Lyrics toggle and the Edit Song button, and the preview drawn under the card while it is open. Neither button
    * ticks the card or adds the song.
@@ -65,9 +74,9 @@ interface Props {
  * projector now). The song on the projector wears a pulsing badge and a glow, so the operator sees what the congregation sees.
  */
 const ICON_BTN =
-  'grid size-11 shrink-0 place-items-center rounded-lg border transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none';
+  'grid size-8 shrink-0 place-items-center rounded-lg border transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none';
 
-export function SongSearchResultCard({ row, selected, activeCategory = '', dragging, addLabel, addAria, canAdd, quick, buttonRef, onActivate, onCardClick, onDragStart, onDragEnd, onRowKey, onGoLive, labels, lyrics }: Props) {
+export function SongSearchResultCard({ row, selected, activeCategory = '', dragging, addLabel, addAria, canAdd, quick, buttonRef, onActivate, onCardClick, onDragStart, onDragEnd, onRowKey, onGoLive, labels, lyrics, direct = null }: Props) {
   const isLive = quick?.isLive ?? false;
   const notice = quick?.notice ?? null;
   return (
@@ -95,7 +104,9 @@ export function SongSearchResultCard({ row, selected, activeCategory = '', dragg
         onKeyUp={(e) => row.hymnId != null && e.key === ' ' && e.preventDefault()}
         aria-pressed={row.tickable ? selected : undefined}
         aria-describedby="pw-lib-keys"
-        className="flex min-h-11 min-w-0 flex-1 flex-col rounded-lg px-2 py-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+        // The title block takes the room the actions leave, and never less than 9rem: on a narrow (split-screen) panel the actions move to a
+        // line of their own rather than squeezing the title to a letter or two.
+        className="flex min-h-11 min-w-0 flex-[1_1_9rem] flex-col rounded-lg px-2 py-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
       >
         {isLive && (
           <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold tracking-[0.18em] text-danger uppercase">
@@ -104,8 +115,8 @@ export function SongSearchResultCard({ row, selected, activeCategory = '', dragg
           </span>
         )}
         {!isLive && row.fits && <span className="text-[10px] font-extrabold tracking-[0.18em] text-ok uppercase">{labels.fits}</span>}
-        <span className="w-full truncate font-semibold">{row.title}</span>
-        <span className="w-full truncate text-xs text-muted">{row.sub}</span>
+        <span data-row-title className="line-clamp-2 w-full break-words font-semibold leading-snug">{row.title}</span>
+        <span className="line-clamp-2 w-full break-words text-xs text-muted">{row.sub}</span>
         {row.categories && row.categories.length > 0 && (
           <span className="mt-1 flex flex-wrap gap-1">
             {row.categories.map((c) => (
@@ -122,6 +133,7 @@ export function SongSearchResultCard({ row, selected, activeCategory = '', dragg
           </span>
         )}
       </button>
+      <div data-row-actions className="ml-auto flex shrink-0 items-center gap-1">
       {lyrics && (
         <>
           <button
@@ -135,7 +147,7 @@ export function SongSearchResultCard({ row, selected, activeCategory = '', dragg
             }}
             className={`${ICON_BTN} ${lyrics.open ? 'border-accent bg-accent/15 text-accent' : 'border-fg/15 text-muted hover:border-accent hover:text-fg'}`}
           >
-            {lyrics.open ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
+            {lyrics.open ? <EyeOff size={14} aria-hidden /> : <Eye size={14} aria-hidden />}
           </button>
           <button
             type="button"
@@ -147,7 +159,7 @@ export function SongSearchResultCard({ row, selected, activeCategory = '', dragg
             }}
             className={`${ICON_BTN} border-fg/15 text-muted hover:border-accent hover:text-fg`}
           >
-            <PenLine size={16} aria-hidden />
+            <PenLine size={14} aria-hidden />
           </button>
         </>
       )}
@@ -166,29 +178,27 @@ export function SongSearchResultCard({ row, selected, activeCategory = '', dragg
       >
         {addLabel}
       </button>
+      {/* LIVE: the song (or the prayer or reading) on the projector now. Shift + click is the deliberate click: it skips the confirm. */}
       {quick && (
-        <button
-          type="button"
-          disabled={quick.pending}
-          aria-label={`${labels.goLive}: ${row.title}`}
-          title={quick.armed ? labels.confirm : `${labels.goLive} (Shift + Enter)`}
-          onClick={(e) => {
-            e.stopPropagation();
-            // Shift + click is the deliberate click: it skips the confirm.
-            onGoLive(e.shiftKey);
-          }}
-          className={`${GO_LIVE} ${
-            isLive
-              ? 'border-danger/60 bg-danger/15 text-danger hover:bg-danger/25'
-              : quick.armed
-                ? 'animate-pulse border-warn bg-warn text-on-accent'
-                : 'border-danger bg-danger text-white hover:brightness-110'
-          }`}
-        >
-          {isLive ? <Radio size={14} aria-hidden /> : <Zap size={14} aria-hidden />}
-          {isLive ? labels.showing : quick.armed ? labels.confirm : labels.goLive}
-        </button>
+        <LiveButton
+          title={row.title}
+          labels={{ live: labels.liveShort, hint: labels.goLive, confirm: labels.confirm, showing: labels.showing }}
+          armed={quick.armed}
+          pending={quick.pending}
+          isLive={isLive}
+          onPress={onGoLive}
+        />
       )}
+      {!quick && direct && (
+        <LiveButton
+          title={row.title}
+          labels={{ live: labels.liveShort, hint: labels.goLive, confirm: labels.confirm }}
+          armed={direct.armed}
+          pending={direct.pending}
+          onPress={direct.onPress}
+        />
+      )}
+      </div>
       {lyrics?.open && lyrics.preview}
       {notice && (
         <p role="alert" className={`flex basis-full items-center gap-1.5 px-2 text-xs ${notice.kind === 'screen' ? 'text-warn' : 'text-danger'}`}>

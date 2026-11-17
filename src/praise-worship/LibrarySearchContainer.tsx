@@ -1,4 +1,6 @@
-import { forwardRef, useImperativeHandle, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { forwardRef, useCallback, useImperativeHandle, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useArmedLive } from '../planner/useArmedLive';
+import { textCaseClass, usePlannerTextCase } from '../planner/textCase';
 import type { LibraryDragBatch } from '../../shared/pw-attach.js';
 import { setPwState } from './store';
 import { isTextEntry } from './textEntry';
@@ -60,6 +62,14 @@ export const LibrarySearchContainer = forwardRef<LibrarySearchHandle, Props>(fun
   // The song cards whose lyrics are open, by row key. Each opens and closes on its own.
   const [openLyrics, setOpenLyrics] = useState<string[]>([]);
   const toggleLyrics = (key: string) => setOpenLyrics((open) => (open.includes(key) ? open.filter((k) => k !== key) : [...open, key]));
+
+  // LIVE on a prayer or scripture row: armed first while a Holy Mass or Praise & Worship slide is on air (see useArmedLive).
+  const runDirect = useCallback(async (key: string) => {
+    await rows.find((r) => r.key === key)?.goLive?.();
+  }, [rows]);
+  const direct = useArmedLive(runDirect);
+  // The Planner's text case for the inline lyrics drawers (on screen only).
+  const caseClass = textCaseClass(usePlannerTextCase((s) => s.mode));
 
   useImperativeHandle(ref, () => ({ focusRow: (index) => rowButtons.current[index]?.focus() }), []);
 
@@ -151,7 +161,12 @@ export const LibrarySearchContainer = forwardRef<LibrarySearchHandle, Props>(fun
             }}
             onRowKey={(e) => onRowKey(e, row, i)}
             onGoLive={(immediate) => goLive(row, immediate)}
-            labels={{ fits: t('fits'), live: t('currentlyLive'), goLive: t('goLiveNow'), confirm: t('goLiveConfirm'), showing: t('onScreen') }}
+            labels={{ fits: t('fits'), live: t('currentlyLive'), goLive: t('goLiveNow'), liveShort: t('liveShort'), confirm: t('goLiveConfirm'), showing: t('onScreen') }}
+            direct={
+              hymnId == null && row.goLive
+                ? { armed: direct.armed === row.key, pending: direct.pending === row.key, onPress: (immediate) => direct.press(row.key, immediate) }
+                : null
+            }
             lyrics={
               hymnId == null || !onEditSong
                 ? undefined
@@ -160,7 +175,11 @@ export const LibrarySearchContainer = forwardRef<LibrarySearchHandle, Props>(fun
                     onToggle: () => toggleLyrics(row.key),
                     onEdit: edit,
                     labels: { show: t('showLyrics'), hide: t('hideLyrics'), edit: t('editSong') },
-                    preview: lyricsOpen ? <SongLyricsPreview hymnId={hymnId} query={query} t={t} canAdd={canInsert(row)} onAdd={() => row.insert()} onEdit={edit} /> : null,
+                    preview: lyricsOpen ? (
+                      <div className={`basis-full ${caseClass}`}>
+                        <SongLyricsPreview hymnId={hymnId} query={query} t={t} canAdd={canInsert(row)} onAdd={() => row.insert()} onEdit={edit} />
+                      </div>
+                    ) : null,
                   }
             }
           />

@@ -17,6 +17,8 @@ export interface MediaMenuActions {
   onRename: (m: MediaAsset) => void;
   onReveal: (m: MediaAsset) => void;
   onDelete: (m: MediaAsset) => void;
+  /** Opens the Media Studio on the item. */
+  onEdit: (m: MediaAsset) => void;
 }
 
 interface Item {
@@ -31,7 +33,18 @@ interface Item {
  * Quick actions for one library item, opened by right-click or the card's … button. Actions that do not apply to the item's type are shown
  * disabled with the reason as a tooltip, so the menu always has the same shape. It closes on any click elsewhere, on Escape and on scroll.
  */
-export function MediaContextMenu({ state, onClose, actions }: { state: MediaMenuState; onClose: () => void; actions: MediaMenuActions }) {
+export function MediaContextMenu({
+  state,
+  onClose,
+  actions,
+  editLabel = 'Edit in Studio',
+}: {
+  state: MediaMenuState;
+  onClose: () => void;
+  actions: MediaMenuActions;
+  /** The localized "Edit in Studio" label. */
+  editLabel?: string;
+}) {
   const { asset: m } = state;
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: state.x, top: state.y });
@@ -63,6 +76,12 @@ export function MediaContextMenu({ state, onClose, actions }: { state: MediaMenu
     [
       { label: 'Stage Background', hint: notBackground, disabled: isAudio, run: () => actions.onStage(m) },
       { label: 'Take Live', hint: notBackground, disabled: isAudio, run: () => actions.onTakeLive(m) },
+      {
+        label: editLabel,
+        hint: isAudio ? 'The Media Studio edits pictures and videos.' : 'Crop, grade and trim without changing the file.',
+        disabled: isAudio,
+        run: () => actions.onEdit(m),
+      },
     ],
     [
       {

@@ -36,7 +36,9 @@ test('a direct show ends the lineup\'s air but leaves the lineup itself alone', 
 test('a click asks twice while another slide is on air; the keyboard and Shift + click do not', () => {
   assert.match(hook, /const needsConfirm = !immediate && somethingLive && liveHymnId !== hymnId;/);
   assert.match(hook, /ARM_MS = 1500/);
-  assert.match(card, /onGoLive\(e\.shiftKey\)/);
+  // Shift + click is passed on by the shared LIVE button, which the card wires to onGoLive.
+  assert.match(card, /onPress=\{onGoLive\}/);
+  assert.match(read('src/components/LiveButton.tsx'), /onPress\(e\.shiftKey\)/);
   assert.match(container, /\(e\.key === 'Enter' && e\.shiftKey\) \|\| \(e\.key === ' '/);
   assert.match(container, /goLive\(row, true\)/);
 });

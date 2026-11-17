@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { MEDIA_SCHEME, registerMediaRoute } from './protocol.js';
 import { createVideoThumbnailer } from './video-thumbnailer.js';
 import { getAssetRoot, relPath, resolveAsset } from './assets.js';
+import { hasActiveMediaEdits, normalizeMediaEditSettings, parseMediaEditSettings, serializeMediaEditSettings } from '../shared/media-editor.js';
 
 const FILTERS = [
   { name: 'Media', extensions: ['mp4', 'mov', 'webm', 'mkv', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'mp3', 'wav', 'aac', 'flac', 'ogg'] },
@@ -69,6 +70,39 @@ export const MEDIA_FOLDER_MIGRATIONS = [
   `,
 ];
 
+/**
+ * Non-destructive Media Studio edits (framing, colour grade, trim). NULL means the file is drawn as it is, which is every item from before
+ * the Studio, so old libraries, folders and backups load unchanged. See shared/media-editor.js for the JSON shape.
+ */
+export const MEDIA_EDITOR_MIGRATIONS = [`ALTER TABLE media_assets ADD COLUMN edit_settings_json TEXT;`];
+
+/** The largest picture the Studio may save (a baked copy or a poster frame). A 4K PNG is well under this. */
+export const MAX_EDIT_IMAGE_BYTES = 64 * 1024 * 1024;
+
+/** The picture's format from its first bytes, or null when it is neither PNG nor JPEG. The renderer's word for it is not trusted. */
+export function imageFormatOf(bytes) {
+  if (!bytes || bytes.length < 4) return null;
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'png';
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'jpg';
+  return null;
+}
+
+/** Image bytes from IPC (a Uint8Array, an ArrayBuffer or a Buffer) as a Buffer, checked for size and format. */
+function imageBuffer(data) {
+  const buf = Buffer.isBuffer(data)
+    ? data
+    : data instanceof ArrayBuffer
+      ? Buffer.from(data)
+      : ArrayBuffer.isView(data)
+        ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+        : null;
+  if (!buf || buf.length === 0) throw new Error('The picture is empty.');
+  if (buf.length > MAX_EDIT_IMAGE_BYTES) throw new Error('The picture is too large to save.');
+  const format = imageFormatOf(buf);
+  if (!format) throw new Error('Only PNG and JPEG pictures can be saved.');
+  return { buf, format };
+}
+
 // Shown when an .mkv is imported and ffmpeg is not installed. Chromium cannot play Matroska, so the file needs converting.
 export const MKV_NOTICE = 'For optimal projector playback, please convert .mkv files to .mp4.';
 
@@ -114,8 +148,15 @@ export function createMediaService(db, root, deps) {
 
   const q = {
     list: db.prepare(`
-      SELECT id, filename, media_type AS mediaType, thumbnail_path AS thumbnailPath, uploaded_at AS uploadedAt, folder_id AS folderId
+      SELECT id, filename, media_type AS mediaType, thumbnail_path AS thumbnailPath, uploaded_at AS uploadedAt, folder_id AS folderId,
+             edit_settings_json AS editJson
       FROM media_assets ORDER BY uploaded_at DESC, id DESC`),
+    one: db.prepare(`
+      SELECT id, filename, media_type AS mediaType, thumbnail_path AS thumbnailPath, uploaded_at AS uploadedAt, folder_id AS folderId,
+             edit_settings_json AS editJson
+      FROM media_assets WHERE id = ?`),
+    setEdit: db.prepare('UPDATE media_assets SET edit_settings_json = ? WHERE id = ?'),
+    meta: db.prepare('SELECT filename, media_type AS mediaType, folder_id AS folderId FROM media_assets WHERE id = ?'),
     folders: db.prepare('SELECT id, name, builtin FROM media_folders ORDER BY sort, name COLLATE NOCASE'),
     folderById: db.prepare('SELECT id, builtin FROM media_folders WHERE id = ?'),
     folderByName: db.prepare('SELECT id FROM media_folders WHERE name = ? COLLATE NOCASE'),
@@ -130,11 +171,22 @@ export function createMediaService(db, root, deps) {
     rename: db.prepare('UPDATE media_assets SET filename = ? WHERE id = ?'),
   };
 
-  const toAsset = ({ thumbnailPath, ...row }) => ({
-    ...row,
-    src: `${MEDIA_SCHEME}://media/${row.id}`,
-    thumbSrc: thumbnailPath ? `${MEDIA_SCHEME}://thumb/${row.id}` : null,
-  });
+  // The thumbnail address carries its file's name, so a new poster frame is a new address and no window shows a cached old one.
+  const thumbVersion = (rel) => path.basename(rel, path.extname(rel)).slice(0, 8);
+  const toAsset = ({ thumbnailPath, editJson, ...row }) => {
+    const edit = parseMediaEditSettings(editJson);
+    return {
+      ...row,
+      src: `${MEDIA_SCHEME}://media/${row.id}`,
+      thumbSrc: thumbnailPath ? `${MEDIA_SCHEME}://thumb/${row.id}?v=${thumbVersion(thumbnailPath)}` : null,
+      edit,
+      edited: hasActiveMediaEdits(edit),
+    };
+  };
+  const assetById = (id) => {
+    const row = q.one.get(id);
+    return row ? toAsset(row) : null;
+  };
 
   /**
    * Converts an .mkv to an .mp4 beside it, in the background. The MP4 becomes a new library item, and the original stays.
@@ -296,6 +348,72 @@ export function createMediaService(db, root, deps) {
       return true;
     },
 
+    /** One item as the library lists it, or null. */
+    get(id) {
+      return assetById(id);
+    },
+
+    /**
+     * Stores the Studio's non-destructive edits. They are normalised first, and settings that change nothing store NULL, so "Reset All"
+     * returns the item to exactly how it was. The file is never touched. Resolves to the updated item.
+     */
+    saveEditSettings(id, settings) {
+      if (!q.byId.get(id)) throw new Error('That file is no longer in the library.');
+      q.setEdit.run(serializeMediaEditSettings(normalizeMediaEditSettings(settings)), id);
+      return assetById(id);
+    },
+
+    /** Replaces the item's library thumbnail with a picture (a poster frame the operator chose). The old thumbnail file is removed. */
+    async updateThumbnail(id, data) {
+      const row = q.byId.get(id);
+      if (!row) throw new Error('That file is no longer in the library.');
+      const { buf, format } = imageBuffer(data);
+      const rel = newRel('thumbnails', format === 'png' ? '.png' : '.jpg');
+      await fs.promises.writeFile(resolveAsset(root, rel), buf);
+      q.setThumb.run(rel, id);
+      if (row.thumbnailPath && row.thumbnailPath !== rel) {
+        const old = resolveAsset(root, row.thumbnailPath);
+        if (old) await fs.promises.rm(old, { force: true }).catch(() => undefined);
+      }
+      return assetById(id);
+    },
+
+    /**
+     * Saves a baked picture (the Studio's "Save as New Copy") as a new still image in the same folder as the item it came from. The original
+     * item and its file are left exactly as they were. Resolves to the new item.
+     */
+    async saveEditedCopy(id, data, name) {
+      const source = q.meta.get(id);
+      if (!source) throw new Error('That file is no longer in the library.');
+      const { buf, format } = imageBuffer(data);
+      const ext = format === 'png' ? '.png' : '.jpg';
+      const base = path.basename(source.filename, path.extname(source.filename));
+      const wanted = String(name ?? '').trim();
+      const label = (wanted || `${base} (edited)${ext}`).slice(0, 200);
+      const rel = newRel('media', ext);
+      const dest = resolveAsset(root, rel);
+      await fs.promises.writeFile(dest, buf);
+      let newId;
+      try {
+        newId = Number(q.insert.run(label, rel, 'image').lastInsertRowid);
+      } catch (err) {
+        await fs.promises.rm(dest, { force: true });
+        throw err;
+      }
+      if (source.folderId !== null) q.setFolder.run(source.folderId, newId);
+      try {
+        const jpeg = await makeImageThumbnail?.(dest, `${MEDIA_SCHEME}://media/${newId}`);
+        if (jpeg) {
+          const thumbRel = newRel('thumbnails', '.jpg');
+          await fs.promises.writeFile(resolveAsset(root, thumbRel), jpeg);
+          q.setThumb.run(thumbRel, newId);
+        }
+      } catch {
+        // The copy is saved; the card falls back to the picture itself.
+      }
+      return assetById(newId);
+    },
+
     /** Relative paths for the protocol. The protocol resolves them against the open database's folder. */
     filePath(id) {
       return q.byId.get(id)?.filePath ?? null;
@@ -343,7 +461,7 @@ export async function deleteMediaWhenFree(service, root, id, { releaseBackground
  * Registers `media:*` IPC. `releaseBackground(url)` is supplied by the main process: it clears the background layer when it
  * shows the file at `url`, and returns true when it did.
  */
-export function setupMedia(db, { loadRoute, preload, releaseBackground }) {
+export function setupMedia(db, { loadRoute, preload, releaseBackground, restyleBackground }) {
   const root = getAssetRoot();
 
   const thumbnailer = createVideoThumbnailer({ loadRoute, preload });
@@ -380,6 +498,29 @@ export function setupMedia(db, { loadRoute, preload, releaseBackground }) {
   handle('createFolder', (_win, name) => service.createFolder(name));
   handle('deleteFolder', (_win, id) => service.deleteFolder(Number(id)));
   handle('moveToFolder', (_win, id, folderId) => service.moveToFolder(Number(id), folderId === null ? null : Number(folderId)));
+
+  // Media Studio. Saved edits reach a staged or live background at once (restyleBackground), and every window reloads its library.
+  const changed = () => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('media:event', { kind: 'changed' });
+    }
+  };
+  ipcMain.handle('media:save-edit-settings', (_event, id, settings) => {
+    const asset = service.saveEditSettings(Number(id), settings);
+    restyleBackground?.(asset.src, asset.edited ? asset.edit : null);
+    changed();
+    return asset;
+  });
+  ipcMain.handle('media:update-thumbnail', async (_event, id, bytes) => {
+    const asset = await service.updateThumbnail(Number(id), bytes);
+    changed();
+    return asset;
+  });
+  ipcMain.handle('media:save-edited-copy', async (_event, id, bytes, name) => {
+    const asset = await service.saveEditedCopy(Number(id), bytes, name);
+    changed();
+    return asset;
+  });
 
   return { close: () => thumbnailer.dispose() };
 }

@@ -1,6 +1,7 @@
 // Projector output settings, shared by the main process (saved to config.json and used to place the window)
 // and the renderer (sizes the stage, draws the idle screen, and animates changes). Pure: no Electron imports.
 import { TEXT_FONTS, normalizeHex } from './text-style.js';
+import { TEXT_CASES } from './text-fit.js';
 
 export const PROJECTOR_ASPECTS = ['16:9', '4:3'];
 export const PROJECTOR_FITS = ['contain', 'fill'];
@@ -51,6 +52,11 @@ export const PROJECTOR_SETTINGS_DEFAULTS = {
    * text-fit.js), rather than filled to the edge with a word left alone on the next line. Off draws the browser's own wrap.
    */
   balanceLines: true,
+  /**
+   * The case slide text is drawn in on the projector, the TV, the previews and the lower third: 'original' (as typed), 'uppercase' or
+   * 'lowercase' (see applyFrameTextCase in text-fit.js). It never changes the song, prayer or reading in its library.
+   */
+  textCase: 'original',
   /**
    * Whether a slide shows the small banner naming its Holy Mass slot or reading ("FIRST READING", "CONGREGATION RESPONSE") above its text.
    * A Holy Mass plan can override it for its own Mass (see slotTitleShown in live.js).
@@ -110,6 +116,7 @@ export function sanitizeProjectorSettings(raw) {
     defaultIntroSlideMode: INTRO_SLIDE_MODES.includes(p.defaultIntroSlideMode) ? p.defaultIntroSlideMode : PROJECTOR_SETTINGS_DEFAULTS.defaultIntroSlideMode,
     slideFontScale: nearestScale(p.slideFontScale),
     balanceLines: typeof p.balanceLines === 'boolean' ? p.balanceLines : PROJECTOR_SETTINGS_DEFAULTS.balanceLines,
+    textCase: TEXT_CASES.includes(p.textCase) ? p.textCase : PROJECTOR_SETTINGS_DEFAULTS.textCase,
     showSlotTitle: typeof p.showSlotTitle === 'boolean' ? p.showSlotTitle : PROJECTOR_SETTINGS_DEFAULTS.showSlotTitle,
     backgroundEverywhere: typeof p.backgroundEverywhere === 'boolean' ? p.backgroundEverywhere : PROJECTOR_SETTINGS_DEFAULTS.backgroundEverywhere,
     advancedOutput: typeof p.advancedOutput === 'boolean' ? p.advancedOutput : PROJECTOR_SETTINGS_DEFAULTS.advancedOutput,

@@ -8,14 +8,14 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { MEDIA_MIGRATIONS, MEDIA_AUDIO_MIGRATIONS, MEDIA_FOLDER_MIGRATIONS, createMediaService } = await import('./media.js');
+const { MEDIA_MIGRATIONS, MEDIA_AUDIO_MIGRATIONS, MEDIA_FOLDER_MIGRATIONS, MEDIA_EDITOR_MIGRATIONS, createMediaService } = await import('./media.js');
 
 function open() {
   const db = new DatabaseSync(':memory:');
   for (const sql of [...MEDIA_MIGRATIONS, ...MEDIA_AUDIO_MIGRATIONS]) db.exec(sql);
   // A library from before folders: its rows must survive the migration unfiled.
   db.exec(`INSERT INTO media_assets (filename, file_path, media_type) VALUES ('Advent candles.mp4', 'media/a.mp4', 'video'), ('Choir.mp3', 'media/b.mp3', 'audio')`);
-  for (const sql of MEDIA_FOLDER_MIGRATIONS) db.exec(sql);
+  for (const sql of [...MEDIA_FOLDER_MIGRATIONS, ...MEDIA_EDITOR_MIGRATIONS]) db.exec(sql);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apcc-media-folders-'));
   return { db, root, service: createMediaService(db, root, { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) }) };
 }

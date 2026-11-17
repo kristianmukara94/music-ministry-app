@@ -65,6 +65,7 @@ import { enforceHardwareLock } from './hardware-id.js';
 import { createAlertExpiry } from './sanctuary-alert.js';
 import { applyImport, checkExportOptions, collectLibrary, decodeTransfer, defaultExportName, encodeTransfer, previewImport, TRANSFER_EXTENSION } from './transfer.js';
 import { isOwnPage, lockDownContents, restrictPermissions } from './web-lockdown.js';
+import { createLineupPrinter, registerLineupPrinting } from './print-lineup.js';
 import { checkLaunchTarget, LAUNCH_REFUSED_DETAIL } from './launch-target.js';
 import os from 'node:os';
 
@@ -962,6 +963,21 @@ ipcMain.handle('lowerThird:info', () => ({
   lan: lanAddress() ? `http://${lanAddress()}:${LOWER_THIRD_PORT}/lower-third` : null,
 }));
 
+// ---- Print Lineup: the system Print dialog and Save as PDF, from a hidden white-paper window (electron/print-lineup.js) ----
+
+registerLineupPrinting({
+  ipcMain,
+  windowOf: (contents) => (contents ? BrowserWindow.fromWebContents(contents) : null),
+  printer: createLineupPrinter({
+    BrowserWindow,
+    showSaveDialog: (owner, options) => (owner ? dialog.showSaveDialog(owner, options) : dialog.showSaveDialog(options)),
+    writeFile: (file, bytes) => fs.promises.writeFile(file, bytes),
+    defaultDir: () => app.getPath('documents'),
+    tempDir: () => app.getPath('temp'),
+    openPath: (file) => shell.openPath(file),
+  }),
+});
+
 // ---- Library export and import (plans, setlists, Praise & Worship sessions, songs) ----
 
 /** The file the operator chose to import, held until they confirm. Nothing is written before that. */
@@ -1653,6 +1669,12 @@ app.whenReady().then(() => {
       if (![bg.live, bg.staged].some((frame) => frame?.src === url)) return false;
       apply({ type: 'background/clear' });
       return true;
+    },
+    // Saved Media Studio edits reach the staged and live background at once, without restarting a playing clip.
+    restyleBackground: (url, edit) => {
+      const bg = state.projector.background;
+      if (![bg.live, bg.staged].some((frame) => frame?.src === url)) return;
+      apply({ type: 'background/restyle', src: url, edit });
     },
   });
   settings = setupSettings({

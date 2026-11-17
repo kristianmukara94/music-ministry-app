@@ -138,3 +138,74 @@ export function balanceProjectorLines(text, maxWidth, measure) {
     .map((line) => balanceLine(line, maxWidth, measure).join('\n'))
     .join('\n');
 }
+
+/**
+ * The text case modes the operator can pick for slide text: as typed, all capitals, or all small letters. The Live Quick Controls set it for
+ * the projector (the projector setting `textCase`), and the planners keep their own choice for their lineups, drawers and printed lineups.
+ */
+export const TEXT_CASES = ['original', 'uppercase', 'lowercase'];
+
+/** A mode as one of TEXT_CASES; anything else is 'original'. */
+export function textCaseOf(mode) {
+  return TEXT_CASES.includes(mode) ? mode : 'original';
+}
+
+/**
+ * `text` in the case `mode` asks for. 'original' (or an unknown mode) gives it back as it is. Only letters change, so line breaks and spacing
+ * hold. A null or undefined text is an empty string.
+ */
+export function applyTextCase(text, mode) {
+  const s = text == null ? '' : String(text);
+  const m = textCaseOf(mode);
+  if (m === 'uppercase') return s.toLocaleUpperCase();
+  if (m === 'lowercase') return s.toLocaleLowerCase();
+  return s;
+}
+
+/** A Praise & Worship slide with its words in `mode`: the title card's label and subtitle, and a lyric or prayer page's text. */
+function caseSlide(slide, mode) {
+  if (!slide || typeof slide !== 'object') return slide;
+  if (slide.kind === 'title') return { ...slide, label: applyTextCase(slide.label, mode), subtitle: applyTextCase(slide.subtitle, mode) };
+  if (slide.kind === 'lyrics') return { ...slide, text: applyTextCase(slide.text, mode), hymnTitle: applyTextCase(slide.hymnTitle, mode) };
+  if (slide.kind === 'prayer') return { ...slide, text: applyTextCase(slide.text, mode) };
+  return slide;
+}
+
+/**
+ * A projector frame with the words the congregation reads in `mode`: a text slide's title, heading and text; a song's title and lines; a
+ * reading's or passage's lines; a psalm's response and pages; a Praise & Worship slide. Pictures, media and the other frames are unchanged.
+ * 'original' gives back the same frame, so nothing re-renders. The projector applies it before it fits and balances the text, so the fit and
+ * the line breaks are measured on the letters actually drawn.
+ */
+export function applyFrameTextCase(frame, mode) {
+  const m = textCaseOf(mode);
+  if (m === 'original' || !frame || typeof frame !== 'object') return frame;
+  const c = (s) => (s == null ? s : applyTextCase(s, m));
+  switch (frame.kind) {
+    case 'text':
+      return { ...frame, title: c(frame.title), headline: c(frame.headline), text: c(frame.text) };
+    case 'lyrics':
+      return { ...frame, title: c(frame.title), text: c(frame.text) };
+    case 'deck':
+      return {
+        ...frame,
+        title: c(frame.title),
+        slides: Array.isArray(frame.slides) ? frame.slides.map((lines) => (Array.isArray(lines) ? lines.map((line) => ({ ...line, text: c(line.text) })) : lines)) : frame.slides,
+      };
+    case 'psalm':
+      return { ...frame, title: c(frame.title), response: c(frame.response), pages: Array.isArray(frame.pages) ? frame.pages.map(c) : frame.pages };
+    case 'pw':
+      return { ...frame, segmentName: c(frame.segmentName), slide: caseSlide(frame.slide, m) };
+    default:
+      return frame;
+  }
+}
+
+/** A lower third with its words in `mode`: the tag and both lines. 'original' gives back the same value. */
+export function applyLowerThirdCase(value, mode) {
+  const m = textCaseOf(mode);
+  if (m === 'original' || !value || typeof value !== 'object') return value;
+  const out = { ...value };
+  for (const key of ['tag', 'line1', 'line2']) if (typeof out[key] === 'string') out[key] = applyTextCase(out[key], m);
+  return out;
+}

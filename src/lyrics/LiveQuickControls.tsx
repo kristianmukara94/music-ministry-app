@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { AArrowDown, AArrowUp, FileX, MonitorOff, PanelBottom, WrapText } from 'lucide-react';
 import { SLIDE_FONT_SCALES } from '../../shared/projector-settings.js';
+import { textCaseOf, type TextCase } from '../../shared/text-fit.js';
+import { TextCaseSwitch } from '../components/TextCaseSwitch';
 import { bridge } from '../live/bridge';
 import { dispatch, useLive } from '../live/store';
 import { useProjectionLocked } from '../live/license';
@@ -69,6 +71,28 @@ function BalanceLinesSwitch({ t }: { t: LyT }) {
         <span className={`absolute top-0.5 size-2.5 rounded-full bg-canvas transition-all ${on ? 'left-3' : 'left-0.5'}`} />
       </span>
     </button>
+  );
+}
+
+/**
+ * Text case: Aa (as typed), AA (UPPERCASE) or aa (lowercase) for every slide and lower third on the projector, the TV and every preview. A
+ * projector setting like Balance lines beside it, so it is kept for the next service. It never changes the song in the library.
+ */
+function TextCaseControl({ t }: { t: LyT }) {
+  const mode = useLive((s) => textCaseOf(s.state.settings.textCase));
+  const [error, setError] = useState<string | null>(null);
+  const pick = (next: TextCase) => {
+    if (next === mode) return;
+    setError(null);
+    bridge.projector.save({ textCase: next }).catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+  };
+  return (
+    <TextCaseSwitch
+      value={mode}
+      onChange={pick}
+      error={error}
+      labels={{ group: t('textCase'), original: t('textCaseOriginal'), uppercase: t('textCaseUpper'), lowercase: t('textCaseLower') }}
+    />
   );
 }
 
@@ -147,6 +171,7 @@ export function LiveQuickControls({ hymn, keys, t }: { hymn: Hymn | null; keys: 
         </span>
       </button>
       <div className="ml-auto flex items-center gap-1.5">
+        <TextCaseControl t={t} />
         <BalanceLinesSwitch t={t} />
         <FontSizeStepper t={t} />
       </div>

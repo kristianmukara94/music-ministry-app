@@ -83,6 +83,8 @@ interface UiState {
   /** The Go Live hub's date and the entry chosen for it. Transient: a restart returns the hub to today. */
   goLiveDate: string;
   goLiveChoice: GoLiveChoice | null;
+  /** A Go Live console tab the top bar's Go Live shortcut asked for. The console switches to it and clears it, so it fires once. Not persisted. */
+  goLiveTabRequest: 'mass' | 'pw' | null;
   /** A Mass plan the Go Live hub asked to open. The Mass planner takes it on mount, through its own plan loader. */
   pendingMassPlanId: number | null;
   /** The Text Slide editor's style panel is open. Kept for the session only: it is not persisted, so a restart closes it. */
@@ -161,6 +163,7 @@ export const useUi = create<UiState>()(
       slideStyleOpen: false,
       goLiveDate: todayIso(),
       goLiveChoice: null,
+      goLiveTabRequest: null,
       pendingMassPlanId: null,
       showAllVerses: false,
       lyricsGoLive: false,

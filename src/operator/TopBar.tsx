@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronRight, Image as WelcomeIcon, Megaphone, Monitor, MonitorOff, Pause, Play, Square, Tag, type LucideIcon } from 'lucide-react';
+import { ChevronRight, Image as WelcomeIcon, Megaphone, Monitor, MonitorOff, Pause, Play, Radio, Square, Tag, type LucideIcon } from 'lucide-react';
 import { dispatch, useLive } from '../live/store';
 import { LICENSE_LOCKED_TIP, useProjectionLocked } from '../live/license';
 import { useT } from '../i18n/strings';
 import { setUi, useUi } from '../state/ui';
 import { displayCombo } from '../../shared/shortcuts.js';
+import { mainLiveStatus } from '../../shared/main-live.js';
+import { goToMainLive } from '../golive/mainLive';
 import type { ShortcutActionId } from './shortcuts';
 import { liveCommands, stepWelcomeSlide, welcomeSlidePosition } from './actions';
 
@@ -13,8 +15,8 @@ import { liveCommands, stepWelcomeSlide, welcomeSlidePosition } from './actions'
  * out so they still click. The right edge is left clear for the Windows minimise, maximise and close buttons.
  *
  * Three zones, left to right:
- *   A. Master output and safety transport: Blackout, Pause Projector, Pause Lower 3rd, Stop.
- *   B. Live outputs (Welcome Screen, Announcements, Lower 3rd) | workspace views (Preview).
+ *   A. Master output and safety transport: Blackout, Pause Projector, Go Live (Back to Main Live), Stop.
+ *   B. Live outputs (Welcome Screen, Announcements, Lower 3rd with its Pause) | workspace views (Preview).
  *   C. Hardware and connection switches: Remote, Projector.
  */
 const DRAG = '[-webkit-app-region:drag]';
@@ -58,6 +60,17 @@ const VIEW: Tone = {
   idle: CHROME,
   active: 'rounded-md border border-info/60 bg-info/15 px-3 py-1.5 text-info hover:bg-info/25',
 };
+
+/** Go Live: green while the operator is on the Go Live console with the service on air. */
+const GO_LIVE: Tone = {
+  idle: CHROME,
+  active: 'rounded-md border border-ok/60 bg-ok/15 px-3 py-1.5 font-semibold text-ok ring-1 ring-ok/30 hover:bg-ok/25',
+};
+
+/** Back to Main Live: amber, glowing while an ad-hoc item is on the screen over the service lineup. */
+const BACK_TO_MAIN =
+  'rounded-md border border-warn/70 bg-warn/15 px-3 py-1.5 font-semibold text-warn ring-1 ring-warn/30 hover:bg-warn/25';
+const BACK_TO_MAIN_GLOW = 'shadow-[0_0_14px_color-mix(in_oklab,var(--color-warn)_45%,transparent)]';
 
 const DISABLED = 'cursor-not-allowed opacity-40 hover:bg-panel-2 hover:border-line-strong hover:text-fg/90';
 
@@ -203,6 +216,113 @@ function WelcomeControl() {
 }
 
 /**
+ * The Go Live shortcut, where Pause Lower 3rd used to sit. From any workspace it opens the Go Live console on the run that is on air. When an
+ * ad-hoc LIVE item (a song, prayer or reading sent straight to the projector) has taken the screen from the Holy Mass or a Praise & Worship
+ * lineup, it turns amber and reads Back to Main Live: one click returns to the console and puts the lineup's slide back on the screen. On the
+ * console with the service on air it is a green Live Active pill.
+ */
+export function GoLiveShortcut() {
+  const t = useT();
+  const onConsole = useUi((s) => s.view === 'goLive');
+  // Read as three primitives, so the bar re-renders only when one of them changes.
+  const onAir = useLive((s) => mainLiveStatus(s.state).onAir);
+  const parked = useLive((s) => mainLiveStatus(s.state).parked);
+  const override = useLive((s) => mainLiveStatus(s.state).override);
+  const run = () => void goToMainLive().catch((err) => window.alert(err instanceof Error ? err.message : String(err)));
+
+  if (parked) {
+    const tip = override ? t('top.tipBackToMainLiveOverride') : t('top.tipBackToMainLive');
+    return (
+      <button
+        type="button"
+        onClick={run}
+        title={tip}
+        data-testid="top-go-live"
+        data-state={override ? 'override' : 'parked'}
+        className={`${BASE} ${NO_DRAG} ${BACK_TO_MAIN} ${override ? BACK_TO_MAIN_GLOW : ''}`}
+      >
+        <Radio className="size-4 shrink-0" aria-hidden strokeWidth={2.25} />
+        <span>{t('top.backToMainLive')}</span>
+        {override && <span className="size-2 shrink-0 animate-pulse rounded-full bg-warn" aria-hidden />}
+      </button>
+    );
+  }
+
+  const active = onConsole && onAir !== null;
+  return (
+    <ControlButton
+      icon={Radio}
+      label={active ? t('top.liveActive') : t('top.goLive')}
+      title={active ? t('top.tipLiveActive') : t('top.tipGoLive')}
+      tone={GO_LIVE}
+      active={active}
+      onClick={run}
+    >
+      {onAir !== null && <Dot tone="ok" />}
+    </ControlButton>
+  );
+}
+
+/**
+ * The Lower 3rd output. Off, it is one button. On air it becomes a capsule whose second half pauses and resumes the band, the control that
+ * used to have its own place in the master transport.
+ */
+function LowerThirdControl() {
+  const t = useT();
+  const lowerThird = useLive((s) => s.state.lowerThird);
+  const lowerLocked = useProjectionLocked() && lowerThird.live === null;
+  const toggleKey = useShortcutKey('lowerThird');
+  const pauseKey = useShortcutKey('pauseLowerThird');
+  const onAir = lowerThird.live !== null;
+  const ready = onAir || lowerThird.staged !== null;
+  const tip = lowerLocked
+    ? LICENSE_LOCKED_TIP
+    : withKey(onAir ? t('top.tipLowerThirdLive') : ready ? t('top.tipLowerThirdReady') : t('top.tipOpenLowerThird'), toggleKey);
+  const toggle = () => (ready ? dispatch({ type: 'lowerThird/toggle' }) : setUi({ view: 'media', pendingFocus: { kind: 'lowerThird' } }));
+
+  if (!onAir) {
+    return <ControlButton icon={Tag} label={t('top.lowerThird')} tone={OUTPUT} title={tip} active={false} disabled={lowerLocked} onClick={toggle} />;
+  }
+
+  const paused = lowerThird.paused;
+  return (
+    <div
+      role="group"
+      aria-label={t('top.lowerThird')}
+      data-testid="lower-third-compound"
+      className={`${NO_DRAG} flex h-9 shrink-0 items-stretch overflow-hidden rounded-md border border-accent/70 bg-accent/15 text-[13px] font-medium whitespace-nowrap text-accent ring-1 ring-accent/30 shadow-[0_0_14px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]`}
+    >
+      <button
+        type="button"
+        onClick={toggle}
+        title={tip}
+        aria-pressed
+        className="flex items-center gap-1.5 px-3 transition-colors hover:bg-accent/15 focus-visible:bg-accent/20 focus-visible:outline-none"
+      >
+        <Tag className="size-4 shrink-0" aria-hidden strokeWidth={2.25} />
+        <span>{t('top.lowerThird')}</span>
+        <Dot tone={paused ? 'warn' : 'ok'} />
+      </button>
+      <span className="my-1.5 w-px shrink-0 bg-accent/40" aria-hidden />
+      <button
+        type="button"
+        onClick={() => dispatch({ type: 'lowerThird/pause' })}
+        title={withKey(paused ? t('top.tipResumeLowerThird') : t('top.tipPauseLowerThird'), pauseKey)}
+        aria-label={paused ? t('top.lowerThirdPaused') : t('top.pauseLowerThird')}
+        aria-pressed={paused}
+        data-testid="lower-third-pause"
+        className={`flex items-center gap-1.5 px-3 transition-colors focus-visible:outline-none ${
+          paused ? 'bg-warn/15 font-semibold text-warn hover:bg-warn/25' : 'hover:bg-accent/15 focus-visible:bg-accent/20'
+        }`}
+      >
+        {paused ? <Play className="size-4 shrink-0" aria-hidden strokeWidth={2.25} /> : <Pause className="size-4 shrink-0" aria-hidden strokeWidth={2.25} />}
+        <span>{paused ? t('top.pausedShort') : t('top.pauseShort')}</span>
+      </button>
+    </div>
+  );
+}
+
+/**
  * A master switch: a pill with a dot, green and LIVE when on, red and OFF when off. The Projector and Remote switches
  * both use it, so they look the same.
  */
@@ -270,25 +390,17 @@ const Divider = () => <span className="h-6 w-px shrink-0 bg-line-strong" aria-hi
 
 export function TopBar() {
   const t = useT();
-  const { outputs, projector, lowerThird } = useLive((s) => s.state);
+  const outputs = useLive((s) => s.state.outputs);
+  const projector = useLive((s) => s.state.projector);
   const liveKind = projector.live.kind;
   const previewOpen = useUi((s) => s.previewOpen);
   const promptChoice = useUi((s) => s.projectorPromptChoice);
-  const lowerLocked = useProjectionLocked() && lowerThird.live === null;
   const keys = {
     blackout: useShortcutKey('blackout'),
     pauseProjector: useShortcutKey('pauseProjector'),
-    pauseLowerThird: useShortcutKey('pauseLowerThird'),
     stop: useShortcutKey('stop'),
     announcements: useShortcutKey('announcements'),
-    lowerThird: useShortcutKey('lowerThird'),
   };
-
-  const lowerOnAir = lowerThird.live !== null;
-  const lowerReady = lowerOnAir || lowerThird.staged !== null;
-  const lowerTip = lowerLocked
-    ? LICENSE_LOCKED_TIP
-    : withKey(lowerOnAir ? t('top.tipLowerThirdLive') : lowerReady ? t('top.tipLowerThirdReady') : t('top.tipOpenLowerThird'), keys.lowerThird);
 
   // In a narrower window the live outputs drop to a second row. The divider that groups the zones would then be left hanging
   // at the end of the first row, so it is shown only while both zones share a row.
@@ -348,19 +460,7 @@ export function TopBar() {
             disabled={!outputs.projector}
             onClick={() => dispatch({ type: 'projector/pause' })}
           />
-          <ControlButton
-            icon={lowerThird.paused ? Play : Pause}
-            label={lowerThird.paused ? t('top.lowerThirdPaused') : t('top.pauseLowerThird')}
-            title={
-              !lowerOnAir
-                ? t('top.tipLowerThirdRequired')
-                : withKey(lowerThird.paused ? t('top.tipResumeLowerThird') : t('top.tipPauseLowerThird'), keys.pauseLowerThird)
-            }
-            tone={PAUSE}
-            active={lowerThird.paused}
-            disabled={!lowerOnAir}
-            onClick={() => dispatch({ type: 'lowerThird/pause' })}
-          />
+          <GoLiveShortcut />
           <ControlButton icon={Square} label={t('top.stop')} title={withKey(t('top.tipStop'), keys.stop)} tone={STOP} toggle={false} onClick={() => dispatch({ type: 'stop' })} />
         </div>
 
@@ -378,17 +478,7 @@ export function TopBar() {
               active={liveKind === 'announcements'}
               onClick={liveCommands.announcements}
             />
-            <ControlButton
-              icon={Tag}
-              label={t('top.lowerThird')}
-              tone={OUTPUT}
-              title={lowerTip}
-              active={lowerOnAir}
-              disabled={lowerLocked}
-              onClick={() => (lowerReady ? dispatch({ type: 'lowerThird/toggle' }) : setUi({ view: 'media', pendingFocus: { kind: 'lowerThird' } }))}
-            >
-              {lowerOnAir && <Dot tone={lowerThird.paused ? 'warn' : 'ok'} />}
-            </ControlButton>
+            <LowerThirdControl />
           </div>
           <Divider />
           <div role="group" aria-label={t('top.groupViews')} className="flex items-center gap-1.5">

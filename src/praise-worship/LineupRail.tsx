@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, BookOpen, FileText, GripVertical, Music, Pencil, Plus, Presentation, Trash2, X } from 'lucide-react';
+import { textCaseClass, usePlannerTextCase } from '../planner/textCase';
 import {
   chainOf,
   groupMinutes,
@@ -215,6 +216,7 @@ export function LineupRail() {
   const slotDrag = usePw((s) => s.slotDrag);
   const grips = useRef<(HTMLButtonElement | null)[]>([]);
   const { segments, groups } = session;
+  const textCase = usePlannerTextCase((s) => s.mode);
   const names = { hymn: (id: number) => hymns[id]?.title, prayer: (id: number) => prayers.find((p) => p.id === id)?.title };
 
   const groupName = (key: string) => groups.find((g) => g.key === key)?.name ?? key;
@@ -317,7 +319,8 @@ export function LineupRail() {
 
   let index = -1;
   return (
-    <section aria-labelledby="pw-lineup-heading" className="flex min-w-0 flex-col rounded-[10px] border border-line bg-panel p-4">
+    // The Planner's text case (Aa / AA / aa) shows the lineup's titles in that case, on screen only.
+    <section aria-labelledby="pw-lineup-heading" data-text-case={textCase} className={`flex min-w-0 flex-col rounded-[10px] border border-line bg-panel p-4 ${textCaseClass(textCase)}`}>
       <div className="mb-2 flex items-center justify-between gap-2 px-1">
         <h2 id="pw-lineup-heading" className="text-lg font-bold tracking-tight text-fg">{t('lineup')}</h2>
         <span className="rounded-full bg-fg/10 px-2 py-px font-mono text-[11px] font-bold text-fg/70 tabular-nums">{segments.length}</span>

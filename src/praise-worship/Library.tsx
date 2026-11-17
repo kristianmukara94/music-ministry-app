@@ -20,6 +20,9 @@ import { switchCardType } from './CardTypePicker';
 import { AddSongModal } from '../lyrics/AddSongModal';
 import { bridge } from '../live/bridge';
 import type { Hymn } from '../lyrics/types';
+import { takePrayer } from '../notes/present';
+import { goLiveLibraryItem } from '../planner/routing';
+import { dispatch } from '../live/store';
 
 type LibTab = 'song' | 'prayer' | 'scripture';
 const TABS: { id: LibTab; key: string }[] = [
@@ -133,6 +136,31 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
     setAddNote(describeAttach(segment.name, drag.type, result));
   };
 
+  /**
+   * LIVE on a Scripture row: the title slide shows the selected card's title, as the lineup would; a reading is shown from the Lectionary for
+   * the session's date. Both are direct shows, so the lineup's place on air is kept.
+   */
+  const liveScripture = async (id: string, label: string) => {
+    if (id === 'title') {
+      if (!segment) {
+        setAddNote(t('liveNoCard'));
+        return;
+      }
+      dispatch({
+        type: 'projector/show',
+        frame: { kind: 'pw', slide: { kind: 'title', label: segment.name, subtitle: '' }, segmentName: segment.name, type: segment.type, index: 0, total: 1 },
+        source: 'DIRECT_DECK',
+      });
+      return;
+    }
+    try {
+      const result = await goLiveLibraryItem({ module: 'lectionary', sourceId: `${session.liturgicalDate}|${id}` });
+      if (result !== 'shown') setAddNote(t('liveEmpty', { title: label }));
+    } catch (err) {
+      fail(err);
+    }
+  };
+
   const rows = useMemo<Row[]>(() => {
     if (tab === 'song') {
       const list = songs.map((h) => ({ h, fits: segment ? fitsSegment(h, segment, tags) : false }));
@@ -162,11 +190,11 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
                 e.stopPropagation();
                 setTag(h.id, segment.key, !tagged).catch(fail);
               }}
-              className={`grid size-11 shrink-0 place-items-center rounded-lg border transition ${
+              className={`grid size-8 shrink-0 place-items-center rounded-md border transition ${
                 tagged ? 'border-accent bg-accent text-on-accent' : 'border-fg/15 text-muted hover:border-accent hover:text-fg'
               }`}
             >
-              <Tag size={16} aria-hidden />
+              <Tag size={14} aria-hidden />
             </button>
           ),
         };
@@ -182,6 +210,8 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
           title: p.title,
           sub: p.category,
           drag: { type: 'prayer', id: p.id, title: p.title },
+          // LIVE: the prayer on the projector now (a lower-third note on the lower third), without adding it to the card.
+          goLive: async () => takePrayer(p, 'DIRECT_DECK'),
           // An empty prayer slot takes the prayer; a card that already has one chains it after the last item.
           insert: () => attach({ type: 'prayer', id: p.id, title: p.title }),
           added: Boolean(segment && holdsItem(segment, { kind: 'prayer', noteId: p.id, minutes: 0 })),
@@ -199,11 +229,12 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
         title: o.label,
         sub: o.sub,
         drag: { type: 'scripture', id: o.id, title: o.label },
+        goLive: () => liveScripture(o.id, o.label),
         insert: () => attach({ type: 'scripture', id: o.id, title: o.label }),
         added: o.id === 'title' ? segment?.content.kind === 'title' : Boolean(segment && holdsItem(segment, { kind: 'lectionary', readingType: o.id, minutes: 0 })),
       }));
     // `t` changes identity every render, so it is left out; the language switch re-renders the rows anyway.
-  }, [tab, songs, prayers, tags, segment, selected, q, replacingHere, replacing]);
+  }, [tab, songs, prayers, tags, segment, selected, q, replacingHere, replacing, session.liturgicalDate]);
 
   const active = rows.find((r) => r.key === activeKey) ?? null;
   // The tab shows items of another kind than the card's function: offer to switch the card, so its icon, status and slides follow.

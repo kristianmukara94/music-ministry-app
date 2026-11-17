@@ -282,6 +282,21 @@ export async function stepLive(delta: 1 | -1) {
   else if (welcomeOverPw(live) || blackoutOverPw(live)) showPosition(session, deck, at);
 }
 
+/**
+ * Back to Main Live: puts the parked session back on the screen at the slide it was on, with no takeover question (the operator asked for
+ * exactly this). Its segment band replaces a song band left by the ad-hoc item. Resolves false when there is no place to go back to.
+ */
+export async function resumeLive(): Promise<boolean> {
+  const session = await ensureLiveSession();
+  const pw = useLive.getState().state.pw;
+  if (!session || !pw) return false;
+  const deck = liveDeck(session);
+  const at = livePosition(session.segments, pw);
+  if (!at || !deck[at.segment]?.[at.slide]) return false;
+  showPosition(session, deck, at);
+  return true;
+}
+
 /** Jumps to a segment's first slide, or one of its slides. */
 export function jumpTo(segment: number, slide = 0) {
   const session = liveSession();

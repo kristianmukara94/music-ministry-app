@@ -31,7 +31,7 @@ test('the clip reports its end, and the projector then draws no background at al
   assert.doesNotMatch(l, /invisible/, 'the ended clip is removed, not hidden behind its shade');
   const p = PROJECTOR();
   assert.match(p, /const background = liveBackground && showingOf\(liveBackground\) === endedShowing \? null : liveBackground;/);
-  assert.match(p, /<BackgroundLayer media=\{background\} onEnded=\{setEndedShowing\} \/>/);
+  assert.match(p, /<BackgroundLayer media=\{background\} onEnded=\{setEndedShowing\} audible=\{!mirror && !embedded\} \/>/);
   // The idle screen, the slide colour, the shade and the dimmer all follow `background`, so they behave as after a clear.
   assert.match(p, /\{!background && shownFrame\.kind === 'idle' && <IdleScreen/);
   assert.match(p, /\{background && backgroundTint\(background\) > 0 &&/);

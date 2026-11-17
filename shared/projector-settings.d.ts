@@ -26,6 +26,8 @@ export interface ProjectorSettings {
   slideFontScale: number;
   /** Long lyric and prayer lines are broken into even lines at phrase breaks. On by default. */
   balanceLines: boolean;
+  /** The case slide text is drawn in: as typed, all capitals or all small letters. 'original' by default. */
+  textCase: 'original' | 'uppercase' | 'lowercase';
   showSlotTitle: boolean;
   backgroundEverywhere: boolean;
   advancedOutput: boolean;

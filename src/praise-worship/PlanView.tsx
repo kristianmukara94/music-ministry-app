@@ -12,6 +12,11 @@ import { GoLiveTakeover } from './GoLiveTakeover';
 import { useQuickLiveController } from './useQuickLiveController';
 import { createSession, deleteSession, errorText, flushSave, openSession, setPwState, updateSession, usePw } from './store';
 import { usePwT } from './strings';
+import { TextCaseSwitch } from '../components/TextCaseSwitch';
+import { PrintLineupButton, PrintLineupDialog } from '../planner/PrintLineup';
+import { usePlannerTextCase } from '../planner/textCase';
+import { usePlannerT } from '../planner/strings';
+import { pwPrintLineup } from '../../shared/print-lineup.js';
 
 const INPUT = 'h-10 rounded-lg border border-fg/15 bg-panel-2 px-3 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent/40';
 const BTN = 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-4 text-sm font-semibold text-fg/85 transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
@@ -91,6 +96,13 @@ export function PlanView() {
   // Quick Live lives here, above the Library, so its cue song outlasts the Library stepping aside for the focus view.
   const quick = useQuickLiveController();
   const focused = usePw((s) => s.isGoLiveFocused) && quick.cue !== null;
+  const hymns = usePw((s) => s.hymns);
+  const prayers = usePw((s) => s.prayers);
+  const pt = usePlannerT();
+  // The Planner's text case (Aa / AA / aa), shared with the Holy Mass Planner: the Lineup, the lyrics drawers and the printed lineup.
+  const textCase = usePlannerTextCase((s) => s.mode);
+  const setTextCase = usePlannerTextCase((s) => s.set);
+  const [printing, setPrinting] = useState(false);
 
   if (!session) {
     return (
@@ -146,7 +158,29 @@ export function PlanView() {
         >
           <Trash2 size={16} aria-hidden /> {t('deleteSession')}
         </button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <TextCaseSwitch
+            size="md"
+            value={textCase}
+            onChange={setTextCase}
+            labels={{ group: pt('textCase'), original: pt('textCaseOriginal'), uppercase: pt('textCaseUpper'), lowercase: pt('textCaseLower') }}
+          />
+          <PrintLineupButton onClick={() => setPrinting(true)} />
+        </div>
       </div>
+      {printing && (
+        <PrintLineupDialog
+          onClose={() => setPrinting(false)}
+          // Exactly the Lineup as arranged: its groups, cards in lineup order and each card's items in play order, with song keys when set.
+          lineup={pwPrintLineup(session, {
+            title: session.name,
+            subtitle: dateLabel,
+            hymns,
+            noteTitle: (id) => prayers.find((p) => p.id === id)?.title,
+            labels: { pictures: pt('printPictures'), prayer: pt('printPrayer') },
+          })}
+        />
+      )}
       {creating && (
         <div hidden={focused}>
           <NewSessionForm onDone={() => setCreating(false)} />

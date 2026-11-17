@@ -32,7 +32,13 @@ import { GOSPEL_ACCLAMATION } from '../lectionary/types';
 import { blockRows, moveInto, queueFromPlan, type DragSource } from './logic';
 import { fillDailyReadings, planSlotTitle, rememberPlanLanguage, setPlanLanguage, setPlanSlotTitle, syncQueueIfLoaded } from './plan-api';
 import { fillDayFromBible, notifyLectionaryChanged, type BibleFillResult } from '../services/lectionaryService';
-import { openQueueItem } from './routing';
+import { goLiveLibraryItem, openQueueItem } from './routing';
+import { LiveButton } from '../components/LiveButton';
+import { TextCaseSwitch } from '../components/TextCaseSwitch';
+import { useArmedLive } from './useArmedLive';
+import { textCaseClass, usePlannerTextCase } from './textCase';
+import { PrintLineupButton, PrintLineupDialog } from './PrintLineup';
+import { massPrintLineup } from '../../shared/print-lineup.js';
 import { HolyMassPlan } from './HolyMassPlanner';
 import { MassTemplates } from './MassTemplates';
 import type { PickedItem } from './MassItemSelect';
@@ -90,6 +96,12 @@ const MODULE_TONE: Record<string, string> = {
 const toneOf = (module: string) => MODULE_TONE[module] ?? MODULE_TONE.custom;
 /** A library song card's small buttons: Show / Hide Lyrics, Edit Song and Add. */
 const LIB_ICON_BTN = 'grid size-7 shrink-0 place-items-center rounded-md border transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none';
+
+/**
+ * The library tabs whose rows have a LIVE button: Songs, the Notes & Prayers tab (prayers) and the scripture tabs (Lectionary readings, Bible
+ * passages). LIVE shows the row on the projector now, without adding it to the plan (see goLiveLibraryItem).
+ */
+const LIVE_MODULES: readonly SourceModule[] = ['lyrics', 'notes', 'lectionary', 'bible'];
 
 /** A saved entry's kind: a private operator note, or what the congregation sees, by its Content Hub section (prayer, Holy Mass flow, notice). */
 const KIND_OF_SECTION: Record<string, NoteKind> = { prayers: 'prayer', massFlow: 'flow', announcements: 'notice' };
@@ -312,7 +324,13 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
   // Bumped when a song changes in Song Lyrics; the library search and the plan's song rows read the song again.
   const [lyricsRevision, setLyricsRevision] = useState(0);
   // The current title and deleted state of each song in the plan, from the library.
-  const [hymnNow, setHymnNow] = useState<Record<number, { title?: string; deleted: boolean }>>({});
+  const [hymnNow, setHymnNow] = useState<Record<number, { title?: string; deleted: boolean; musicalKey?: string }>>({});
+  // The Print Lineup preview, open or closed.
+  const [printing, setPrinting] = useState(false);
+  // The Planner's text case (Aa / AA / aa) for the plan's rows, the lyrics drawers and the printed lineup. On-screen only.
+  const textCase = usePlannerTextCase((s) => s.mode);
+  const setTextCase = usePlannerTextCase((s) => s.set);
+  const caseClass = textCaseClass(textCase);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   // Bumped when a note is saved or deleted in any window, so the Notes & Prayers tab is read again without a reload.
   const [notesRevision, setNotesRevision] = useState(0);
@@ -365,6 +383,26 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
       .then((h) => (h ? setEditing(h) : setError(t('libLyricsMissing'))))
       .catch(fail);
   };
+
+  /**
+   * LIVE on a library row: the song, prayer, reading or passage goes on the projector now, without being added to the plan. While a Holy
+   * Mass or Praise & Worship slide is on air the first press only arms the button (useArmedLive).
+   */
+  // The library rows as last drawn, so a LIVE press finds its row by key.
+  const libraryRef = useRef<LibraryItem[]>([]);
+  libraryRef.current = library;
+  const live = useArmedLive(async (key: string) => {
+    const item = libraryRef.current.find((it) => `${it.module}:${it.sourceId}` === key);
+    if (!item) return;
+    setError(null);
+    try {
+      const result = await goLiveLibraryItem(item);
+      if (result === 'empty') setNotice(t('libLiveEmpty', { title: item.label }));
+      else if (result === 'operator') setNotice(t('libLiveOperator', { title: item.label }));
+    } catch (err) {
+      fail(err);
+    }
+  });
 
   /** Reloads the plan list and opens `prefer`, when given. */
   const reloadPlans = (prefer: number | null) =>
@@ -490,7 +528,7 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
       ids.map(async (id) => {
         try {
           const hymn = await bridge.lyrics.getHymn(id);
-          return [id, hymn ? { title: hymn.title, deleted: Boolean(hymn.deletedAt) } : { deleted: true }] as const;
+          return [id, hymn ? { title: hymn.title, deleted: Boolean(hymn.deletedAt), musicalKey: hymn.musicalKey } : { deleted: true }] as const;
         } catch {
           return null;
         }
@@ -1038,9 +1076,10 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
                 ) : (
                   <span className={`${TAG} ${toneOf(item.module)}`}>{t(MODULE_KEY[item.module])}</span>
                 )}
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold text-fg">{item.label}</div>
-                  <div className="truncate text-[11px] text-muted">{item.sub}</div>
+                {/* The title takes the room the actions leave and never less than 8rem: on a narrow panel the actions wrap below it. */}
+                <div className="min-w-0 flex-[1_1_8rem]">
+                  <div data-row-title className="line-clamp-2 break-words text-sm leading-snug font-semibold text-fg">{item.label}</div>
+                  <div className="line-clamp-2 break-words text-[11px] text-muted">{item.sub}</div>
                   {item.categories && item.categories.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">
                       {item.categories.map((c) => (
@@ -1056,6 +1095,7 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
                     </div>
                   )}
                 </div>
+                <div data-row-actions className="ml-auto flex shrink-0 items-center gap-1">
                 {hymnId != null && (
                   <>
                     <button
@@ -1104,7 +1144,18 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
                     <Plus size={14} />
                   </span>
                 )}
+                {LIVE_MODULES.includes(item.module) && (
+                  <LiveButton
+                    title={item.label}
+                    labels={{ live: t('libLive'), hint: t('libLiveHint'), confirm: t('libLiveConfirm') }}
+                    armed={live.armed === `${item.module}:${item.sourceId}`}
+                    pending={live.pending === `${item.module}:${item.sourceId}`}
+                    onPress={(immediate) => live.press(`${item.module}:${item.sourceId}`, immediate)}
+                  />
+                )}
+                </div>
                 {lyricsOpen && hymnId != null && target && (
+                  <div className={`basis-full ${caseClass}`}>
                   <PlannerSongDrawer
                     hymnId={hymnId}
                     query={query}
@@ -1115,6 +1166,7 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
                     onAdd={() => target.add?.()}
                     onEdit={() => editSong(hymnId)}
                   />
+                  </div>
                 )}
               </li>
               );
@@ -1177,6 +1229,13 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
                 <option value="hide">{t('slotTitleHide')}</option>
               </select>
             )}
+            <TextCaseSwitch
+              size="md"
+              value={textCase}
+              onChange={setTextCase}
+              labels={{ group: t('textCase'), original: t('textCaseOriginal'), uppercase: t('textCaseUpper'), lowercase: t('textCaseLower') }}
+            />
+            <PrintLineupButton onClick={() => setPrinting(true)} disabled={planId == null} />
             <div className="relative">
               <button
                 type="button"
@@ -1206,6 +1265,7 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
           {planId == null ? (
             <p className="rounded-[10px] border-2 border-dashed border-fg/20 p-8 text-center text-sm text-muted">{t('createFirst')}</p>
           ) : (
+            <div className={caseClass}>
             <HolyMassPlan
               t={t}
               lang={planLang}
@@ -1222,9 +1282,22 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
               setDrop={setDrop}
               renderAdditional={renderAdditional}
             />
+            </div>
           )}
         </section>
       </div>
+      {printing && currentPlan && (
+        <PrintLineupDialog
+          onClose={() => setPrinting(false)}
+          // Exactly the plan as shown: its parts, filled slots in slot order and additional items in their order, with each song's key when set.
+          lineup={massPrintLineup(shown, {
+            title: currentPlan.name,
+            subtitle: formatIsoDay(currentPlan.liturgicalDate, region),
+            lang: planLang,
+            songKey: (row) => (row.module === 'lyrics' ? hymnNow[Number(row.sourceId)]?.musicalKey : null),
+          })}
+        />
+      )}
       {/* On document.body: the Planner's blurred panels would otherwise be the containing block of the form's fixed overlay. */}
       {editing &&
         createPortal(

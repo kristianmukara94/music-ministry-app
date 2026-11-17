@@ -5,6 +5,7 @@ import type { LowerThirdStyle } from './lower-third-style';
 import type { SanctuaryAlert, SanctuaryAlertInput } from './sanctuary-alert';
 import type { WhiteboardDesign } from './whiteboard';
 import type { PwSlide, PwType } from './pw';
+import type { MediaEditSettings } from './media-editor';
 export type Lang = 'en' | 'tl' | 'ceb';
 
 export type DisplayMode = 'dual' | 'independent';
@@ -173,6 +174,11 @@ export interface MediaFrame {
    * even after an earlier showing has ended. Frames arrive as fresh copies with every state update, so this, not the object, tells them apart.
    */
   cue?: number;
+  /**
+   * The library item's saved Media Studio edits (framing, grade, trim), copied onto the frame so every screen draws them the same way.
+   * Absent when the item is unedited, which is how backgrounds always looked. A Studio save updates it in place (background/restyle).
+   */
+  edit?: MediaEditSettings;
 }
 
 /** The lower-third layouts. An absent template means the nameplate, which is what older lower thirds used. */
@@ -269,6 +275,11 @@ export interface LiveState {
   queueSlotTitle?: boolean | null;
   /** Index of the item last opened from the queue, or -1 before the first. */
   queueCursor: number;
+  /**
+   * The Holy Mass place taken off the screen by something else (an ad-hoc LIVE song, prayer or reading, Clear, Stop): its row, its plan and the
+   * slide it showed. Back to Main Live puts it back. Null or absent when no Mass is parked.
+   */
+  queueParked?: { index: number; planId: number | null; frame: Frame | null } | null;
   pw: PwLive | null;
   /** The latest phone request to step Praise & Worship. `seq` changes on every request, so the operator window can tell a new one. */
   pwStep?: { delta?: 1 | -1; index?: number; segment?: number; seq: number };
@@ -294,6 +305,7 @@ export type LiveAction =
   | { type: 'background/stage'; media: MediaFrame }
   | { type: 'background/take' }
   | { type: 'background/clear' }
+  | { type: 'background/restyle'; src: string; edit: MediaEditSettings | null }
   | { type: 'projector/clear' }
   | { type: 'projector/blackout' }
   | { type: 'projector/pause'; paused?: boolean }

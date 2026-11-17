@@ -296,6 +296,8 @@ interface ElectronApi {
   vault: VaultApi;
   remoteView: RemoteViewApi;
   library: LibraryApi;
+  /** Print Lineup through the desktop app's Print dialog and PDF writer. Absent in the browser preview, which prints the preview frame. */
+  lineup?: LineupPrintApi;
   whiteboard: WhiteboardApi;
   config: ConfigApi;
   /** The parish name and logo. */
@@ -625,6 +627,26 @@ export interface LibraryApi {
   cancel(): Promise<void>;
 }
 
+/** A lineup to print: the lineup as built for the handout, the copies per page, the Planner's text case, the label language and parish. */
+export interface LineupPrintJob {
+  lineup: import('../../shared/print-lineup.js').PrintLineup;
+  layout: import('../../shared/print-lineup.js').PrintLayout;
+  mode: string;
+  lang: string;
+  church: string;
+  /** The paper, locked in by the sheet's @page rule and passed to the Print dialog and the PDF writer. */
+  paper: import('../../shared/print-lineup.js').PaperSize;
+}
+
+export interface LineupPrintApi {
+  /** Opens the system Print dialog. Resolves once the job is sent or the dialog is cancelled. */
+  print(job: LineupPrintJob): Promise<{ printed: boolean; canceled: boolean; reason: string | null }>;
+  /** Asks where to save, then writes the PDF there. */
+  savePdf(job: LineupPrintJob): Promise<{ saved: true; path: string; pages: number } | { saved: false; canceled: true }>;
+  /** Writes the PDF to the temp folder and opens it in the system's PDF viewer. */
+  openPdf(job: LineupPrintJob): Promise<{ opened: true; path: string; pages: number }>;
+}
+
 const offlineLibrary: LibraryApi = {
   export: async () => offlineError(),
   open: async () => offlineError(),
@@ -795,6 +817,9 @@ const offlineMedia: MediaApi = {
   createFolder: async () => offlineError(),
   deleteFolder: async () => offlineError(),
   moveToFolder: async () => offlineError(),
+  saveEditSettings: async () => offlineError(),
+  updateThumbnail: async () => offlineError(),
+  saveEditedCopy: async () => offlineError(),
   onEvent: () => () => undefined,
 };
 
@@ -869,7 +894,7 @@ function createBrowserBridge(): LiveBridge {
   // A restored state keeps its plan and output, but starts with nothing selected in the Mass Queue and no projection source.
   const restore = (saved: LiveState | null): LiveState => {
     if (!saved) return initialLiveState();
-    return { ...saved, queueCursor: -1, projector: { ...saved.projector, source: null } };
+    return { ...saved, queueCursor: -1, queueParked: null, projector: { ...saved.projector, source: null } };
   };
   let state: LiveState;
   try {

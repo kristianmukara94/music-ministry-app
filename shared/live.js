@@ -185,8 +185,19 @@ function showLowerThird(l, value, manual) {
 }
 
 // The Mass Queue's CURRENT selection ends whenever the projector stops showing queue content. Spread into a reducer result.
+// A Holy Mass that had the screen is parked: its row and the slide it showed are kept in `queueParked`, so the top bar's Back to Main Live can
+// put that slide back after an ad-hoc song, prayer or reading. Under Blackout or the welcome screen the parked slide is the one they covered.
 function endQueueSelection(s) {
-  return s.queueCursor === -1 ? {} : { queueCursor: -1 };
+  if (s.queueCursor === -1) return {};
+  const p = s.projector;
+  if (p.source !== 'MASS_QUEUE') return { queueCursor: -1 };
+  const frame = p.live.kind === 'blackout' ? p.beforeBlackout : p.live.kind === 'welcome' ? p.staged : p.live;
+  return { queueCursor: -1, queueParked: { index: s.queueCursor, planId: s.queuePlanId, frame: frame && frame.kind !== 'idle' ? frame : null } };
+}
+
+// Forgets a parked Holy Mass: the Mass is back on air, another run took the screen, or its plan is gone. Spread into a reducer result.
+function unparkQueue(s) {
+  return s.queueParked == null ? {} : { queueParked: null };
 }
 
 // Praise & Worship is on air until something else takes the projector. Its session and position are kept, so it can take over again.
@@ -217,7 +228,7 @@ function reduce(s, a) {
     // the Mass Queue's selection: whichever took the projector last is the one on air.
     case 'projector/show': {
       if (a.source === 'PW_SESSION') {
-        return { ...s, ...endQueueSelection(s), projector: { ...showFrame(s.projector, a.frame), source: 'PW_SESSION' } };
+        return { ...s, ...endQueueSelection(s), ...unparkQueue(s), projector: { ...showFrame(s.projector, a.frame), source: 'PW_SESSION' } };
       }
       // The welcome screen over a Holy Mass or Praise & Worship slide is an overlay: the queue or session keeps its place and its source (so
       // Praise & Worship stays on air), and the slide stays staged under it.
@@ -297,7 +308,7 @@ function reduce(s, a) {
       if (p.paused || p.live === p.staged) return s;
       // Who sent the frame: the Mass Queue, or a module deck. A module deck's take is a direct projection, so it ends the selection.
       const source = a.source ?? 'DIRECT_DECK';
-      const ended = source === 'DIRECT_DECK' ? endQueueSelection(s) : {};
+      const ended = source === 'DIRECT_DECK' ? endQueueSelection(s) : unparkQueue(s);
       if (source !== 'PW_SESSION') Object.assign(ended, endPwAir(s));
       // Under Blackout the slide waits behind it, but the take still names who has the screen: a Holy Mass started under Blackout is on air,
       // covered, as one that was blacked out after it started.
@@ -322,6 +333,21 @@ function reduce(s, a) {
 
     case 'background/clear':
       return { ...s, projector: { ...s.projector, background: NO_BACKGROUND } };
+
+    // A Media Studio save: the staged and live frames showing that file take the new edits (null removes them). Everything else about the
+    // showing stays, so a playing clip keeps its place; a frame of another file is untouched.
+    case 'background/restyle': {
+      const bg = backgroundOf(s.projector);
+      const restyle = (frame) => {
+        if (!frame || frame.src !== a.src) return frame;
+        const { edit: _old, ...rest } = frame;
+        return a.edit ? { ...rest, edit: a.edit } : rest;
+      };
+      const live = restyle(bg.live);
+      const staged = bg.staged === bg.live ? live : restyle(bg.staged);
+      if (live === bg.live && staged === bg.staged) return s;
+      return { ...s, projector: { ...s.projector, background: { live, staged } } };
+    }
 
     case 'lowerThird/show':
       return { ...s, lowerThird: showLowerThird(s.lowerThird, a.value, a.manual === true) };
@@ -433,6 +459,7 @@ function reduce(s, a) {
         queuePlanId: a.planId ?? null,
         queueSlotTitle: samePlan ? (s.queueSlotTitle ?? null) : null,
         queueCursor: given ?? (samePlan ? s.queueCursor : -1),
+        ...(samePlan ? {} : unparkQueue(s)),
       };
     }
 
@@ -444,9 +471,10 @@ function reduce(s, a) {
     }
 
     // The item the operator last opened from the queue. Persisted, so a restart resumes here.
+    // Any move of the cursor (a row played, End session) replaces a parked Holy Mass place.
     case 'queue/cursor':
-      if (s.queueCursor === a.index) return s;
-      return { ...s, queueCursor: a.index };
+      if (s.queueCursor === a.index && s.queueParked == null) return s;
+      return { ...s, queueCursor: a.index, ...unparkQueue(s) };
 
     // Loads a Praise & Worship session for live use, at its start and off air. Reloading the same session keeps the place.
     case 'pw/load':
@@ -461,6 +489,7 @@ function reduce(s, a) {
       return {
         ...s,
         ...endQueueSelection(s),
+        ...unparkQueue(s),
         pw: {
           ...s.pw,
           segmentKey: a.segmentKey,

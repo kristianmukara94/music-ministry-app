@@ -26,6 +26,7 @@ import { onRosaryChanged } from './refresh';
 import { loadChunkOptions, type ChunkOptions } from './rosaryUtils';
 import { buildStep, loadDeckStyle, loadPresentation, localized, ROSARY_LANGUAGES as LANGUAGES, saveDeckStyle, tFor, type RosaryLang } from './frames';
 import { MYSTERY_TYPES, type Mystery, type MysteryType, type RosaryPrayer } from './types';
+import { assetFrame } from '../media/frame';
 
 const api = bridge.rosary;
 
@@ -104,8 +105,9 @@ export function RosaryDeck() {
     wasLive.current = live;
     if (!wentLive || presentation.backgroundId === null) return;
     const asset = media.find((m) => m.id === presentation.backgroundId);
-    if (!asset || asset.mediaType === 'audio' || background.live?.src === asset.src) return;
-    dispatch({ type: 'background/stage', media: { kind: 'media', mediaType: asset.mediaType, src: asset.src, title: asset.filename } });
+    const frame = asset && background.live?.src !== asset.src ? assetFrame(asset) : null;
+    if (!frame) return;
+    dispatch({ type: 'background/stage', media: frame });
     dispatch({ type: 'background/take' });
   }, [projectorLive.kind]);
 
@@ -142,8 +144,9 @@ export function RosaryDeck() {
     }
     const asset = media.find((m) => String(m.id) === id);
     // Audio plays in the Media Library, so it cannot be a background.
-    if (!asset || asset.mediaType === 'audio') return;
-    dispatch({ type: 'background/stage', media: { kind: 'media', mediaType: asset.mediaType, src: asset.src, title: asset.filename } });
+    const frame = asset ? assetFrame(asset) : null;
+    if (!frame) return;
+    dispatch({ type: 'background/stage', media: frame });
     dispatch({ type: 'background/take' });
   };
 

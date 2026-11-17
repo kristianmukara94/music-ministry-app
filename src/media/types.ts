@@ -1,3 +1,5 @@
+import type { MediaEditSettings } from '../../shared/media-editor.js';
+
 export type MediaType = 'image' | 'video' | 'audio';
 
 /** The drag type a media card carries. Its payload is JSON: { id, label }. The Mass Queue drawer accepts it. */
@@ -14,6 +16,10 @@ export interface MediaAsset {
   uploadedAt: string;
   /** The library folder the item is filed in, or null when unfiled. */
   folderId: number | null;
+  /** Saved Media Studio edits, normalised. An item never edited carries the neutral settings. */
+  edit: MediaEditSettings;
+  /** True when `edit` changes what is drawn or played (hasActiveMediaEdits). */
+  edited: boolean;
 }
 
 /** A library folder. Built-in folders (the liturgical seasons, Praise & Worship, Off-Plan Media) cannot be deleted. */
@@ -48,6 +54,12 @@ export interface MediaApi {
   deleteFolder(id: number): Promise<boolean>;
   /** Files an item in a folder; null unfiles it. Only the folder link changes. */
   moveToFolder(id: number, folderId: number | null): Promise<boolean>;
+  /** Stores non-destructive edits on the item. A staged or live showing of it updates at once. Resolves to the updated item. */
+  saveEditSettings(id: number, settings: MediaEditSettings): Promise<MediaAsset>;
+  /** Replaces the library card's thumbnail with a PNG or JPEG (a poster frame). Resolves to the updated item. */
+  updateThumbnail(id: number, bytes: Uint8Array): Promise<MediaAsset>;
+  /** Saves a baked PNG or JPEG as a new still in the same folder; the original is untouched. Resolves to the new item. */
+  saveEditedCopy(id: number, bytes: Uint8Array, name?: string): Promise<MediaAsset>;
   /** Subscribes to background events from the main process. Returns the function that stops listening. */
   onEvent(callback: (event: { kind: 'changed' | 'remux-failed'; name?: string }) => void): () => void;
 }

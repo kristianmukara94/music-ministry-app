@@ -1,4 +1,5 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { applyLowerThirdCase } from '../../shared/text-fit.js';
 import type { LowerThird, LowerThirdTemplate } from '../../shared/live.js';
 import { TEXT_FONTS } from '../../shared/text-style.js';
 import type { LowerThirdStyle } from '../../shared/lower-third-style';
@@ -169,7 +170,7 @@ export function LowerThirdCard({ value, style }: { value: LowerThird; style: Low
  * The parent needs `container-type` so the sizes scale.
  */
 export function LowerThirdStage({
-  value,
+  value: given,
   className = '',
   lyricBottomShare = null,
 }: {
@@ -179,6 +180,9 @@ export function LowerThirdStage({
   lyricBottomShare?: number | null;
 }) {
   const style = useOutput((s) => s.lowerStyle);
+  // The operator's text case (Aa / AA / aa) applies to the band as to the slides, before its lines are sized.
+  const textCase = useOutput((s) => s.settings.textCase);
+  const value = useMemo(() => applyLowerThirdCase(given, textCase), [given, textCase]);
 
   // The Praise & Worship lower third sits in the lower band, on the lyrics' margins. The operator's look for the other lower thirds does
   // not move it, so the live preview, the projector and the livestream all draw it in the same place and size.

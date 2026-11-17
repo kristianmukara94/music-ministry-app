@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { Frame, MediaFrame, SlideLine } from '../../shared/live.js';
 import { presentedFrame, slotTitleShown } from '../../shared/live.js';
 import { OnAirLook, useOutput } from './outputState';
@@ -24,12 +24,13 @@ import { lyricBottomOf } from '../../shared/lyric-area.js';
 import { textAreaShare } from '../../shared/text-area.js';
 import { welcomeBackground } from '../../shared/welcome-settings.js';
 import { SlideBackgroundLayer } from './BackgroundMedia';
+import { EditedMediaRenderer } from '../media/EditedMediaRenderer';
 import { SanctuaryAlertOverlay } from './SanctuaryAlertOverlay';
 import { useTextAutoFit } from './useTextAutoFit';
 import { useProjectorTextAutoFit } from './useProjectorTextAutoFit';
 import { useHeadedTextFit } from './useHeadedTextFit';
 import { useBalanceAfterFit, useBalancedText } from './useBalancedLines';
-import { lineCountOf, lineHeightFor } from '../../shared/text-fit.js';
+import { applyFrameTextCase, lineCountOf, lineHeightFor, textCaseOf } from '../../shared/text-fit.js';
 import { LegibilityContext, gradientShadeStyle, legibilityShadowVars, useBackgroundLegibility, type BackgroundAsset, type ShadeChoice, type ShadeTarget } from '../components/ContrastEngine';
 
 /** The slide font the operator chose, as CSS. Undefined keeps each slide's own face. */
@@ -39,6 +40,8 @@ const useSlideFont = (): string | undefined => useOutput((s) => slideFontCss(s.s
 const useSlideScale = (): number => useOutput((s) => s.settings.slideFontScale);
 /** Whether long lines are balanced at phrase breaks (the projector setting; on unless the operator turned it off). */
 const useBalanceLines = (): boolean => useOutput((s) => s.settings.balanceLines !== false);
+/** The case slide text is drawn in (the projector setting): as typed, UPPERCASE or lowercase. */
+const useTextCase = () => useOutput((s) => textCaseOf(s.settings.textCase));
 
 /**
  * Balancing for a block of one <p> per line (prayers, readings, text slides): the block is the last child of the element `wrapRef` is on, and
@@ -341,7 +344,11 @@ function FittedPrayer({ label, text, className, style = null }: { label: string;
  * One frame. `sharedBackground` is set by the projector when the Media Library's background is on screen behind every slide: the Live set's
  * slides then draw no background of their own, so it shows through them.
  */
-function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBackground?: boolean }) {
+function FrameView({ frame: given, sharedBackground = false }: { frame: Frame; sharedBackground?: boolean }) {
+  // The operator's text case (Aa / AA / aa) is applied here, before any text is drawn, so every fit and the line balancing below measure the
+  // letters as they are shown: capitals are wider, and balancing the as-typed text would leave UPPERCASE lines too long for the slide.
+  const textCase = useTextCase();
+  const frame = useMemo(() => applyFrameTextCase(given, textCase), [given, textCase]);
   const slideFont = useSlideFont();
   const slideScale = useSlideScale();
   // The background behind the Live set's slides: its own saved setting, separate from the Welcome background.
@@ -644,6 +651,12 @@ function useFadedNote(live: NoteOverlay | null, fadeMs: number) {
 /** The operator's extra dark tint over a background, kept within 0 to 0.8 whatever the frame carries. */
 const backgroundTint =(media: MediaFrame | null) => Math.min(0.8, Math.max(0, Number(media?.tint) || 0));
 
+/** A background clip's speed: the operator's choice for this showing, else the speed saved in the Media Studio, else 1x. 0.25x to 2x. */
+const backgroundRate = (media: MediaFrame) => {
+  const rate = Number(media.rate ?? media.edit?.playbackSpeed ?? 1);
+  return Number.isFinite(rate) ? Math.min(2, Math.max(0.25, rate)) : 1;
+};
+
 /**
  * One showing of a background: its file, its end behaviour and, for a "play once" clip, the cue it was staged with. A new take of the same
  * clip is a new showing, so it plays from the start; a state update that only re-sends the same frame is the same showing.
@@ -651,32 +664,27 @@ const backgroundTint =(media: MediaFrame | null) => Math.min(0.8, Math.max(0, Nu
 const showingOf = (media: MediaFrame) => `${media.src}|${media.playback ?? 'loop'}|${media.cue ?? ''}`;
 
 /**
- * Looping motion (or a still) behind the foreground. Plays muted so it can autoplay. Speed and end behaviour follow the frame. A "play once"
- * clip reports its end through `onEnded`, and the projector then takes it off the screen as a clear would.
+ * Looping motion (or a still) behind the foreground, drawn with the library item's Media Studio edits (crop, grade, trim) through the same
+ * renderer as the stage preview. It plays muted so it can autoplay; only the congregation's projector (`audible`) plays a clip's sound, and
+ * only when the Studio gave it a volume. Speed and end behaviour follow the frame. A "play once" clip reports its end through `onEnded`, and
+ * the projector then takes it off the screen as a clear would. Saving new edits restyles the frame without changing its showing, so a
+ * playing clip keeps its place.
  */
-function BackgroundLayer({ media, onEnded }: { media: MediaFrame; onEnded: (showing: string) => void }) {
+function BackgroundLayer({ media, onEnded, audible = false }: { media: MediaFrame; onEnded: (showing: string) => void; audible?: boolean }) {
   const playback = media.playback ?? 'loop';
-  const rate = media.rate === 0.5 || media.rate === 1.5 ? media.rate : 1;
-  return media.mediaType === 'video' ? (
-    <video
+  return (
+    <EditedMediaRenderer
       key={showingOf(media)}
-      ref={(el) => {
-        if (el && el.playbackRate !== rate) el.playbackRate = rate;
-      }}
-      src={media.src}
-      autoPlay
-      loop={playback === 'loop'}
-      muted
-      playsInline
-      controls={false}
-      preload="auto"
-      onLoadedMetadata={(e) => (e.currentTarget.playbackRate = rate)}
+      mediaType={media.mediaType}
+      src={media.mediaType === 'video' ? media.src : getSlideImageUrl(media.src)}
+      edit={media.edit ?? null}
+      playback={playback}
+      rate={backgroundRate(media)}
+      audible={audible}
       onEnded={() => playback === 'once' && onEnded(showingOf(media))}
-      onError={(e) => console.error('Video playback error:', e.currentTarget.error ?? e)}
-      className="absolute inset-0 -z-10 h-full w-full object-cover"
+      onImageError={onSlideImageError}
+      className="absolute inset-0 -z-10"
     />
-  ) : (
-    <img key={media.src} src={getSlideImageUrl(media.src)} onError={onSlideImageError} alt="" draggable={false} className="absolute inset-0 -z-10 h-full w-full object-cover" />
   );
 }
 
@@ -944,7 +952,7 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
     {/* Every size inside the stage is a share of the stage, so text keeps its proportions in any window. */}
     <LegibilityContext.Provider value={shadeChoice}>
     <div className="relative isolate overflow-hidden [container-type:size]" style={{ ...stageStyle, ...legibleVars }}>
-      {background && <BackgroundLayer media={background} onEnded={setEndedShowing} />}
+      {background && <BackgroundLayer media={background} onEnded={setEndedShowing} audible={!mirror && !embedded} />}
       {slideMedia && <SlideBackgroundLayer media={slideMedia} visible={outputShowing && !blackedOut && shownFrame.kind === 'pw' && !sharedBackground} />}
       {/* A song's or prayer's background colour fills the screen only when no motion background is playing, so it never covers the media. */}
       {!background && shownFrame.kind === 'idle' && <IdleScreen mode={settings.idle} media={settings.idleMedia} />}

@@ -18,8 +18,11 @@ import { slotById } from '../../shared/mass-slots.js';
 import { announcementFrame } from '../announcements/frames';
 import { frameForWhiteboardSlide } from '../whiteboard/projectSlide';
 import { uiLangOf } from '../../shared/mass-language.js';
+import { goLiveNowActions } from '../../shared/lyrics-live.js';
+import { quickLiveBand } from '../praise-worship/useQuickLiveController';
 import { planLanguage } from './plan-api';
 import { noteSource } from '../../shared/notes.js';
+import { assetFrame } from '../media/frame';
 
 /** How a queue item is played. `inPlace` shows songs, announcements and media where the operator is (the Go Live console), without switching panels. */
 export interface PlayOptions {
@@ -66,8 +69,9 @@ async function stageAnnouncement(sourceId: string): Promise<boolean> {
 /** Puts a Media Library picture or video on the background layer. Audio plays in the Media Library, so it is skipped. */
 async function showMedia(sourceId: string): Promise<void> {
   const asset = (await bridge.media.list()).find((m) => m.id === Number(sourceId));
-  if (!asset || asset.mediaType === 'audio') return;
-  dispatch({ type: 'background/stage', media: { kind: 'media', mediaType: asset.mediaType, src: asset.src, title: asset.filename } });
+  const frame = asset ? assetFrame(asset) : null;
+  if (!frame) return;
+  dispatch({ type: 'background/stage', media: frame });
   dispatch({ type: 'background/take' });
 }
 
@@ -136,16 +140,8 @@ export async function openQueueItem(item: QueueItem, index: number, opts: PlayOp
 
     case 'bible': {
       // The passage is staged here, in the slides the projector will show. The operator stays where they are.
-      const ref = parseSourceId(item.sourceId);
-      if (!ref) return false;
       try {
-        const { book, chapter, verses } = await loadPassage(ref.translationId, ref.bookName, ref.chapter, ref.from, ref.to);
-        const pageLabel = bibleT(useUi.getState().lang, 'pageLabel');
-        const slides = scriptureSlides(verses, { bookName: book.name, chapter }, pageLabel);
-        // The passage mark lets the Bible deck badge the verses that are live when it is next opened.
-        const passage = { translationId: ref.translationId, bookNumber: book.number, chapter, verses: verses.map((v) => v.verse) };
-        dispatch({ type: 'projector/stage', frame: { kind: 'deck', title: '', slides, index: 0, passage } });
-        return true;
+        return await stageBiblePassage(item.sourceId);
       } catch (err) {
         window.alert(err instanceof Error ? err.message : String(err));
         return false;
@@ -251,4 +247,58 @@ export async function stageReading(date: string, readingType: string): Promise<b
         };
   dispatch({ type: 'projector/stage', frame });
   return true;
+}
+
+/** Stages a Bible passage row (its source id names the translation, book, chapter and verses) as the slides the projector shows. */
+async function stageBiblePassage(sourceId: string): Promise<boolean> {
+  const ref = parseSourceId(sourceId);
+  if (!ref) return false;
+  const { book, chapter, verses } = await loadPassage(ref.translationId, ref.bookName, ref.chapter, ref.from, ref.to);
+  const pageLabel = bibleT(useUi.getState().lang, 'pageLabel');
+  const slides = scriptureSlides(verses, { bookName: book.name, chapter }, pageLabel);
+  // The passage mark lets the Bible deck badge the verses that are live when it is next opened.
+  const passage = { translationId: ref.translationId, bookNumber: book.number, chapter, verses: verses.map((v) => v.verse) };
+  dispatch({ type: 'projector/stage', frame: { kind: 'deck', title: '', slides, index: 0, passage } });
+  return true;
+}
+
+/** What a library LIVE press did: shown, nothing to show (an empty song, an unsaved reading), or a private note that is never shown. */
+export type LibraryLiveResult = 'shown' | 'empty' | 'operator';
+
+/**
+ * LIVE on a planner library row: puts a song, a prayer, a reading or a Bible passage straight on the projector "in case of need", without
+ * adding it to the plan or the lineup. It is a direct show (DIRECT_DECK), so the Service Queue's CURRENT row and the Praise & Worship
+ * lineup's place are left as they are. A song goes out on its first sung verse, through the same shared actions as Song Lyrics' GO LIVE NOW,
+ * with its lower third staged (not turned on). A lower-third note goes to the lower third; a private operator note shows nothing.
+ */
+export async function goLiveLibraryItem(item: { module: string; sourceId: string }): Promise<LibraryLiveResult> {
+  switch (item.module) {
+    case 'lyrics': {
+      const hymn = await liveLyrics.getHymn(Number(item.sourceId));
+      const actions = hymn && !hymn.deletedAt ? goLiveNowActions({ hymn, band: quickLiveBand(hymn), bandStageOnly: true }) : null;
+      if (!actions) return 'empty';
+      actions.forEach(dispatch);
+      return 'shown';
+    }
+    case 'notes': {
+      const source = noteSource(item.sourceId);
+      const note = source ? await bridge.notes.get(source.id) : null;
+      if (!note) return 'empty';
+      if (note.display === 'operator') return 'operator';
+      takePrayer(note, 'DIRECT_DECK', 0, source?.slides);
+      return 'shown';
+    }
+    case 'lectionary': {
+      const [date, readingType] = item.sourceId.split('|');
+      if (!(await stageReading(date, readingType))) return 'empty';
+      dispatch({ type: 'projector/take', source: 'DIRECT_DECK' });
+      return 'shown';
+    }
+    case 'bible': {
+      if (!(await stageBiblePassage(item.sourceId))) return 'empty';
+      dispatch({ type: 'projector/take', source: 'DIRECT_DECK' });
+      return 'shown';
+    }
+  }
+  return 'empty';
 }

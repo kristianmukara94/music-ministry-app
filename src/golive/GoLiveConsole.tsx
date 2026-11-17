@@ -71,6 +71,8 @@ export function GoLiveConsole() {
   const [plans, setPlans] = useState<PlanSummary[] | null>(null);
   const [sessions, setSessions] = useState<PwSessionSummary[] | null>(null);
   const [tab, setTab] = useState<Tab>(() => {
+    const requested = useUi.getState().goLiveTabRequest;
+    if (requested) return requested;
     const s = useLive.getState().state;
     if (s.pw?.onAir) return 'pw';
     if (s.queuePlanId != null && s.projector.source === 'MASS_QUEUE') return 'mass';
@@ -80,6 +82,14 @@ export function GoLiveConsole() {
   const [pickedMass, setPickedMass] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The top bar's Go Live shortcut asks for the tab of the run on air (or the one it is putting back). Taken once, then cleared.
+  const tabRequest = useUi((s) => s.goLiveTabRequest);
+  useEffect(() => {
+    if (!tabRequest) return;
+    setTab(tabRequest);
+    setUi({ goLiveTabRequest: null });
+  }, [tabRequest]);
 
   // The plans and sessions to pick from, read when Go Live opens. The libraries a session's slides need are loaded with them.
   useEffect(() => {

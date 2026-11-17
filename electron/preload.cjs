@@ -268,6 +268,13 @@ contextBridge.exposeInMainWorld('apcc', {
     disconnect: (role, ip) => ipcRenderer.invoke('remoteView:disconnect', { role, ip }),
   },
 
+  // Print Lineup (electron/print-lineup.js): the system Print dialog, or Save as PDF.
+  lineup: {
+    print: (job) => ipcRenderer.invoke('lineup:print', job),
+    savePdf: (job) => ipcRenderer.invoke('lineup:save-pdf', job),
+    openPdf: (job) => ipcRenderer.invoke('lineup:open-pdf', job),
+  },
+
   library: {
     export: (options) => ipcRenderer.invoke('library:export', options),
     open: () => ipcRenderer.invoke('library:open'),
@@ -338,6 +345,10 @@ contextBridge.exposeInMainWorld('apcc', {
     createFolder: (name) => ipcRenderer.invoke('media:createFolder', name),
     deleteFolder: (id) => ipcRenderer.invoke('media:deleteFolder', id),
     moveToFolder: (id, folderId) => ipcRenderer.invoke('media:moveToFolder', id, folderId),
+    /** Media Studio: non-destructive edits, a new library thumbnail (poster frame), and a baked copy saved as a new item. */
+    saveEditSettings: (id, settings) => ipcRenderer.invoke('media:save-edit-settings', id, settings),
+    updateThumbnail: (id, bytes) => ipcRenderer.invoke('media:update-thumbnail', id, bytes),
+    saveEditedCopy: (id, bytes, name) => ipcRenderer.invoke('media:save-edited-copy', id, bytes, name),
     /** Background events: a conversion finished (`changed`), or failed (`remux-failed`). */
     onEvent: (callback) => {
       const handler = (_event, payload) => callback(payload);

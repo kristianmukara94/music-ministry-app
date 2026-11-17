@@ -202,7 +202,10 @@ const STRINGS = {
     insertInto: 'Insert into segment',
     resultKeys: 'Arrow keys move through results. Enter adds. Shift + Enter or Space goes live. Ctrl + F searches.',
     currentlyLive: 'Currently live',
-    goLiveNow: 'Go live now',
+    goLiveNow: 'Go Live Now',
+    liveShort: 'LIVE',
+    liveEmpty: '"{title}" has nothing saved to show yet.',
+    liveNoCard: 'Pick a lineup card first: its title slide is the one shown.',
     goLiveConfirm: 'Click again',
     onScreen: 'On screen',
     backToLineup: 'Back to lineup',
@@ -483,6 +486,9 @@ const STRINGS = {
     resultKeys: 'Gumagalaw sa mga resulta ang arrow keys. Nagdaragdag ang Enter. Live agad ang Shift + Enter o Space. Hinahanap ng Ctrl + F.',
     currentlyLive: 'Live ngayon',
     goLiveNow: 'I-live na',
+    liveShort: 'LIVE',
+    liveEmpty: 'Wala pang naka-save na maipapakita ang "{title}".',
+    liveNoCard: 'Pumili muna ng card sa lineup: ang title slide nito ang ipapakita.',
     goLiveConfirm: 'I-click ulit',
     onScreen: 'Nasa screen',
     backToLineup: 'Balik sa lineup',
@@ -594,6 +600,11 @@ STRINGS.ceb = {
   lyricsLoading: 'Gikuha ang lyrics…',
   lyricsMissing: 'Wala na kini nga kanta sa Song Lyrics.',
   lyricsEmpty: 'Wala pay lyrics kini nga kanta.',
+  goLiveNow: 'I-live Karon',
+  goLiveConfirm: 'Pindota pag-usab',
+  liveShort: 'LIVE',
+  liveEmpty: 'Wala pay na-save nga ikapakita ang "{title}".',
+  liveNoCard: 'Pili una og card sa lineup: ang title slide niini ang ipakita.',
 };
 
 /** Looks up `key` in `lang`, falling back to English, and fills {placeholders}. */
