@@ -14,9 +14,9 @@ const slideB = { kind: 'pw', slide: { kind: 'lyrics', text: 'Second line' }, seg
 const welcome = { kind: 'welcome', lang: 'en' };
 const BAND = { template: 'segment', tag: 'Opening', line1: 'Joyful Song' };
 
-/** What showPosition sends for one slide. */
+/** What showPosition sends for one slide: the operator's own step, so it lifts the welcome screen. */
 const show = (frame, slide, now) => [
-  { type: 'projector/show', frame, source: 'PW_SESSION' },
+  { type: 'projector/show', frame, source: 'PW_SESSION', lift: true },
   { type: 'pw/cursor', segmentKey: 'seg-1', slide, now },
 ];
 
@@ -119,7 +119,8 @@ test('the console lifts the cover on every step, and the Welcome toggle puts the
   assert.match(pw, /const liftBlackout = blackoutOverPw\(now\) && s\.kind !== 'black';/);
   assert.match(pw, /if \(liftBlackout\) dispatch\(\{ type: 'projector\/blackout' \}\);/);
   assert.match(pw, /else if \(welcomeOverPw\(live\) \|\| blackoutOverPw\(live\)\) showPosition\(session, deck, at\);/, 'at either end, Next and Back put the covered slide back');
-  assert.match(read('src/operator/actions.ts'), /else if \(welcomeOverPw\(state\)\) dispatch\(\{ type: 'projector\/take', source: 'PW_SESSION' \}\);/);
+  assert.match(pw, /dispatch\(\{ type: 'projector\/show', frame: frameOverride \?\? frameFor\(segment, s\), source: 'PW_SESSION', lift: true \}\);/);
+  assert.match(read('src/operator/actions.ts'), /dispatch\(\{ type: 'projector\/welcome', on: false \}\);/);
   const view = read('src/praise-worship/LiveView.tsx');
   assert.match(view, /const covered = welcomeOverPw\(live\) \|\| blackoutOverPw\(live\);/);
   assert.match(view, /const atEnd = !covered && /);

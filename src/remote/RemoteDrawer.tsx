@@ -10,6 +10,7 @@ import {
 } from '../live/bridge';
 import { setUi, useUi } from '../state/ui';
 import { qrDataUrl } from './qr';
+import { lanAddresses, lanT } from '../../shared/remote-lan.js';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -188,33 +189,69 @@ function QuickPin({ pinSet, busy, onPin }: { pinSet: boolean; busy: boolean; onP
 }
 
 /**
+ * One LAN address, never cut short: the label on its own line, then the whole address (it wraps at any character rather than ending in
+ * "…", so every octet, the port and the path stay readable) beside a Copy button that does not shrink.
+ */
+function AddressRow({ id, label, hint, value, copyLabel, lang }: { id: string; label: string; hint: string; value: string; copyLabel: string; lang: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  // A new address (another adapter, another port) is not the one that was copied.
+  useEffect(() => setCopied(false), [value]);
+
+  const copy = () => {
+    navigator.clipboard
+      ?.writeText(value)
+      .then(() => {
+        setCopied(true);
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => undefined);
+  };
+
+  return (
+    <div data-lan-row={id} className="flex w-full flex-col gap-1">
+      <span id={`${id}-label`} className="eyebrow">
+        {label}
+      </span>
+      <div className="flex w-full items-start gap-2">
+        <code
+          aria-labelledby={`${id}-label`}
+          className="min-w-0 flex-1 select-all break-all whitespace-normal rounded-md border border-fg/15 bg-panel-2 px-3 py-2 font-mono text-sm font-bold tabular-nums"
+        >
+          {value}
+        </code>
+        <button
+          type="button"
+          onClick={copy}
+          aria-label={copyLabel}
+          aria-live="polite"
+          className={`${button} justify-center transition ${copied ? 'border-ok/50 bg-ok/20 text-ok' : ''}`}
+        >
+          {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />} {lanT(lang, copied ? 'copied' : 'copy')}
+        </button>
+      </div>
+      <p className="text-[11px] text-muted">{hint}</p>
+    </div>
+  );
+}
+
+/**
  * The drawer's body: the viewer tabs, the on/off switch and phone count (which opens the phone list), the QR code with the network name and
  * address, and at the bottom the PIN control and any port problem. The port is changed in Settings > Remote view.
  */
 export function RemoteQrPanel({ status, role, onRole, busy, error, network, onEnabled, onDisconnect, onPin }: PanelProps) {
   const viewer: RemoteRoleStatus = status[role];
-  const url = viewer.running ? viewer.url : null;
+  const lang = useUi((s) => s.lang);
+  // Both rows come from the same poll, so a change of network adapter moves them together.
+  const { phone: url, tv: tvUrl } = lanAddresses(status, role);
   const qr = useMemo(() => (url ? qrDataUrl(url, 8) : null), [url]);
-  const [copied, setCopied] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const closeList = useCallback(() => setListOpen(false), []);
-  const copyTimer = useRef<number | undefined>(undefined);
 
-  useEffect(() => () => window.clearTimeout(copyTimer.current), []);
   // The list belongs to one viewer; switching viewers closes it.
   useEffect(() => setListOpen(false), [role]);
-
-  const copy = () => {
-    if (!url) return;
-    navigator.clipboard
-      ?.writeText(url)
-      .then(() => {
-        setCopied(true);
-        window.clearTimeout(copyTimer.current);
-        copyTimer.current = window.setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(() => undefined);
-  };
 
   const NetworkIcon = network?.kind === 'wired' ? Cable : Wifi;
 
@@ -273,19 +310,29 @@ export function RemoteQrPanel({ status, role, onRole, busy, error, network, onEn
               Network: <span className="font-bold text-fg">{networkLabel(network)}</span>
             </span>
           </div>
-          <div className="-mt-1 flex w-full items-center gap-2">
-            <code aria-label="Remote address" className="min-w-0 flex-1 truncate rounded-md border border-fg/15 bg-panel-2 px-3 py-2 font-mono text-sm font-bold">
-              {url}
-            </code>
-            <button
-              type="button"
-              onClick={copy}
-              aria-live="polite"
-              className={`${button} w-[118px] justify-center transition ${copied ? 'border-ok/50 bg-ok/20 text-ok' : ''}`}
-            >
-              {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />} {copied ? 'Copied!' : 'Copy link'}
-            </button>
-          </div>
+          <AddressRow
+            id="remote-phone-ip"
+            label={lanT(lang, 'phoneLabel')}
+            hint={lanT(lang, 'phoneHint')}
+            value={url}
+            copyLabel={lanT(lang, 'copyPhone')}
+            lang={lang}
+          />
+          {tvUrl ? (
+            <AddressRow
+              id="remote-tv-ip"
+              label={lanT(lang, 'tvLabel')}
+              hint={lanT(lang, 'tvHint')}
+              value={tvUrl}
+              copyLabel={lanT(lang, 'copyTv')}
+              lang={lang}
+            />
+          ) : (
+            <div data-lan-row="remote-tv-ip" className="flex w-full flex-col gap-1">
+              <span className="eyebrow">{lanT(lang, 'tvLabel')}</span>
+              <p className="text-xs text-muted">{lanT(lang, 'tvOff')}</p>
+            </div>
+          )}
         </div>
       ) : (
         !viewer.error && (

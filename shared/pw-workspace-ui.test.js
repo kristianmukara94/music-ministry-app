@@ -93,8 +93,8 @@ test('the Live lineup draws each song title and marks the song on air on the cur
   assert.match(liveView, /data-on-air=\{onAir \|\| undefined\}/);
   assert.match(liveView, /<span className="truncate" title=\{song\.title\}>\{song\.title\}<\/span>/);
   assert.match(liveView, /<LiveLineup session=\{session\} segment=\{segmentIndex\} hymns=\{hymns\} playingHymn=\{playingHymn\} \/>/);
-  // The stage's own song list reads the same helper.
-  assert.match(liveView, /const songs = segment \? lineupSongs\(segment, hymns\) : \[\];/);
+  // Jump to Cue groups a segment's slides under each song title, as its tabs.
+  assert.match(liveView, /group: slide\.hymnTitle/);
 });
 
 // ── 4. Two calendars ──

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ExternalLink, FileDown, Maximize, Minus, Plus, Printer, X } from 'lucide-react';
 import { COLOR_MODES, PAPER_SIZES, PRINT_LAYOUTS, colorModeOf, paperSizeOf, printLayoutOf, type ColorMode, type PaperSize, type PrintLayout, type PrintLineup } from '../../shared/print-lineup.js';
 import { lineupDocument, sheetOf } from '../../shared/print-lineup-html.js';
+import { DRAG, NO_DRAG, TITLE_BAR_CLEARANCE } from '../components/appRegion';
 import { TextCaseSwitch } from '../components/TextCaseSwitch';
 import { bridge, type LineupPrintJob } from '../live/bridge';
 import { useChurchName } from '../church/profile';
@@ -14,11 +15,6 @@ const LAYOUT_KEY = 'apcc.printLineupLayout';
 const PAPER_KEY = 'apcc.printLineupPaper';
 const COLOR_KEY = 'apcc.printLineupColorMode';
 const MM_TO_PX = 96 / 25.4;
-/**
- * The app window is frameless with the system's minimise / maximise / close buttons drawn over its top bar (titleBarOverlay, height
- * TITLE_BAR_HEIGHT in shared/title-bar.js). The print studio starts below that strip, so its own buttons can never sit under them.
- */
-const TITLE_BAR_CLEARANCE = 48;
 /** The zoom steps of − and +; Fit fits the whole first page in the desk. */
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5];
 /** The desk's padding around the paper, in px (p-6 on each side). */
@@ -58,12 +54,12 @@ export function PrintLineupButton({ onClick, disabled = false }: { onClick: () =
 }
 
 const TOOL =
-  'inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs font-bold transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50';
-const SEGMENTS = 'flex h-10 shrink-0 overflow-hidden rounded-md border border-fg/15 bg-panel-2';
+  'no-drag inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs font-bold transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50';
+const SEGMENTS = 'no-drag flex h-10 shrink-0 overflow-hidden rounded-md border border-fg/15 bg-panel-2';
 const segment = (on: boolean) =>
-  `flex items-center justify-center px-3 text-xs font-bold transition focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 focus-visible:outline-none ${on ? 'bg-accent text-on-accent' : 'text-fg/75 hover:bg-fg/10 hover:text-fg'}`;
+  `no-drag flex items-center justify-center px-3 text-xs font-bold transition focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 focus-visible:outline-none ${on ? 'bg-accent text-on-accent' : 'text-fg/75 hover:bg-fg/10 hover:text-fg'}`;
 const ZOOM_BUTTON =
-  'flex h-full w-9 items-center justify-center text-fg/80 transition hover:bg-fg/10 hover:text-fg focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 focus-visible:outline-none disabled:opacity-40';
+  'no-drag flex h-full w-9 items-center justify-center text-fg/80 transition hover:bg-fg/10 hover:text-fg focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 focus-visible:outline-none disabled:opacity-40';
 const DIVIDER = <span aria-hidden className="mx-1 hidden h-7 w-px shrink-0 bg-fg/15 lg:block" />;
 
 type Busy = 'print' | 'pdf' | 'open' | null;
@@ -184,15 +180,21 @@ export function PrintLineupDialog({ lineup, onClose }: { lineup: PrintLineup; on
 
   return createPortal(
     <div className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm" data-print-lineup-backdrop>
+      {/* The caption strip above the studio stays a window handle (the system's caption buttons sit over its right end). */}
+      <div aria-hidden className="app-drag absolute inset-x-0 top-0" style={{ height: TITLE_BAR_CLEARANCE, ...DRAG }} data-print-lineup-caption />
+      {/*
+        The studio, and its toolbar and every control in it, are no-drag: drag regions ignore z-index, so without this the top bar's drag
+        region (taller than the caption strip once it wraps) swallows the toolbar's hover and clicks on Windows. See components/appRegion.ts.
+      */}
       <div
-        className="absolute inset-x-0 bottom-0 flex flex-col border-t border-line"
-        style={{ top: TITLE_BAR_CLEARANCE }}
+        className="no-drag pointer-events-auto absolute inset-x-0 bottom-0 flex flex-col border-t border-line"
+        style={{ top: TITLE_BAR_CLEARANCE, ...NO_DRAG }}
         role="dialog"
         aria-modal="true"
         aria-label={t('printPreview')}
         data-print-lineup-dialog
       >
-        <div className="flex items-center gap-3 border-b border-line bg-panel px-3 py-2.5">
+        <div className="no-drag pointer-events-auto relative z-10 flex items-center gap-3 border-b border-line bg-panel px-3 py-2.5" style={NO_DRAG} data-print-toolbar>
           {/* Left: page setup, then zoom. They wrap on a narrow window; the right group never shrinks, so its buttons are always in view. */}
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <Printer size={16} aria-hidden className="shrink-0 text-accent" />
@@ -257,7 +259,7 @@ export function PrintLineupDialog({ lineup, onClose }: { lineup: PrintLineup; on
                   type="button"
                   onClick={() => setZoom(1)}
                   title={t('printZoomReset')}
-                  className="flex h-full w-14 items-center justify-center border-x border-fg/15 font-mono text-xs font-bold text-fg/85 tabular-nums transition hover:bg-fg/10 hover:text-fg focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 focus-visible:outline-none"
+                  className="no-drag flex h-full w-14 items-center justify-center border-x border-fg/15 font-mono text-xs font-bold text-fg/85 tabular-nums transition hover:bg-fg/10 hover:text-fg focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 focus-visible:outline-none"
                   data-zoom-level
                 >
                   {Math.round(scale * 100)}%

@@ -6,13 +6,17 @@ import fs from 'node:fs';
 import { initialLiveState, liveReducer } from './live.js';
 import {
   EDGE_TO_EDGE,
+  MIN_READABLE_CQW,
   applyFrameTextCase,
   applyPwSlideTextCase,
   applyTextCase,
   balanceProjectorLines,
   edgeToEdgeBox,
   fitFontSize,
+  fitWholeLines,
+  layoutLyricLines,
   plannerCaseReachesProjector,
+  wrapNeeded,
 } from './text-fit.js';
 import { PROJECTOR_SETTINGS_DEFAULTS, SLIDE_FONT_SCALES, sanitizeProjectorSettings } from './projector-settings.js';
 import { FONT_SCALE_MAX, clampFontScale, fontScaleColumns, stepFontScale } from './song-filing.js';
@@ -126,13 +130,17 @@ test('switching Aa / AA / aa mid-session changes the case at once and keeps the 
   }
 });
 
-test('both Go Live bottom bars carry Aa | AA | aa, wired to the projector case', () => {
-  const bar = read('src/praise-worship/SlideTypography.tsx');
-  assert.match(bar, /<TextCaseSwitch/);
-  assert.match(bar, /save\(\{ textCase: mode \}\)/, 'the same projector setting the Live Quick Controls set');
+test('both Go Live consoles carry Aa | AA | aa, wired to the projector case', () => {
+  const card = read('src/golive/console/TypographyCard.tsx');
+  assert.match(card, /<TextCaseSwitch/);
+  assert.match(card, /save\(\{ textCase: mode \}\)/, 'the same projector setting the Live Quick Controls set');
+  assert.match(card, /bridge\.projector\.save\(patch\)/);
+  assert.match(card, /save\(\{ edgeToEdge: !max \}\)/, 'Max is the edge-to-edge setting');
   // One component on both consoles, so they behave identically.
-  assert.match(read('src/praise-worship/LiveView.tsx'), /<SlideTypography \/>/);
-  assert.match(read('src/golive/MassLiveView.tsx'), /<SlideTypography \/>/);
+  assert.match(read('src/praise-worship/LiveView.tsx'), /<TypographyCard \/>/);
+  assert.match(read('src/golive/MassLiveView.tsx'), /<TypographyCard \/>/);
+  // The cue cards read in the projector case too.
+  assert.match(read('src/golive/console/CueNavigator.tsx'), /const words = cueText\(cue\.text, textCase\);/);
 });
 
 test('a Planner pick reaches the projector only while nothing is on air', () => {
@@ -239,4 +247,134 @@ test('the new Go Live labels are in English, Tagalog and Cebuano', () => {
   }
   assert.equal(goLiveT('en', 'typoReset'), 'Reset font size to 100%');
   assert.equal(goLiveT('en', 'typoEdgeToEdge'), 'MAX');
+});
+
+
+// --- Whole lines at any size (A+ to 250%, MAX) -----------------------------------------------------------------------------------------
+
+const measureText = (text, px) => measureAt(px)(text);
+const CASES = ['original', 'uppercase', 'lowercase'];
+
+/** A slide box `width` px wide (the projector at 1920, a CURRENT SLIDE or NEXT SLIDE preview smaller), in the normal layout or MAX. */
+function lyricBox(width, { scale = 1, max = false } = {}) {
+  const k = width / SLIDE_W;
+  const box = max ? MAX_BOX : NORMAL_BOX;
+  return {
+    width: box.width * k,
+    height: box.height * k * box.heightShare,
+    ceilingPx: max ? box.ceilingPx * k : box.ceilingPx * scale * k,
+    readablePx: (width * MIN_READABLE_CQW) / 100,
+    floorPx: (width * 1.8) / 100,
+    leading: box.leading,
+    measure: measureText,
+  };
+}
+
+const widestOf = (lines, px) => Math.max(...lines.map((l) => measureText(l, px)));
+
+test('the readable size is 24px on a 1920 slide', () => {
+  assert.equal((SLIDE_W * MIN_READABLE_CQW) / 100, 24);
+});
+
+test('at 200% and 250% a line is never split: the stanza is sized to its widest line instead', () => {
+  const stanza = 'Sample Four Word Line\nSample Short Chorus';
+  for (const scale of [2, 2.5]) {
+    for (const mode of CASES) {
+      const text = applyTextCase(stanza, mode);
+      const box = lyricBox(SLIDE_W, { scale });
+      const out = layoutLyricLines(text, box);
+      assert.equal(out.wrapped, false, `${mode} at ${scale * 100}% keeps its lines`);
+      assert.deepEqual(out.lines, text.split('\n'), 'the same two lines, no trailing word on a line of its own');
+      assert.ok(out.px <= box.ceilingPx, 'never larger than the size asked for');
+      assert.ok(widestOf(out.lines, out.px) <= box.width, 'the widest line fits the width, so nothing runs off the right edge');
+      const larger = out.px + 1;
+      assert.ok(out.px === box.ceilingPx || widestOf(out.lines, larger) > box.width || out.lines.length * larger * box.leading > box.height, 'it is the largest size that fits');
+    }
+  }
+});
+
+test('MAX fills the width with the widest line, whole, in every case', () => {
+  for (const mode of CASES) {
+    const text = applyTextCase('Sample Song Title\nSample Four Word Line', mode);
+    const box = lyricBox(SLIDE_W, { max: true });
+    const out = layoutLyricLines(text, box);
+    assert.equal(out.wrapped, false);
+    assert.deepEqual(out.lines, text.split('\n'));
+    assert.ok(out.px < box.ceilingPx, 'the width, not the ceiling, sets the size');
+    assert.ok(widestOf(out.lines, out.px) <= box.width);
+    assert.ok(widestOf(out.lines, out.px) > box.width * 0.97, `the widest line spans the slide (${mode})`);
+  }
+});
+
+test('a short line at 100% keeps the set size: the fit only ever shrinks to the widest line', () => {
+  const box = lyricBox(SLIDE_W);
+  const out = layoutLyricLines('Sample Short Chorus', box);
+  assert.equal(out.px, box.ceilingPx);
+  assert.deepEqual(out.lines, ['Sample Short Chorus']);
+});
+
+test('the CURRENT SLIDE and NEXT SLIDE previews fit the same lines, at a size in proportion to their width', () => {
+  const text = 'Sample Four Word Line\nSample Short Chorus\nSample Song Title';
+  for (const mode of CASES) {
+    for (const opts of [{ scale: 2.5 }, { max: true }]) {
+      const cased = applyTextCase(text, mode);
+      const projector = layoutLyricLines(cased, lyricBox(SLIDE_W, opts));
+      for (const width of [640, 420, 260]) {
+        const box = lyricBox(width, opts);
+        const preview = layoutLyricLines(cased, box);
+        assert.deepEqual(preview.lines, projector.lines, `the preview at ${width}px breaks where the projector does`);
+        assert.ok(widestOf(preview.lines, preview.px) <= box.width, `no right-edge clipping at ${width}px (${mode})`);
+        assert.ok(preview.lines.length * preview.px * box.leading <= box.height, 'and nothing below the bottom');
+        assert.ok(Math.abs(preview.px - (projector.px * width) / SLIDE_W) <= 1, 'the size follows the preview width');
+      }
+    }
+  }
+});
+
+test('a stanza too tall to fit is limited by its height and still keeps its lines whole', () => {
+  const text = Array.from({ length: 8 }, (_, i) => `Sample Short Chorus ${i + 1}`).join('\n');
+  const box = lyricBox(SLIDE_W, { max: true });
+  const out = layoutLyricLines(text, box);
+  assert.equal(out.wrapped, false);
+  assert.equal(out.lines.length, 8);
+  assert.ok(out.lines.length * out.px * box.leading <= box.height);
+  assert.ok(widestOf(out.lines, out.px) < box.width, 'the height, not the width, set the size');
+});
+
+test('only a line too long to stay whole at the readable size wraps, balanced with no word alone on the last line', () => {
+  const long = Array.from({ length: 14 }, () => 'Sample Four Word Line').join(' ');
+  const box = lyricBox(SLIDE_W, { scale: 2.5 });
+  assert.ok(measureText(long, box.readablePx) > box.width, 'the synthetic line is wider than the slide even at 24px');
+  const out = layoutLyricLines(long, box);
+  assert.equal(out.wrapped, true);
+  assert.ok(out.lines.length >= 2);
+  assert.ok(out.lines.every((l) => l.trim().split(/ +/).length > 1), 'no line is a single word');
+  assert.ok(widestOf(out.lines, out.px) <= box.width, 'every wrapped line fits the width');
+  assert.equal(out.lines.join(' '), long, 'every word is shown, in order');
+});
+
+test('fitWholeLines and wrapNeeded: the least of the set size and the fits, and wrapping only for width', () => {
+  assert.equal(fitWholeLines(100, 24, () => true), 100, 'a fitting stanza keeps the set size');
+  assert.equal(fitWholeLines(100, 24, (px) => px <= 57), 57, 'otherwise the largest size that fits');
+  assert.equal(fitWholeLines(100, 24, () => false), null, 'nothing fits at the readable size');
+  assert.equal(wrapNeeded(2000, 1690), true);
+  assert.equal(wrapNeeded(1200, 1690), false, 'too tall but not too wide: wrapping would not help');
+});
+
+test('the projector, the mirror, Holy Mass and the P&W previews all draw lyric lines whole', () => {
+  const hook = read('src/output/useTextAutoFit.ts');
+  assert.match(hook, /keepLines = true/, 'song lyrics keep their lines by default');
+  assert.match(hook, /text\.style\.whiteSpace = 'pre';/, 'unwrapped while fitted, so the width check sees the widest line');
+  assert.match(hook, /fitWholeLines\(ceiling, readable, fits\)/);
+  assert.match(hook, /wrapNeeded\(text\.scrollWidth, roomWidth \+ 1\) \? wrapFit\(\)/, 'only a line too wide at the readable size wraps');
+  const steps = read('src/output/useProjectorTextAutoFit.ts');
+  assert.match(steps, /text\.style\.whiteSpace = keepLines \? 'pre' : '';/);
+  assert.match(steps, /keepLines = false/, 'prayers and text slides still wrap as they are laid out');
+  const face = read('src/praise-worship/PwSlideFace.tsx');
+  assert.match(face, /<FittedFaceText keepLines className="font-serif text-\[5cqw\] font-semibold whitespace-pre-line"/, 'a P&W lyric page keeps its lines');
+  assert.match(face, /useTextAutoFit\(\{ boxRef, textRef, naturalSize, deps: \[children, fontFamily, box\.top, box\.bottom\], heightShare: EDGE_TO_EDGE\.heightShare \}\);/, 'MAX on the P&W face keeps its lines too');
+  const preview = read('src/praise-worship/CurrentNextPreview.tsx');
+  assert.match(preview, /<PwSlideFace/, 'CURRENT SLIDE and NEXT SLIDE draw through the face');
+  assert.match(preview, /const STAGE = 'relative aspect-video w-full overflow-hidden/, 'each preview frame clips');
+  assert.match(read('src/output/useBalancedLines.ts'), /getComputedStyle\(el\)\.whiteSpace === 'pre'/, 'whole lines are not re-balanced');
 });

@@ -1,6 +1,6 @@
 import { useLayoutEffect, useState, type RefObject } from 'react';
 import { pickFitStep } from '../../shared/projector-autofit.js';
-import { fitFontSize } from '../../shared/text-fit.js';
+import { MIN_READABLE_CQW, fitFontSize, wrapNeeded } from '../../shared/text-fit.js';
 import { FIT_FLOOR_CQW } from './useTextAutoFit';
 
 interface Options {
@@ -12,6 +12,12 @@ interface Options {
   naturalSize: string;
   /** Anything that changes what is drawn: the words, the style, the scale. A change fits the text again. */
   deps: unknown[];
+  /**
+   * Song lyrics: every line is kept whole (`white-space: pre`), so the steps and the shrink below end where the widest line fits the width,
+   * down to the readable size (MIN_READABLE_CQW) rather than the usual floor. Only a line too long to fit whole even there lets the text wrap,
+   * and the usual fit then runs on the wrapped text. Off by default: prayers and text slides are laid out to wrap.
+   */
+  keepLines?: boolean;
 }
 
 /**
@@ -23,7 +29,7 @@ interface Options {
  * Text still too tall at the smallest step is clipped inside the box, never over the title or the badges, and `overflow` turns true so the
  * operator's views can say so. Slides too long to read are split into parts before they are staged (see splitDeck), so this is rare.
  */
-export function useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps }: Options): { overflow: boolean; step: number } {
+export function useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps, keepLines = false }: Options): { overflow: boolean; step: number } {
   const [result, setResult] = useState({ overflow: false, step: 0 });
   useLayoutEffect(() => {
     const box = boxRef.current;
@@ -37,29 +43,42 @@ export function useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps }: 
       const roomHeight = box.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
       const roomWidth = box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
       if (roomHeight <= 0 || roomWidth <= 0) return;
+      // Measured with words unbreakable, so the widest word shows in scrollWidth and the text steps down until it fits whole (see useTextAutoFit).
+      text.style.overflowWrap = 'normal';
       const clear = () => text.scrollHeight <= roomHeight + 1 && text.scrollWidth <= roomWidth + 1;
-      const picked = pickFitStep((scale, leading) => {
-        text.style.fontSize = scale === 1 ? naturalSize : `calc(${naturalSize} * ${scale})`;
-        text.style.lineHeight = leading == null ? '' : String(leading);
-        return clear();
-      });
-      let overflow = picked.overflow;
-      if (overflow) {
-        // The steps are shares of the set size, so at a large text scale the last one can still be big. Below it, shrink to the legible floor.
-        const last = parseFloat(getComputedStyle(text).fontSize);
-        const floor = (box.clientWidth * FIT_FLOOR_CQW) / 100;
-        const size = fitFontSize(last, floor, (px) => {
-          text.style.fontSize = `${px}px`;
+      const run = (floor: number) => {
+        const picked = pickFitStep((scale, leading) => {
+          text.style.fontSize = scale === 1 ? naturalSize : `calc(${naturalSize} * ${scale})`;
+          text.style.lineHeight = leading == null ? '' : String(leading);
           return clear();
         });
-        text.style.fontSize = `${size}px`;
-        overflow = !clear();
+        let overflow = picked.overflow;
+        if (overflow) {
+          // The steps are shares of the set size, so at a large text scale the last one can still be big. Below it, shrink to the legible floor.
+          const last = parseFloat(getComputedStyle(text).fontSize);
+          const size = fitFontSize(last, Math.min(last, floor), (px) => {
+            text.style.fontSize = `${px}px`;
+            return clear();
+          });
+          text.style.fontSize = `${size}px`;
+          overflow = !clear();
+        }
+        return { picked, overflow };
+      };
+      const floor = (box.clientWidth * FIT_FLOOR_CQW) / 100;
+      text.style.whiteSpace = keepLines ? 'pre' : '';
+      let { picked, overflow } = run(keepLines ? (box.clientWidth * MIN_READABLE_CQW) / 100 : floor);
+      // A line too wide to stay whole even at the readable size: the text wraps after all, fitted the usual way. Too tall only: it stays whole.
+      if (keepLines && overflow && wrapNeeded(text.scrollWidth, roomWidth + 1)) {
+        text.style.whiteSpace = '';
+        ({ picked, overflow } = run(floor));
       }
       // The fail-safe: what is still too tall at the smallest size is clipped inside the room.
       if (overflow) {
         text.style.maxHeight = `${Math.floor(roomHeight)}px`;
         text.style.overflow = 'hidden';
       }
+      text.style.overflowWrap = '';
       setResult((was) => (was.overflow === overflow && was.step === picked.index ? was : { overflow, step: picked.index }));
     };
 
@@ -72,6 +91,6 @@ export function useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps }: 
       cancelled = true;
       observer?.disconnect();
     };
-  }, [naturalSize, ...deps]);
+  }, [naturalSize, keepLines, ...deps]);
   return result;
 }

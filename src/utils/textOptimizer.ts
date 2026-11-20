@@ -71,9 +71,14 @@ const limitsOf = (options?: OptimizerOptions): Required<OptimizerOptions> => {
 export function normalizeText(raw: string): string {
   return String(raw ?? '')
     .replace(/\r\n?/g, '\n')
-    .replace(/[ \t ]+/g, ' ')
     .split('\n')
-    .map((line) => line.trim())
+    .map((line) => {
+      // A verse number's no-break space is kept, so the number stays bound to its first word on every slide (see shared/prose-pagination.js).
+      // Every other run of spaces, tabs and no-break spaces becomes one plain space.
+      const verse = /^\s*(\d{1,3}[a-z]?) (?=\S)/.exec(line);
+      const rest = (verse ? line.slice(verse[0].length) : line).replace(/[ \t ]+/g, ' ').trim();
+      return verse ? `${verse[1]} ${rest}` : rest;
+    })
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();

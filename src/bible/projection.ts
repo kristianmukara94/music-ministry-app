@@ -1,12 +1,13 @@
 import type { SlideLine } from '../../shared/live.js';
 import { formatRuns, runsOf } from '../../shared/bible-ref.js';
 import { paginateSection, withFitter } from '../announcements/paginate';
+import { verseLine } from '../../shared/prose-pagination.js';
 import { bridge } from '../live/bridge';
 import type { Verse } from './types';
 
 const CITATION_PLACEHOLDER = '(99/99)';
-/** Verse lines start with their number, so a page's verses can be read back from its text. */
-const VERSE_START = /^(\d+) /;
+/** Verse lines start with their number (bound to the first word by a no-break space), so a page's verses can be read back from its text. */
+const VERSE_START = /^(\d+)[  ]/;
 
 export interface PassageName {
   bookName: string;
@@ -15,7 +16,7 @@ export interface PassageName {
 
 /**
  * Splits verses into projector slides with the same measurement the text pages use. Each verse is
- * one line starting with its number. Every slide ends with its own citation, for example
+ * one line starting with its number, bound to its first word so the number never ends a slide on its own. Every slide ends with its own citation, for example
  * "1 Corinthians 13:1-3 (Page 1/3)", which names only the verses on that slide.
  *
  * `breaks` lists verse numbers that start a new slide, set by the operator. Each stretch between
@@ -32,7 +33,7 @@ export function scriptureSlides(verses: Verse[], passage: PassageName, pageLabel
   return withFitter((fits) => {
     const pages: string[] = [];
     for (const group of groups) {
-      const text = group.map((v) => `${v.verse} ${v.text}`).join('\n');
+      const text = group.map((v) => verseLine(v.verse, v.text)).join('\n');
       pages.push(...paginateSection(text, (candidate) => fits(`${candidate}\n${CITATION_PLACEHOLDER}`)));
     }
     return pages.map((page, i) => {

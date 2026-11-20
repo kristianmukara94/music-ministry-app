@@ -13,7 +13,6 @@ import { HubSlideSelectionModal } from './HubSlideSelectionModal';
 import { noteSource, pickSlides, sectionOfCategory, type NoteSection } from '../../shared/notes.js';
 import type { GoLiveKey } from '../../shared/golive-i18n.js';
 import { dispatch, useLive } from '../live/store';
-import { BackgroundPanel } from '../operator/BackgroundPanel';
 import { FramePreview, ProjectorView } from '../output/ProjectorView';
 import { LowerThirdStage } from '../output/LowerThirdView';
 import { lyricBottomOf } from '../../shared/lyric-area.js';
@@ -21,42 +20,45 @@ import { deckThumb, massLineup } from '../../shared/flow-insert.js';
 import { slotById } from '../../shared/mass-slots.js';
 import { removeFromFlow, resetMassOrder } from '../planner/plan-api';
 import { SecondaryControls } from '../praise-worship/SecondaryControls';
-import { SlideTypography } from '../praise-worship/SlideTypography';
 import { IntroSlideToggle } from '../praise-worship/IntroSlideToggle';
 import { clock } from '../praise-worship/LiveView';
 import { useNow } from '../operator/useNow';
 import { songTitleFrame } from '../../shared/stage-plan-row.js';
-import { MassHotEdit } from './MassHotEdit';
-import { MassSlideHotEdit } from './MassSlideHotEdit';
 import { usePwT } from '../praise-worship/strings';
 import { usePlannerT } from '../planner/strings';
 import { BLOCKS } from '../planner/types';
-import { useT } from '../i18n/strings';
 import { setUi } from '../state/ui';
 import { blackoutOverMass, slotTitleShown, welcomeOverMass, type QueueItem } from '../../shared/live.js';
 import { endMassSession, frameAt, goLiveMassAt, goWithin, massShowing, noteRowOffScreen, playMassAt, slotNameAt, stepMass, stepsOf, useHymnOf, useMassClock, useNoteOf } from './massLive';
-import { LiveStageCanvas, type StageChipGroup } from '../components/LiveStageCanvas';
 import { useGoLiveT } from './strings';
 import { InFlowSlidePickerModal } from './InFlowSlidePickerModal';
 import { DetachMonitorButton } from '../components/DetachMonitorButton';
+import { cueText, outputStatus, pad2 as cuePad2, type Cue } from '../../shared/stage-cue.js';
+import { textCaseOf } from '../../shared/text-fit.js';
+import { slidePagesOf } from './massSlideCopy';
+import { BroadcastHeader } from './console/BroadcastHeader';
+import { StageMonitors } from './console/StageMonitors';
+import { TransportBar, consoleOutputActions } from './console/TransportBar';
+import { CueNavigator } from './console/CueNavigator';
+import { SlideEditorCard, type SlideEditTarget } from './console/SlideEditorCard';
+import { TypographyCard } from './console/TypographyCard';
+import { massPagesTarget, massSongRemove, songTarget } from './console/editTargets';
+import { useConsoleKeys, useSegmentTimer } from './console/hooks';
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
-const CARD = 'rounded-[10px] border border-line bg-panel';
+const CARD = 'rounded-xl border border-line bg-panel';
 const EYEBROW = 'text-[11px] font-semibold tracking-wider text-accent uppercase';
 const BTN =
   'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-4 text-sm font-semibold text-fg/85 transition hover:bg-fg/10 hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40';
 const BTN_GO =
   'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-ok bg-ok px-5 text-sm font-extrabold text-canvas shadow-md transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ok/60 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40';
-// The bottom row matches the Praise & Worship console: one line of compact controls that never wraps.
+// A note drawer's Stage and Take live buttons.
 const ROW_BTN =
   'inline-flex h-8 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-fg/20 bg-panel-2 px-2.5 text-xs font-semibold text-fg/90 transition hover:bg-fg/10 disabled:cursor-not-allowed disabled:opacity-40';
 const ROW_NEXT =
   'inline-flex h-8 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg bg-accent px-3 text-xs font-bold text-on-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40';
-const ROW_TOGGLE = (on: boolean) =>
-  `inline-flex h-8 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border px-2 text-xs font-semibold transition ${on ? 'border-accent bg-accent/15 text-accent' : 'border-fg/20 bg-panel-2 text-fg/90 hover:bg-fg/10'}`;
-const STAGE = 'relative aspect-video w-full overflow-hidden rounded-lg border border-line bg-canvas';
 
 /** The kind of each queue item, as a short tag. */
 const MODULE_TAG: Record<QueueItem['module'], string> = {
@@ -507,10 +509,8 @@ function ConfirmResetModal({ onConfirm, onClose }: { onConfirm: () => void; onCl
 export function MassLiveView({ planName }: { planName: string | null }) {
   const t = useGoLiveT();
   const tp = usePwT();
-  const tMain = useT();
   const tPlan = usePlannerT();
   const live = useLive((s) => s.state);
-  const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -524,9 +524,7 @@ export function MassLiveView({ planName }: { planName: string | null }) {
   const notes = useNotesById();
   // The Reset order confirmation, while it is open.
   const [confirmingReset, setConfirmingReset] = useState(false);
-  // A step whose stanza the operator double-clicked to edit, handed to the live editor.
-  const [editRequest, setEditRequest] = useState<number | null>(null);
-  const { liveSince, itemSince } = useMassClock();
+  const { liveSince } = useMassClock();
   const now = useNow().getTime();
 
   // A confirmation fades on its own, so it never sits over later work.
@@ -541,6 +539,10 @@ export function MassLiveView({ planName }: { planName: string | null }) {
   // The Mass has the screen, with the projector window open or not (the TV and phones, or the app alone). The console bar's Live button reads the
   // same answer (runOnAir in onAir.ts is massShowing for the Mass).
   const onAir = massShowing(live);
+  // The header's item timer: from zero on each item, running while the Mass has the screen. Items have no planned length.
+  const timer = useSegmentTimer('mass', cursor >= 0 && queue[cursor] ? `${live.queuePlanId}:${queue[cursor].id}:${cursor}` : null, onAir);
+  // B, L and H run Blackout, the Lower Third and Hide Text (← → Space and 1–9 are the operator window's and the cue navigator's).
+  useConsoleKeys((action) => consoleOutputActions[action](), queue.length > 0);
   // The welcome screen or Blackout is up over the Mass: the Mass keeps its place, and the slide it covers waits staged under it.
   const covered = welcomeOverMass(live) || blackoutOverMass(live);
   // While the Mass has the screen, the console follows the slide on screen. Otherwise, or under a cover, it shows what is staged.
@@ -620,18 +622,30 @@ export function MassLiveView({ planName }: { planName: string | null }) {
   // A song after this item opens on its title card, so that card is what comes next. Any other item is shown by its name.
   const nextItemFrame = nextItem?.module === 'lyrics' ? songTitleFrame({ id: Number(nextItem.sourceId), title: nextItem.label, stanzas: [] }, slotById(nextItem.slot)?.name) : null;
   const isSong = item?.module === 'lyrics' && hymn !== null;
-  // A song's title card takes no number key, so 1 is its first stanza.
-  const chips = (steps?.labels ?? []).map((label, i) => ({ index: i, label, name: isSong && i === 0 ? tp('titleChip') : label, hotkey: !(isSong && i === 0) }));
-  // As in Praise & Worship: a song's title card chip on a row of its own, then its sections under the song's title. Any other item is one row.
-  const chipGroups: StageChipGroup[] = isSong
-    ? [
-        { key: 'title', label: null, chips: chips.filter((chip) => chip.index === 0) },
-        { key: `song-${hymn!.id}`, label: hymn!.title, chips: chips.filter((chip) => chip.index > 0) },
-      ].filter((group) => group.chips.length > 0)
-    : [{ key: 'item', label: null, chips }];
+  // The item's slides as cues for Jump to Cue. A song's are its title card (no number key, as before) and its sections under its title; any
+  // other item's are its numbered slides, with their words when the item has words of its own.
+  const pages = item && !isSong && steps ? slidePagesOf(frame, note) : null;
+  const cues: Cue[] = (steps?.labels ?? []).map((label, i) => {
+    if (isSong && hymn) {
+      if (i === 0) return { index: 0, number: 1, tag: tp('titleChip'), text: hymn.title, chip: 'T', hotkey: false };
+      const stanza = hymn.stanzas[i - 1];
+      return { index: i, number: i + 1, tag: stanza?.stanzaType ?? label, text: stanza?.lyricsText ?? '', group: hymn.title, chip: label };
+    }
+    return { index: i, number: i + 1, tag: tp('slideName', { n: i + 1 }), text: pages?.[i] ?? '', chip: label };
+  });
+  const textCase = textCaseOf(live.settings.textCase);
+  // The slide editor's target: the stanza on screen of a song (its title card has no words), or the slide of any other item, in this plan's copy.
+  const editTarget: SlideEditTarget | null =
+    !item || offScreenNote
+      ? null
+      : isSong
+        ? liveSteps && liveSteps.index >= 1
+          ? songTarget({ hymn: hymn!, stanza: liveSteps.index - 1, number: liveSteps.index + 1, key: `mass:${item.id}:${liveSteps.index}`, remove: massSongRemove(hymn!, liveSteps.index - 1) })
+          : null
+        : item.module === 'lyrics'
+          ? null
+          : massPagesTarget({ t: tp, item, index: cursor, frame, note });
   const missing = queue.filter((q) => q.stale).length;
-  const lowerOn = live.lowerThird.live != null;
-  const blackout = live.projector.live.kind === 'blackout';
   const projectorOn = live.outputs.projector;
   // Something other than the Mass has the projector while the Mass has a place: offer to put the Mass back.
   const otherOnAir = cursor >= 0 && projectorOn && !onAir && live.projector.live.kind !== 'idle' && live.projector.live.kind !== 'blackout';
@@ -639,43 +653,54 @@ export function MassLiveView({ planName }: { planName: string | null }) {
   const atStart = !covered && cursor <= 0 && (!liveSteps || liveSteps.index === 0);
   const atEnd = !covered && nextItemIndex < 0 && (!liveSteps || liveSteps.index >= liveSteps.count - 1);
 
+  const upNext = nextInItem
+    ? t('consoleUpNext', { text: cueText(cues[steps!.index + 1]?.text, textCase) || cues[steps!.index + 1]?.tag || '' })
+    : nextItem
+      ? `${t('consoleFinalSlide')} · ${t('consoleUpNext', { text: nextItem.label })}`
+      : t('massEndOfQueue');
+
   return (
     <div className="flex flex-col gap-5">
-      {/* The Mass at a glance: on air or not, the plan, and the ways to clear the screen or end the Mass. */}
-      <div className={`${CARD} flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3`}>
-        <span
-          className={`inline-flex min-h-9 items-center gap-2 rounded-full border px-4 text-sm font-extrabold tracking-[0.18em] uppercase ${
-            onAir ? 'border-danger/60 bg-danger/15 text-danger' : 'border-fg/20 bg-fg/[0.06] text-muted'
-          }`}
-        >
-          <span aria-hidden className={`size-2 rounded-full ${onAir ? 'animate-pulse bg-danger' : 'bg-fg/50'}`} />
-          {onAir ? tp('liveBadge') : tp('offAir')}
-        </span>
-        <span className="flex items-baseline gap-2">
-          <span className="text-xs text-muted">{tp('sessionTime')}</span>
-          <span className="font-mono text-2xl tabular-nums text-fg">{clock(liveSince ? now - liveSince : 0)}</span>
-        </span>
-        {planName && (
-          <span className="flex min-w-0 items-baseline gap-2">
-            <span className="text-xs text-muted">{t('massPlanLabel')}</span>
-            <span className="truncate text-base font-semibold text-fg">{planName}</span>
-          </span>
-        )}
-        <div className="ml-auto flex flex-wrap items-center gap-4">
-          <IntroSlideToggle />
-          <button
-            type="button"
-            className={`${BTN} hover:!border-danger/60 hover:!text-danger`}
-            disabled={live.projector.live.kind === 'idle'}
-            onClick={() => window.confirm(t('massConfirmClear')) && dispatch({ type: 'projector/clear' })}
-          >
-            {t('massClear')}
-          </button>
-          <button type="button" className={`${BTN} hover:!border-danger/60 hover:!text-danger`} disabled={cursor < 0} onClick={() => window.confirm(t('massConfirmEnd')) && endMassSession()}>
-            {tp('endSession')}
-          </button>
-        </div>
-      </div>
+      {/* The Mass at a glance: where it is, the item switcher, the item timer, the output status, and the ways to clear the screen or end it. */}
+      <BroadcastHeader
+        titleId="mass-live-title"
+        live={onAir}
+        at={Math.max(0, cursor)}
+        total={queue.length}
+        role={item ? blockTitle(item) : planName ?? ''}
+        options={queue.map((q, i) => ({ value: String(i), label: q.label, disabled: q.stale }))}
+        value={cursor >= 0 ? String(cursor) : ''}
+        onPick={(v) => void run(() => (cursor >= 0 ? playMassAt(Number(v)) : goLiveMassAt(Number(v), planName)))}
+        disabled={busy}
+        timer={{ elapsedMs: timer.elapsedMs, plannedMs: null, running: timer.running, onToggle: timer.toggle, onReset: timer.reset }}
+        status={outputStatus(live, onAir)}
+        actions={
+          <>
+            <span className="flex items-baseline gap-1.5">
+              <span className="text-[11px] text-muted">{tp('sessionTime')}</span>
+              <span className="font-mono text-sm text-fg tabular-nums">{clock(liveSince ? now - liveSince : 0)}</span>
+            </span>
+            {planName && (
+              <span className="flex max-w-56 min-w-0 items-baseline gap-1.5">
+                <span className="text-[11px] text-muted">{t('massPlanLabel')}</span>
+                <span className="truncate text-sm font-semibold text-fg">{planName}</span>
+              </span>
+            )}
+            <IntroSlideToggle />
+            <button
+              type="button"
+              className={`${BTN} hover:!border-danger/60 hover:!text-danger`}
+              disabled={live.projector.live.kind === 'idle'}
+              onClick={() => window.confirm(t('massConfirmClear')) && dispatch({ type: 'projector/clear' })}
+            >
+              {t('massClear')}
+            </button>
+            <button type="button" className={`${BTN} hover:!border-danger/60 hover:!text-danger`} disabled={cursor < 0} onClick={() => window.confirm(t('massConfirmEnd')) && endMassSession()}>
+              {tp('endSession')}
+            </button>
+          </>
+        }
+      />
 
       {otherOnAir && item && (
         <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-accent bg-panel-2 px-5 py-3">
@@ -736,7 +761,7 @@ export function MassLiveView({ planName }: { planName: string | null }) {
       )}
       {confirmingReset && <ConfirmResetModal onConfirm={resetOrder} onClose={() => setConfirmingReset(false)} />}
 
-      <div className="grid grid-cols-1 items-start gap-5 @4xl/pw:grid-cols-[minmax(240px,300px)_minmax(0,1fr)] @6xl/pw:grid-cols-[minmax(240px,300px)_minmax(0,1fr)_minmax(260px,320px)]">
+      <div className="grid grid-cols-1 items-start gap-5 @4xl/pw:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
         <MassLineup
           items={queue}
           cursor={cursor}
@@ -755,183 +780,126 @@ export function MassLiveView({ planName }: { planName: string | null }) {
           onReset={() => setConfirmingReset(true)}
         />
 
-        <section aria-labelledby="mass-live-title" className={`${CARD} flex min-w-0 flex-col gap-4 p-5`}>
-          {item ? (
-            <LiveStageCanvas
-              titleId="mass-live-title"
-              eyebrow={t(onAir ? 'massNowEyebrow' : 'massReadyEyebrow', { n: pad2(cursor + 1), total: queue.length, block: blockTitle(item) })}
-              title={item.label}
-              songs={item.module === 'lyrics' && hymn ? [{ id: hymn.id, title: hymn.title }] : []}
-              activeSongId={onAir ? hymn?.id : null}
-              // The Holy Mass items have no planned length, so the item's time counts up with no target.
-              aside={
-                <div className="flex min-w-40 items-baseline justify-between gap-3">
-                  <span className="text-sm text-muted">{t('massItemTime')}</span>
-                  <span className="font-mono">{clock(onAir && itemSince ? now - itemSince : 0)}</span>
-                </div>
-              }
-              // The slide on screen, with the next one beside it: the next slide of this item, or the next item.
-              preview={
-                <div className="@container/preview">
-                  <div className="grid grid-cols-1 gap-4 @md/preview:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-                    <figure className="flex min-w-0 flex-col gap-1.5">
-                      <figcaption className={EYEBROW}>{t('massCurrent')}</figcaption>
-                      <div className={STAGE}>
-                        <FramePreview frame={frame} counter={steps ? `${steps.index + 1} / ${steps.count}` : undefined} />
-                      </div>
-                    </figure>
-                    <figure className="flex min-w-0 flex-col gap-1.5">
-                      <figcaption className={EYEBROW}>{nextInItem ? t('massNextSlide') : t('massNextItemCard')}</figcaption>
-                      {nextInItem ? (
-                        <div className={STAGE}>
-                          <FramePreview frame={nextInItem} counter={`${steps!.index + 2} / ${steps!.count}`} />
-                        </div>
+        <div className="@container/work min-w-0">
+          <div className="grid grid-cols-1 items-start gap-5 @4xl/work:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <div className="flex min-w-0 flex-col gap-5">
+              <section aria-label={t('consoleProgram')} className={`${CARD} flex flex-col gap-4 p-4`}>
+                {item ? (
+                  // The slide on screen (or staged and ready), with what Next puts up beside it: the next slide of this item, or the next item.
+                  <StageMonitors
+                    program={<FramePreview frame={frame} />}
+                    counter={steps ? t('consoleSlideOf', { n: cuePad2(steps.index + 1), total: cuePad2(steps.count) }) : null}
+                    next={
+                      nextInItem ? (
+                        <FramePreview frame={nextInItem} />
                       ) : nextItemFrame ? (
-                        <div className={STAGE}>
-                          <FramePreview frame={nextItemFrame} />
-                        </div>
+                        <FramePreview frame={nextItemFrame} />
                       ) : nextItem ? (
-                        <div className="flex aspect-video w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-line bg-stone-950 p-3 text-center text-white">
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-stone-950 p-3 text-center text-white">
                           <span className="text-[10px] font-semibold tracking-wider text-white/70 uppercase">{MODULE_TAG[nextItem.module]}</span>
                           <span className="line-clamp-3 text-sm font-bold">{nextItem.label}</span>
                         </div>
-                      ) : (
-                        <div className="grid aspect-video w-full place-items-center rounded-lg border border-dashed border-fg/15 p-3 text-center text-sm text-muted">
-                          {t('massEndOfQueue')}
-                        </div>
-                      )}
-                    </figure>
+                      ) : null
+                    }
+                    upNext={upNext}
+                    onPushNext={busy || atEnd ? null : () => void run(() => stepMass(1))}
+                  />
+                ) : (
+                  <div className="flex flex-col items-start gap-3">
+                    <h2 className="text-2xl leading-tight font-bold tracking-tight">{t('massReadyTitle', { name: planName ?? '' })}</h2>
+                    <p className="text-sm text-muted">{t('massReadyHint')}</p>
+                    {firstPlayable >= 0 && (
+                      <button type="button" className={BTN_GO} disabled={busy} onClick={() => void run(() => goLiveMassAt(firstPlayable, planName))}>
+                        <Play size={16} aria-hidden fill="currentColor" /> {t('massStart', { name: queue[firstPlayable].label })}
+                      </button>
+                    )}
                   </div>
-                </div>
-              }
-              jumpHeading={tp('jumpToSection')}
-              groups={chipGroups}
-              activeIndex={steps?.index ?? -1}
-              onSelect={(i) => void run(() => goWithin(i, frame))}
-              chipLabel={(chip) => t('massSlideLabel', { label: chip.name, n: chip.index + 1, total: steps?.count ?? 1 })}
-              disabled={busy}
-              onChipDoubleClick={(i) => setEditRequest(i)}
-              noChips={<p className="text-sm text-muted">{t('massOneSlide')}</p>}
-            >
-              {isSong || item.module === 'lyrics' ? (
-                <MassHotEdit
-                  t={tp}
-                  hymn={isSong ? hymn : null}
-                  onAir={isSong && liveSteps ? liveSteps.index : null}
-                  editRequest={editRequest}
-                  onEditHandled={() => setEditRequest(null)}
-                  onShow={(step) => void run(() => goWithin(step))}
+                )}
+                <TransportBar
+                  onBack={() => void run(() => stepMass(-1))}
+                  onNext={() => void run(() => stepMass(1))}
+                  backDisabled={busy || atStart}
+                  nextDisabled={busy || atEnd}
+                  counter={steps ? `${cuePad2(steps.index + 1)} / ${cuePad2(steps.count)}` : null}
                 />
-              ) : offScreenNote ? null : (
-                // Every other item (a Mass part, reading, psalm, prayer, typed response or passage) is edited in this plan's own copy of it.
-                <MassSlideHotEdit
-                  t={tp}
-                  item={item}
-                  index={cursor}
-                  frame={frame}
-                  note={note}
-                  onAir={onAir && !covered}
-                  editRequest={editRequest}
-                  onEditHandled={() => setEditRequest(null)}
+              </section>
+              {item && (
+                <CueNavigator
+                  cues={cues}
+                  activeIndex={steps?.index ?? -1}
+                  onSelect={(i) => void run(() => goWithin(i, frame))}
+                  disabled={busy}
+                  empty={t('massOneSlide')}
+                  itemKey={`${item.id}:${cursor}`}
                 />
-              )}
-            </LiveStageCanvas>
-          ) : (
-            <div className="flex flex-col items-start gap-3">
-              <h2 id="mass-live-title" className="text-2xl leading-tight font-bold tracking-tight">{t('massReadyTitle', { name: planName ?? '' })}</h2>
-              <p className="text-sm text-muted">{t('massReadyHint')}</p>
-              {firstPlayable >= 0 && (
-                <button type="button" className={BTN_GO} disabled={busy} onClick={() => void run(() => goLiveMassAt(firstPlayable, planName))}>
-                  <Play size={16} aria-hidden fill="currentColor" /> {t('massStart', { name: queue[firstPlayable].label })}
-                </button>
               )}
             </div>
-          )}
 
-          {backgroundOpen && <BackgroundPanel onClose={() => setBackgroundOpen(false)} />}
+            <aside className="flex min-w-0 flex-col gap-5">
+              <SlideEditorCard
+                target={editTarget}
+                number={steps ? steps.index + 1 : item ? 1 : null}
+                emptyHint={!item ? t('consoleNothingLive') : isSong && !liveSteps ? t('consoleNothingLive') : t('consoleEditNone')}
+              />
+              <TypographyCard />
+              <section aria-labelledby="mass-outputs" className={`${CARD} flex flex-col gap-3 p-4`}>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 id="mass-outputs" className="text-sm font-bold">{tp('outputs')}</h2>
+                  <DetachMonitorButton />
+                </div>
+                <span className="text-xs text-muted">{tp('congregation')}</span>
+                <div className="relative aspect-video overflow-hidden rounded-lg border border-line">
+                  <ProjectorView mirror embedded />
+                </div>
+                <span className="text-xs text-muted">{tp('livestream')}</span>
+                <div data-theme="default" className="relative aspect-video overflow-hidden rounded-lg border border-line bg-canvas [container-type:size]">
+                  {live.lowerThird.live ? (
+                    <LowerThirdStage value={live.lowerThird.live} lyricBottomShare={lyricBottomOf(live.projector.live)} />
+                  ) : (
+                    <div className="absolute inset-0 grid place-items-center px-3 text-center text-xs text-faint">
+                      {tp('lowerThirdToggle')}: {tp('off')}
+                    </div>
+                  )}
+                </div>
+              </section>
 
-          {/* One line, no scrollbar: the same controls as the Praise & Worship console. */}
-          <div className="sticky bottom-0 z-10 -mx-5 -mb-5 flex min-w-0 flex-nowrap items-center justify-between gap-1.5 overflow-hidden rounded-b-[10px] border-t border-line bg-panel px-5 py-3">
-            <button type="button" className={ROW_BTN} disabled={busy || atStart} onClick={() => void run(() => stepMass(-1))}>
-              {tp('back')}
-            </button>
-            <button type="button" className={ROW_NEXT} disabled={busy || atEnd} onClick={() => void run(() => stepMass(1))}>
-              {tp('next')}
-            </button>
-            <span className="flex-1" />
-            <button type="button" aria-pressed={backgroundOpen} aria-expanded={backgroundOpen} className={ROW_TOGGLE(backgroundOpen)} onClick={() => setBackgroundOpen((open) => !open)}>
-              <span className="hidden @3xl/pw:inline">{tMain('top.background')}</span>
-              <span className="@3xl/pw:hidden">BG</span>
-            </button>
-            <button type="button" aria-pressed={lowerOn} className={ROW_TOGGLE(lowerOn)} onClick={() => dispatch({ type: 'lowerThird/toggle' })}>
-              <span className="hidden @3xl/pw:inline">{tp('lowerThirdToggle')}</span>
-              <span className="@3xl/pw:hidden">L3</span>: {lowerOn ? tp('on') : tp('off')}
-            </button>
-            <button type="button" aria-pressed={blackout} className={ROW_TOGGLE(blackout)} onClick={() => dispatch({ type: 'projector/blackout' })}>
-              <span className="hidden @3xl/pw:inline">{tp('blackoutToggle')}</span>
-              <span className="@3xl/pw:hidden">BLK</span>: {blackout ? tp('on') : tp('off')}
-            </button>
-            <SlideTypography />
+              <SecondaryControls />
+
+              <section aria-labelledby="mass-next-up" className={`${CARD} flex flex-col gap-1 p-4`}>
+                <h2 id="mass-next-up" className={EYEBROW}>{tp('nextUp')}</h2>
+                {nextItem ? (
+                  <>
+                    <p className="text-xl font-bold tracking-tight">{nextItem.label}</p>
+                    <p className="text-sm font-semibold text-muted">{MODULE_TAG[nextItem.module]}</p>
+                  </>
+                ) : (
+                  <p className="text-muted">{t('massEndOfQueue')}</p>
+                )}
+              </section>
+
+              <section aria-labelledby="mass-preflight" className={`${CARD} flex flex-col gap-2 p-4`}>
+                <h2 id="mass-preflight" className={EYEBROW}>{t('massPreflight')}</h2>
+                {missing === 0 && projectorOn ? (
+                  <p className="flex items-center gap-2 text-sm text-ok">
+                    <Check size={15} aria-hidden /> {t('massPreflightOk')}
+                  </p>
+                ) : (
+                  <ul className="flex flex-col gap-1.5 text-sm">
+                    {missing > 0 && (
+                      <li className="flex items-start gap-2 text-warn">
+                        <AlertTriangle size={15} className="mt-0.5 shrink-0" aria-hidden /> {t('massPreflightMissing', { n: missing })}
+                      </li>
+                    )}
+                    {!projectorOn && (
+                      <li className="flex items-start gap-2 text-fg/70">
+                        <AlertTriangle size={15} className="mt-0.5 shrink-0" aria-hidden /> {t('massPreflightProjector')}
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </section>
+            </aside>
           </div>
-        </section>
-
-        <div className="flex min-w-0 flex-col gap-5 @4xl/pw:col-span-2 @6xl/pw:col-span-1">
-          <section aria-labelledby="mass-outputs" className={`${CARD} flex flex-col gap-3 p-4`}>
-            <div className="flex items-center justify-between gap-2">
-              <h2 id="mass-outputs" className="text-lg font-bold">{tp('outputs')}</h2>
-              <DetachMonitorButton />
-            </div>
-            <span className="text-sm text-muted">{tp('congregation')}</span>
-            <div className="relative aspect-video overflow-hidden rounded-lg border border-line">
-              <ProjectorView mirror embedded />
-            </div>
-            <span className="text-sm text-muted">{tp('livestream')}</span>
-            <div data-theme="default" className="relative aspect-video overflow-hidden rounded-lg border border-line bg-canvas [container-type:size]">
-              {live.lowerThird.live ? (
-                <LowerThirdStage value={live.lowerThird.live} lyricBottomShare={lyricBottomOf(live.projector.live)} />
-              ) : (
-                <div className="absolute inset-0 grid place-items-center px-3 text-center text-xs text-faint">
-                  {tp('lowerThirdToggle')}: {tp('off')}
-                </div>
-              )}
-            </div>
-          </section>
-
-          <SecondaryControls />
-
-          <section aria-labelledby="mass-next-up" className={`${CARD} flex flex-col gap-1 p-4`}>
-            <h2 id="mass-next-up" className={EYEBROW}>{tp('nextUp')}</h2>
-            {nextItem ? (
-              <>
-                <p className="text-2xl font-bold tracking-tight">{nextItem.label}</p>
-                <p className="text-sm font-semibold text-muted">{MODULE_TAG[nextItem.module]}</p>
-              </>
-            ) : (
-              <p className="text-muted">{t('massEndOfQueue')}</p>
-            )}
-          </section>
-
-          <section aria-labelledby="mass-preflight" className={`${CARD} flex flex-col gap-2 p-4`}>
-            <h2 id="mass-preflight" className={EYEBROW}>{t('massPreflight')}</h2>
-            {missing === 0 && projectorOn ? (
-              <p className="flex items-center gap-2 text-sm text-ok">
-                <Check size={15} aria-hidden /> {t('massPreflightOk')}
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-1.5 text-sm">
-                {missing > 0 && (
-                  <li className="flex items-start gap-2 text-warn">
-                    <AlertTriangle size={15} className="mt-0.5 shrink-0" aria-hidden /> {t('massPreflightMissing', { n: missing })}
-                  </li>
-                )}
-                {!projectorOn && (
-                  <li className="flex items-start gap-2 text-fg/70">
-                    <AlertTriangle size={15} className="mt-0.5 shrink-0" aria-hidden /> {t('massPreflightProjector')}
-                  </li>
-                )}
-              </ul>
-            )}
-          </section>
         </div>
       </div>
     </div>

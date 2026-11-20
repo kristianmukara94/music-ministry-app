@@ -46,14 +46,13 @@ import { EditedMediaRenderer } from './EditedMediaRenderer';
 import { canvasBytes, captureVideoThumbnail, renderEditedToCanvas } from './bake';
 import { useMediaT, type MediaT } from './strings';
 import type { MediaAsset } from './types';
+import { DRAG, NO_DRAG, TITLE_BAR_CLEARANCE } from '../components/appRegion';
 
 const api = bridge.media;
 /** The projector's shape. The Studio frames every picture for it. */
 const STAGE_ASPECT = 16 / 9;
 /** Matches the stage's p-6, so the 16:9 frame keeps an even dark margin on all four sides. */
 const STAGE_PADDING = 24;
-/** APCCMMA's frameless window draws its own 48px title bar, with the OS minimize / maximize / close buttons at the right. */
-const TITLE_BAR_CLEARANCE = 48;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 const same = (a: MediaEditSettings, b: MediaEditSettings) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -570,16 +569,18 @@ export function MediaStudioModal({ asset, onClose, onSaved }: { asset: MediaAsse
 
   return createPortal(
     <div className="fixed inset-0 z-[300] bg-black/70" data-media-studio-backdrop>
+      {/* The caption strip above the studio stays a window handle; the studio itself is no-drag (see components/appRegion.ts). */}
+      <div aria-hidden className="app-drag absolute inset-x-0 top-0" style={{ height: TITLE_BAR_CLEARANCE, ...DRAG }} data-media-studio-caption />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={`${t('studioTitle')}: ${asset.filename}`}
-        className="absolute inset-x-0 bottom-0 flex flex-col border-t border-line-strong bg-canvas text-fg"
-        style={{ top: TITLE_BAR_CLEARANCE }}
+        className="no-drag absolute inset-x-0 bottom-0 flex flex-col border-t border-line-strong bg-canvas text-fg"
+        style={{ top: TITLE_BAR_CLEARANCE, ...NO_DRAG }}
         data-media-studio
       >
         {/* Header: identity and history on the left, Close on the right. The right group never shrinks. */}
-        <header className="flex h-13 flex-none items-center gap-3 border-b border-line-strong bg-surface px-5">
+        <header className="no-drag flex h-13 flex-none items-center gap-3 border-b border-line-strong bg-surface px-5">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <span className="flex-none rounded border border-accent/60 bg-accent/10 px-2 py-0.5 text-[10px] font-extrabold tracking-[0.16em] text-accent uppercase">
               {t('studioTitle')}

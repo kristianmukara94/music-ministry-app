@@ -29,6 +29,7 @@ import { massShowing, stepMass } from '../golive/massLive';
 import { CommandPalette } from './CommandPalette';
 import { SanctuaryAlertModal, useSanctuaryAlertHotkey } from './SanctuaryAlertModal';
 import { ProjectorPrompt } from './ProjectorPrompt';
+import { QuickLivePreview } from '../golive/QuickLivePreview';
 import { SplitStanzaDialog } from '../praise-worship/SplitStanzaDialog';
 import { BoothLighting } from './BoothLighting';
 import { Dashboard } from './Dashboard';
@@ -232,6 +233,7 @@ export function OperatorApp() {
       <CommandPalette />
       {/* Ctrl+Shift+A from any window. Above the palette; the EULA gate still covers it. */}
       <SanctuaryAlertModal />
+      <QuickLivePreview />
       <ProjectorPrompt />
       <SplitStanzaDialog />
       {/* Above everything else. Shown until the operator accepts the license, then it renders nothing. */}

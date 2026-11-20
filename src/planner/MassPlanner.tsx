@@ -45,9 +45,11 @@ import type { PickedItem } from './MassItemSelect';
 import { usePlannerT, type PlannerT } from './strings';
 import type { PlannerKey } from '../../shared/planner-i18n.js';
 import { builtInItems, type NewPlanTemplate } from './templates';
+import { isScheduleLanguage, normalizeMassLanguage, planLanguageForSchedule, scheduleLanguageForPlan, schedulesOn } from '../../shared/mass-schedule.js';
+import { EMPTY_SCHEDULE, ScheduleFormDialog, ScheduleSwitcher, scheduleText } from './MassSchedule';
 import { songCategoryOf, stepFor, type MassStep } from '../../shared/mass-flow.js';
 import { overlayLyricsItems } from '../../shared/hymn-cache.js';
-import { type LibraryItem, type LiturgicalBlock, type MassLanguage, type NoteKind, type PlanItem, type PlanSummary, type SourceModule } from './types';
+import { type LibraryItem, type LiturgicalBlock, type MassLanguage, type MassSchedule, type NoteKind, type PlanItem, type PlanSummary, type SourceModule } from './types';
 
 const api = bridge.plans;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -284,8 +286,13 @@ export async function loadLibrary(
  * Makes a Holy Mass plan: a new plan is celebrated in the app's language until the operator picks another. Standard Sunday stores nothing
  * (its slots are empty); Weekday fills its slots. Opening the plan in the editor fills the day's readings (see the plan effect below).
  */
-export async function createMassPlan({ name, liturgicalDate, template }: { name: string; liturgicalDate: string; template: NewPlanTemplate }, lang: Lang) {
-  const created = await api.create({ name, liturgicalDate, language: massLanguageOf(lang) });
+export async function createMassPlan(
+  { name, liturgicalDate, template, schedule }: { name: string; liturgicalDate: string; template: NewPlanTemplate; schedule?: MassSchedule },
+  lang: Lang,
+) {
+  // An English, Tagalog or Cebuano Holy Mass drafts its readings and responses in that language; any other starts in the app language.
+  const language = (schedule && planLanguageForSchedule(schedule.massLanguage)) ?? massLanguageOf(lang);
+  const created = await api.create({ name, liturgicalDate, language, ...(schedule ?? {}) });
   const fills = builtInItems(template, lang);
   if (fills.length > 0) await api.save(created.id, fills);
   return created;
@@ -298,10 +305,12 @@ interface MassPlannerProps {
   onPlanChange: (id: number | null) => void;
   /** Back to Calendar. */
   onShowCalendar: () => void;
+  /** Add Another Holy Mass Schedule on a day: makes the plan, then opens it. Rejects with the reason it could not be made. */
+  onAddSchedule: (iso: string, name: string, schedule: MassSchedule) => Promise<void>;
 }
 
 /** The Holy Mass plan editor: the library on the left, the plan on the right. The Planner (PlannerView) holds it, under its calendar. */
-export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlannerProps) {
+export function MassPlanner({ planId, onPlanChange, onShowCalendar, onAddSchedule }: MassPlannerProps) {
   const t = usePlannerT();
   const lang = useUi((s) => s.lang);
   const region = useRegion();
@@ -319,6 +328,8 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
   // The plan's own choice for the slot title banner on its slides: true, false, or null to follow the projector setting.
   const [slotTitle, setSlotTitle] = useState<boolean | null>(null);
   const currentPlan = plans.find((p) => p.id === planId) ?? null;
+  // Every Holy Mass on the open plan's day, in the order they are celebrated, for the header's schedule pills.
+  const dayPlans = useMemo(() => (currentPlan ? schedulesOn(plans, currentPlan.liturgicalDate) : []), [plans, currentPlan?.liturgicalDate]);
   // The language of the Mass itself: its Mass Order parts, typed responses and Bible readings. The planner's own words stay in the app language.
   const planLang: Lang = currentPlan ? uiLangOf(currentPlan.language) : lang;
   // Bumped when a song changes in Song Lyrics; the library search and the plan's song rows read the song again.
@@ -327,6 +338,8 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
   const [hymnNow, setHymnNow] = useState<Record<number, { title?: string; deleted: boolean; musicalKey?: string }>>({});
   // The Print Lineup preview, open or closed.
   const [printing, setPrinting] = useState(false);
+  // The schedule form open over the editor: Edit time & language of the open plan, or Add Another Holy Mass Schedule on its day.
+  const [scheduleForm, setScheduleForm] = useState<'edit' | 'add' | null>(null);
   // The Planner's text case (Aa / AA / aa) for the plan's rows, the lyrics drawers and the printed lineup. On-screen only.
   const textCase = usePlannerTextCase((s) => s.mode);
   // The toolbar pick also sets the projector case while nothing is on air (see pickPlannerTextCase).
@@ -595,7 +608,8 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
    * that language (only parts that were Bible drafts; pasted text stays) and puts its Mass Order parts under their titles in that language. On
    * air, Kyrie, Gloria, Sanctus and Agnus Dei show the words of the plan's language. Songs, notes and the operator's own choices stay.
    */
-  const changeLanguage = async (language: MassLanguage) => {
+  // `followSchedule` is false when the schedule form already set the schedule's language.
+  const changeLanguage = async (language: MassLanguage, followSchedule = true) => {
     if (planId == null || !currentPlan || language === currentPlan.language) return;
     setError(null);
     setNotice(null);
@@ -604,6 +618,12 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
     try {
       await setPlanLanguage(planId, language);
       setPlans((list) => list.map((p) => (p.id === planId ? { ...p, language } : p)));
+      // A schedule that names one of the three languages follows the texts, so the day's list never says English for a Tagalog Holy Mass.
+      const label = scheduleLanguageForPlan(language);
+      if (followSchedule && isScheduleLanguage(normalizeMassLanguage(currentPlan.massLanguage)) && normalizeMassLanguage(currentPlan.massLanguage) !== label) {
+        const kept = await api.setSchedule(planId, { massTime: currentPlan.massTime ?? '', massLanguage: label });
+        setPlans((list) => list.map((p) => (p.id === planId ? { ...p, ...kept } : p)));
+      }
       if (!update) {
         setNotice(t('languageKept', { language: name }));
         return;
@@ -625,6 +645,21 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
     } catch (err) {
       fail(err);
     }
+  };
+
+  /**
+   * Edit time & language: keeps the open plan's schedule. Picking English, Tagalog or Cebuano for a plan in another language also offers to
+   * switch its readings and responses (changeLanguage, which asks first). Rejects with the reason, shown in the form.
+   */
+  const saveSchedule = async (schedule: MassSchedule) => {
+    if (planId == null || !currentPlan) return;
+    const kept = await api.setSchedule(planId, schedule);
+    setPlans((list) => list.map((p) => (p.id === planId ? { ...p, ...kept } : p)));
+    setScheduleForm(null);
+    const text = scheduleText(t, kept);
+    setNotice(text ? t('scheduleSaved', { schedule: text }) : t('scheduleCleared'));
+    const texts = planLanguageForSchedule(kept.massLanguage);
+    if (texts && texts !== currentPlan.language) await changeLanguage(texts, false);
   };
 
   /** Puts a new source in place of a step's placeholder, and saves the plan through the same path as a drop. */
@@ -1195,7 +1230,7 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
                 className="h-10 min-w-[14rem] flex-1 rounded-md border border-fg/15 bg-panel-2 px-2 text-sm text-fg outline-none focus:border-accent"
               >
                 {plans.map((p) => (
-                  <option key={p.id} value={p.id}>{formatIsoDay(p.liturgicalDate, region)} · {p.name}</option>
+                  <option key={p.id} value={p.id}>{[formatIsoDay(p.liturgicalDate, region), scheduleText(t, p), p.name].filter(Boolean).join(' · ')}</option>
                 ))}
               </select>
             ) : (
@@ -1257,6 +1292,19 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
                 <Trash2 size={14} aria-hidden />
               </button>
             )}
+            {/* The day's Holy Masses: switch between them here, edit the open one's time and language, or add another time on the day. */}
+            {currentPlan && (
+              <div className="basis-full border-t border-line pt-2">
+                <ScheduleSwitcher
+                  t={t}
+                  plans={dayPlans}
+                  activeId={planId}
+                  onPick={(id) => onPlanChange(id)}
+                  onEdit={() => setScheduleForm('edit')}
+                  onAdd={() => setScheduleForm('add')}
+                />
+              </div>
+            )}
           </div>
 
           {currentPlan && cycle && (
@@ -1293,12 +1341,31 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar }: MassPlanne
           // Exactly the plan as shown: its parts, filled slots in slot order and additional items in their order, with each song's key when set.
           lineup={massPrintLineup(shown, {
             title: currentPlan.name,
-            subtitle: formatIsoDay(currentPlan.liturgicalDate, region),
+            // The day, then the Holy Mass time and language when set: "Sunday, 6 December 2026 · 6:00 AM · English".
+            subtitle: [formatIsoDay(currentPlan.liturgicalDate, region), scheduleText(t, currentPlan)].filter(Boolean).join(' · '),
             lang: planLang,
             songKey: (row) => (row.module === 'lyrics' ? hymnNow[Number(row.sourceId)]?.musicalKey : null),
           })}
         />
       )}
+      {scheduleForm && currentPlan &&
+        createPortal(
+          <ScheduleFormDialog
+            key={`${scheduleForm}:${currentPlan.id}`}
+            t={t}
+            mode={scheduleForm}
+            dateLabel={formatIsoDay(currentPlan.liturgicalDate, region)}
+            initial={scheduleForm === 'edit' ? { massTime: currentPlan.massTime ?? '', massLanguage: currentPlan.massLanguage ?? '' } : EMPTY_SCHEDULE}
+            initialName={currentPlan.name}
+            onSave={async (schedule, name) => {
+              if (scheduleForm === 'edit') return saveSchedule(schedule);
+              await onAddSchedule(currentPlan.liturgicalDate, name, schedule);
+              setScheduleForm(null);
+            }}
+            onClose={() => setScheduleForm(null)}
+          />,
+          document.body,
+        )}
       {/* On document.body: the Planner's blurred panels would otherwise be the containing block of the form's fixed overlay. */}
       {editing &&
         createPortal(

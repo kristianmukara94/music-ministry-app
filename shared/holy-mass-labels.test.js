@@ -59,12 +59,11 @@ test('the Holy Mass Planner\'s header, tabs, filters and plan words say Holy Mas
   assert.match(plannerT('en', 'queueEmpty'), /Holy Mass Planner/);
 });
 
-test('the Go Live hub, the queue and the console say Holy Mass', () => {
+test('the Go Live console, its Planner tab and the queue say Holy Mass', () => {
   assert.equal(goLiveT('en', 'tabMass'), 'Holy Mass');
-  assert.equal(goLiveT('en', 'queueLabel'), 'Holy Mass Queue');
+  assert.equal(goLiveT('en', 'plannerTipMass'), 'Open Holy Mass Planner');
   assert.equal(goLiveT('en', 'pickPlan'), 'Holy Mass plan');
   assert.equal(goLiveT('en', 'noPlansToPick'), 'No Holy Mass plans yet');
-  assert.equal(goLiveT('en', 'createMass'), 'Create a Holy Mass plan');
   assert.equal(goLiveT('en', 'commandOpenPlanner'), 'Open the Holy Mass planner');
   assert.equal(goLiveT('en', 'whiteboardQueue'), 'Add to Holy Mass Queue');
   assert.equal(pwT('en', 'source_mass'), 'the Holy Mass Queue');
@@ -78,9 +77,6 @@ test('the song scope and its filters say Holy Mass in the filter chips, the form
 });
 
 test('the Tagalog and Cebuano text that names the queue, the planner or the order in English says Holy Mass there too', () => {
-  assert.match(goLiveT('tl', 'replacesQueue'), /Holy Mass Queue/);
-  assert.match(goLiveT('ceb', 'replacesQueue'), /Holy Mass Queue/);
-  assert.match(goLiveT('tl', 'emptyDate'), /sa Planner/);
   assert.match(plannerT('tl', 'pickerMassOrder'), /Holy Mass Order/);
   assert.match(pwT('tl', 'source_mass'), /Holy Mass Queue/);
 });

@@ -38,7 +38,8 @@ test('the Planner opens on the calendar and the Plan Editor is locked, with its 
 
 test('a day cell shows a badge for each kind of plan, asks which when it has several, and offers both plans when it has none', () => {
   const cal = read('src/planner/PlannerCalendarView.tsx');
-  assert.match(cal, /const badges = \[\.\.\.massOnDay\.map\(\(p\) => massBadge\(iso, p\)\), \.\.\.pwOnDay\.map\(pwBadge\)\];/);
+  // Holy Mass badges come through cellScheduleBadges (two, then "+N more"; see shared/mass-schedule.test.js).
+  assert.match(cal, /const badges = \[\.\.\.massCell\.shown\.map\(\(p\) => massBadge\(iso, p\)\), \.\.\.pwOnDay\.map\(pwBadge\)\];/);
   assert.match(cal, /if \(onDay\.length === 0\) \{\s+setCreateFor\(iso\);/);
   assert.match(cal, /if \(onDay\.length === 1\) \{\s+onOpen\(onDay\[0\]\);/);
   assert.match(cal, /<DayPlansPopover/);

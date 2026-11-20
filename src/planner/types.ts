@@ -33,7 +33,16 @@ export interface PlanTemplate {
   items: PlanItem[];
 }
 
-export interface PlanSummary {
+/**
+ * A Holy Mass plan's schedule (shared/mass-schedule.js): the time as typed ("6:00 AM") and its language ('English', 'Cebuano', 'Tagalog' or
+ * the operator's own). Both are '' on a plan made before schedules.
+ */
+export interface MassSchedule {
+  massTime: string;
+  massLanguage: string;
+}
+
+export interface PlanSummary extends Partial<MassSchedule> {
   id: number;
   name: string;
   liturgicalDate: string;
@@ -46,7 +55,7 @@ export interface PlanSummary {
   filledSlots?: string[];
 }
 
-export interface PlanDetail {
+export interface PlanDetail extends Partial<MassSchedule> {
   id: number;
   name: string;
   liturgicalDate: string;
@@ -70,12 +79,15 @@ export interface LibraryItem {
 
 export interface PlansApi {
   list(): Promise<PlanSummary[]>;
-  create(input: { name: string; liturgicalDate: string; language?: MassLanguage }): Promise<{ id: number; name: string; liturgicalDate: string; language: MassLanguage }>;
+  /** Makes a plan. A plan with a time and language that another plan on the same day already has is refused. */
+  create(input: { name: string; liturgicalDate: string; language?: MassLanguage } & Partial<MassSchedule>): Promise<{ id: number; name: string; liturgicalDate: string; language: MassLanguage } & MassSchedule>;
   deletePlan(id: number): Promise<boolean>;
   get(id: number): Promise<PlanDetail>;
   save(id: number, items: PlanItem[]): Promise<number>;
   /** Sets the plan's language. Its items are left as they are. */
   setLanguage(id: number, language: MassLanguage): Promise<MassLanguage>;
+  /** Sets the plan's time and language (its schedule). Refused when another plan on the same day has the same one. */
+  setSchedule(id: number, schedule: MassSchedule): Promise<MassSchedule>;
   /** The plan's own choice for showing slot titles on its slides: true, false, or null to follow the projector setting. */
   slotTitle(id: number): Promise<boolean | null>;
   /** Saves the plan's slot-title choice. Null follows the projector setting. */

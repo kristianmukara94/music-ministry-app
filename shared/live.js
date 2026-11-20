@@ -120,10 +120,17 @@ export function liveReducer(state, action) {
 
 // Staging rules: content always lands in `staged`. It only reaches `live`
 // when the output is not paused and not blacked out.
+// A new slide on air lifts Hide Text, as it lifts Blackout over a live run: the operator who steps on wants the words seen again.
+/** Two welcome frames that show the same thing from the same moment: the same language, carousel slide and clocks. */
+function sameWelcome(a, b) {
+  return a.lang === b.lang && (a.slide ?? 0) === (b.slide ?? 0) && (a.slideAt ?? null) === (b.slideAt ?? null) && (a.shownAt ?? null) === (b.shownAt ?? null);
+}
+
 function showFrame(p, frame) {
   if (p.paused) return { ...p, staged: frame };
-  if (p.live.kind === 'blackout') return { ...p, staged: frame, beforeBlackout: frame };
-  return { ...p, staged: frame, live: frame };
+  const shown = p.textHidden ? { ...p, textHidden: false } : p;
+  if (p.live.kind === 'blackout') return { ...shown, staged: frame, beforeBlackout: frame };
+  return { ...shown, staged: frame, live: frame };
 }
 
 /** The settings the outputs draw from, as the operator has set them. The Preview and the thumbnails read these. */
@@ -227,17 +234,35 @@ function reduce(s, a) {
     // Praise & Worship's show is tagged with its source, so the console can tell who has the projector. It also ends
     // the Mass Queue's selection: whichever took the projector last is the one on air.
     case 'projector/show': {
+      const p = s.projector;
+      // The same welcome frame again (a second press, or the same action arriving twice) changes nothing, so nothing is sent to the outputs.
+      if (a.frame.kind === 'welcome' && p.live.kind === 'welcome' && sameWelcome(p.live, a.frame)) return s;
       if (a.source === 'PW_SESSION') {
+        // Under the welcome screen the session keeps running behind it: a slide it sends on its own (a song edited elsewhere, a re-paging)
+        // waits staged under the cover, so it never pulls the welcome screen down. Only the operator's own step (`lift`) takes it down.
+        if (!a.lift && welcomeOverPw(s)) return { ...s, projector: { ...p, staged: a.frame } };
         return { ...s, ...endQueueSelection(s), ...unparkQueue(s), projector: { ...showFrame(s.projector, a.frame), source: 'PW_SESSION' } };
       }
       // The welcome screen over a Holy Mass or Praise & Worship slide is an overlay: the queue or session keeps its place and its source (so
-      // Praise & Worship stays on air), and the slide stays staged under it.
-      const p = s.projector;
-      if (a.frame.kind === 'welcome' && liveRunOnAir(s) && !p.paused && p.live.kind !== 'idle' && p.live.kind !== 'blackout') {
+      // Praise & Worship stays on air), and the slide stays staged under it. Over Blackout it takes the screen from the Blackout, with the
+      // same slide waiting under it (Blackout over a run always keeps the covered slide staged).
+      if (a.frame.kind === 'welcome' && liveRunOnAir(s) && !p.paused && p.live.kind !== 'idle') {
+        if (p.live.kind === 'blackout') return { ...s, projector: { ...p, live: a.frame, beforeBlackout: null } };
         return { ...s, projector: { ...p, live: a.frame, staged: p.live.kind === 'welcome' ? p.staged : p.live } };
       }
       const ended = a.source === 'DIRECT_DECK' ? { ...endQueueSelection(s), ...endPwAir(s) } : {};
       return { ...s, ...ended, projector: showFrame(s.projector, a.frame) };
+    }
+
+    // The Welcome Screen switch, as an on or off and never as a toggle: an action read from an older state, or arriving twice, cannot flip
+    // it back. On: the welcome screen goes up (a cover over the Holy Mass or Praise & Worship). Off: over a run, the covered slide goes back
+    // on the run's own take, so it keeps its place; otherwise the projector is cleared.
+    case 'projector/welcome': {
+      const p = s.projector;
+      if ((a.on === true) === (p.live.kind === 'welcome')) return s;
+      if (a.on) return reduce(s, { type: 'projector/show', frame: a.frame?.kind === 'welcome' ? a.frame : { kind: 'welcome', lang: 'en' }, source: 'DIRECT_DECK' });
+      if (liveRunOnAir(s)) return reduce(s, { type: 'projector/take', source: p.source });
+      return reduce(s, { type: 'projector/clear' });
     }
 
     // A live slide whose song or prayer was edited. The new frame replaces the one on screen, and the one staged or held for after a
@@ -268,6 +293,15 @@ function reduce(s, a) {
         return { ...s, projector: { ...p, live: { kind: 'blackout' }, staged, beforeBlackout: p.live } };
       }
       return { ...s, ...endQueueSelection(s), projector: { ...p, live: { kind: 'blackout' }, beforeBlackout: p.live } };
+    }
+
+    // Hide Text: the words leave the screen and everything behind them stays (the background, its video, the slide's colour, the lower third).
+    // The slide and the operator's place in the run are kept, so showing the text again is instant. A new slide on air lifts it (showFrame).
+    case 'projector/hideText': {
+      const p = s.projector;
+      const hidden = a.hidden ?? !p.textHidden;
+      if (hidden === (p.textHidden === true)) return s;
+      return { ...s, projector: { ...p, textHidden: hidden } };
     }
 
     case 'projector/pause': {

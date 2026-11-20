@@ -6,6 +6,7 @@ import { LINEUP_LINE_HEIGHT, PRAYER_STAGE } from './prayer-fit.js';
 import { wrappedLineCount } from './prayer-metrics.js';
 import { PRAYER_BAND_RESERVE, PRAYER_TOP, blockTops, textAreaPx } from './text-area.js';
 import { manualParts, splitFingerprint } from './prayer-split.js';
+import { mergeTrailingStub, proseClauses, proseSentences } from './prose-pagination.js';
 
 export { PRAYER_BAND_RESERVE, PRAYER_TOP };
 
@@ -48,10 +49,12 @@ export function prayerBlockHeightPx(text, px) {
 
 const fits = (text, px) => heightOf(text, px) <= prayerBoxPx().height;
 
-/** The sentences of one line: each ends at a full stop, question or exclamation mark, semicolon or colon, or at the end of the line. */
-const SENTENCE = /[^.!?;:]+(?:[.!?;:]+|$)/g;
+/**
+ * The sentences of one line: each ends at a full stop, question or exclamation mark, semicolon or colon followed by a space, or at the end of
+ * the line. A mark inside a word ("3.5", "10:30") or before a closing quote is not a break, so the words come back exactly as written.
+ */
 function sentencesOf(line) {
-  return (line.match(SENTENCE) || []).map((s) => s.trim()).filter(Boolean);
+  return proseSentences(line.trim());
 }
 
 /**
@@ -97,7 +100,7 @@ function longestPrefix(word, px) {
 function breakSentence(sentence, px) {
   // The clauses, and the words of any clause too long for a slide, are the units; a word too long for a slide is cut into glued pieces.
   const units = [];
-  sentence.split(/(?<=,)s+/).forEach((clause, ci) => {
+  proseClauses(sentence).forEach((clause, ci) => {
     if (fits(clause, px)) {
       units.push({ text: clause, joiner: ci === 0 ? '' : ' ' });
       return;
@@ -215,7 +218,8 @@ export function prayerSlidesFor(text, split, scale = 1) {
 
 /** The sentence split of one text at the given size: each slide holds whole sentences, and the slides are balanced. */
 function autoSplit(text, px = PRAYER_MAX_PX) {
-  return balancedSplit(unitsAt(unitsOf(text), px), px);
+  // A trailing stub of a few words ("Amen.") joins the slide before it when the two still fit at this size, so no slide holds only a word or two.
+  return mergeTrailingStub(balancedSplit(unitsAt(unitsOf(text), px), px), { source: text, fits: (t) => fits(t, px) });
 }
 
 /**

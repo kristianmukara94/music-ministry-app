@@ -145,6 +145,7 @@ contextBridge.exposeInMainWorld('apcc', {
     get: (id) => ipcRenderer.invoke('plans:get', id),
     save: (id, items) => ipcRenderer.invoke('plans:save', id, items),
     setLanguage: (id, language) => ipcRenderer.invoke('plans:setLanguage', id, language),
+    setSchedule: (id, schedule) => ipcRenderer.invoke('plans:setSchedule', id, schedule),
     slotTitle: (id) => ipcRenderer.invoke('plans:slotTitle', id),
     setSlotTitle: (id, show) => ipcRenderer.invoke('plans:setSlotTitle', id, show),
     listTemplates: () => ipcRenderer.invoke('plans:listTemplates'),

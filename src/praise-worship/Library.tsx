@@ -20,9 +20,7 @@ import { switchCardType } from './CardTypePicker';
 import { AddSongModal } from '../lyrics/AddSongModal';
 import { bridge } from '../live/bridge';
 import type { Hymn } from '../lyrics/types';
-import { takePrayer } from '../notes/present';
-import { goLiveLibraryItem } from '../planner/routing';
-import { dispatch } from '../live/store';
+import { goLiveFrame, goLiveLibraryItem, goLiveNote } from '../planner/routing';
 
 type LibTab = 'song' | 'prayer' | 'scripture';
 const TABS: { id: LibTab; key: string }[] = [
@@ -146,11 +144,7 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
         setAddNote(t('liveNoCard'));
         return;
       }
-      dispatch({
-        type: 'projector/show',
-        frame: { kind: 'pw', slide: { kind: 'title', label: segment.name, subtitle: '' }, segmentName: segment.name, type: segment.type, index: 0, total: 1 },
-        source: 'DIRECT_DECK',
-      });
+      goLiveFrame(segment.name, { kind: 'pw', slide: { kind: 'title', label: segment.name, subtitle: '' }, segmentName: segment.name, type: segment.type, index: 0, total: 1 });
       return;
     }
     try {
@@ -211,7 +205,7 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
           sub: p.category,
           drag: { type: 'prayer', id: p.id, title: p.title },
           // LIVE: the prayer on the projector now (a lower-third note on the lower third), without adding it to the card.
-          goLive: async () => takePrayer(p, 'DIRECT_DECK'),
+          goLive: async () => void goLiveNote(p),
           // An empty prayer slot takes the prayer; a card that already has one chains it after the last item.
           insert: () => attach({ type: 'prayer', id: p.id, title: p.title }),
           added: Boolean(segment && holdsItem(segment, { kind: 'prayer', noteId: p.id, minutes: 0 })),

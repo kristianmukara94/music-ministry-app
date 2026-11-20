@@ -163,7 +163,7 @@ export function LiveStageCanvas({
 }
 
 /** Number keys 1 to 9, C and V jump to a chip, as a click on it does. */
-function useChipKeys(props: { groups: StageChipGroup[]; activeIndex: number; onSelect: (index: number) => void; disabled: boolean }) {
+export function useChipKeys(props: { groups: StageChipGroup[]; activeIndex: number; onSelect: (index: number) => void; disabled: boolean }) {
   // Read through a ref, so the listener is added once and always sees the chips on screen now.
   const latest = useRef(props);
   latest.current = props;

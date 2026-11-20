@@ -46,10 +46,10 @@ test('P&W Library: songs show LIVE (not GO LIVE NOW) in compact actions, and the
 });
 
 test('P&W Library: Prayers and Scripture rows have LIVE too, shown directly without adding to the lineup', () => {
-  assert.match(library, /goLive: async \(\) => takePrayer\(p, 'DIRECT_DECK'\),/);
+  assert.match(library, /goLive: async \(\) => void goLiveNote\(p\),/);
   assert.match(library, /goLive: \(\) => liveScripture\(o\.id, o\.label\),/);
   assert.match(library, /goLiveLibraryItem\(\{ module: 'lectionary', sourceId: `\$\{session\.liturgicalDate\}\|\$\{id\}` \}\)/);
-  assert.match(library, /source: 'DIRECT_DECK',/);
+  assert.match(library, /goLiveFrame\(segment\.name, \{ kind: 'pw', slide: \{ kind: 'title'/);
   assert.match(card, /\{!quick && direct && \(\n\s*<LiveButton/);
   assert.match(results, /hymnId == null && row\.goLive\n\s*\? \{ armed: direct\.armed === row\.key/);
 });
@@ -67,7 +67,9 @@ test('goLiveLibraryItem: a direct show for each kind, never the plan or the queu
   const body = routing.slice(routing.indexOf('export async function goLiveLibraryItem'));
   assert.match(body, /goLiveNowActions\(\{ hymn, band: quickLiveBand\(hymn\), bandStageOnly: true \}\)/, 'a song goes out as GO LIVE NOW does');
   assert.match(body, /if \(note\.display === 'operator'\) return 'operator';/, 'a private note never reaches the projector');
-  assert.match(body, /takePrayer\(note, 'DIRECT_DECK', 0, source\?\.slides\);/);
+  assert.match(body, /return goLiveNote\(note, source\?\.slides\);/);
+  assert.match(body, /takePrayer\(note, 'DIRECT_DECK', 0, slides\);/);
+  assert.match(body, /dispatch\(\{ type: 'projector\/show', frame, source: 'DIRECT_DECK' \}\);/, 'the title card');
   assert.equal((body.match(/dispatch\(\{ type: 'projector\/take', source: 'DIRECT_DECK' \}\);/g) ?? []).length, 2, 'readings and passages');
   assert.doesNotMatch(body, /queue\/cursor|plans\.save/);
 });

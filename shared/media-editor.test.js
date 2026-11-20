@@ -268,12 +268,13 @@ const between = (text, from, to) => text.slice(text.indexOf(from), text.indexOf(
 
 test('the Studio clears the 48px title bar and keeps Close in an unshrinking header group', () => {
   const studio = read('src/media/MediaStudioModal.tsx');
-  has(studio, 'const TITLE_BAR_CLEARANCE = 48;');
+  has(studio, "import { DRAG, NO_DRAG, TITLE_BAR_CLEARANCE } from '../components/appRegion';");
+  has(read('src/components/appRegion.ts'), 'export const TITLE_BAR_CLEARANCE = 48;');
   const dialog = between(studio, 'role="dialog"', '{/* Header');
-  has(dialog, 'style={{ top: TITLE_BAR_CLEARANCE }}', 'the dialog starts below the title bar');
+  has(dialog, 'style={{ top: TITLE_BAR_CLEARANCE, ...NO_DRAG }}', 'the dialog starts below the title bar and is never a window drag handle');
   lacks(dialog, 'inset-0', 'the dialog itself is not pinned to the window top');
   const header = between(studio, '<header', '</header>');
-  has(header, 'className="flex h-13 flex-none items-center gap-3 border-b border-line-strong bg-surface px-5"');
+  has(header, 'className="no-drag flex h-13 flex-none items-center gap-3 border-b border-line-strong bg-surface px-5"');
   assert.match(header, /max-w-\[260px\][^"]*truncate/, 'a long file name cannot push Close out of view');
   has(header, 'data-studio-info');
   has(header, "data-studio-status={dirty ? 'unsaved' : 'edited'}");

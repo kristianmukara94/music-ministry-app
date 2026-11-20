@@ -136,22 +136,22 @@ test('top bar: Go Live sits between Pause Projector and Stop, where Pause Lower 
   assert.match(bar, /const run = \(\) => void goToMainLive\(\)/);
   assert.match(bar, /t\('top\.backToMainLive'\)/);
   assert.match(bar, /active \? t\('top\.liveActive'\) : t\('top\.goLive'\)/);
-  assert.match(bar, /data-state=\{override \? 'override' : 'parked'\}/);
+  assert.match(bar, /state=\{covered \? 'welcome' : override \? 'override' : 'parked'\}/);
 });
 
 test('top bar: Pause Lower 3rd is still there, as the second half of the Lower 3rd control while a band is on air', () => {
   const bar = read('src/operator/TopBar.tsx');
   const control = bar.slice(bar.indexOf('function LowerThirdControl()'), bar.indexOf('function MasterSwitch'));
-  assert.match(control, /onClick=\{\(\) => dispatch\(\{ type: 'lowerThird\/pause' \}\)\}/);
+  assert.match(control, /onClick=\{ghost \? undefined : \(\) => dispatch\(\{ type: 'lowerThird\/pause' \}\)\}/);
   assert.match(control, /aria-label=\{paused \? t\('top\.lowerThirdPaused'\) : t\('top\.pauseLowerThird'\)\}/);
   assert.match(control, /withKey\(paused \? t\('top\.tipResumeLowerThird'\) : t\('top\.tipPauseLowerThird'\), pauseKey\)/);
-  assert.match(control, /data-testid="lower-third-pause"/);
+  assert.match(control, /data-testid=\{ghost \? undefined : 'lower-third-pause'\}/);
   assert.match(bar, /<LowerThirdControl \/>/);
 });
 
 test('Go Live from any workspace opens the console on the run, and restores a parked Mass or lineup', () => {
   const main = read('src/golive/mainLive.ts');
-  assert.match(main, /setUi\(\{ view: 'goLive', \.\.\.\(tab \? \{ goLiveTabRequest: tab \} : \{\}\) \}\);\n\s+if \(!parked\) return;/);
+  assert.match(main, /setUi\(\{ view: 'goLive', \.\.\.\(tab \? \{ goLiveTabRequest: tab \} : \{\}\) \}\);\n[\s\S]*?if \(covered\) \{\n\s+dispatch\(\{ type: 'projector\/welcome', on: false \}\);\n\s+return;\n\s+\}\n\s+if \(!parked\) return;/);
   assert.match(main, /if \(parked === 'pw'\) \{\n\s+await resumeLive\(\);/);
   assert.match(main, /const actions = restoreMassActions\(state\);[\s\S]*if \(actions\) actions\.forEach\(dispatch\);/);
   assert.match(main, /setGoLiveFocused\(false\);/);

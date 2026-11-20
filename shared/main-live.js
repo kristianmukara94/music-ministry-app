@@ -2,6 +2,8 @@
 // ad-hoc LIVE item (a song, prayer, reading or passage sent straight to the projector), and the actions that put the parked Mass slide back.
 // Pure, so the operator window and the tests read it the same way.
 
+import { welcomeOverMass, welcomeOverPw } from './live.js';
+
 /** The Holy Mass has the screen: it has a place, its last take came from the queue, and something is showing. */
 function massOnAir(state) {
   return state.queueCursor >= 0 && state.projector.source === 'MASS_QUEUE' && state.projector.live.kind !== 'idle';
@@ -27,6 +29,16 @@ export function mainLiveStatus(state) {
   if (state.pw?.onAir === true) return { onAir: 'pw', parked: null, override: false };
   const parked = parkedMassRow(state) ? 'mass' : state.pw && state.pw.segmentKey != null ? 'pw' : null;
   return { onAir: null, parked, override: parked !== null && state.projector.live.kind !== 'idle' };
+}
+
+/**
+ * The run the welcome screen is covering ('mass' or 'pw'), or null. The run is still on air behind it, so Back to Main Live takes the welcome
+ * screen down and the covered slide comes back where it was (the reducer's projector/welcome, off).
+ */
+export function welcomeCover(state) {
+  if (welcomeOverMass(state)) return 'mass';
+  if (welcomeOverPw(state)) return 'pw';
+  return null;
 }
 
 /** The Go Live console tab the shortcut opens: the run on air or parked, else null (the console's own choice). */

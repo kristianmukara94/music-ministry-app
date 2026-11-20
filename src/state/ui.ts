@@ -5,6 +5,7 @@ import { ACTION_IDS, DEFAULT_SHORTCUTS, sanitizeShortcuts, shortcutsFromKeymap, 
 import { DEFAULT_DISPLAY_NAMES } from './shortcut-labels';
 import { DEFAULT_REGION_SETTINGS, type RegionSettings } from './region';
 import { sanitizeMassTimes, type MassTime } from '../../shared/service-schedule.js';
+import type { PlannerTarget } from '../../shared/planner-target.js';
 
 /**
  * The operator window's lighting. Standard Dark is the theme as it is. Red-Shift Booth washes the console in a dim red-amber that keeps
@@ -80,13 +81,15 @@ interface UiState {
   projectorPrompt: ProjectorPrompt | null;
   /** The choice made for the projector prompt in this session. Reset to 'ask' when the projector turns on, or a new queue or session loads. */
   projectorPromptChoice: ProjectorPromptChoice;
-  /** The Go Live hub's date and the entry chosen for it. Transient: a restart returns the hub to today. */
-  goLiveDate: string;
+  /** The plan or session last picked in the Go Live console. Transient: not persisted. */
   goLiveChoice: GoLiveChoice | null;
   /** A Go Live console tab the top bar's Go Live shortcut asked for. The console switches to it and clears it, so it fires once. Not persisted. */
   goLiveTabRequest: 'mass' | 'pw' | null;
-  /** A Mass plan the Go Live hub asked to open. The Mass planner takes it on mount, through its own plan loader. */
-  pendingMassPlanId: number | null;
+  /**
+   * A plan the Go Live console's Planner tab asked the Planner to open: its kind, its id (null opens that kind's calendar) and its date, so the
+   * calendar sits on its month. The Planner takes it and clears it, so it fires once. Not persisted.
+   */
+  plannerRequest: PlannerTarget | null;
   /** The Text Slide editor's style panel is open. Kept for the session only: it is not persisted, so a restart closes it. */
   slideStyleOpen: boolean;
   /** The Song Lyrics verse list shows every verse, not just the live and next one. Kept for the session only, not persisted. */
@@ -110,17 +113,11 @@ interface UiState {
   lectionaryRevision: number;
 }
 
-/** The entry the Go Live hub has chosen: a Mass plan, or a Praise & Worship session, by its id in its own module. */
+/** The entry picked in the Go Live console: a Mass plan, or a Praise & Worship session, by its id in its own module. */
 export interface GoLiveChoice {
   kind: 'mass' | 'pw';
   id: number;
 }
-
-const todayIso = () => {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
 
 /**
  * What the operator chose when a live launch found the projector off. 'ask' shows the prompt, 'skip' goes live in the app
@@ -161,10 +158,9 @@ export const useUi = create<UiState>()(
       projectorPrompt: null,
       projectorPromptChoice: 'ask',
       slideStyleOpen: false,
-      goLiveDate: todayIso(),
       goLiveChoice: null,
       goLiveTabRequest: null,
-      pendingMassPlanId: null,
+      plannerRequest: null,
       showAllVerses: false,
       lyricsGoLive: false,
       transpose: {},

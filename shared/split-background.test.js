@@ -110,10 +110,11 @@ test('the Current and Next panels and the projector read the Live slide backgrou
   assert.match(read('src/output/WelcomeScreen.tsx'), /<WelcomeFrame \/>|export function WelcomeFrame\(\)/);
 });
 
-test('the Lower 3rd and Blackout buttons are still there, now in the Live panel row beside the Background button', () => {
-  const live = read('src/praise-worship/LiveView.tsx');
-  assert.match(live, /dispatch\(\{ type: 'lowerThird\/toggle' \}\)/, 'Lower 3rd still toggles');
-  assert.match(live, /dispatch\(\{ type: 'projector\/blackout' \}\)/, 'Blackout still toggles');
-  assert.match(live, /\{tMain\('top\.background'\)\}/, 'the Background button is in the Live panel');
+test('the Lower 3rd and Blackout buttons are still there, on the console transport bar, with the Background button in the console', () => {
+  const bar = read('src/golive/console/TransportBar.tsx');
+  assert.match(bar, /dispatch\(\{ type: 'lowerThird\/toggle' \}\)/, 'Lower 3rd still toggles');
+  assert.match(bar, /dispatch\(\{ type: 'projector\/blackout' \}\)/, 'Blackout still toggles');
+  assert.match(read('src/praise-worship/LiveView.tsx'), /<TransportBar\s/);
+  assert.match(read('src/golive/console/TypographyCard.tsx'), /\{t\('consoleMediaBg'\)\}/, 'the Background button is in the console');
   assert.doesNotMatch(read('src/operator/TopBar.tsx'), /top\.background/, 'and no longer in the top toolbar');
 });

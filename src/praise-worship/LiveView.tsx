@@ -1,25 +1,31 @@
-import { useState } from 'react';
 import { AlertTriangle, Check, Maximize2, Music, Play, X } from 'lucide-react';
 import { lineupSongs, livePosition, readiness, runtimeOf, segmentStatus, step } from '../../shared/pw.js';
 import { blackoutOverPw, welcomeOverPw } from '../../shared/live.js';
-import { dispatch, useLive } from '../live/store';
+import { useLive } from '../live/store';
 import { ProjectorView } from '../output/ProjectorView';
 import { LowerThirdStage } from '../output/LowerThirdView';
 import { lyricBottomOf } from '../../shared/lyric-area.js';
+import { textCaseOf } from '../../shared/text-fit.js';
+import { cueText, outputStatus, pad2 as cuePad2, type Cue } from '../../shared/stage-cue.js';
 import { useNow } from '../operator/useNow';
-import { BackgroundPanel } from '../operator/BackgroundPanel';
-import { useT } from '../i18n/strings';
 import { pad2, STATUS_TONE } from './LineupRail';
 import { endSession, goLive, jumpTo, liveDeck, otherSourceOnAir, showPosition, stepLive, type LiveStep } from './live';
-import { CurrentNextPreview, type Shown } from './CurrentNextPreview';
+import { PwStageFace, type Shown } from './CurrentNextPreview';
 import { IntroSlideToggle } from './IntroSlideToggle';
-import { SlideTypography } from './SlideTypography';
 import { SecondaryControls } from './SecondaryControls';
-import { LineupHotEdit } from './LineupHotEdit';
-import { LiveStageCanvas, type StageChipGroup } from '../components/LiveStageCanvas';
+import { CardSlideHotEdit } from './CardSlideHotEdit';
 import { subIndexChip } from '../../shared/stage-chips.js';
 import { DetachMonitorButton } from '../components/DetachMonitorButton';
 import { runOnAir } from '../golive/onAir';
+import { useGoLiveT } from '../golive/strings';
+import { BroadcastHeader } from '../golive/console/BroadcastHeader';
+import { StageMonitors } from '../golive/console/StageMonitors';
+import { TransportBar, consoleOutputActions } from '../golive/console/TransportBar';
+import { CueNavigator } from '../golive/console/CueNavigator';
+import { SlideEditorCard } from '../golive/console/SlideEditorCard';
+import { TypographyCard } from '../golive/console/TypographyCard';
+import { pwSongTarget } from '../golive/console/editTargets';
+import { useConsoleKeys, useSegmentTimer } from '../golive/console/hooks';
 import { setPwState, usePw } from './store';
 import { setGoLiveFocused, useFocusEscape } from './useGoLiveFocus';
 import { usePwT, type PwT } from './strings';
@@ -27,13 +33,7 @@ import type { PwSession } from './types';
 
 const BTN = 'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-fg/15 bg-panel-2 px-4 text-sm font-semibold text-fg/85 transition hover:bg-fg/10 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
 const BTN_ACCENT = 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-ok bg-ok px-5 text-sm font-extrabold text-canvas shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40';
-// The bottom row's buttons: the same look, with tighter side padding, so the five fit one line in a narrow Live panel (see the row's comment).
-// Every control in the bottom row is h-9 and holds one line, so the row keeps one height and no label wraps. The palette is the dark
-// theme: panel surfaces, theme text, and the accent colour for the active state.
-const ROW_BTN = 'inline-flex h-8 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-fg/20 bg-panel-2 px-2.5 text-xs font-semibold text-fg/90 transition hover:bg-fg/10 disabled:cursor-not-allowed disabled:opacity-40';
-const ROW_NEXT = 'inline-flex h-8 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg bg-accent px-3 text-xs font-bold text-on-accent transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40';
-const ROW_TOGGLE = (on: boolean) =>
-  `inline-flex h-8 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border px-2 text-xs font-semibold transition ${on ? 'border-accent bg-accent/15 text-accent' : 'border-fg/20 bg-panel-2 text-fg/90 hover:bg-fg/10'}`;
+const CARD = 'rounded-xl border border-line bg-panel';
 
 /** One step as the preview shows it: its slide, or a black screen for the end-of-segment step. */
 function shownAt(session: PwSession, deck: LiveStep[][], at: { segment: number; slide: number }): Shown {
@@ -53,29 +53,23 @@ export function clock(ms: number) {
   return h ? `${String(h).padStart(2, '0')}:${mmss}` : mmss;
 }
 
-/** The chip for one step in Jump to section. A stanza over several slides is V1.1, V1.2; a title card and the black step take no number key. */
-function stepChip(s: LiveStep, t: PwT) {
-  if (s.kind === 'black') return { label: '■', name: t('blackStep'), hotkey: false };
-  if (s.slide.kind === 'lyrics') {
-    const { chip, part = 0, parts = 1, label } = s.slide;
-    return { label: subIndexChip(chip, part, parts), name: parts > 1 ? `${label} (${part + 1}/${parts})` : label };
-  }
-  if (s.slide.kind === 'title') return { label: 'T', name: t('titleChip'), hotkey: false };
-  return { label: String(s.index + 1), name: s.slide.label };
-}
-
-/** The segment's chips for Jump to section: a song's under its title, the title card, a prayer or a reading in a row of their own. */
-function chipGroups(steps: LiveStep[], t: PwT): StageChipGroup[] {
-  const groups: StageChipGroup[] = [];
-  steps.forEach((s, i) => {
-    const lyric = s.kind === 'slide' && s.slide.kind === 'lyrics' ? s.slide : null;
-    const key = lyric ? `song-${lyric.hymnId}` : 'other';
-    const chip = { index: i, ...stepChip(s, t) };
-    const last = groups[groups.length - 1];
-    if (last && last.key.startsWith(`${key}@`)) last.chips.push(chip);
-    else groups.push({ key: `${key}@${i}`, label: lyric ? lyric.hymnTitle : null, chips: [chip] });
+/**
+ * A segment's steps as cues for Jump to Cue. A song's slides carry its title (their tab) and their section chip (V1, C1.2) for the C and V
+ * keys; a title card and the end-of-segment black step take no number key.
+ */
+function pwCues(steps: LiveStep[], t: PwT): Cue[] {
+  return steps.map((s, i) => {
+    const base = { index: i, number: i + 1 };
+    if (s.kind === 'black') return { ...base, tag: t('blackStep'), text: '', chip: '■', hotkey: false };
+    const slide = s.slide;
+    if (slide.kind === 'lyrics') {
+      const { chip, part = 0, parts = 1, label } = slide;
+      return { ...base, tag: parts > 1 ? `${label} (${part + 1}/${parts})` : label, text: slide.text, group: slide.hymnTitle, chip: subIndexChip(chip, part, parts) };
+    }
+    if (slide.kind === 'title') return { ...base, tag: t('titleChip'), text: [slide.label, slide.subtitle].filter(Boolean).join(' · '), chip: 'T', hotkey: false };
+    if (slide.kind === 'prayer') return { ...base, tag: slide.label, text: slide.text, chip: String(i + 1) };
+    return { ...base, tag: slide.label, text: '', chip: String(i + 1) };
   });
-  return groups;
 }
 
 /**
@@ -153,14 +147,15 @@ function LiveLineup({ session, segment, hymns, playingHymn }: { session: PwSessi
   );
 }
 
-/** Praise & Worship's live console. Drives the real projector and lower third through the shared live state. */
+/**
+ * Praise & Worship's live console, in the broadcast layout shared with the Holy Mass console (src/golive/console): the header (segment
+ * switcher, segment timer, output status) over the lineup and a two-column workspace. On the left, the program and preview monitors, the
+ * transport and output bar, and Jump to Cue; on the right, the slide editor, Stage Typography & Backdrop, and the outputs. Every control drives
+ * the real projector and lower third through the shared live state.
+ */
 export function LiveView() {
   const t = usePwT();
-  const tMain = useT();
-  // The Live slide background panel opens inside this panel, above the bottom row.
-  const [backgroundOpen, setBackgroundOpen] = useState(false);
-  // A slide whose stanza the operator double-clicked to edit, handed to the lineup editor.
-  const [editRequest, setEditRequest] = useState<number | null>(null);
+  const tg = useGoLiveT();
   const session = usePw((s) => s.session);
   // Subscribed so the deck is rebuilt when songs, prayers or the day's readings finish loading.
   const hymns = usePw((s) => s.hymns);
@@ -171,9 +166,16 @@ export function LiveView() {
   // The focus view counts only while this session is live: there is nothing to focus on before Go Live.
   const focused = usePw((s) => s.isGoLiveFocused) && Boolean(session && live.pw?.sessionId === session.id);
   useFocusEscape(focused);
+  const pw = session && live.pw?.sessionId === session.id ? live.pw : null;
+  // The position is found by key. Null when the live segment has been taken out of the lineup since it went live.
+  const at = session && pw ? livePosition(session.segments, pw) : null;
+  // The On air badge: the same answer as the Go Live console bar's Live button.
+  const onAir = session ? runOnAir(live, 'pw', session.id) : false;
+  const timer = useSegmentTimer('pw', session && at ? session.segments[at.segment]?.key ?? null : null, pw?.onAir === true);
+  // B, L and H run Blackout, the Lower Third and Hide Text while the session is loaded (← → Space and 1–9 are the operator window's).
+  useConsoleKeys((action) => consoleOutputActions[action](), pw !== null);
   if (!session) return <p className="rounded-[10px] border border-line bg-panel p-6 text-muted">{t('noSessions')}</p>;
 
-  const pw = live.pw?.sessionId === session.id ? live.pw : null;
   if (!pw) {
     return (
       <div className="flex flex-col items-start gap-4 rounded-[10px] border border-line bg-panel p-6">
@@ -193,8 +195,6 @@ export function LiveView() {
   }
 
   const deck = liveDeck(session);
-  // The position is found by key. Null when the live segment has been taken out of the lineup since it went live.
-  const at = livePosition(session.segments, pw);
   if (!at) {
     return (
       <div role="alert" className="flex flex-col items-start gap-3 rounded-[10px] border border-accent bg-panel p-6 text-accent">
@@ -209,63 +209,82 @@ export function LiveView() {
   const segment = session.segments[segmentIndex];
   const steps = deck[segmentIndex] ?? [];
   const group = session.groups.find((g) => g.key === segment?.group)?.name ?? '';
-  const songs = segment ? lineupSongs(segment, hymns) : [];
   const nowStep = steps[at.slide];
   const playingHymn = nowStep?.kind === 'slide' && nowStep.slide.kind === 'lyrics' ? nowStep.slide.hymnId : null;
   const planned = (segment ? runtimeOf(segment) : 0) * 60_000;
-  const elapsed = pw.onAir && pw.startedAt ? now - pw.startedAt : 0;
   const other = otherSourceOnAir(live);
   const nextSegment = session.segments[segmentIndex + 1];
   const { missingSongs } = readiness(session.segments);
-  const lowerOn = live.lowerThird.live != null;
-  const blackout = live.projector.live.kind === 'blackout';
   // The welcome screen or Blackout is up over the session: it stays on air at its place, and Next and Back always work, putting a slide back.
   const covered = welcomeOverPw(live) || blackoutOverPw(live);
   const atStart = !covered && segmentIndex === 0 && at.slide === 0;
   const atEnd = !covered && segmentIndex === deck.length - 1 && at.slide === steps.length - 1;
-  // The On air badge: the same answer as the Go Live console bar's Live button.
-  const onAir = runOnAir(live, 'pw', session.id);
+  const cues = pwCues(steps, t);
+  const textCase = textCaseOf(live.settings.textCase);
+  // Up next: the next slide's words, or, on the segment's last slide, the segment Next goes on to.
+  const nextCue = nextAt && nextAt.segment === segmentIndex ? cues[nextAt.slide] : null;
+  const upNext = !nextAt
+    ? t('previewEnd')
+    : nextCue
+      ? tg('consoleUpNext', { text: cueText(nextCue.text, textCase) || nextCue.tag })
+      : `${tg('consoleFinalSlide')} · ${tg('consoleUpNext', { text: session.segments[nextAt.segment]?.name ?? '' })}`;
+  const lyricHymn = playingHymn !== null ? hymns[playingHymn] ?? null : null;
+  const editTarget = lyricHymn ? pwSongTarget({ t, segmentIndex, steps, onAir: at.slide, hymn: lyricHymn }) : null;
 
   return (
     <div className="flex flex-col gap-5">
-      {/* The session at a glance: on air or not, how long, the intro slide, and the way to end it. */}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-[10px] border border-line bg-panel px-4 py-3">
-        <span
-          className={`inline-flex min-h-9 items-center gap-2 rounded-full border px-4 text-sm font-extrabold tracking-[0.18em] uppercase ${
-            onAir ? 'border-danger/60 bg-danger/15 text-danger' : 'border-fg/20 bg-fg/[0.06] text-muted'
-          }`}
-        >
-          <span aria-hidden className={`size-2 rounded-full ${onAir ? 'animate-pulse bg-danger' : 'bg-fg/50'}`} />
-          {onAir ? t('liveBadge') : t('offAir')}
-        </span>
-        <span className="flex items-baseline gap-2">
-          <span className="text-xs text-muted">{t('sessionTime')}</span>
-          <span className="font-mono text-2xl tabular-nums text-fg">{clock(pw.liveSince ? now - pw.liveSince : 0)}</span>
-        </span>
-        <div className="ml-auto flex flex-wrap items-center gap-4">
-          <IntroSlideToggle />
-          <button type="button" className={`${BTN} hover:!border-danger/60 hover:!text-danger`} onClick={() => window.confirm(t('confirmEnd')) && endSession()}>
-            {t('endSession')}
-          </button>
-          {focused ? (
-            // Closes the focus view only: the lineup comes back, and the projector keeps what it shows.
-            <button
-              type="button"
-              onClick={() => setGoLiveFocused(false)}
-              aria-label={t('leaveFocus')}
-              title={t('leaveFocusTip')}
-              aria-keyshortcuts="Escape"
-              className="grid size-9 shrink-0 place-items-center rounded-md border border-fg/25 bg-panel-2 text-fg transition hover:border-accent hover:text-accent focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none"
-            >
-              <X size={18} aria-hidden />
+      <BroadcastHeader
+        titleId="pw-live-title"
+        live={onAir}
+        at={segmentIndex}
+        total={session.segments.length}
+        role={group}
+        options={session.segments.map((s, i) => ({ value: String(i), label: s.name }))}
+        value={String(segmentIndex)}
+        onPick={(v) => jumpTo(Number(v))}
+        timer={{ elapsedMs: timer.elapsedMs, plannedMs: planned || null, running: timer.running, onToggle: timer.toggle, onReset: timer.reset }}
+        status={outputStatus(live, onAir)}
+        actions={
+          <>
+            <span className="flex items-baseline gap-1.5">
+              <span className="text-[11px] text-muted">{t('sessionTime')}</span>
+              <span className="font-mono text-sm text-fg tabular-nums">{clock(pw.liveSince ? now - pw.liveSince : 0)}</span>
+            </span>
+            <IntroSlideToggle />
+            <button type="button" className={`${BTN} hover:!border-danger/60 hover:!text-danger`} onClick={() => window.confirm(t('confirmEnd')) && endSession()}>
+              {t('endSession')}
             </button>
-          ) : (
-            <button type="button" className={BTN} onClick={() => setGoLiveFocused(true)} title={t('focusViewTip')}>
-              <Maximize2 size={15} aria-hidden /> {t('focusView')}
-            </button>
-          )}
-        </div>
-      </div>
+            {focused ? (
+              // Closes the focus view only: the lineup comes back, and the projector keeps what it shows.
+              <button
+                type="button"
+                onClick={() => setGoLiveFocused(false)}
+                aria-label={t('leaveFocus')}
+                title={t('leaveFocusTip')}
+                aria-keyshortcuts="Escape"
+                className="grid size-9 shrink-0 place-items-center rounded-md border border-fg/25 bg-panel-2 text-fg transition hover:border-accent hover:text-accent focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none"
+              >
+                <X size={18} aria-hidden />
+              </button>
+            ) : (
+              <button type="button" className={BTN} onClick={() => setGoLiveFocused(true)} title={t('focusViewTip')}>
+                <Maximize2 size={15} aria-hidden /> {t('focusView')}
+              </button>
+            )}
+          </>
+        }
+        alert={
+          segment && segmentStatus(segment) === 'needs_song' ? (
+            <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-accent px-4 py-2 text-accent">
+              <AlertTriangle size={18} aria-hidden />
+              <span className="flex-1">{t('noSongBanner')}</span>
+              <button type="button" className="min-h-9 font-semibold underline underline-offset-2" onClick={() => setPwState({ tab: 'plan', selected: segmentIndex, isGoLiveFocused: false })}>
+                {t('fixInPlanner')}
+              </button>
+            </div>
+          ) : null
+        }
+      />
 
       {/* Whichever took the projector last is on air. When it is not Praise & Worship, say so and offer to take over. */}
       {other && (
@@ -277,133 +296,86 @@ export function LiveView() {
         </div>
       )}
 
-      {/* In the focus view the lineup steps aside and the stage takes its room; Back and Next on the stage still walk the lineup. */}
-      <div
-        className={`grid grid-cols-1 items-start gap-5 ${
-          focused
-            ? '@4xl/pw:grid-cols-[minmax(0,1fr)_minmax(260px,340px)]'
-            : '@4xl/pw:grid-cols-[minmax(240px,300px)_minmax(0,1fr)] @6xl/pw:grid-cols-[minmax(240px,300px)_minmax(0,1fr)_minmax(260px,320px)]'
-        }`}
-      >
+      {/* In the focus view the lineup steps aside and the workspace takes its room; the header's switcher and Back and Next still walk it. */}
+      <div className={`grid grid-cols-1 items-start gap-5 ${focused ? '' : '@4xl/pw:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]'}`}>
         {!focused && <LiveLineup session={session} segment={segmentIndex} hymns={hymns} playingHymn={playingHymn} />}
 
         {segment && (
-          <section aria-labelledby="pw-live-title" className="flex min-w-0 flex-col gap-4 rounded-[10px] border border-line bg-panel p-5">
-            <LiveStageCanvas
-              titleId="pw-live-title"
-              eyebrow={t('nowEyebrow', { n: pad2(segmentIndex + 1), total: session.segments.length, group })}
-              title={segment.name}
-              songs={songs}
-              activeSongId={playingHymn}
-              aside={
-                <div className="flex min-w-56 flex-col gap-1.5">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span id="pw-seg-time" className="text-sm text-muted">{t('segmentTime')}</span>
-                    <span className="font-mono">{clock(elapsed)} / {clock(planned)}</span>
+          <div className="@container/work min-w-0">
+            <div className="grid grid-cols-1 items-start gap-5 @4xl/work:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+              <div className="flex min-w-0 flex-col gap-5">
+                <section aria-label={tg('consoleProgram')} className={`${CARD} flex flex-col gap-4 p-4`}>
+                  {/* The current step and the next one, drawn with the projector's own face (PwSlideFace), case and size. */}
+                  <StageMonitors
+                    program={<PwStageFace shown={shownAt(session, deck, at)} />}
+                    counter={tg('consoleSlideOf', { n: cuePad2(at.slide + 1), total: cuePad2(steps.length) })}
+                    next={nextAt ? <PwStageFace shown={shownAt(session, deck, nextAt)} /> : null}
+                    upNext={upNext}
+                    onPushNext={atEnd ? null : () => void stepLive(1)}
+                  />
+                  <TransportBar
+                    onBack={() => void stepLive(-1)}
+                    onNext={() => void stepLive(1)}
+                    backDisabled={atStart}
+                    nextDisabled={atEnd}
+                    counter={`${cuePad2(at.slide + 1)} / ${cuePad2(steps.length)}`}
+                  />
+                </section>
+                <CueNavigator cues={cues} activeIndex={at.slide} onSelect={(i) => jumpTo(segmentIndex, i)} itemKey={segment.key} />
+              </div>
+
+              <aside className="flex min-w-0 flex-col gap-5">
+                <SlideEditorCard
+                  target={editTarget}
+                  number={at.slide + 1}
+                  emptyHint={tg('consoleEditNone')}
+                  // Any other slide (a title card, a prayer, a reading, a picture) is edited by the card editor, in this lineup's own copy.
+                  fallback={<CardSlideHotEdit t={t} segmentIndex={segmentIndex} steps={steps} onAir={at.slide} showButtons editRequest={null} onEditHandled={() => {}} />}
+                />
+                <TypographyCard />
+                <section aria-labelledby="pw-outputs" className={`${CARD} flex flex-col gap-3 p-4`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 id="pw-outputs" className="text-sm font-bold">{t('outputs')}</h2>
+                    <DetachMonitorButton />
                   </div>
-                  <div role="progressbar" aria-labelledby="pw-seg-time" aria-valuemin={0} aria-valuemax={planned / 1000} aria-valuenow={Math.round(elapsed / 1000)} className="h-2 overflow-hidden rounded-full bg-panel-2">
-                    <div className={`h-full rounded-full ${elapsed > planned ? 'bg-danger' : 'bg-accent'}`} style={{ width: `${planned ? Math.min(100, (elapsed / planned) * 100) : 0}%` }} />
+                  <span className="text-xs text-muted">{t('congregation')}</span>
+                  <div className="relative aspect-video overflow-hidden rounded-lg border border-line">
+                    <ProjectorView mirror embedded />
                   </div>
-                </div>
-              }
-              alert={
-                segmentStatus(segment) === 'needs_song' && (
-                  <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-accent px-4 py-3 text-accent">
-                    <AlertTriangle size={18} aria-hidden />
-                    <span className="flex-1">{t('noSongBanner')}</span>
-                    <button type="button" className="min-h-11 font-semibold underline underline-offset-2" onClick={() => setPwState({ tab: 'plan', selected: segmentIndex, isGoLiveFocused: false })}>
+                  <span className="text-xs text-muted">{t('livestream')}</span>
+                  <div data-theme="default" className="relative aspect-video overflow-hidden rounded-lg border border-line bg-canvas [container-type:size]">
+                    {live.lowerThird.live ? (
+                      <LowerThirdStage value={live.lowerThird.live} lyricBottomShare={lyricBottomOf(live.projector.live)} />
+                    ) : (
+                      <div className="absolute inset-0 grid place-items-center px-3 text-center text-xs text-faint">{t('lowerThirdToggle')}: {t('off')}</div>
+                    )}
+                  </div>
+                </section>
+                <SecondaryControls />
+                <section aria-labelledby="pw-next-up" className={`${CARD} flex flex-col gap-1 p-4`}>
+                  <h2 id="pw-next-up" className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('nextUp')}</h2>
+                  {nextSegment ? (
+                    <>
+                      <p className="text-xl font-bold tracking-tight">{nextSegment.name}</p>
+                      <p className={`text-sm font-semibold ${STATUS_TONE[segmentStatus(nextSegment)]}`}>{t(`status_${segmentStatus(nextSegment)}`)}</p>
+                    </>
+                  ) : (
+                    <p className="text-muted">{t('endOfLineup')}</p>
+                  )}
+                </section>
+                <section aria-labelledby="pw-preflight" className={`${CARD} flex flex-col gap-2 p-4`}>
+                  <h2 id="pw-preflight" className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('preflight')}</h2>
+                  <p>{missingSongs === 0 ? t('preflightOk') : missingSongs === 1 ? t('preflightSongsOne') : t('preflightSongs', { n: missingSongs })}</p>
+                  {missingSongs > 0 && (
+                    <button type="button" className="min-h-11 self-start font-semibold text-accent underline underline-offset-2" onClick={() => setPwState({ tab: 'plan', isGoLiveFocused: false })}>
                       {t('fixInPlanner')}
                     </button>
-                  </div>
-                )
-              }
-              // The current step, with the next one beside it. Drawn locally; the real projector is on the right.
-              preview={<CurrentNextPreview current={shownAt(session, deck, at)} next={nextAt ? shownAt(session, deck, nextAt) : null} endLabel={t('previewEnd')} />}
-              jumpHeading={t('jumpToSection')}
-              groups={chipGroups(steps, t)}
-              activeIndex={at.slide}
-              onSelect={(i) => jumpTo(segmentIndex, i)}
-              onChipDoubleClick={(i) => setEditRequest(i)}
-              chipLabel={(chip) => t('stepLabel', { label: chip.name, n: chip.index + 1, total: steps.length })}
-            >
-              <LineupHotEdit t={t} segmentIndex={segmentIndex} steps={steps} onAir={at.slide} editRequest={editRequest} onEditHandled={() => setEditRequest(null)} />
-            </LiveStageCanvas>
-
-            {backgroundOpen && <BackgroundPanel onClose={() => setBackgroundOpen(false)} />}
-
-            {/* One line, no scrollbar: the controls share the panel's full width and never wrap. Nothing is scrolled to; a panel too narrow for
-                every control clips the last one rather than showing a scrollbar. */}
-            <div className="sticky bottom-0 z-10 -mx-5 -mb-5 flex min-w-0 flex-nowrap items-center justify-between gap-1.5 overflow-hidden rounded-b-[10px] border-t border-line bg-panel px-5 py-3">
-              <button type="button" className={ROW_BTN} disabled={atStart} onClick={() => void stepLive(-1)}>
-                {t('back')}
-              </button>
-              <button type="button" className={ROW_NEXT} disabled={atEnd} onClick={() => void stepLive(1)}>
-                {t('next')}
-              </button>
-              <span className="flex-1" />
-              <button type="button" aria-pressed={backgroundOpen} aria-expanded={backgroundOpen} className={ROW_TOGGLE(backgroundOpen)} onClick={() => setBackgroundOpen((open) => !open)}>
-                <span className="hidden @3xl/pw:inline">{tMain('top.background')}</span>
-                <span className="@3xl/pw:hidden">BG</span>
-              </button>
-              <button type="button" aria-pressed={lowerOn} className={ROW_TOGGLE(lowerOn)} onClick={() => dispatch({ type: 'lowerThird/toggle' })}>
-                <span className="hidden @3xl/pw:inline">{t('lowerThirdToggle')}</span>
-                <span className="@3xl/pw:hidden">L3</span>: {lowerOn ? t('on') : t('off')}
-              </button>
-              <button type="button" aria-pressed={blackout} className={ROW_TOGGLE(blackout)} onClick={() => dispatch({ type: 'projector/blackout' })}>
-                <span className="hidden @3xl/pw:inline">{t('blackoutToggle')}</span>
-                <span className="@3xl/pw:hidden">BLK</span>: {blackout ? t('on') : t('off')}
-              </button>
-              <SlideTypography />
+                  )}
+                </section>
+              </aside>
             </div>
-          </section>
+          </div>
         )}
-
-        <div className={`flex min-w-0 flex-col gap-5 ${focused ? '' : '@4xl/pw:col-span-2 @6xl/pw:col-span-1'}`}>
-          <section aria-labelledby="pw-outputs" className="flex flex-col gap-3 rounded-[10px] border border-line bg-panel p-4">
-            <div className="flex items-center justify-between gap-2">
-              <h2 id="pw-outputs" className="text-lg font-bold">{t('outputs')}</h2>
-              <DetachMonitorButton />
-            </div>
-            <span className="text-sm text-muted">{t('congregation')}</span>
-            <div className="relative aspect-video overflow-hidden rounded-lg border border-line">
-              <ProjectorView mirror embedded />
-            </div>
-            <span className="text-sm text-muted">{t('livestream')}</span>
-            <div data-theme="default" className="relative aspect-video overflow-hidden rounded-lg border border-line bg-canvas [container-type:size]">
-              {live.lowerThird.live ? (
-                <LowerThirdStage value={live.lowerThird.live} lyricBottomShare={lyricBottomOf(live.projector.live)} />
-              ) : (
-                <div className="absolute inset-0 grid place-items-center px-3 text-center text-xs text-faint">{t('lowerThirdToggle')}: {t('off')}</div>
-              )}
-            </div>
-          </section>
-
-          <SecondaryControls />
-
-          <section aria-labelledby="pw-next-up" className="flex flex-col gap-1 rounded-[10px] border border-line bg-panel p-4">
-            <h2 id="pw-next-up" className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('nextUp')}</h2>
-            {nextSegment ? (
-              <>
-                <p className="text-2xl font-bold tracking-tight">{nextSegment.name}</p>
-                <p className={`text-sm font-semibold ${STATUS_TONE[segmentStatus(nextSegment)]}`}>
-                  {t(`status_${segmentStatus(nextSegment)}`)}
-                </p>
-              </>
-            ) : (
-              <p className="text-muted">{t('endOfLineup')}</p>
-            )}
-          </section>
-
-          <section aria-labelledby="pw-preflight" className="flex flex-col gap-2 rounded-[10px] border border-line bg-panel p-4">
-            <h2 id="pw-preflight" className="text-[11px] font-semibold tracking-wider text-accent uppercase">{t('preflight')}</h2>
-            <p>{missingSongs === 0 ? t('preflightOk') : missingSongs === 1 ? t('preflightSongsOne') : t('preflightSongs', { n: missingSongs })}</p>
-            {missingSongs > 0 && (
-              <button type="button" className="min-h-11 self-start font-semibold text-accent underline underline-offset-2" onClick={() => setPwState({ tab: 'plan', isGoLiveFocused: false })}>
-                {t('fixInPlanner')}
-              </button>
-            )}
-          </section>
-        </div>
       </div>
     </div>
   );

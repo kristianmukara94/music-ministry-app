@@ -6,6 +6,7 @@ import { isSlotId } from '../shared/mass-slots.js';
 import { noteSource } from '../shared/notes.js';
 import { announcementSource } from '../shared/flow-insert.js';
 import { DEFAULT_MASS_LANGUAGE, isMassLanguage, massLanguageOf } from '../shared/mass-language.js';
+import { normalizeMassLanguage, normalizeMassTime, planLanguageForSchedule, sameSchedule, scheduleLabel, sortMassSchedules } from '../shared/mass-schedule.js';
 
 export const PLAN_BLOCKS = ['introductory', 'word', 'eucharist', 'communion', 'concluding'];
 export const PLAN_MODULES = ['lyrics', 'lectionary', 'announcements', 'media', 'mass_order', 'bible', 'custom', 'notes'];
@@ -163,21 +164,37 @@ export const PLAN_LANGUAGE_MIGRATIONS = [`ALTER TABLE mass_plans ADD COLUMN lang
  */
 export const PLAN_SLOT_TITLE_MIGRATIONS = [`ALTER TABLE mass_plans ADD COLUMN show_slot_title INTEGER;`];
 
+/**
+ * Each Holy Mass plan's schedule: the time the operator typed ("6:00 AM") and its language ('English', 'Cebuano', 'Tagalog' or the
+ * operator's own), so several Holy Masses can be planned on one day (see shared/mass-schedule.js). There is no unique key on the date. Plans
+ * made before this have both blank and open as they always did. A database built without these columns still lists and opens plans: the
+ * service checks for them (see hasScheduleColumns).
+ */
+export const MASS_SCHEDULE_MIGRATIONS = [
+  `ALTER TABLE mass_plans ADD COLUMN mass_time TEXT DEFAULT '';`,
+  `ALTER TABLE mass_plans ADD COLUMN mass_language TEXT DEFAULT '';`,
+];
+
 const MAX_TEMPLATE_NAME = 80;
 const MAX_TEMPLATES = 100;
 
 /** Plan data access. Pure: takes a database handle. */
 export function createMassPlanService(db) {
+  // Whether this database has the schedule columns (MASS_SCHEDULE_MIGRATIONS). A test database built from part of the migration list may not.
+  const hasScheduleColumns = db.prepare("SELECT COUNT(*) AS n FROM pragma_table_info('mass_plans') WHERE name IN ('mass_time', 'mass_language')").get().n === 2;
+  const SCHEDULE = hasScheduleColumns ? "COALESCE(p.mass_time, '') AS massTime, COALESCE(p.mass_language, '') AS massLanguage" : "'' AS massTime, '' AS massLanguage";
   const q = {
     // Each plan with how many items it holds and the slots they fill, so the planner's calendar can mark a day ready or draft without
     // reading every plan.
     plans: db.prepare(`
-      SELECT p.id, p.name, p.liturgical_date AS liturgicalDate, p.language, p.created_at AS createdAt,
+      SELECT p.id, p.name, p.liturgical_date AS liturgicalDate, p.language, p.created_at AS createdAt, ${SCHEDULE},
         (SELECT COUNT(*) FROM mass_plan_items i WHERE i.plan_id = p.id) AS itemCount,
         (SELECT GROUP_CONCAT(i.slot) FROM mass_plan_items i WHERE i.plan_id = p.id AND i.slot IS NOT NULL) AS slotList
       FROM mass_plans p ORDER BY p.liturgical_date DESC, p.id DESC`),
-    plan: db.prepare('SELECT id, name, liturgical_date AS liturgicalDate, language FROM mass_plans WHERE id = ?'),
+    plan: db.prepare(`SELECT p.id, p.name, p.liturgical_date AS liturgicalDate, p.language, ${SCHEDULE} FROM mass_plans p WHERE p.id = ?`),
     insertPlan: db.prepare('INSERT INTO mass_plans (name, liturgical_date, language) VALUES (?, ?, ?)'),
+    sameDay: db.prepare(`SELECT p.id, ${SCHEDULE} FROM mass_plans p WHERE p.liturgical_date = ?`),
+    ...(hasScheduleColumns ? { setSchedule: db.prepare('UPDATE mass_plans SET mass_time = ?, mass_language = ? WHERE id = ?') } : {}),
     setLanguage: db.prepare('UPDATE mass_plans SET language = ? WHERE id = ?'),
     deletePlan: db.prepare('DELETE FROM mass_plans WHERE id = ?'),
     planUuid: db.prepare('SELECT uuid FROM mass_plans WHERE id = ?'),
@@ -209,6 +226,17 @@ export function createMassPlanService(db) {
       JOIN bible_books b ON b.translation_id = v.translation_id AND b.book_number = v.book_number
       WHERE v.translation_id = ? AND b.name = ? AND v.chapter = ? AND v.verse BETWEEN ? AND ?
       LIMIT 1`),
+  };
+
+  /**
+   * A schedule from the planner, tidied, and checked against the day's other Holy Masses: a second plan with the same time and language on
+   * the same day is refused, so two lineups are never confused on air. Blank time or language never clash (plans from before schedules).
+   */
+  const checkedSchedule = (date, input, exceptId = null) => {
+    const schedule = { massTime: normalizeMassTime(input?.massTime), massLanguage: normalizeMassLanguage(input?.massLanguage) };
+    const clash = q.sameDay.all(date).find((other) => other.id !== exceptId && sameSchedule(other, schedule));
+    if (clash) throw new Error(`A ${scheduleLabel(schedule)} Holy Mass is already planned for ${date}. Open it from the list, or pick another time.`);
+    return schedule;
   };
 
   const requirePlan = (id) => {
@@ -292,8 +320,9 @@ export function createMassPlanService(db) {
   };
 
   return {
+    /** Every plan, newest day first, and each day's Holy Masses in the order they are celebrated (shared/mass-schedule.js). */
     listPlans() {
-      return q.plans.all().map(({ slotList, ...plan }) => ({ ...plan, filledSlots: slotList ? String(slotList).split(',') : [] }));
+      return sortMassSchedules(q.plans.all().map(({ slotList, ...plan }) => ({ ...plan, filledSlots: slotList ? String(slotList).split(',') : [] })));
     },
 
     createPlan(input = {}) {
@@ -301,9 +330,24 @@ export function createMassPlanService(db) {
       if (!name || name.length > MAX_NAME) throw new Error(`Plan name must be 1 to ${MAX_NAME} characters.`);
       const liturgicalDate = String(input.liturgicalDate ?? '');
       if (!DATE.test(liturgicalDate)) throw new Error('Date must be in the form YYYY-MM-DD.');
-      const language = input.language == null ? DEFAULT_MASS_LANGUAGE : massLanguageOf(input.language);
-      const { lastInsertRowid } = q.insertPlan.run(name, liturgicalDate, language);
-      return { id: Number(lastInsertRowid), name, liturgicalDate, language };
+      const schedule = hasScheduleColumns ? checkedSchedule(liturgicalDate, input) : { massTime: '', massLanguage: '' };
+      // A Tagalog or Cebuano Holy Mass drafts its texts in that language unless the planner asked for another.
+      const language = input.language != null ? massLanguageOf(input.language) : (planLanguageForSchedule(schedule.massLanguage) ?? DEFAULT_MASS_LANGUAGE);
+      const id = db.transaction(() => {
+        const made = Number(q.insertPlan.run(name, liturgicalDate, language).lastInsertRowid);
+        if (hasScheduleColumns) q.setSchedule.run(schedule.massTime, schedule.massLanguage, made);
+        return made;
+      })();
+      return { id, name, liturgicalDate, language, ...schedule };
+    },
+
+    /** Sets a plan's time and language. Its items and its plan language (the texts) are not changed here. */
+    setSchedule(id, input = {}) {
+      const plan = requirePlan(id);
+      if (!hasScheduleColumns) throw new Error('This database cannot keep Holy Mass times yet. Restart the app to update it.');
+      const schedule = checkedSchedule(plan.liturgicalDate, input, id);
+      q.setSchedule.run(schedule.massTime, schedule.massLanguage, id);
+      return schedule;
     },
 
     /** Sets the language a plan is celebrated in. Its items are not changed here: the planner re-drafts and relabels them. */
@@ -412,6 +456,7 @@ export function setupMassPlans(db) {
   handle('get', (id) => service.getPlan(Number(id)));
   handle('save', (id, items) => service.savePlan(Number(id), items));
   handle('setLanguage', (id, language) => service.setLanguage(Number(id), language));
+  handle('setSchedule', (id, schedule) => service.setSchedule(Number(id), schedule));
   handle('slotTitle', (id) => service.getSlotTitle(Number(id)));
   handle('setSlotTitle', (id, show) => service.setSlotTitle(Number(id), show));
   handle('listTemplates', () => service.listTemplates());

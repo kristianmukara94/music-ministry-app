@@ -36,6 +36,8 @@ export function useHeadedTextFit({ boxRef, titleRef, bodyRef, titleSize, bodySiz
       const roomWidth = box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
       if (roomHeight <= 0 || roomWidth <= 0) return;
       const floor = (box.clientWidth * FIT_FLOOR_CQW) / 100;
+      // Measured with words unbreakable, so the widest word shows in scrollWidth and the text shrinks until it fits whole (see useTextAutoFit).
+      for (const el of [title, body]) if (el) el.style.overflowWrap = 'normal';
 
       let titleBlock = 0;
       let titlePx = Infinity;
@@ -78,6 +80,7 @@ export function useHeadedTextFit({ boxRef, titleRef, bodyRef, titleSize, bodySiz
           body.style.overflow = 'hidden';
         }
       }
+      for (const el of [title, body]) if (el) el.style.overflowWrap = '';
       setOverflow(cut);
     };
 

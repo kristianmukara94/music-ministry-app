@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initialLiveState, liveReducer, OUTPUTS } from '../shared/live.js';
+import { createDisplayEventGate, outputsChanged, sameBounds } from './display-events.js';
 import Database from 'better-sqlite3';
 import { SCHEMA_VERSION, openDatabase, setupAnnouncements } from './announcements.js';
 import { DB_FILTERS, backupFileName, exportBackup, importBackup } from './database-backup.js';
@@ -496,7 +497,8 @@ function placeLowerThirdWindow() {
   }
   const win = windows.lowerThird;
   if (win && !win.isDestroyed()) {
-    win.setBounds(display.bounds);
+    // Already there: left alone, so a burst of display events never nudges it.
+    if (!sameBounds(win.getBounds(), display.bounds)) win.setBounds(display.bounds);
     return;
   }
   apply({ type: 'output/set', output: 'lowerThird', on: true });
@@ -671,7 +673,9 @@ function apply(action) {
   alertExpiry.watch(prev, next);
   if (prev.queuePlanId !== next.queuePlanId || prev.queueCursor !== next.queueCursor || prev.pw?.sessionId !== next.pw?.sessionId) saveQueueState();
   sessionWriter?.push(state);
-  reconcileWindows();
+  // Only switching an output on or off opens or closes a window. New content (the welcome screen, a slide, Blackout) is a message to the
+  // windows already open, and never moves or re-creates them.
+  if (outputsChanged(prev, next)) reconcileWindows();
   broadcast();
 }
 
@@ -1650,15 +1654,22 @@ app.whenReady().then(() => {
   if (state.lowerStyle.target != null) placeLowerThirdWindow();
   // Unplugging the chosen display closes the window at once, instead of letting the system drag it onto the main screen, and plugging it
   // back in opens it again.
-  for (const event of ['display-added', 'display-removed', 'display-metrics-changed']) {
-    screen.on(event, () => {
+  // Plugging in or out is acted on at once; display-metrics-changed bursts (a wireless display beside an HDMI one sends many while nothing
+  // moves) wait 350 ms to settle and are acted on only when a display's id, bounds, scale or rotation really changed (electron/display-events.js).
+  const displayEvents = createDisplayEventGate({
+    getDisplays: () => screen.getAllDisplays(),
+    reconcile: (event) => {
       // The projector first, so an unplugged projector is hidden before anything else runs: it is on the operator's screen by now.
       // It is hidden (or moved to another external screen), and comes back where it was when its display returns. Pinned, it follows its
       // physical monitor: the hardware is read again first, so it is placed by what is connected now.
       edid?.topologyChanged(event);
       watchdog.displaysChanged();
       if (state.lowerStyle.target != null) placeLowerThirdWindow();
-    });
+    },
+  });
+  app.once('will-quit', () => displayEvents.dispose());
+  for (const event of ['display-added', 'display-removed', 'display-metrics-changed']) {
+    screen.on(event, () => displayEvents.handle(event));
   }
   media = setupMedia(announcements.db, {
     loadRoute: load,

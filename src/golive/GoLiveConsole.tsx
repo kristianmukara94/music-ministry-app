@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ClipboardList, HandHeart, ListChecks, Loader2, Play } from 'lucide-react';
+import { CalendarDays, ClipboardList, HandHeart, Loader2, Play } from 'lucide-react';
+import { plannerTabTipKey, resolveMatchingPlannerTarget } from '../../shared/planner-target.js';
+import { scheduleLabel } from '../../shared/mass-schedule.js';
+import { plannerT } from '../../shared/planner-i18n.js';
 import { bridge } from '../live/bridge';
 import { useLive } from '../live/store';
 import { loadPlanToQueue } from '../planner/plan-api';
@@ -11,10 +14,10 @@ import type { PwSessionSummary } from '../praise-worship/types';
 import { formatIsoDay } from '../state/region';
 import { setUi, useUi } from '../state/ui';
 import { useRegion } from '../state/useRegion';
-import { GoLivePrepare } from './GoLiveHub';
 import { MassLiveView } from './MassLiveView';
 import { endMassSession, goLiveMassAt, whenLive } from './massLive';
 import { onAirLabel, projectorState, runOnAir } from './onAir';
+import { openMatchingPlanner } from './openPlanner';
 import { useGoLiveT } from './strings';
 import { EdidLockBadge } from './EdidLockBadge';
 import { WatchdogBadge } from './WatchdogBadge';
@@ -41,7 +44,7 @@ const PILL = {
   off: 'border-fg/20 bg-fg/[0.06] text-muted',
 } as const;
 
-type Tab = 'pw' | 'mass' | 'prepare';
+type Tab = 'pw' | 'mass';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const today = () => {
@@ -60,13 +63,15 @@ function pickDefault<T extends { id: number; liturgicalDate: string }>(list: T[]
 
 /**
  * Go Live: one console for everything that goes on the projector. Praise & Worship runs its own live screen; the Mass runs from its queue in
- * the same layout. Prepare keeps the date view of saved plans and sessions. Picking or going live never changes a plan's or session's content.
+ * the same layout. The Planner tab opens the Planner of the run on air (or of the active tab) on its plan, without touching the projector.
+ * Picking or going live never changes a plan's or session's content.
  */
 export function GoLiveConsole() {
   const t = useGoLiveT();
   const region = useRegion();
   const live = useLive((s) => s.state);
   const choice = useUi((s) => s.goLiveChoice);
+  const lang = useUi((s) => s.lang);
   const loaded = usePw((s) => s.session);
   const [plans, setPlans] = useState<PlanSummary[] | null>(null);
   const [sessions, setSessions] = useState<PwSessionSummary[] | null>(null);
@@ -145,8 +150,8 @@ export function GoLiveConsole() {
     }
   };
 
-  /** Remembers the pick as the hub's choice, on its date, so the Prepare tab shows the same plan or session. */
-  const remember = (kind: 'pw' | 'mass', id: number, date: string) => setUi({ goLiveChoice: { kind, id }, goLiveDate: date });
+  /** Remembers the pick, so the console offers the same plan or session when it opens again. */
+  const remember = (kind: 'pw' | 'mass', id: number) => setUi({ goLiveChoice: { kind, id } });
 
   const goLivePw = () =>
     run(async () => {
@@ -186,6 +191,10 @@ export function GoLiveConsole() {
   const pillWord = projector === 'on' ? t('projectorOnPill') : projector === 'black' ? t('projectorBlackPill') : t('projectorOffPill');
   const dateOf = (iso: string) => formatIsoDay(iso, region);
 
+  // The Planner tab: the Planner of the run on air, else of the active tab, on its plan. It only changes the operator's view.
+  const plannerTarget = resolveMatchingPlannerTarget(live, { tab, pickedPw, pickedMass, sessions, plans });
+  const plannerTip = t(plannerTabTipKey(plannerTarget));
+
   const pwOptions = useMemo(() => sessions ?? [], [sessions]);
   const massOptions = useMemo(() => plans ?? [], [plans]);
 
@@ -200,8 +209,15 @@ export function GoLiveConsole() {
           <button type="button" aria-current={tab === 'mass' ? 'page' : undefined} onClick={() => setTab('mass')} className={TAB(tab === 'mass')}>
             <ClipboardList size={15} aria-hidden /> {t('tabMass')}
           </button>
-          <button type="button" aria-current={tab === 'prepare' ? 'page' : undefined} onClick={() => setTab('prepare')} className={TAB(tab === 'prepare')}>
-            <ListChecks size={15} aria-hidden /> {t('tabPrepare')}
+          <button
+            type="button"
+            data-testid="golive-planner-tab"
+            title={plannerTip}
+            aria-label={`${t('tabPlanner')}: ${plannerTip}`}
+            onClick={() => openMatchingPlanner(plannerTarget)}
+            className={TAB(false)}
+          >
+            <CalendarDays size={15} aria-hidden /> {t('tabPlanner')}
           </button>
         </nav>
 
@@ -223,7 +239,6 @@ export function GoLiveConsole() {
           {/* The sanctuary display watchdog, and the booth's emergency Force Failover (Ctrl+Shift+B). */}
           <WatchdogBadge />
 
-          {tab !== 'prepare' && (
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             {tab === 'pw' ? (
               <label className="flex min-w-0 items-center gap-2">
@@ -236,7 +251,7 @@ export function GoLiveConsole() {
                     const id = Number(e.target.value);
                     setPickedPw(id);
                     const s = pwOptions.find((x) => x.id === id);
-                    if (s) remember('pw', id, s.liturgicalDate);
+                    if (s) remember('pw', id);
                   }}
                 >
                   {pwOptions.length === 0 && <option value="">{t('noSessionsToPick')}</option>}
@@ -258,13 +273,14 @@ export function GoLiveConsole() {
                     const id = Number(e.target.value);
                     setPickedMass(id);
                     const p = massOptions.find((x) => x.id === id);
-                    if (p) remember('mass', id, p.liturgicalDate);
+                    if (p) remember('mass', id);
                   }}
                 >
                   {massOptions.length === 0 && <option value="">{t('noPlansToPick')}</option>}
+                  {/* "<Date> · <Time> · <Language> · <name>", so the day's Holy Masses (6:00 AM English, 8:00 AM Cebuano) are never confused. */}
                   {massOptions.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {dateOf(p.liturgicalDate)} · {p.name}
+                      {[dateOf(p.liturgicalDate), scheduleLabel(p, { languageLabel: (name) => plannerT(lang, `lang_${name}`) }), p.name].filter(Boolean).join(' · ')}
                     </option>
                   ))}
                 </select>
@@ -287,7 +303,6 @@ export function GoLiveConsole() {
               </button>
             )}
           </div>
-          )}
         </div>
       </div>
 
@@ -326,9 +341,7 @@ export function GoLiveConsole() {
         </>
       )}
 
-      {tab !== 'prepare' && <WhiteboardCard t={t} />}
-
-      {tab === 'prepare' && <GoLivePrepare />}
+      <WhiteboardCard t={t} />
     </div>
   );
 }

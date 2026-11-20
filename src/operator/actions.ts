@@ -2,7 +2,7 @@ import { dispatch, useLive } from '../live/store';
 import { massPartFrame } from '../liturgy/massOrder';
 import { useUi, type HotkeyAction, type LaunchItem } from '../state/ui';
 import { bridge } from '../live/bridge';
-import { welcomeOverMass, welcomeOverPw, type LiveState } from '../../shared/live.js';
+import type { LiveState } from '../../shared/live.js';
 import { carouselPosition } from '../../shared/welcome-settings.js';
 
 const lang = () => useUi.getState().lang;
@@ -15,16 +15,15 @@ export const liveCommands: Record<HotkeyAction, () => void> = {
     else dispatch({ type: 'projector/show', frame: { kind: 'announcements', lang: lang() }, source: 'DIRECT_DECK' });
   },
   // Welcome toggles: on, it shows the welcome screen; while it is live, it clears the projector (the same as F12). Over the Holy Mass or
-  // Praise & Worship it is only an overlay: turning it off puts back the slide it covers.
+  // Praise & Worship it is only an overlay: turning it off puts back the slide it covers. The press is sent as an explicit on or off (the
+  // reducer's projector/welcome), so a double press read from a state that has not come back yet cannot flip it on and straight off again.
   welcome: () => {
-    const state = useLive.getState().state;
-    if (welcomeOverMass(state)) dispatch({ type: 'projector/take', source: 'MASS_QUEUE' });
-    else if (welcomeOverPw(state)) dispatch({ type: 'projector/take', source: 'PW_SESSION' });
-    else if (state.projector.live.kind === 'welcome') dispatch({ type: 'projector/clear' });
-    else {
-      const now = Date.now();
-      dispatch({ type: 'projector/show', frame: { kind: 'welcome', lang: lang(), shownAt: now, slide: 0, slideAt: now }, source: 'DIRECT_DECK' });
+    if (useLive.getState().state.projector.live.kind === 'welcome') {
+      dispatch({ type: 'projector/welcome', on: false });
+      return;
     }
+    const now = Date.now();
+    dispatch({ type: 'projector/welcome', on: true, frame: { kind: 'welcome', lang: lang(), shownAt: now, slide: 0, slideAt: now } });
   },
   // Blackout toggles. Over the Holy Mass it is only a cover, like the welcome screen: the queue keeps its place, and turning it off puts back
   // the slide it covers.

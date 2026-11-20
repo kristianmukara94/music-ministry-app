@@ -151,7 +151,7 @@ export function PwSlideFace({
           {slide.text}
         </EdgeToEdgeFaceText>
       ) : (
-      <FittedFaceText className="font-serif text-[5cqw] font-semibold whitespace-pre-line" place={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slide.align ?? 'center' }} fontFamily={slideFont} naturalSize={scaledSize('5cqw', (slideScale ?? 1) * (slide.fontScale ?? 1))}>
+      <FittedFaceText keepLines className="font-serif text-[5cqw] font-semibold whitespace-pre-line" place={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slide.align ?? 'center' }} fontFamily={slideFont} naturalSize={scaledSize('5cqw', (slideScale ?? 1) * (slide.fontScale ?? 1))}>
         {slideText(slide.text, charsPerLine(0.88, 5 * 19.2 * (slide.fontScale ?? 1)))}
       </FittedFaceText>
       )}
@@ -163,8 +163,8 @@ export function PwSlideFace({
 
 /**
  * A lyric page edge-to-edge: centred in a box with a thin clearance at the slide's edges (room for the label, the footer and a lower third only
- * when they are shown), starting from a size no stanza can take, so the fit ends at the largest size at which the whole page fits. The browser
- * wraps the lines for that size. Offsets are in cqw only, as the rest of the face (see the note on PwSlideFace).
+ * when they are shown), starting from a size no stanza can take, so the fit ends at the largest size at which the whole page fits with every
+ * line whole (see useTextAutoFit's `keepLines`): a short line is limited by the width, a long page by the height. Offsets are in cqw only, as the rest of the face (see the note on PwSlideFace).
  */
 function EdgeToEdgeFaceText({ box, textAlign, fontFamily, children }: { box: { left: number; right: number; top: number; bottom: number }; textAlign: CSSProperties['textAlign']; fontFamily?: string; children: string }) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -178,7 +178,7 @@ function EdgeToEdgeFaceText({ box, textAlign, fontFamily, children }: { box: { l
       className="absolute flex items-center justify-center overflow-hidden"
       style={{ left: `${box.left}cqw`, right: `${box.right}cqw`, top: `${box.top}cqw`, bottom: `${box.bottom}cqw` }}
     >
-      <p ref={textRef} className="w-full font-serif font-semibold whitespace-pre-line" style={{ fontFamily, fontSize: naturalSize, lineHeight: EDGE_TO_EDGE.leading, textAlign }}>
+      <p ref={textRef} className="apcc-prose w-full font-serif font-semibold whitespace-pre-line" style={{ fontFamily, fontSize: naturalSize, lineHeight: EDGE_TO_EDGE.leading, textAlign }}>
         {children}
       </p>
     </div>
@@ -188,15 +188,17 @@ function EdgeToEdgeFaceText({ box, textAlign, fontFamily, children }: { box: { l
 /**
  * The words of a prayer or lyric slide, between their top and the footer. Pagination already lays a page out to fit, so this normally draws it at its
  * own size; when a real font wraps wider than the page was counted, the text steps down rather than running into the footer and the page count.
+ * A lyric page (`keepLines`) keeps each of its lines whole: at a large text size the page shrinks to its widest line instead of wrapping a word
+ * onto a line of its own, so the CURRENT SLIDE and NEXT SLIDE previews and the projector never leave an orphan or clip at the right edge.
  */
-function FittedFaceText({ className, place, fontFamily, naturalSize, children }: { className: string; place: { top: string; textAlign: CSSProperties['textAlign'] }; fontFamily?: string; naturalSize: string; children: string }) {
+function FittedFaceText({ className, place, fontFamily, naturalSize, keepLines = false, children }: { className: string; place: { top: string; textAlign: CSSProperties['textAlign'] }; fontFamily?: string; naturalSize: string; keepLines?: boolean; children: string }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLParagraphElement>(null);
-  useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps: [children, fontFamily, place.top] });
+  useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps: [children, fontFamily, place.top], keepLines });
   // The line spacing is on the box: the fit clears the text's own when it restores a step, and the text then inherits this.
   return (
     <div ref={boxRef} className="absolute inset-x-[6cqw] bottom-[6.6cqw] overflow-hidden" style={{ ...place, lineHeight: LINEUP_LINE_HEIGHT }}>
-      <p ref={textRef} className={className} style={{ fontFamily, fontSize: naturalSize }}>
+      <p ref={textRef} className={`apcc-prose ${className}`} style={{ fontFamily, fontSize: naturalSize }}>
         {children}
       </p>
     </div>

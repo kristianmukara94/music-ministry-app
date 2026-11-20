@@ -263,6 +263,8 @@ export interface LiveState {
     background: { live: MediaFrame | null; staged: MediaFrame | null };
     /** Where the frame on the projector came from. Null when nothing is live. */
     source: ProjectionSource | null;
+    /** Hide Text: the slide's words are off the screen while its background stays. A new slide on air lifts it. Absent in older states. */
+    textHidden?: boolean;
   };
   /** The operator's last choice for the Lower 3rd: 'on' or 'off' once pressed, null before. Slide cues do not change it. */
   lowerThird: { live: LowerThird | null; staged: LowerThird | null; paused: boolean; choice: 'on' | 'off' | null };
@@ -297,7 +299,13 @@ export type LiveAction =
   | { type: 'output/toggle'; output: OutputKey }
   | { type: 'output/set'; output: OutputKey; on: boolean }
   /** A direct show ends the Mass Queue's selection. Overlays from the operator's buttons pass DIRECT_DECK. */
-  | { type: 'projector/show'; frame: Frame; source?: ProjectionSource }
+  /**
+   * `lift`: Praise & Worship only. The operator's own step, which takes the welcome screen down; a slide the session sends on its own waits
+   * staged under the welcome screen instead.
+   */
+  | { type: 'projector/show'; frame: Frame; source?: ProjectionSource; lift?: boolean }
+  /** The Welcome Screen switch, on or off (never a toggle), so a repeated or late action changes nothing. `frame` is the welcome frame for on. */
+  | { type: 'projector/welcome'; on: boolean; frame?: Extract<Frame, { kind: 'welcome' }> }
   /** Replaces the live (and staged) slide whose `key` matches, when its song or prayer was edited. Nothing else changes. */
   | { type: 'projector/refresh'; key: string; frame: Frame }
   | { type: 'projector/stage'; frame: Frame }
@@ -309,6 +317,8 @@ export type LiveAction =
   | { type: 'projector/clear' }
   | { type: 'projector/blackout' }
   | { type: 'projector/pause'; paused?: boolean }
+  /** Hide Text on (true), off (false) or toggled (absent). */
+  | { type: 'projector/hideText'; hidden?: boolean }
   | { type: 'projector/step'; delta: number }
   | { type: 'display/mode'; value: DisplayState['mode'] }
   | { type: 'display/live'; value: boolean }

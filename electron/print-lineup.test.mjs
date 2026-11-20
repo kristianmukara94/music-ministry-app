@@ -241,8 +241,9 @@ test('the app wires it all: main registers the printer, the preload exposes it, 
   assert.match(dialog, /const result = await api\.openPdf\(job\);/);
   assert.match(dialog, /onClick=\{\(\) => void run\('open'\)\}/);
   // The studio starts below the frameless window's caption buttons (minimise, maximise, close), so nothing of its own sits under them.
-  assert.match(dialog, /const TITLE_BAR_CLEARANCE = 48;/);
-  assert.match(dialog, /style=\{\{ top: TITLE_BAR_CLEARANCE \}\}/);
+  // It is no-drag too: drag regions ignore z-index, so the top bar's would otherwise swallow the toolbar (shared/print-lineup-dialog.test.js).
+  assert.match(read('src/components/appRegion.ts'), /export const TITLE_BAR_CLEARANCE = 48;/);
+  assert.match(dialog, /style=\{\{ top: TITLE_BAR_CLEARANCE, \.\.\.NO_DRAG \}\}/);
   assert.match(read('shared/title-bar.js'), /export const TITLE_BAR_HEIGHT = 48;/, 'the clearance matches the overlay height');
   // Print… reads "Opening Print Dialog…" while the dialog is up, and always resets.
   assert.match(dialog, /\{busy === 'print' \? t\('printOpening'\) : t\('printNow'\)\}/);

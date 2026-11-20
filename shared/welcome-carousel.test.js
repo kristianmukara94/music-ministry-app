@@ -142,9 +142,10 @@ test('the welcome stepper is labelled Next Welcome Slide and sits inside the Wel
 
   const bar = read('src/operator/TopBar.tsx');
   // The compound capsule holds both the Welcome Screen toggle and the stepper, and the stepper only appears with two or more slides.
-  const capsule = bar.slice(bar.indexOf('data-testid="welcome-compound"'));
-  assert.ok(bar.includes('data-testid="welcome-compound"'), 'the Welcome Screen capsule exists');
-  const stepper = capsule.indexOf('onClick={stepWelcomeSlide}');
+  const CAPSULE_ID = "data-testid={ghost ? undefined : 'welcome-compound'}";
+  const capsule = bar.slice(bar.indexOf(CAPSULE_ID));
+  assert.ok(bar.includes(CAPSULE_ID), 'the Welcome Screen capsule exists');
+  const stepper = capsule.indexOf('onClick={ghost ? undefined : stepWelcomeSlide}');
   assert.ok(stepper > 0 && stepper < capsule.indexOf('</div>'), 'the stepper is inside the capsule');
   assert.match(bar, /const stepper = position !== null && position\.count > 1;/);
   assert.match(capsule, /\{stepper && \(/);

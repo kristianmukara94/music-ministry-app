@@ -185,10 +185,10 @@ export function showPosition(session: PwSession, deck: LiveStep[][], pos: PwPosi
     const before = now.pw;
     const beforePos = before && livePosition(session.segments, before);
     // Blackout over this session (the operator's, or a segment's own black step) is a cover: stepping lifts it onto the slide stepped to.
-    // The welcome screen needs nothing here, since the show below replaces it. Either way the session never left the air, so its place and
-    // timers carry on.
+    // The welcome screen needs nothing more: this is the operator's step, so the show below lifts it (`lift`). A slide the session sends on
+    // its own waits under the welcome screen instead. Either way the session never left the air, so its place and timers carry on.
     const liftBlackout = blackoutOverPw(now) && s.kind !== 'black';
-    dispatch({ type: 'projector/show', frame: frameOverride ?? frameFor(segment, s), source: 'PW_SESSION' });
+    dispatch({ type: 'projector/show', frame: frameOverride ?? frameFor(segment, s), source: 'PW_SESSION', lift: true });
     dispatch({ type: 'pw/cursor', segmentKey: segment.key, slide: pos.slide, now: Date.now() });
     if (liftBlackout) dispatch({ type: 'projector/blackout' });
     const newSegment = !before?.onAir || before.segmentKey !== segment.key;

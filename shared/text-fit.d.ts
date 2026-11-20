@@ -1,4 +1,11 @@
 export function fitFontSize(maxPx: number, minPx: number, fits: (px: number) => boolean): number;
+export const MIN_READABLE_CQW: number;
+export function fitWholeLines(ceilingPx: number, readablePx: number, fits: (px: number) => boolean): number | null;
+export function wrapNeeded(widestLineAtReadablePx: number, roomWidthPx: number): boolean;
+export function layoutLyricLines(
+  text: string,
+  options: { width: number; height: number; ceilingPx: number; readablePx: number; floorPx?: number; leading: number; measure: (text: string, px: number) => number },
+): { px: number; lines: string[]; wrapped: boolean };
 export const TITLE_MAX_LINES: number;
 export const TITLE_MAX_SHARE: number;
 export function titleFits(heightPx: number, fontPx: number, leading: number, roomPx: number): boolean;

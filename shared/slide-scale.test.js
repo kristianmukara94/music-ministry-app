@@ -62,11 +62,12 @@ test('every text surface takes the scale: the projector, the praise and worship 
   assert.match(read('src/praise-worship/CurrentNextPreview.tsx'), /slideScale=\{slideScale\}/, 'the thumbnails follow the size');
 });
 
-test('the Live panel control saves the same settings as the Settings page, and sits in the row beside Blackout', () => {
-  const control = read('src/praise-worship/SlideTypography.tsx');
+test('the console typography card saves the same settings as the Settings page', () => {
+  const control = read('src/golive/console/TypographyCard.tsx');
   assert.match(control, /bridge\.projector\.save\(patch\)/, 'the same save path as the Settings page');
-  assert.match(control, /aria-label="Slide font"/);
+  assert.match(control, /<label htmlFor="stage-font"/, 'the font picker is labelled');
   assert.ok(control.includes("aria-label={t('typoLarger')}"));
   assert.ok(control.includes("aria-label={t('typoSmaller')}"));
-  assert.match(read('src/praise-worship/LiveView.tsx'), /<SlideTypography \/>/);
+  assert.match(control, /onClick=\{\(\) => save\(\{ slideFontScale: 1 \}\)\}/, 'the readout puts the size back to 100%');
+  assert.match(read('src/praise-worship/LiveView.tsx'), /<TypographyCard \/>/);
 });

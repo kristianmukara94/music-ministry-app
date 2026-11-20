@@ -24,6 +24,55 @@ export function fitFontSize(maxPx, minPx, fits) {
   return best;
 }
 
+/**
+ * The smallest size a lyric line is kept whole at, as a share of the slide's width: 24px on a 1920 slide. A song's lines are drawn unwrapped
+ * (`white-space: pre`) and the stanza is sized to its widest line; only a line so long that it would have to go below this is allowed to wrap.
+ */
+export const MIN_READABLE_CQW = 1.25;
+
+/**
+ * The size a lyric stanza is drawn at with every one of its lines whole: the largest from `ceilingPx` (the operator's size, or the MAX
+ * ceiling) down to `readablePx` at which `fits(px)` holds, where `fits` checks both the widest line against the width and the stacked lines
+ * against the height. So the size is the least of the set size, the width fit and the height fit. Null when even `readablePx` does not fit:
+ * the caller then asks `wrapNeeded` whether wrapping would help.
+ */
+export function fitWholeLines(ceilingPx, readablePx, fits) {
+  if (!(ceilingPx > 0)) return null;
+  if (fits(ceilingPx)) return ceilingPx;
+  const px = fitFontSize(ceilingPx, Math.min(ceilingPx, readablePx), fits);
+  return fits(px) ? px : null;
+}
+
+/**
+ * Whether a stanza that did not fit whole should be allowed to wrap: only when its widest line, at the readable size, is still wider than the
+ * room. A stanza that failed for its height (many lines) stays unwrapped, since wrapping would only make it taller.
+ */
+export function wrapNeeded(widestLineAtReadablePx, roomWidthPx) {
+  return widestLineAtReadablePx > roomWidthPx;
+}
+
+/**
+ * The stanza as it is drawn and the size it is drawn at, with the synthetic `measure(text, px)` the tests use and the same rule the projector
+ * window runs on the real text: every line whole at the largest size that fits (widest line by width, all lines by height); past the readable
+ * size, the long lines are balanced into even lines (no word alone on the last) and the whole is fitted again, down to `floorPx`.
+ */
+export function layoutLyricLines(text, { width, height, ceilingPx, readablePx, floorPx = readablePx, leading, measure }) {
+  const source = String(text ?? '').split('\n');
+  const widest = (lines, px) => Math.max(0, ...lines.map((line) => measure(line, px)));
+  const fitsLines = (lines) => (px) => widest(lines, px) <= width && lines.length * px * leading <= height;
+  const whole = fitWholeLines(ceilingPx, readablePx, fitsLines(source));
+  if (whole != null) return { px: whole, lines: source, wrapped: false };
+  if (!wrapNeeded(widest(source, readablePx), width)) return { px: Math.min(ceilingPx, readablePx), lines: source, wrapped: false };
+  let lines = source;
+  const fits = (px) => {
+    lines = balanceProjectorLines(text, width, (s) => measure(s, px)).split('\n');
+    return fitsLines(lines)(px);
+  };
+  const px = fitFontSize(ceilingPx, Math.min(ceilingPx, floorPx), fits);
+  fits(px);
+  return { px, lines, wrapped: true };
+}
+
 /** A title over a body may take at most this many lines and this share of the slide's room. Past either it shrinks, and the body keeps the rest. */
 export const TITLE_MAX_LINES = 2;
 export const TITLE_MAX_SHARE = 0.25;

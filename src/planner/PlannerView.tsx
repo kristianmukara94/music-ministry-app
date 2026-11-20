@@ -12,7 +12,7 @@ import { createSession, errorText, flushSave, openSession, readSession, refreshS
 import { MassPlanner, createMassPlan, templateFor, todayIn } from './MassPlanner';
 import { PlannerCalendarView, type CalendarMonth, type PlanKind, type PlanRef, type PwProgress } from './PlannerCalendarView';
 import { usePlannerT } from './strings';
-import type { DayNotes, PlanSummary } from './types';
+import type { DayNotes, MassSchedule, PlanSummary } from './types';
 
 const monthOfIso = (iso: string): CalendarMonth => ({ year: Number(iso.slice(0, 4)), month: Number(iso.slice(5, 7)) - 1 });
 
@@ -42,7 +42,7 @@ export function PlannerView() {
   const t = usePlannerT();
   const lang = useUi((s) => s.lang);
   const view = useUi((s) => s.view);
-  const pendingMassPlanId = useUi((s) => s.pendingMassPlanId);
+  const plannerRequest = useUi((s) => s.plannerRequest);
   const region = useRegion();
   const today = todayIn(region.timeZone);
   const { mode, active, month: savedMonth, calendar } = usePlannerNav();
@@ -78,12 +78,19 @@ export function PlannerView() {
   }, []);
   useEffect(reloadLists, [reloadLists]);
 
-  // The Go Live hub asks for a Mass plan by id: it opens straight in the editor.
+  // The Go Live console's Planner tab asks for a plan: its calendar on the plan's month, then the plan itself in the Plan Editor. Without a plan
+  // it shows that kind's calendar. Only the operator's view changes: the projector keeps what it shows.
   useEffect(() => {
-    if (pendingMassPlanId == null) return;
-    setUi({ pendingMassPlanId: null });
-    setNav({ mode: 'editor', active: { kind: 'mass', id: pendingMassPlanId } });
-  }, [pendingMassPlanId]);
+    if (plannerRequest == null) return;
+    setUi({ plannerRequest: null });
+    const { kind, id, date } = plannerRequest;
+    setNav({ calendar: kind, ...(date ? { month: monthOfIso(date) } : {}) });
+    if (id != null) void openPlan({ kind, id });
+    else {
+      setNav({ mode: 'calendar' });
+      if (view !== 'planner') setUi({ view: 'planner' });
+    }
+  }, [plannerRequest]);
 
   // Under the 'praiseWorship' view the editor shows the session open in the Praise & Worship module: picked here, by the Go Live hub, or by the
   // module's own session list. Deleting it there returns to the calendar.
@@ -148,11 +155,12 @@ export function PlannerView() {
   };
 
   /** The calendar's Create a plan: makes the plan for the day, then opens it. A failure is shown in the dialog, which stays open. */
-  const createPlan = async (kind: PlanKind, iso: string, name: string) => {
+  const createPlan = async (kind: PlanKind, iso: string, name: string, schedule?: MassSchedule) => {
     setError(null);
     if (kind === 'mass') {
-      // A Sunday or solemnity starts from Standard Sunday, any other day from Weekday. Opening it fills the day's readings.
-      const created = await createMassPlan({ name: name.slice(0, 120), liturgicalDate: iso, template: templateFor(iso) }, lang);
+      // A Sunday or solemnity starts from Standard Sunday, any other day from Weekday. Opening it fills the day's readings. Its time and language
+      // tell it apart from the day's other Holy Masses.
+      const created = await createMassPlan({ name: name.slice(0, 120), liturgicalDate: iso, template: templateFor(iso), schedule }, lang);
       setMassPlans(await bridge.plans.list());
       await openPlan({ kind: 'mass', id: created.id });
       return;
@@ -294,6 +302,7 @@ export function PlannerView() {
               }
             }}
             onShowCalendar={() => showCalendar()}
+            onAddSchedule={(iso, name, schedule) => createPlan('mass', iso, name, schedule)}
           />
         </div>
       )}

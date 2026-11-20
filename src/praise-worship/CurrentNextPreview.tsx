@@ -64,6 +64,21 @@ function Face({ shown, blackLabel, background }: { shown: Shown; blackLabel: str
 }
 
 /**
+ * One step drawn alone, filling a monitor that declares `container-type: size`: the Go Live console's program and preview monitors. The same
+ * face, background layer, case and size as the projector, so the operator sees the congregation's slide 1:1.
+ */
+export function PwStageFace({ shown }: { shown: Shown }) {
+  const t = usePwT();
+  const background = welcomeBackground(useLive((s) => s.state.welcome.slideBackground));
+  return (
+    <>
+      {background.media && <SlideBackgroundLayer media={background.media} visible={shown.slide !== null} />}
+      <Face shown={shown} blackLabel={t('previewBlack')} background={background} />
+    </>
+  );
+}
+
+/**
  * The current slide large, with the next slide beside it. Used by the Plan view's preview and the Live console, so both
  * read the same. `next` is null at the end of the lineup or the segment: the panel then says so instead of drawing a slide.
  */

@@ -5,8 +5,11 @@ import { calendarDayOf, monthDedicationKey, monthGrid, planStatusOf, requiredSlo
 import type { Season } from '../../shared/liturgical-season.js';
 import { ordoDay } from '../services/lectionaryService';
 import type { PwSessionSummary } from '../praise-worship/types';
+import { NO_DRAG } from '../components/appRegion';
+import { cellScheduleBadges, compareMassSchedules, hasSchedule, massDayAction } from '../../shared/mass-schedule.js';
+import { DaySchedulesDialog, EMPTY_SCHEDULE, ScheduleFields, scheduleText } from './MassSchedule';
 import type { PlannerT } from './strings';
-import type { DayNotes, PlanSummary } from './types';
+import type { DayNotes, MassSchedule, PlanSummary } from './types';
 
 /** The two kinds of plan the Planner holds. */
 export type PlanKind = 'mass' | 'pw';
@@ -120,15 +123,17 @@ interface Props {
   pwSlotCount: number;
   /** A plan was picked: open it in the Plan Editor. */
   onOpen: (plan: PlanRef) => void;
-  /** Create a plan of this kind for the day, then open it. Rejects with the reason it could not be made. */
-  onCreate: (kind: PlanKind, iso: string, name: string) => Promise<void>;
+  /** Create a plan of this kind for the day (a Holy Mass with its time and language), then open it. Rejects with the reason it could not be made. */
+  onCreate: (kind: PlanKind, iso: string, name: string, schedule?: MassSchedule) => Promise<void>;
 }
 
 /**
  * The Planner's landing view: a month of the liturgical calendar, Sunday to Saturday, under a banner naming the month's devotion and the
  * seasons it falls in. Each day shows its Ordo name, its liturgical colour as a ribbon and its rank, and a badge for each plan saved for it:
  * Holy Mass plans on the Liturgical Calendar, Praise & Worship sessions on the Praise & Worship Calendar (`kind`). Picking a day with one plan
- * opens it; a day with several asks which; a day with none offers to create a plan of the calendar's kind.
+ * opens it; a day with several asks which; a day with none offers to create a plan of the calendar's kind. On the Liturgical Calendar a day
+ * with any Holy Mass lists its Available Holy Mass Schedules (time and language, in the order they are celebrated) with Add Another Holy
+ * Mass Schedule, so a second or third Holy Mass on the day is one click away.
  */
 export function PlannerCalendarView({ kind, t, lang, today, month, onMonthChange, selectedDate, massPlans, pwSessions, dayNotes, onSaveDayNote, pwProgress, pwSlotCount, onOpen, onCreate }: Props) {
   const locale = LOCALE[lang] ?? 'en-US';
@@ -139,7 +144,12 @@ export function PlannerCalendarView({ kind, t, lang, today, month, onMonthChange
     () => new Map(weeks.flat().map((iso) => [iso, { ...calendarDayOf(iso), name: ordoDay(iso).name, required: requiredSlotsFor(iso) }])),
     [weeks],
   );
-  const massByDate = useMemo(() => groupByDate(massPlans), [massPlans]);
+  // Each day's Holy Masses in the order they are celebrated (shared/mass-schedule.js).
+  const massByDate = useMemo(() => {
+    const byDate = groupByDate(massPlans);
+    for (const list of byDate.values()) list.sort(compareMassSchedules);
+    return byDate;
+  }, [massPlans]);
   const pwByDate = useMemo(() => groupByDate(pwSessions), [pwSessions]);
   const plansOn = (iso: string): DayPlan[] => [
     ...(massByDate.get(iso) ?? []).map((p) => ({ kind: 'mass' as const, id: p.id, name: p.name })),
@@ -150,6 +160,8 @@ export function PlannerCalendarView({ kind, t, lang, today, month, onMonthChange
   const [popover, setPopover] = useState<{ iso: string; top: number; left: number } | null>(null);
   // The day the Create a plan dialog is open for.
   const [createFor, setCreateFor] = useState<string | null>(null);
+  // The day whose Available Holy Mass Schedules are listed.
+  const [schedulesFor, setSchedulesFor] = useState<string | null>(null);
   // The day whose own title is being edited.
   const [noteFor, setNoteFor] = useState<string | null>(null);
   /** The parish's own title for the day, or null when it shows its Ordo name. */
@@ -171,6 +183,12 @@ export function PlannerCalendarView({ kind, t, lang, today, month, onMonthChange
 
   /** A day's cell: its one plan opens; several are offered in a popover by the cell; none opens Create a plan. */
   const pickDay = (iso: string, cell: HTMLElement) => {
+    // The Liturgical Calendar: an empty day opens the new Holy Mass form; a day with any Holy Mass lists its schedules.
+    if (kind === 'mass') {
+      if (massDayAction(massByDate.get(iso)) === 'create') setCreateFor(iso);
+      else setSchedulesFor(iso);
+      return;
+    }
     const onDay = plansOn(iso);
     if (onDay.length === 0) {
       setCreateFor(iso);
@@ -192,19 +210,21 @@ export function PlannerCalendarView({ kind, t, lang, today, month, onMonthChange
     const filled = new Set(plan.filledSlots ?? []);
     const done = day.required.filter((id) => filled.has(id)).length;
     const ready = planStatusOf(iso, plan.filledSlots) === 'ready';
+    // A Holy Mass with a time or language is named by it ("6:00 AM · EN"), so the day's Holy Masses are told apart; one without reads Holy Mass.
+    const schedule = hasSchedule(plan);
     return (
       <button
         key={`mass:${plan.id}`}
         type="button"
         onClick={() => onOpen({ kind: 'mass', id: plan.id })}
-        aria-label={`${t('calOpenMass')}: ${plan.name}`}
-        title={plan.name}
+        aria-label={`${schedule ? t('calOpenSchedule', { schedule: scheduleText(t, plan) }) : t('calOpenMass')}: ${plan.name}`}
+        title={schedule ? `${scheduleText(t, plan)}\n${plan.name}` : plan.name}
         className={`pointer-events-auto z-10 flex min-w-0 items-center gap-1.5 rounded-md border border-l-[3px] px-1.5 py-1 text-left text-[11px] font-bold transition focus-visible:ring-2 focus-visible:ring-[var(--cal-gold)] focus-visible:outline-none ${COLOR_EDGE[day.color]} ${
           ready ? 'border-ok/60 bg-ok/15 text-ok hover:bg-ok/25' : `border-[var(--cal-border-hover)] bg-[var(--cal-badge)] ${TEXT} hover:border-[var(--cal-gold)]`
         }`}
       >
         {ready ? <Check size={12} strokeWidth={3} className="shrink-0" aria-hidden /> : <Church size={12} className="shrink-0" aria-hidden />}
-        <span className="truncate">{ready ? t('calMassReady') : t('calBadgeMass')}</span>
+        <span className="truncate">{schedule ? scheduleText(t, plan, true) : ready ? t('calMassReady') : t('calBadgeMass')}</span>
         {!ready && <span className="ml-auto shrink-0 font-mono tabular-nums opacity-90">{done}/{day.required.length}</span>}
       </button>
     );
@@ -292,7 +312,11 @@ export function PlannerCalendarView({ kind, t, lang, today, month, onMonthChange
                   const massOnDay = massByDate.get(iso) ?? [];
                   const pwOnDay = pwByDate.get(iso) ?? [];
                   const count = massOnDay.length + pwOnDay.length;
-                  const badges = [...massOnDay.map((p) => massBadge(iso, p)), ...pwOnDay.map(pwBadge)];
+                  // Holy Masses: up to two badges, then "+N more" (the day's schedule list shows them all). Praise & Worship: up to MAX_BADGES.
+                  const massCell = cellScheduleBadges(massOnDay);
+                  const badges = [...massCell.shown.map((p) => massBadge(iso, p)), ...pwOnDay.map(pwBadge)];
+                  const shownBadges = kind === 'mass' ? badges : badges.slice(0, MAX_BADGES);
+                  const moreCount = kind === 'mass' ? massCell.more : Math.max(0, count - MAX_BADGES);
                   const inMonth = Number(iso.slice(5, 7)) - 1 === month.month;
                   const isToday = iso === today;
                   const selected = iso === selectedDate;
@@ -321,7 +345,7 @@ export function PlannerCalendarView({ kind, t, lang, today, month, onMonthChange
                       <button
                         type="button"
                         onClick={(e) => pickDay(iso, e.currentTarget)}
-                        aria-haspopup={count > 1 ? 'menu' : count === 0 ? 'dialog' : undefined}
+                        aria-haspopup={kind === 'mass' ? 'dialog' : count > 1 ? 'menu' : count === 0 ? 'dialog' : undefined}
                         aria-label={`${longDate(iso)}: ${dayLabel}. ${t(`color_${day.color}`)}. ${count === 0 ? t('calNoPlan') : planNames}`}
                         title={dayTooltip}
                         className="absolute inset-0 z-0 rounded-lg focus-visible:ring-2 focus-visible:ring-[var(--cal-gold)] focus-visible:outline-none"
@@ -380,12 +404,12 @@ export function PlannerCalendarView({ kind, t, lang, today, month, onMonthChange
                         </p>
                       </div>
                       <div className="pointer-events-none relative mt-auto flex flex-none flex-col gap-1 p-1.5 pl-2.5">
-                        {badges.slice(0, MAX_BADGES)}
-                        {count > MAX_BADGES && <span className={`px-1 text-[11px] font-bold ${MUTED}`}>{t('calMore', { n: count - MAX_BADGES })}</span>}
+                        {shownBadges}
+                        {moreCount > 0 && <span className={`px-1 text-[11px] font-bold ${MUTED}`}>{t('calMore', { n: moreCount })}</span>}
                         <button
                           type="button"
                           onClick={() => setCreateFor(iso)}
-                          aria-label={t('calCreateFor', { date: longDate(iso) })}
+                          aria-label={kind === 'mass' && massOnDay.length > 0 ? `${t('addSchedule')}: ${longDate(iso)}` : t('calCreateFor', { date: longDate(iso) })}
                           className={`pointer-events-auto z-10 inline-flex items-center justify-center gap-1 rounded-md border border-dashed border-[var(--cal-gold)]/70 px-1.5 py-1 text-[11px] font-extrabold tracking-wide uppercase ${GOLD} transition hover:border-solid hover:bg-[var(--cal-gold)] hover:text-[var(--cal-on-gold)] focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--cal-gold)] focus-visible:outline-none ${
                             count === 0 && selected ? 'opacity-100' : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'
                           }`}
@@ -440,6 +464,26 @@ export function PlannerCalendarView({ kind, t, lang, today, month, onMonthChange
         document.body,
       )}
 
+      {schedulesFor && createPortal(
+        <DaySchedulesDialog
+          key={schedulesFor}
+          t={t}
+          iso={schedulesFor}
+          dateLabel={longDate(schedulesFor)}
+          plans={massByDate.get(schedulesFor) ?? []}
+          onOpen={(id) => {
+            setSchedulesFor(null);
+            onOpen({ kind: 'mass', id });
+          }}
+          onAdd={() => {
+            setCreateFor(schedulesFor);
+            setSchedulesFor(null);
+          }}
+          onClose={() => setSchedulesFor(null)}
+        />,
+        document.body,
+      )}
+
       {createFor && createPortal(
         <CreatePlanDialog
           key={createFor}
@@ -450,7 +494,7 @@ export function PlannerCalendarView({ kind, t, lang, today, month, onMonthChange
           color={(days.get(createFor) ?? calendarDayOf(createFor)).color}
           pwSlotCount={pwSlotCount}
           kinds={[kind]}
-          onCreate={(made, name) => onCreate(made, createFor, name)}
+          onCreate={(made, name, schedule) => onCreate(made, createFor, name, schedule)}
           onClose={() => setCreateFor(null)}
         />,
         document.body,
@@ -541,11 +585,13 @@ function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlot
   t: PlannerT; dateLabel: string; ordoName: string; suggestedName: string; color: LiturgicalColor; pwSlotCount: number;
   /** The kinds of plan offered: the calendar's own kind, so each calendar only makes its own plans. */
   kinds: readonly PlanKind[];
-  onCreate: (kind: PlanKind, name: string) => Promise<void>; onClose: () => void;
+  onCreate: (kind: PlanKind, name: string, schedule?: MassSchedule) => Promise<void>; onClose: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   // The plan is named after the day's own title when it has one, else its Ordo name.
   const [name, setName] = useState(suggestedName.slice(0, 120));
+  // A Holy Mass's time and language. Praise & Worship has none.
+  const [schedule, setSchedule] = useState<MassSchedule>(EMPTY_SCHEDULE);
   const [busy, setBusy] = useState<PlanKind | null>(null);
   const [error, setError] = useState<string | null>(null);
   // While a plan is being made, Escape and a click outside do nothing: the dialog closes when the editor opens.
@@ -558,7 +604,7 @@ function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlot
     setBusy(kind);
     setError(null);
     try {
-      await onCreate(kind, name.trim());
+      await onCreate(kind, name.trim(), kind === 'mass' ? schedule : undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(err));
       setBusy(null);
@@ -571,13 +617,14 @@ function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlot
 
   const option = 'flex w-full items-start gap-3 rounded-xl border-2 p-4 text-left transition focus-visible:ring-2 focus-visible:ring-[var(--cal-gold)] focus-visible:outline-none disabled:cursor-wait disabled:opacity-60';
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4 backdrop-blur-sm" style={NO_DRAG}>
       <div
         ref={panel}
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-plan-title"
-        className={`planner-cal relative w-full max-w-lg overflow-hidden rounded-2xl border border-[var(--cal-border-hover)] ${SURFACE} shadow-2xl shadow-black/60`}
+        style={NO_DRAG}
+        className={`planner-cal relative max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-[var(--cal-border-hover)] ${SURFACE} shadow-2xl shadow-black/60`}
       >
         <span aria-hidden className={`absolute inset-y-0 left-0 w-1.5 ${COLOR_SWATCH[color]}`} />
         <form onSubmit={submit} className="flex flex-col gap-4 p-6 pl-7">
@@ -603,6 +650,8 @@ function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlot
               className={`h-11 rounded-lg border border-[var(--cal-border-hover)] bg-[var(--cal-cell)] px-3 text-base font-semibold normal-case tracking-normal ${TEXT} outline-none focus:border-[var(--cal-gold)] focus:ring-1 focus:ring-[var(--cal-gold)]`}
             />
           </label>
+
+          {kinds.includes('mass') && <ScheduleFields t={t} value={schedule} onChange={setSchedule} />}
 
           <div className="flex flex-col gap-2.5">
             {kinds.includes('mass') && (

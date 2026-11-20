@@ -149,12 +149,16 @@ test('the new stanza\'s slide is found from the slide it was added after', () =>
   assert.equal(findStanzaStep(after, 7, 42), null);
 });
 
-test('the Live panel wires double-click and the editor; the editor saves through the song and never touches the lineup copy first', () => {
+test('the Live panel editor saves through the song and never touches the lineup copy first', () => {
   const view = read('src/praise-worship/LiveView.tsx');
-  assert.match(view, /onChipDoubleClick=\{\(i\) => setEditRequest\(i\)\}/);
-  // The shared stage canvas draws the chips and hands a chip's double-click back to the view.
-  assert.match(read('src/components/LiveStageCanvas.tsx'), /onDoubleClick=\{onChipDoubleClick \? \(\) => onChipDoubleClick\(chip\.index\) : undefined\}/);
-  assert.match(view, /<LineupHotEdit t=\{t\} segmentIndex=\{segmentIndex\} steps=\{steps\} onAir=\{at\.slide\}/);
+  // The console's slide editor edits the stanza on air; a new stanza joins the card's own order right after this appearance.
+  assert.match(view, /pwSongTarget\(\{ t, segmentIndex, steps, onAir: at\.slide, hymn: lyricHymn \}\)/);
+  const targets = read('src/golive/console/editTargets.ts');
+  assert.match(targets, /arrangementWithInsert\(segment\.arrangement, hymn\.id, slide\.sectionId, occurrenceOf\(steps, onAir\), added\.id\)/);
+  assert.match(targets, /const refusal = deleteSongStep\(segmentIndex, steps, onAir\);/, 'Delete Slide takes this appearance out of the card order only');
+  assert.doesNotMatch(targets, /withHymn|setState\(\(s\) => \(\{ hymns/);
+  // Any other slide keeps the card editor, in the lineup's own copy.
+  assert.match(view, /fallback=\{<CardSlideHotEdit t=\{t\} segmentIndex=\{segmentIndex\} steps=\{steps\} onAir=\{at\.slide\} showButtons/);
   const editor = read('src/praise-worship/LineupHotEdit.tsx');
   assert.match(editor, /useLiveHotEditor\(hymn,/);
   assert.match(editor, /arrangementWithInsert\(segment\.arrangement, hymn\.id, slide\.sectionId, occurrence, added\.id\)/);

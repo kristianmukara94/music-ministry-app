@@ -8,6 +8,8 @@
 //   leading-[1.22]            -> TEXT_LINE_HEIGHT
 // Change one side and change the other.
 
+import { paginateProse } from '../../shared/prose-pagination.js';
+
 export const SLIDE_W = 1920;
 export const SLIDE_H = 1080;
 export const BREAK = '---';
@@ -28,43 +30,12 @@ export function pagesOf(master: string): string[] {
 }
 
 /**
- * Packs one section into pages. Lines are kept whole where possible; a line
- * that is too long on its own is broken at word boundaries.
+ * Packs one section into pages, cutting only at whitespace: lines are kept whole where they fit, a longer line is cut at its sentence ends,
+ * then its clauses, then between words, so a word is never carried half onto the next page. The last two pages are evened out and a tiny
+ * trailing stub is folded into the page before it (see shared/prose-pagination.js).
  */
 export function paginateSection(section: string, fits: Fits): string[] {
-  const pages: string[] = [];
-  let current = '';
-
-  const flush = () => {
-    if (current.trim()) pages.push(current);
-    current = '';
-  };
-
-  const addLine = (line: string) => {
-    const joined = current ? `${current}\n${line}` : line;
-    if (fits(joined)) {
-      current = joined;
-      return;
-    }
-    flush();
-    if (fits(line)) {
-      current = line;
-      return;
-    }
-    for (const word of line.split(' ')) {
-      const next = current ? `${current} ${word}` : word;
-      if (fits(next) || !current) {
-        current = next;
-      } else {
-        flush();
-        current = word;
-      }
-    }
-  };
-
-  section.split('\n').forEach(addLine);
-  flush();
-  return pages;
+  return paginateProse(section, fits);
 }
 
 /**

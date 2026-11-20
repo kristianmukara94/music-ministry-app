@@ -484,6 +484,23 @@
   --color-ok: #7fd18b;
 }
 
+/*
+ * Window-drag hit-testing (see src/components/appRegion.ts). Drag regions ignore z-index, so anything that overlays the top bar has to
+ * say no-drag itself. Every modal box and its controls do, so a modal over a (wrapped, tall) top bar never loses its clicks to a window drag.
+ */
+@utility no-drag {
+  -webkit-app-region: no-drag;
+}
+@utility app-drag {
+  -webkit-app-region: drag;
+}
+@layer base {
+  [aria-modal="true"],
+  [aria-modal="true"] :is(button, a, input, select, textarea, label, summary, [role="button"], [role="radio"], [role="tab"], [role="switch"]) {
+    -webkit-app-region: no-drag;
+  }
+}
+
 /* Condensed display cut of Archivo — headlines, labels, the booth clock. */
 @utility condensed {
   font-stretch: 72%;
@@ -669,6 +686,16 @@
 @property --apcc-scrim-top { syntax: '<number>'; inherits: false; initial-value: 0.4; }
 @property --apcc-scrim-center { syntax: '<number>'; inherits: false; initial-value: 0.4; }
 @property --apcc-scrim-lower { syntax: '<number>'; inherits: false; initial-value: 0.4; }
+/*
+ * Slide prose (prayers, readings, scripture, lyrics, Mass parts): words wrap only at spaces, never inside a word. Only a single word wider than
+ * the whole column may wrap inside, as a last resort: the auto-fit hooks measure with `overflow-wrap: normal`, so they shrink the text to fit
+ * its widest word first. Never `break-all` or `overflow-wrap: anywhere` here.
+ */
+.apcc-prose {
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: manual;
+}
 .apcc-legible {
   filter: drop-shadow(0 4px var(--apcc-legible-blur, 12px) rgb(0 0 0 / var(--apcc-legible-alpha, 0.95)));
 }

@@ -12,7 +12,10 @@ import { parseSourceId } from '../../shared/bible-ref.js';
 import { announcementSource } from '../../shared/flow-insert.js';
 import { bibleT } from '../../shared/bible-i18n.js';
 import { setUi, useUi } from '../state/ui';
-import { stagePrayer, takePrayer } from '../notes/present';
+import { slideFramesOf, stagePrayer, takePrayer } from '../notes/present';
+import type { Note } from '../notes/types';
+import { stanzaFrame } from '../lyrics/frames';
+import { openQuickLivePreview } from '../golive/quickLiveSession';
 import { songTitleFrame, textRowActions } from '../../shared/stage-plan-row.js';
 import { slotById } from '../../shared/mass-slots.js';
 import { announcementFrame } from '../announcements/frames';
@@ -223,43 +226,64 @@ export async function stepQueue(delta: 1 | -1, opts: PlayOptions = {}): Promise<
   await playQueueAt(index, opts);
 }
 
-/** Stages a saved reading straight from the database, so it works without the deck's editor state. Resolves true when staged. */
-export async function stageReading(date: string, readingType: string): Promise<boolean> {
+/** The slides of a saved reading, read straight from the database, so it works without the deck's editor state. Null when it has no text. */
+async function readingFrame(date: string, readingType: string): Promise<Frame | null> {
   const day = await bridge.lectionary.getDay(date);
   const row = day.readings.find((r) => r.readingType === readingType);
-  if (!row?.rawText) return false;
+  if (!row?.rawText) return null;
 
   const pages = readingSlides(readingType, row.rawText);
   const title = [day.seasonInfo, readingType, row.citation].map((s) => s.trim()).filter(Boolean).join(' · ');
   // The psalm and the Prayer of the Faithful keep their response pinned above every stanza or intention.
   const key = readingKey(date, readingType);
-  const frame: Frame =
-    hasResponse(readingType)
-      ? { kind: 'psalm', key, title, response: row.congregationResponse, pages, index: 0, style: row.style }
-      : {
-          kind: 'deck',
-          key,
-          title,
-          // Blank lines stay in as empty reader lines, so paragraph spacing survives.
-          slides: pages.map((page) => page.split('\n').map((text) => ({ role: 'reader' as const, text }))),
-          index: 0,
-          style: row.style,
-        };
+  return hasResponse(readingType)
+    ? { kind: 'psalm', key, title, response: row.congregationResponse, pages, index: 0, style: row.style }
+    : {
+        kind: 'deck',
+        key,
+        title,
+        // Blank lines stay in as empty reader lines, so paragraph spacing survives.
+        slides: pages.map((page) => page.split('\n').map((text) => ({ role: 'reader' as const, text }))),
+        index: 0,
+        style: row.style,
+      };
+}
+
+/** Stages a saved reading straight from the database, so it works without the deck's editor state. Resolves true when staged. */
+export async function stageReading(date: string, readingType: string): Promise<boolean> {
+  const frame = await readingFrame(date, readingType);
+  if (!frame) return false;
   dispatch({ type: 'projector/stage', frame });
   return true;
 }
 
-/** Stages a Bible passage row (its source id names the translation, book, chapter and verses) as the slides the projector shows. */
-async function stageBiblePassage(sourceId: string): Promise<boolean> {
+/** The slides of a Bible passage row (its source id names the translation, book, chapter and verses), as the projector shows them. */
+async function biblePassageFrame(sourceId: string): Promise<{ frame: Frame; title: string } | null> {
   const ref = parseSourceId(sourceId);
-  if (!ref) return false;
+  if (!ref) return null;
   const { book, chapter, verses } = await loadPassage(ref.translationId, ref.bookName, ref.chapter, ref.from, ref.to);
   const pageLabel = bibleT(useUi.getState().lang, 'pageLabel');
   const slides = scriptureSlides(verses, { bookName: book.name, chapter }, pageLabel);
   // The passage mark lets the Bible deck badge the verses that are live when it is next opened.
   const passage = { translationId: ref.translationId, bookNumber: book.number, chapter, verses: verses.map((v) => v.verse) };
-  dispatch({ type: 'projector/stage', frame: { kind: 'deck', title: '', slides, index: 0, passage } });
+  const numbers = verses.map((v) => v.verse);
+  const range = numbers.length > 1 ? `${numbers[0]}-${numbers[numbers.length - 1]}` : `${numbers[0] ?? ''}`;
+  return { frame: { kind: 'deck', title: '', slides, index: 0, passage }, title: `${book.name} ${chapter}${range ? `:${range}` : ''}` };
+}
+
+/** Stages a Bible passage row as the slides the projector shows. Resolves true when staged. */
+async function stageBiblePassage(sourceId: string): Promise<boolean> {
+  const passage = await biblePassageFrame(sourceId);
+  if (!passage) return false;
+  dispatch({ type: 'projector/stage', frame: passage.frame });
   return true;
+}
+
+/** Every slide of a reading or passage frame, in order: what the Quick-Live popup's Back and Next step through. */
+function slidesOf(frame: Frame): Frame[] {
+  if (frame.kind === 'deck') return frame.slides.map((_, index) => ({ ...frame, index }));
+  if (frame.kind === 'psalm') return frame.pages.map((_, index) => ({ ...frame, index }));
+  return [frame];
 }
 
 /** What a library LIVE press did: shown, nothing to show (an empty song, an unsaved reading), or a private note that is never shown. */
@@ -268,37 +292,69 @@ export type LibraryLiveResult = 'shown' | 'empty' | 'operator';
 /**
  * LIVE on a planner library row: puts a song, a prayer, a reading or a Bible passage straight on the projector "in case of need", without
  * adding it to the plan or the lineup. It is a direct show (DIRECT_DECK), so the Service Queue's CURRENT row and the Praise & Worship
- * lineup's place are left as they are. A song goes out on its first sung verse, through the same shared actions as Song Lyrics' GO LIVE NOW,
- * with its lower third staged (not turned on). A lower-third note goes to the lower third; a private operator note shows nothing.
+ * lineup's place are left as they are (the reducer parks the run that had the screen). A song goes out on its first sung verse, through the
+ * same shared actions as Song Lyrics' GO LIVE NOW, with its lower third staged (not turned on). A lower-third note goes to the lower third; a
+ * private operator note shows nothing. Anything put on the projector opens the Quick-Live Mini Output Preview on every slide of the item.
  */
 export async function goLiveLibraryItem(item: { module: string; sourceId: string }): Promise<LibraryLiveResult> {
+  const before = useLive.getState().state;
   switch (item.module) {
     case 'lyrics': {
       const hymn = await liveLyrics.getHymn(Number(item.sourceId));
       const actions = hymn && !hymn.deletedAt ? goLiveNowActions({ hymn, band: quickLiveBand(hymn), bandStageOnly: true }) : null;
-      if (!actions) return 'empty';
+      if (!hymn || !actions) return 'empty';
       actions.forEach(dispatch);
+      // The verses with words, as the song's own stepping walks them: blank ones are skipped.
+      const frames = hymn.stanzas.flatMap((s, i) => (s.lyricsText.trim() ? [stanzaFrame(hymn, i)] : [])).filter((f): f is Frame => f !== null);
+      openQuickLivePreview(before, { title: hymn.title, frames });
       return 'shown';
     }
     case 'notes': {
       const source = noteSource(item.sourceId);
       const note = source ? await bridge.notes.get(source.id) : null;
       if (!note) return 'empty';
-      if (note.display === 'operator') return 'operator';
-      takePrayer(note, 'DIRECT_DECK', 0, source?.slides);
-      return 'shown';
+      return goLiveNote(note, source?.slides);
     }
     case 'lectionary': {
       const [date, readingType] = item.sourceId.split('|');
-      if (!(await stageReading(date, readingType))) return 'empty';
+      const frame = await readingFrame(date, readingType);
+      if (!frame) return 'empty';
+      dispatch({ type: 'projector/stage', frame });
       dispatch({ type: 'projector/take', source: 'DIRECT_DECK' });
+      openQuickLivePreview(before, { title: frame.kind === 'deck' || frame.kind === 'psalm' ? frame.title : readingType, frames: slidesOf(frame) });
       return 'shown';
     }
     case 'bible': {
-      if (!(await stageBiblePassage(item.sourceId))) return 'empty';
+      const passage = await biblePassageFrame(item.sourceId);
+      if (!passage) return 'empty';
+      dispatch({ type: 'projector/stage', frame: passage.frame });
       dispatch({ type: 'projector/take', source: 'DIRECT_DECK' });
+      openQuickLivePreview(before, { title: passage.title, frames: slidesOf(passage.frame) });
       return 'shown';
     }
   }
   return 'empty';
+}
+
+/**
+ * LIVE on a prayer (the Holy Mass library's Notes & Prayers, the Praise & Worship Library's Prayers): a full-screen prayer goes on the
+ * projector as a direct show and opens the Quick-Live popup on its slides. A lower-third note goes to the lower third, with nothing to
+ * preview; a private operator note never reaches an output. `slides` keeps only those slides, for a Holy Mass row that plays part of it.
+ */
+export function goLiveNote(note: Note, slides?: readonly number[] | null): LibraryLiveResult {
+  if (note.display === 'operator') return 'operator';
+  const before = useLive.getState().state;
+  takePrayer(note, 'DIRECT_DECK', 0, slides);
+  if (note.display === 'full') openQuickLivePreview(before, { title: note.title, frames: slideFramesOf(note, slides) });
+  return 'shown';
+}
+
+/**
+ * LIVE on a single slide that is not a library record (the Praise & Worship Library's segment title card): a direct show, with the
+ * Quick-Live popup on that one slide.
+ */
+export function goLiveFrame(title: string, frame: Frame): void {
+  const before = useLive.getState().state;
+  dispatch({ type: 'projector/show', frame, source: 'DIRECT_DECK' });
+  openQuickLivePreview(before, { title, frames: [frame] });
 }

@@ -130,7 +130,7 @@ function TextLines({ lines, serif = false, style = null, safe = false, inset = t
       <div aria-hidden className={BACKING} />
       <div
         ref={textRef}
-        className={`relative flex max-w-[86cqw] flex-col gap-[2.2cqh] leading-[1.22] text-white ${
+        className={`apcc-prose relative flex max-w-[86cqw] flex-col gap-[2.2cqh] leading-[1.22] text-white ${
           sizes ? '' : 'text-center text-[length:min(4.1cqw,88px)]'
         } ${serif ? 'font-serif font-semibold' : 'font-medium'}`}
         style={{
@@ -195,12 +195,12 @@ function HeadedText({ headline, body, style = null, place = null }: { headline: 
       <div className="relative flex max-w-[86cqw] shrink-0 flex-col items-center gap-[3cqh] text-center" style={{ textAlign: look.textAlign }}>
         <div aria-hidden className={BACKING} />
         {headline && (
-          <h2 ref={titleRef} className={`relative leading-[1.1] font-bold text-white ${sizes ? '' : 'text-[length:min(4.6cqw,96px)]'} ${LEGIBLE}`} style={{ ...look, fontSize: titleSize }}>
+          <h2 ref={titleRef} className={`apcc-prose relative leading-[1.1] font-bold text-white ${sizes ? '' : 'text-[length:min(4.6cqw,96px)]'} ${LEGIBLE}`} style={{ ...look, fontSize: titleSize }}>
             {slideLine(headline, headlineChars)}
           </h2>
         )}
         {body && (
-          <div ref={bodyRef} className={`relative flex flex-col gap-[2.2cqh] leading-[1.25] font-medium text-white ${sizes ? '' : 'text-[length:min(3.6cqw,80px)]'}`} style={{ ...look, fontSize: bodySize }}>
+          <div ref={bodyRef} className={`apcc-prose relative flex flex-col gap-[2.2cqh] leading-[1.25] font-medium text-white ${sizes ? '' : 'text-[length:min(3.6cqw,80px)]'}`} style={{ ...look, fontSize: bodySize }}>
             {body.split('\n').map((line, i) => (
               <p key={i} className={LEGIBLE}>
                 {slideLine(line, chars) || ' '}
@@ -576,8 +576,11 @@ function useFadedFrame(live: Frame, fadeMs: number, overlap = false) {
  *
  * Edge-to-edge (`edgeToEdge`, the MAX pill) keeps only a thin clearance at the slide's edges and starts the fit from a size larger than any
  * stanza can take, so the stanza is drawn at the largest size at which it fits whole: a short chorus very large, a long verse still unclipped.
- * The browser wraps the lines for that size (they are not pre-wrapped for the normal size), and the balancing then evens them out. The text
- * arrives already in the operator's case (FrameView), so UPPERCASE is measured as drawn. While a lower third is on (`bandOn`), the bottom of
+ * At every size, normal, 250% or MAX, each line of the stanza is drawn whole (useTextAutoFit's `keepLines`): the size is the least of the set
+ * size, the size at which the widest line fits the width and the size at which all the lines fit the height, so a line never drops its last
+ * word onto a line of its own and never runs past the right edge. Only a line too long to stay whole at the readable size wraps, and the
+ * balancing then evens it out with no word alone on the last line. The text arrives already in the operator's case (FrameView), so UPPERCASE
+ * is measured as drawn. While a lower third is on (`bandOn`), the bottom of
  * the slide is kept clear for it.
  */
 function SongLyricsSlide({ label, text, style, slideFont, slideScale, fontScale = 1, song, edgeToEdge = false, bandOn = false }: { label: string; text: string; style: TextStyle | null; slideFont: string | undefined; slideScale: number; fontScale?: number; song: { hymnId: number; position: number } | null; edgeToEdge?: boolean; bandOn?: boolean }) {
@@ -606,7 +609,7 @@ function SongLyricsSlide({ label, text, style, slideFont, slideScale, fontScale 
       {label && <div ref={labelRef} className={`${edgeToEdge ? 'mb-[1.5cqh]' : 'mb-[3cqh]'} shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase`}>{label}</div>}
       <p
         ref={textRef}
-        className={`apcc-legible-stroke ${edgeToEdge ? 'w-full max-w-none' : 'max-w-[88cqw]'} overflow-hidden font-bold whitespace-pre-line ${sizes ? '' : 'text-white'}`}
+        className={`apcc-prose apcc-legible-stroke ${edgeToEdge ? 'w-full max-w-none' : 'max-w-[88cqw]'} overflow-hidden font-bold whitespace-pre-line ${sizes ? '' : 'text-white'}`}
         style={{
           textShadow: LEGIBLE_TEXT_SHADOW,
           color: style?.textColor,
@@ -914,6 +917,9 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
   const blackedOut = picture.kind === 'blackout';
   // The Live set's background picture or video: one layer for the whole slide sequence, kept outside the slides so a slide change never restarts it.
   const slideMedia = welcomeBackground(useOutput((s) => s.welcome.slideBackground)).media;
+  const slideColor = useOutput((s) => s.welcome.slideBackground.backgroundColor);
+  // Hide Text (the Go Live console's H): the words go and everything behind them stays. The mirror follows it, so the operator sees the same.
+  const textHidden = projector.textHidden === true;
   // The projector output shows nothing while its master switch is OFF, whatever the live buffer holds.
   // The operator mirror is a separate monitor with its own toggle, so it is not gated by this switch.
   const outputShowing = mirror || projectorOn;
@@ -988,8 +994,13 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
       {/* The operator's Text Contrast Dimmer from the Media Library: an even dark tint on top of the shade, behind the text. */}
       {background && backgroundTint(background) > 0 && <div aria-hidden className="absolute inset-0 bg-black" style={{ opacity: backgroundTint(background) }} />}
 
+      {/* A Praise & Worship slide draws its own colour inside its face, so with its words hidden the colour is kept here instead. */}
+      {textHidden && outputShowing && shownFrame.kind === 'pw' && !slideMedia && !sharedBackground && (
+        <div aria-hidden className="absolute inset-0 bg-canvas" style={slideColor ? { backgroundColor: slideColor } : undefined} />
+      )}
+
       {/* The slide that is leaving, during a dissolve or a push. It is drawn under the new one and is gone when the transition ends. */}
-      {leaving && outputShowing && (
+      {leaving && outputShowing && !textHidden && (
         <div
           key={`leaving-${leaving.serial}`}
           aria-hidden
@@ -1002,8 +1013,9 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
 
       <div
         key={serial}
+        data-text-hidden={textHidden || undefined}
         className={`absolute inset-0 flex items-center justify-center transition-[padding,opacity,transform] ${
-          fading ? 'opacity-0' : 'opacity-100'
+          fading || textHidden ? 'opacity-0' : 'opacity-100'
         } ${leaving ? 'will-change-[opacity,transform]' : ''} ${clearance} ${textLook.className}`}
         style={{ ...textLook.style, transitionDuration: `${transitionMs}ms`, animation: enterAnimation(settings.transitionStyle, transitionMs) }}
       >
@@ -1049,6 +1061,7 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
           )}
           {projector.paused && <span className="rounded-full bg-amber px-2 py-0.5 text-on-accent">Paused</span>}
           {blackedOut && <span className="rounded-full bg-crimson px-2 py-0.5 text-white">Blackout</span>}
+          {textHidden && !blackedOut && <span className="rounded-full bg-amber px-2 py-0.5 text-on-accent">Text hidden</span>}
         </div>
       )}
     </div>

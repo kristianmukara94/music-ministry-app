@@ -96,14 +96,24 @@ export function useBalanceAfterFit(state: BalancedState, { elementFor, boxFor, d
     const balance = () => {
       const box = boxFor();
       if (!box) return;
-      const lines = paragraphs.map((text, i) => {
+      // A paragraph the fit drew with its lines whole (`white-space: pre`, see useTextAutoFit's keepLines) already fits on its own lines, so it
+      // keeps what it is drawn from: balancing it would split a line that fits. Only a paragraph the fit let wrap is balanced.
+      const whole = paragraphs.map((_, i) => {
         const el = elementFor(i);
-        if (!el || !text.trim()) return text;
+        return Boolean(el && getComputedStyle(el).whiteSpace === 'pre');
+      });
+      const balanced = paragraphs.map((text, i) => {
+        const el = elementFor(i);
+        if (!el || whole[i] || !text.trim()) return text;
         const measure = measurerFor(el);
         const room = lineRoom(el, box);
         return measure && room > 0 ? balanceProjectorLines(text, room * SLACK, measure) : text;
       });
-      setResult((was) => (was && was.key === key && was.lines.every((l, i) => l === lines[i]) ? was : { key, lines }));
+      setResult((was) => {
+        const before = was && was.key === key ? was.lines : paragraphs;
+        const lines = balanced.map((line, i) => (whole[i] ? before[i] : line));
+        return was && was.key === key && was.lines.every((l, i) => l === lines[i]) ? was : { key, lines };
+      });
     };
     balance();
 

@@ -118,11 +118,13 @@ test('live editing is open while the Holy Mass is on air: nothing in the editor 
   assert.ok(!read('shared/pw-i18n.js').includes('holyMassLocked'), 'the old lock message is gone');
 });
 
-test('the Holy Mass console has Edit slide on air, Add slide and double-click editing, saved to the song', () => {
+test('the Holy Mass console edits, adds and deletes a song slide on air, kept for this service only', () => {
   const view = read('src/golive/MassLiveView.tsx');
-  assert.match(view, /<MassHotEdit\s/);
-  // Every item's chips open the editor, not only a song's.
-  assert.match(view, /onChipDoubleClick=\{\(i\) => setEditRequest\(i\)\}/);
+  // The console's slide editor works on the stanza on screen: step 0 is the title card (no words), so step n is stanza n - 1.
+  assert.match(view, /<SlideEditorCard\s/);
+  assert.match(view, /songTarget\(\{ hymn: hymn!, stanza: liveSteps\.index - 1,/);
+  assert.match(view, /remove: massSongRemove\(hymn!, liveSteps\.index - 1\)/);
+  assert.match(read('src/golive/console/editTargets.ts'), /await setLiveStanzas\(hymn,/, 'a song change is kept on air only');
   const editor = read('src/golive/MassHotEdit.tsx');
   assert.match(editor, /useLiveHotEditor\(hymn,/);
   assert.match(editor, /t\('editOnAir'\)/);
@@ -134,7 +136,8 @@ test('the Holy Mass console has Edit slide on air, Add slide and double-click ed
 
 test('every Holy Mass item that is not a song has Edit slide on air and Add slide, saved to this plan only', () => {
   const view = read('src/golive/MassLiveView.tsx');
-  assert.match(view, /<MassSlideHotEdit\s/, 'a Mass part, reading, psalm, prayer or typed response gets the slide editor');
+  assert.match(view, /massPagesTarget\(\{ t: tp, item, index: cursor, frame, note \}\)/, 'a Mass part, reading, psalm, prayer or typed response gets the slide editor');
+  assert.match(read('src/golive/console/editTargets.ts'), /await saveItemSlides\(\{ index, item, note, pages: next, showPage, inPlace \}\)/, 'saved to this plan’s copy');
   const editor = read('src/golive/MassSlideHotEdit.tsx');
   assert.match(editor, /t\('editOnAir'\)/);
   assert.match(editor, /t\('addSlide'\)/);
@@ -153,7 +156,8 @@ test('Go Live never writes the Liturgical Content Hub, the Lectionary or Song Ly
   const files = [
     'src/golive/MassSlideHotEdit.tsx', 'src/golive/MassHotEdit.tsx', 'src/golive/massSlideCopy.ts', 'src/praise-worship/LineupHotEdit.tsx',
     'src/praise-worship/CardSlideHotEdit.tsx', 'src/praise-worship/lineupSlideCopy.ts', 'src/praise-worship/useLiveHotEditor.ts',
-    'src/praise-worship/SplitStanzaDialog.tsx', 'src/praise-worship/QuickCuePanel.tsx',
+    'src/praise-worship/SplitStanzaDialog.tsx', 'src/praise-worship/QuickCuePanel.tsx', 'src/golive/console/editTargets.ts',
+    'src/golive/console/SlideEditorCard.tsx', 'src/golive/console/TypographyCard.tsx',
   ];
   for (const file of files) {
     const source = read(file);
@@ -178,10 +182,12 @@ test('the slides of an edited item become one note with a break between each, so
   assert.equal(screenPagesOf({ title: 'T', ...slidesNote(['A\n---\nB', 'C']) }).length, 3, 'a --- line typed in a slide starts another');
 });
 
-test('the Holy Mass and Praise & Worship consoles share one stage canvas and the same top bar', () => {
+test('the Holy Mass and Praise & Worship consoles share one broadcast layout and the same header controls', () => {
   for (const file of ['src/golive/MassLiveView.tsx', 'src/praise-worship/LiveView.tsx']) {
     const source = read(file);
-    assert.match(source, /<LiveStageCanvas/, `${file} draws the shared stage`);
+    for (const part of ['BroadcastHeader', 'StageMonitors', 'TransportBar', 'CueNavigator', 'SlideEditorCard', 'TypographyCard']) {
+      assert.match(source, new RegExp(`<${part}\\s`), `${file} draws the shared ${part}`);
+    }
     assert.match(source, /<IntroSlideToggle \/>/, `${file} has the Intro slide switch`);
     assert.match(source, /t[p]?\('endSession'\)/, `${file} has End session`);
     assert.match(source, /t[p]?\('sessionTime'\)/, `${file} shows the session time`);
@@ -234,10 +240,10 @@ test('a Holy Mass song shows its section chips with the projector window closed,
   assert.match(view, /const offScreenNote = noteRowOffScreen\(live, frame\);/);
   assert.match(live, /const steps = noteRowOffScreen\(state, frame\) \? null : stepsOf\(frame, hymn\);/);
   assert.match(view, /onSelect=\{\(i\) => void run\(\(\) => goWithin\(i, frame\)\)\}/, 'a chip on a staged song puts that section on screen');
-  // Grouped as in Praise & Worship: the title card's chip alone, then the song's sections under its title.
-  assert.match(view, /\{ key: 'title', label: null, chips: chips\.filter\(\(chip\) => chip\.index === 0\) \}/);
-  assert.match(view, /\{ key: `song-\$\{hymn!\.id\}`, label: hymn!\.title, chips: chips\.filter\(\(chip\) => chip\.index > 0\) \}/);
-  assert.match(view, /jumpHeading=\{tp\('jumpToSection'\)\}/);
+  // As in Praise & Worship: the title card's cue takes no number key, and the song's sections carry its title (their tab in Jump to Cue).
+  assert.match(view, /\{ index: 0, number: 1, tag: tp\('titleChip'\), text: hymn\.title, chip: 'T', hotkey: false \}/);
+  assert.match(view, /group: hymn\.title, chip: label \}/);
+  assert.match(view, /<CueNavigator\s/);
 });
 
 test('the keyboard steps the Holy Mass the same way as its Next and Back buttons, and as Praise & Worship', () => {
@@ -258,7 +264,7 @@ test('Back from the first slide of a Holy Mass item goes to the item before at i
 });
 
 test('the Go Live consoles show every section chip, with no Show all verses switch', () => {
-  for (const file of ['src/golive/MassLiveView.tsx', 'src/praise-worship/LiveView.tsx', 'src/components/LiveStageCanvas.tsx']) {
+  for (const file of ['src/golive/MassLiveView.tsx', 'src/praise-worship/LiveView.tsx', 'src/components/LiveStageCanvas.tsx', 'src/golive/console/CueNavigator.tsx']) {
     assert.doesNotMatch(read(file), /ShowAllVerses|showAllVerses|visibleSlideIndexes|jumpTools/, file);
   }
 });
@@ -308,7 +314,8 @@ test('Next, Back, a section jump and Welcome again take the welcome screen down 
   const live = read('src/golive/massLive.ts');
   assert.match(live, /if \(welcomeOverMass\(state\) \|\| blackoutOverMass\(state\)\) \{\s+resumeMass\(\);\s+return;/);
   assert.match(live, /from \?\? \(welcomeOverMass\(state\) \|\| blackoutOverMass\(state\) \? state\.projector\.staged : state\.projector\.live\)/);
-  assert.match(read('src/operator/actions.ts'), /if \(welcomeOverMass\(state\)\) dispatch\(\{ type: 'projector\/take', source: 'MASS_QUEUE' \}\);/);
+  // Welcome again sends an explicit off; the reducer puts the covered slide back on the queue's own take (shared/welcome-cover.test.js).
+  assert.match(read('src/operator/actions.ts'), /dispatch\(\{ type: 'projector\/welcome', on: false \}\);/);
   const view = read('src/golive/MassLiveView.tsx');
   assert.match(view, /const covered = welcomeOverMass\(live\) \|\| blackoutOverMass\(live\);/);
   assert.match(view, /const frame = onAir && !covered \? live\.projector\.live : live\.projector\.staged;/);
@@ -379,7 +386,7 @@ test('a Holy Mass started under Blackout is on air, covered, so its badge and th
   assert.equal(run(dark, { type: 'projector/blackout' }).projector.live, slide);
   // The console bar and both views read one answer.
   assert.match(read('src/golive/onAir.ts'), /if \(run === 'mass'\) return massShowing\(state\)/);
-  assert.match(read('src/praise-worship/LiveView.tsx'), /const onAir = runOnAir\(live, 'pw', session\.id\);/);
+  assert.match(read('src/praise-worship/LiveView.tsx'), /const onAir = session \? runOnAir\(live, 'pw', session\.id\) : false;/);
   assert.match(read('src/golive/GoLiveConsole.tsx'), /runOnAir\(live, 'pw', pickedPw\)/);
   for (const lang of ['en', 'tl', 'ceb']) assert.notEqual(goT(lang, 'liveEnd'), 'liveEnd');
 });

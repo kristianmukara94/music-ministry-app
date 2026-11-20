@@ -474,6 +474,7 @@ const offlinePlans: PlansApi = {
   get: async () => offlineError(),
   save: async () => offlineError(),
   setLanguage: async () => offlineError(),
+  setSchedule: async () => offlineError(),
   slotTitle: async () => null,
   setSlotTitle: async () => offlineError(),
   listTemplates: async () => [],

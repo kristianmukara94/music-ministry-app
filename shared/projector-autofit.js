@@ -7,6 +7,8 @@
 //     window that draws it (the projector, the mirror, the previews) has the same slides and the same count. Measuring in one window and
 //     splitting there would leave the others out of step, so the split works on the words, not on a measurement.
 
+import { PROSE_STUB, isStub } from './prose-pagination.js';
+
 /** The sizes tried, as shares of the size the text is set for: 3.5, 3.0, 2.5, 2.0 and 1.75rem when it is set at 3.5rem. */
 export const FIT_STEPS = Object.freeze([1, 3 / 3.5, 2.5 / 3.5, 2 / 3.5, 1.75 / 3.5]);
 /** Line spacing at each step: the set spacing for the first two, then tighter ("leading-tight") as the text shrinks. */
@@ -46,7 +48,7 @@ const textLength = (lines) => lines.reduce((n, line) => n + line.text.length, 0)
 export function wrappedRows(text, width = SPLIT_LIMITS.charsPerLine) {
   let rows = 1;
   let used = 0;
-  for (const word of String(text).split(/s+/).filter(Boolean)) {
+  for (const word of String(text).split(/\s+/).filter(Boolean)) {
     if (used > 0 && used + 1 + word.length <= width) used += 1 + word.length;
     else {
       if (used > 0) rows += 1;
@@ -125,6 +127,15 @@ export function splitSlide(lines, { maxChars, maxLines, charsPerLine = SPLIT_LIM
     rows += pieceRows;
   }
   if (current.length > 0) out.push(current);
+  // A last part of only a few words joins the part before it when the two stay within the stub bound (see shared/prose-pagination.js), so
+  // the operator never presses Next just to show two leftover words.
+  if (out.length >= 2) {
+    const last = out[out.length - 1];
+    const before = out[out.length - 2];
+    if (isStub(last.map((l) => l.text).join(' ')) && textLength(before) + textLength(last) <= PROSE_STUB.mergedMaxChars) {
+      out.splice(out.length - 2, 2, [...before, ...last]);
+    }
+  }
   return out;
 }
 

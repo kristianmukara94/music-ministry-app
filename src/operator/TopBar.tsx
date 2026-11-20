@@ -5,7 +5,7 @@ import { LICENSE_LOCKED_TIP, useProjectionLocked } from '../live/license';
 import { useT } from '../i18n/strings';
 import { setUi, useUi } from '../state/ui';
 import { displayCombo } from '../../shared/shortcuts.js';
-import { mainLiveStatus } from '../../shared/main-live.js';
+import { mainLiveStatus, welcomeCover } from '../../shared/main-live.js';
 import { goToMainLive } from '../golive/mainLive';
 import type { ShortcutActionId } from './shortcuts';
 import { liveCommands, stepWelcomeSlide, welcomeSlidePosition } from './actions';
@@ -78,6 +78,29 @@ const DISABLED = 'cursor-not-allowed opacity-40 hover:bg-panel-2 hover:border-li
 function Dot({ tone }: { tone: 'ok' | 'warn' | 'info' }) {
   const color = tone === 'ok' ? 'bg-ok shadow-[0_0_6px_var(--color-ok)]' : tone === 'warn' ? 'bg-warn' : 'bg-info';
   return <span className={`size-2 shrink-0 rounded-full ${color}`} aria-hidden />;
+}
+
+const CELL = { gridArea: '1 / 1' } as const;
+const noop = () => {};
+
+/**
+ * Holds a control at the width of its widest state. Going live, pausing or a label changing (Go Live, Live Active, Back to Main Live) then
+ * never changes the bar's width, so a zone never wraps onto another row and the workspace below never moves up or down. The other states
+ * are laid out invisibly in the same grid cell: hidden, they take no clicks or focus and are not read out.
+ */
+function StableSlot({ ghosts, children }: { ghosts: ReactNode[]; children: ReactNode }) {
+  return (
+    <div className="grid shrink-0 items-center justify-items-start">
+      {ghosts.map((ghost, i) => (
+        <div key={i} aria-hidden className="pointer-events-none invisible" style={CELL}>
+          {ghost}
+        </div>
+      ))}
+      <div className="flex" style={CELL}>
+        {children}
+      </div>
+    </div>
+  );
 }
 
 function ControlButton({
@@ -159,24 +182,46 @@ function useWelcomePosition() {
 function WelcomeControl() {
   const t = useT();
   const live = useLive((s) => s.state.projector.live.kind === 'welcome');
+  const slideCount = useLive((s) => s.state.welcome.slides.length);
   const position = useWelcomePosition();
   const key = useShortcutKey('welcome');
   const tip = withKey(live ? t('top.tipWelcomeLive') : t('top.tipWelcome'), key);
+  // The widest the control gets: live, with the stepper at its longest counter. Held from the start, so going live never shifts the bar.
+  const ghosts = [
+    <ControlButton key="off" icon={WelcomeIcon} label={t('top.welcome')} tone={OUTPUT} active={false} onClick={noop} />,
+    <WelcomeCapsule key="live" ghost stepper={slideCount > 1} counter={slideCount > 1 ? `${slideCount}/${slideCount}` : ''} tip={tip} />,
+  ];
 
-  if (!live) return <ControlButton icon={WelcomeIcon} label={t('top.welcome')} tone={OUTPUT} title={tip} active={false} onClick={liveCommands.welcome} />;
+  if (!live) {
+    return (
+      <StableSlot ghosts={ghosts}>
+        <ControlButton icon={WelcomeIcon} label={t('top.welcome')} tone={OUTPUT} title={tip} active={false} onClick={liveCommands.welcome} />
+      </StableSlot>
+    );
+  }
 
   const stepper = position !== null && position.count > 1;
   const counter = position ? `${position.index + 1}/${position.count}` : '';
   return (
+    <StableSlot ghosts={ghosts}>
+      <WelcomeCapsule stepper={stepper} counter={counter} tip={tip} />
+    </StableSlot>
+  );
+}
+
+/** The live Welcome Screen capsule. `ghost`: drawn only to hold its width (no test id, no handlers). */
+function WelcomeCapsule({ stepper, counter, tip, ghost = false }: { stepper: boolean; counter: string; tip: string; ghost?: boolean }) {
+  const t = useT();
+  return (
     <div
       role="group"
       aria-label={t('top.welcome')}
-      data-testid="welcome-compound"
+      data-testid={ghost ? undefined : 'welcome-compound'}
       className={`${NO_DRAG} flex h-9 shrink-0 items-stretch overflow-hidden rounded-md border border-accent/70 bg-accent/15 text-[13px] font-medium whitespace-nowrap text-accent ring-1 ring-accent/30 shadow-[0_0_14px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]`}
     >
       <button
         type="button"
-        onClick={liveCommands.welcome}
+        onClick={ghost ? undefined : liveCommands.welcome}
         title={tip}
         aria-pressed
         className="flex items-center gap-1.5 px-3 transition-colors hover:bg-accent/15 focus-visible:bg-accent/20 focus-visible:outline-none"
@@ -195,10 +240,10 @@ function WelcomeControl() {
           <span className="my-1.5 w-px shrink-0 bg-accent/40" aria-hidden />
           <button
             type="button"
-            onClick={stepWelcomeSlide}
+            onClick={ghost ? undefined : stepWelcomeSlide}
             title={t('top.tipWelcomeNext')}
             aria-label={`${t('top.welcomeNext')} (${counter})`}
-            data-testid="welcome-next"
+            data-testid={ghost ? undefined : 'welcome-next'}
             className="flex items-center gap-1.5 px-3 transition-colors hover:bg-accent/15 focus-visible:bg-accent/20 focus-visible:outline-none"
           >
             {/* The full label on wide screens, a compact one on 1280px and 1366px booth laptops. */}
@@ -228,38 +273,62 @@ export function GoLiveShortcut() {
   const onAir = useLive((s) => mainLiveStatus(s.state).onAir);
   const parked = useLive((s) => mainLiveStatus(s.state).parked);
   const override = useLive((s) => mainLiveStatus(s.state).override);
+  // The welcome screen over the run on air: Back to Main Live takes it down and the covered slide comes back.
+  const covered = useLive((s) => welcomeCover(s.state) !== null);
   const run = () => void goToMainLive().catch((err) => window.alert(err instanceof Error ? err.message : String(err)));
+  // Every label the shortcut can show, held at the widest, so switching between them never moves the bar.
+  const ghosts = [
+    <BackToMainButton key="back" glow onClick={noop} />,
+    <ControlButton key="active" icon={Radio} label={t('top.liveActive')} tone={GO_LIVE} active onClick={noop}>
+      <Dot tone="ok" />
+    </ControlButton>,
+    <ControlButton key="go" icon={Radio} label={t('top.goLive')} tone={GO_LIVE} onClick={noop}>
+      <Dot tone="ok" />
+    </ControlButton>,
+  ];
 
-  if (parked) {
+  if (parked || covered) {
     const tip = override ? t('top.tipBackToMainLiveOverride') : t('top.tipBackToMainLive');
     return (
-      <button
-        type="button"
-        onClick={run}
-        title={tip}
-        data-testid="top-go-live"
-        data-state={override ? 'override' : 'parked'}
-        className={`${BASE} ${NO_DRAG} ${BACK_TO_MAIN} ${override ? BACK_TO_MAIN_GLOW : ''}`}
-      >
-        <Radio className="size-4 shrink-0" aria-hidden strokeWidth={2.25} />
-        <span>{t('top.backToMainLive')}</span>
-        {override && <span className="size-2 shrink-0 animate-pulse rounded-full bg-warn" aria-hidden />}
-      </button>
+      <StableSlot ghosts={ghosts}>
+        <BackToMainButton glow={override || covered} title={tip} state={covered ? 'welcome' : override ? 'override' : 'parked'} onClick={run} />
+      </StableSlot>
     );
   }
 
   const active = onConsole && onAir !== null;
   return (
-    <ControlButton
-      icon={Radio}
-      label={active ? t('top.liveActive') : t('top.goLive')}
-      title={active ? t('top.tipLiveActive') : t('top.tipGoLive')}
-      tone={GO_LIVE}
-      active={active}
-      onClick={run}
+    <StableSlot ghosts={ghosts}>
+      <ControlButton
+        icon={Radio}
+        label={active ? t('top.liveActive') : t('top.goLive')}
+        title={active ? t('top.tipLiveActive') : t('top.tipGoLive')}
+        tone={GO_LIVE}
+        active={active}
+        onClick={run}
+      >
+        {onAir !== null && <Dot tone="ok" />}
+      </ControlButton>
+    </StableSlot>
+  );
+}
+
+/** Back to Main Live, amber. `state` is set on the real button only (a ghost drawn to hold the width has no test id). */
+function BackToMainButton({ glow, title, state, onClick }: { glow: boolean; title?: string; state?: string; onClick: () => void }) {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      data-testid={state ? 'top-go-live' : undefined}
+      data-state={state}
+      className={`${BASE} ${NO_DRAG} ${BACK_TO_MAIN} ${glow ? BACK_TO_MAIN_GLOW : ''}`}
     >
-      {onAir !== null && <Dot tone="ok" />}
-    </ControlButton>
+      <Radio className="size-4 shrink-0" aria-hidden strokeWidth={2.25} />
+      <span>{t('top.backToMainLive')}</span>
+      {glow && <span className="size-2 shrink-0 animate-pulse rounded-full bg-warn" aria-hidden />}
+    </button>
   );
 }
 
@@ -280,16 +349,48 @@ function LowerThirdControl() {
     : withKey(onAir ? t('top.tipLowerThirdLive') : ready ? t('top.tipLowerThirdReady') : t('top.tipOpenLowerThird'), toggleKey);
   const toggle = () => (ready ? dispatch({ type: 'lowerThird/toggle' }) : setUi({ view: 'media', pendingFocus: { kind: 'lowerThird' } }));
 
+  // Off, on, and on and paused, held at the widest.
+  const ghosts = [
+    <ControlButton key="off" icon={Tag} label={t('top.lowerThird')} tone={OUTPUT} active={false} onClick={noop} />,
+    <LowerThirdCapsule key="on" ghost paused={false} tip={tip} pauseKey={pauseKey} toggle={noop} />,
+    <LowerThirdCapsule key="paused" ghost paused tip={tip} pauseKey={pauseKey} toggle={noop} />,
+  ];
+
   if (!onAir) {
-    return <ControlButton icon={Tag} label={t('top.lowerThird')} tone={OUTPUT} title={tip} active={false} disabled={lowerLocked} onClick={toggle} />;
+    return (
+      <StableSlot ghosts={ghosts}>
+        <ControlButton icon={Tag} label={t('top.lowerThird')} tone={OUTPUT} title={tip} active={false} disabled={lowerLocked} onClick={toggle} />
+      </StableSlot>
+    );
   }
 
-  const paused = lowerThird.paused;
+  return (
+    <StableSlot ghosts={ghosts}>
+      <LowerThirdCapsule paused={lowerThird.paused} tip={tip} pauseKey={pauseKey} toggle={toggle} />
+    </StableSlot>
+  );
+}
+
+/** The on-air Lower 3rd capsule. `ghost`: drawn only to hold its width (no test ids, no handlers). */
+function LowerThirdCapsule({
+  paused,
+  tip,
+  pauseKey,
+  toggle,
+  ghost = false,
+}: {
+  paused: boolean;
+  tip: string;
+  pauseKey: string | null;
+  toggle: () => void;
+  ghost?: boolean;
+}) {
+  const t = useT();
   return (
     <div
       role="group"
       aria-label={t('top.lowerThird')}
-      data-testid="lower-third-compound"
+      data-testid={ghost ? undefined : 'lower-third-compound'}
       className={`${NO_DRAG} flex h-9 shrink-0 items-stretch overflow-hidden rounded-md border border-accent/70 bg-accent/15 text-[13px] font-medium whitespace-nowrap text-accent ring-1 ring-accent/30 shadow-[0_0_14px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]`}
     >
       <button
@@ -306,11 +407,11 @@ function LowerThirdControl() {
       <span className="my-1.5 w-px shrink-0 bg-accent/40" aria-hidden />
       <button
         type="button"
-        onClick={() => dispatch({ type: 'lowerThird/pause' })}
+        onClick={ghost ? undefined : () => dispatch({ type: 'lowerThird/pause' })}
         title={withKey(paused ? t('top.tipResumeLowerThird') : t('top.tipPauseLowerThird'), pauseKey)}
         aria-label={paused ? t('top.lowerThirdPaused') : t('top.pauseLowerThird')}
         aria-pressed={paused}
-        data-testid="lower-third-pause"
+        data-testid={ghost ? undefined : 'lower-third-pause'}
         className={`flex items-center gap-1.5 px-3 transition-colors focus-visible:outline-none ${
           paused ? 'bg-warn/15 font-semibold text-warn hover:bg-warn/25' : 'hover:bg-accent/15 focus-visible:bg-accent/20'
         }`}
@@ -439,27 +540,41 @@ export function TopBar() {
               </button>
             </span>
           )}
-          <ControlButton
-            icon={MonitorOff}
-            label={t('top.blackout')}
-            title={withKey(t('top.tipBlackout'), keys.blackout)}
-            tone={EMERGENCY}
-            active={liveKind === 'blackout'}
-            onClick={liveCommands.blackout}
-          />
-          <ControlButton
-            icon={projector.paused ? Play : Pause}
-            label={projector.paused ? t('top.projectorPaused') : t('top.pauseProjector')}
-            title={
-              !outputs.projector
-                ? t('top.tipProjectorRequired')
-                : withKey(projector.paused ? t('top.tipResumeProjector') : t('top.tipPauseProjector'), keys.pauseProjector)
-            }
-            tone={PAUSE}
-            active={projector.paused}
-            disabled={!outputs.projector}
-            onClick={() => dispatch({ type: 'projector/pause' })}
-          />
+          <StableSlot
+            ghosts={[
+              <ControlButton key="off" icon={MonitorOff} label={t('top.blackout')} tone={EMERGENCY} onClick={noop} />,
+              <ControlButton key="on" icon={MonitorOff} label={t('top.blackout')} tone={EMERGENCY} active onClick={noop} />,
+            ]}
+          >
+            <ControlButton
+              icon={MonitorOff}
+              label={t('top.blackout')}
+              title={withKey(t('top.tipBlackout'), keys.blackout)}
+              tone={EMERGENCY}
+              active={liveKind === 'blackout'}
+              onClick={liveCommands.blackout}
+            />
+          </StableSlot>
+          <StableSlot
+            ghosts={[
+              <ControlButton key="run" icon={Pause} label={t('top.pauseProjector')} tone={PAUSE} onClick={noop} />,
+              <ControlButton key="paused" icon={Play} label={t('top.projectorPaused')} tone={PAUSE} active onClick={noop} />,
+            ]}
+          >
+            <ControlButton
+              icon={projector.paused ? Play : Pause}
+              label={projector.paused ? t('top.projectorPaused') : t('top.pauseProjector')}
+              title={
+                !outputs.projector
+                  ? t('top.tipProjectorRequired')
+                  : withKey(projector.paused ? t('top.tipResumeProjector') : t('top.tipPauseProjector'), keys.pauseProjector)
+              }
+              tone={PAUSE}
+              active={projector.paused}
+              disabled={!outputs.projector}
+              onClick={() => dispatch({ type: 'projector/pause' })}
+            />
+          </StableSlot>
           <GoLiveShortcut />
           <ControlButton icon={Square} label={t('top.stop')} title={withKey(t('top.tipStop'), keys.stop)} tone={STOP} toggle={false} onClick={() => dispatch({ type: 'stop' })} />
         </div>
@@ -470,14 +585,21 @@ export function TopBar() {
         <div ref={overlays} className="flex items-center gap-2">
           <div role="group" aria-label={t('top.groupOverlays')} className="flex items-center gap-1.5">
             <WelcomeControl />
-            <ControlButton
-              icon={Megaphone}
-              label={t('top.announcements')}
-              title={withKey(liveKind === 'announcements' ? t('top.tipAnnouncementsLive') : t('top.tipAnnouncements'), keys.announcements)}
-              tone={OUTPUT}
-              active={liveKind === 'announcements'}
-              onClick={liveCommands.announcements}
-            />
+            <StableSlot
+              ghosts={[
+                <ControlButton key="off" icon={Megaphone} label={t('top.announcements')} tone={OUTPUT} onClick={noop} />,
+                <ControlButton key="on" icon={Megaphone} label={t('top.announcements')} tone={OUTPUT} active onClick={noop} />,
+              ]}
+            >
+              <ControlButton
+                icon={Megaphone}
+                label={t('top.announcements')}
+                title={withKey(liveKind === 'announcements' ? t('top.tipAnnouncementsLive') : t('top.tipAnnouncements'), keys.announcements)}
+                tone={OUTPUT}
+                active={liveKind === 'announcements'}
+                onClick={liveCommands.announcements}
+              />
+            </StableSlot>
             <LowerThirdControl />
           </div>
           <Divider />

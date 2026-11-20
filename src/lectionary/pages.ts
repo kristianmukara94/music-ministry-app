@@ -1,5 +1,6 @@
 import { paginateSection, pagesOf, withFitter } from '../announcements/paginate';
 import { hasResponse, responsePagesOf } from '../../shared/daily-readings.js';
+import { bindVerseNumber, mergeTrailingStub } from '../../shared/prose-pagination.js';
 import { autoSplitText, needsSplit, ON_AIR_LIMITS } from '../utils/textOptimizer';
 
 /** Psalm verses and intentions sit below the pinned response, so they get less of the slide's height. Auto-paginate measures them the same way. */
@@ -27,5 +28,11 @@ export function readingPagesOf(readingType: string, rawText: string): string[] {
  */
 export function readingSlides(readingType: string, rawText: string): string[] {
   if (hasResponse(readingType)) return readingPagesOf(readingType, rawText);
-  return pagesOf(rawText).flatMap((page) => (needsSplit(page, ON_AIR_LIMITS) ? autoSplitText(page, ON_AIR_LIMITS).slides : [page]));
+  return pagesOf(rawText).flatMap((raw) => {
+    // Verse numbers are bound to their first word, so a number never ends a slide while its verse starts the next one.
+    const page = raw.split('\n').map(bindVerseNumber).join('\n');
+    if (!needsSplit(page, ON_AIR_LIMITS)) return [page];
+    // Only the pages the optimizer cut are evened out: a trailing stub of a few words joins the slide before it. The operator's --- breaks stay.
+    return mergeTrailingStub(autoSplitText(page, ON_AIR_LIMITS).slides, { source: page });
+  });
 }
