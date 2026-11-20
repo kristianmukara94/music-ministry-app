@@ -451,7 +451,7 @@ export function Settings() {
               </button>
             );
           })}
-          <span className="ml-auto text-xs text-faint">APCCMMA v{state.version}</span>
+          {/* The version lives in the sidebar's status badge and in System › Updates / About, not here as well. */}
         </div>
       </header>
 

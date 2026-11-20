@@ -107,9 +107,9 @@ test('on a 768px-tall window the sidebar tightens so every link, Quick Actions, 
   assert.match(side, /<div className=\{`flex flex-col gap-0\.5 \$\{collapsed \? '' : 'short:hidden'\}`\}>/);
   const compact = side.slice(side.indexOf('data-testid="quick-actions-compact"'), side.indexOf("short:hidden'}`}>"));
   for (const action of ["t('side.search')", "t('side.exportImport')", "t('side.fullscreen')", '<LangSwitch />']) assert.ok(compact.includes(action), action);
-  // Output Status rows and the license footer stay, only tighter.
-  assert.match(side, /<SectionLabel>\{t\('side\.outputs'\)\}<\/SectionLabel>/);
-  assert.match(side, /short:py-0\.5 short:text-sm">\n\s+<span\n\s+className=\{`size-2\.5/);
+  // Output Status is one line of chips, labelled for screen readers, not a heading plus three rows.
+  assert.ok(side.includes("aria-label={t('side.outputs')}"));
+  assert.match(side, /className={`mt-1.5 flex gap-x-3 gap-y-1 short:mt-1 /);
   assert.match(side, /\{license\.statusText\}/);
   assert.match(side, /\{collapsed \? '©' : FOOTER_TEXT\}/);
 });
@@ -126,7 +126,7 @@ test('the Service Console tightens on short windows and the bottom row keeps roo
   assert.match(clock, /short:text-4xl short:xl:text-\[36px\]/);
   assert.match(clock, /text-lg font-medium short:hidden/, 'the Current Time caption steps aside on short windows');
   assert.match(read('src/operator/Panel.tsx'), /short:min-h-9 short:py-1\.5/);
-  assert.match(read('src/operator/OperatorApp.tsx'), /pt-6 pr-14 short:pt-2/);
+  assert.match(read('src/operator/OperatorApp.tsx'), /pt-6 pr-16 short:pt-2/);
 });
 
 test('Action Center titles stay on one line and every card has the same title and description baselines', () => {

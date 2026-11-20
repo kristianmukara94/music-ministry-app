@@ -56,8 +56,8 @@ test('on-accent picks whichever of near-black and white reads better', () => {
 });
 
 test('the shared/theme-tokens.css theme list is complete', () => {
-  // 15 colour themes + 7 seasons. A new theme block is picked up by every test below automatically.
-  assert.equal(THEMES.length, 22);
+  // 15 colour themes + 7 seasons + Rose Sunday. A new theme block is picked up by every test below automatically.
+  assert.equal(THEMES.length, 23);
 });
 
 for (const { id, palette } of THEMES) {

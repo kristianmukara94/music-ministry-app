@@ -4,6 +4,7 @@ import { useUi, type HotkeyAction, type LaunchItem } from '../state/ui';
 import { bridge } from '../live/bridge';
 import type { LiveState } from '../../shared/live.js';
 import { carouselPosition } from '../../shared/welcome-settings.js';
+import { enterGoLiveFullscreen, exitGoLiveFullscreen } from '../golive/fullscreen';
 
 const lang = () => useUi.getState().lang;
 
@@ -70,7 +71,21 @@ export function runLaunchItem(item: LaunchItem) {
   else void bridge.open(item.target);
 }
 
+/**
+ * The sidebar's Fullscreen and Ctrl+Shift+F. On the Go Live view they toggle Go Live Fullscreen Mode (window fullscreen plus the console
+ * filling it), so the booth has one fullscreen, not two. Elsewhere they only make the window fullscreen.
+ */
 export function toggleFullscreen() {
-  if (document.fullscreenElement) void document.exitFullscreen();
-  else void document.documentElement.requestFullscreen();
+  const { view, goLiveFullscreen } = useUi.getState();
+  // The key always leaves fullscreen altogether: the mode, and the window too, even one already fullscreen before the mode began (the
+  // mode's own Exit keeps that window fullscreen, but this is the fullscreen key). Otherwise a window made fullscreen on another view
+  // could never be taken out of fullscreen with this key on Go Live: each press would only toggle the mode.
+  if (goLiveFullscreen) {
+    exitGoLiveFullscreen();
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    return;
+  }
+  if (view === 'goLive' && !document.fullscreenElement) return enterGoLiveFullscreen();
+  if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+  else void document.documentElement.requestFullscreen().catch(() => undefined);
 }

@@ -2,7 +2,7 @@ import { AUTO_SEASON_THEME, resolveTheme } from '../../shared/liturgical-season.
 import { TOKEN_VARS, resolveReadableThemeTokens, type PaletteKey, type ThemePalette } from '../../shared/theme-contrast.js';
 
 /** The theme catalogue. Each id has a matching [data-theme] block in src/styles.css, except `season-auto`. */
-export type SeasonThemeId = 'advent' | 'christmas' | 'ordinary-time' | 'lent' | 'holy-week' | 'easter' | 'pentecost';
+export type SeasonThemeId = 'advent' | 'christmas' | 'ordinary-time' | 'lent' | 'holy-week' | 'easter' | 'pentecost' | 'rose';
 
 export type ThemeId =
   | 'obsidian' | 'default' | 'light' | 'classic' | 'olive'
@@ -30,6 +30,7 @@ export const THEMES: ThemeInfo[] = [
   { id: 'holy-week', name: 'Holy Week', group: 'seasonal', detail: 'Red · Palm Sunday to Holy Saturday' },
   { id: 'easter', name: 'Easter', group: 'seasonal', detail: 'White & gold · Easter Sunday to Pentecost' },
   { id: 'pentecost', name: 'Pentecost', group: 'seasonal', detail: 'Red · Pentecost Sunday' },
+  { id: 'rose', name: 'Rose Sunday', group: 'seasonal', detail: 'Rose · Gaudete (3rd of Advent) and Laetare (4th of Lent)' },
   { id: 'obsidian', name: 'Obsidian Console', group: 'signature' },
   { id: 'default', name: 'APCCMMA Default', group: 'signature' },
   { id: 'light', name: 'APCCMMA Light', group: 'signature' },

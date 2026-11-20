@@ -28,6 +28,7 @@ export const TITLE_BAR_COLOURS = {
   'holy-week': { canvas: '#1a0406', fg: '#fbeeee' },
   easter: { canvas: '#fffdf6', fg: '#25200f' },
   pentecost: { canvas: '#200a03', fg: '#fff0e6' },
+  rose: { canvas: '#22091a', fg: '#fff0f6' },
 };
 
 /** The height of the title bar in CSS pixels. Matches the top bar. */

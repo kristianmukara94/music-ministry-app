@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CalendarDays, Check } from 'lucide-react';
-import { seasonOf } from '../../shared/liturgical-season.js';
+import { nextThemeChange, seasonThemeOf } from '../../shared/liturgical-season.js';
+import { formatIsoDay } from '../state/region';
+import { useRegion } from '../state/useRegion';
 import { useTheme } from '../theme/store';
 import { THEMES, resolvedTheme, type ThemeGroup, type ThemeId, type ThemeInfo } from '../theme/themes';
 
@@ -11,6 +13,7 @@ const GROUPS: { id: ThemeGroup; title: string; note?: string }[] = [
   { id: 'light', title: 'Light' },
 ];
 
+const THEME_NAME = Object.fromEntries(THEMES.map((t) => [t.id, t.name])) as Record<string, string>;
 const SEASON_NAME = Object.fromEntries(THEMES.filter((t) => t.group === 'seasonal').map((t) => [t.id, t.name])) as Record<string, string>;
 
 /** A small picture of the app in one theme. The picture carries its own data-theme, so it is painted with that theme's colours and nothing else. */
@@ -65,7 +68,7 @@ function ThemeCard({ info, active, now, onPick }: { info: ThemeInfo; active: boo
 }
 
 /** The Automatic choice: a wide card that shows which season it is painting today. */
-function AutoCard({ active, season, onPick }: { active: boolean; season: string; onPick: (id: ThemeId) => void }) {
+function AutoCard({ active, season, next, onPick }: { active: boolean; season: string; next: string | null; onPick: (id: ThemeId) => void }) {
   return (
     <button
       type="button"
@@ -90,7 +93,10 @@ function AutoCard({ active, season, onPick }: { active: boolean; season: string;
           )}
         </div>
         <p className="text-sm text-muted">Follows the Church calendar and changes colour with each season, at midnight, with no restart.</p>
-        <p className="text-xs font-semibold text-accent">Today: {SEASON_NAME[season] ?? season}</p>
+        <p className="text-xs font-semibold text-accent">
+          Today: {SEASON_NAME[season] ?? season}
+          {next && <span className="font-medium text-muted"> · {next}</span>}
+        </p>
       </div>
     </button>
   );
@@ -101,12 +107,30 @@ export function ThemeView() {
   const setTheme = useTheme((s) => s.setTheme);
   const [error, setError] = useState<string | null>(null);
 
-  const season = seasonOf(new Date());
+  const region = useRegion();
+  const today = new Date();
+  // What Automatic paints today: the season's colour, or rose on Gaudete and Laetare Sundays.
+  const season = seasonThemeOf(today);
   const painting = resolvedTheme(theme);
+  const change = nextThemeChange(today);
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const weekday = (d: Date) => d.toLocaleDateString('en', { weekday: 'short' });
+  const next = change ? `Changes to ${SEASON_NAME[change.theme] ?? change.theme} on ${weekday(change.date)} ${formatIsoDay(iso(change.date), region)}` : null;
+
+  // A brief Saved tick after each pick, so the operator sees the change was stored.
+  const [saved, setSaved] = useState(false);
+  const savedTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(savedTimer.current), []);
 
   const pick = (id: ThemeId) => {
     setError(null);
-    setTheme(id).catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    setTheme(id)
+      .then(() => {
+        setSaved(true);
+        window.clearTimeout(savedTimer.current);
+        savedTimer.current = window.setTimeout(() => setSaved(false), 2000);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   };
 
   return (
@@ -115,11 +139,15 @@ export function ThemeView() {
         <div>
           <h2 id="theme-heading" className="text-4xl leading-tight font-extrabold tracking-tight text-fg">Theme</h2>
           <p className="mt-2 text-[15px] text-muted">
-            Colors for APCCMMA's own windows. Projected slides keep their own styles.
+            Colours for APCCMMA's own windows. Projected slides keep their own styles.
+          </p>
+          <p className="mt-2 text-sm text-fg" data-testid="theme-current">
+            <span className="text-muted">In use: </span>
+            <span className="font-semibold">{theme === 'season-auto' ? `Automatic (${THEME_NAME[painting] ?? painting} today)` : (THEME_NAME[theme] ?? theme)}</span>
           </p>
         </div>
-        <p className="flex items-center gap-2 text-xs font-semibold text-ok">
-          <Check size={14} strokeWidth={3} aria-hidden /> Changes save automatically
+        <p role="status" className="flex items-center gap-2 text-xs font-semibold text-ok">
+          <Check size={14} strokeWidth={3} aria-hidden /> {saved ? 'Saved' : 'Changes save automatically'}
         </p>
       </header>
 
@@ -137,11 +165,11 @@ export function ThemeView() {
             <h3 className="eyebrow">{group.title}</h3>
             {group.note && <p className="mt-1 text-sm text-muted">{group.note}</p>}
           </div>
-          {group.id === 'seasonal' && <AutoCard active={theme === 'season-auto'} season={season} onPick={pick} />}
+          {group.id === 'seasonal' && <AutoCard active={theme === 'season-auto'} season={season} next={next} onPick={pick} />}
           <div className="grid grid-cols-2 gap-4 xl:grid-cols-4 2xl:grid-cols-5">
             {THEMES.filter((t) => t.group === group.id).map((info) => (
               // "In use" marks only a theme chosen by hand. In Automatic mode the Auto card carries it and the season card says Now.
-              <ThemeCard key={info.id} info={info} active={info.id === theme} now={group.id === 'seasonal' && info.id === season && (theme === 'season-auto' || painting === info.id)} onPick={pick} />
+              <ThemeCard key={info.id} info={info} active={info.id === theme} now={group.id === 'seasonal' && info.id === season} onPick={pick} />
             ))}
           </div>
         </div>

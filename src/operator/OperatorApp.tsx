@@ -212,10 +212,10 @@ export function OperatorApp() {
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-clip">
         {!goLiveFullscreen && <Sidebar />}
-        {/* pt-6 keeps headings and the first cards clear of the top bar. pr-14 leaves room for the edge tabs (gone in Go Live Fullscreen Mode). */}
+        {/* pt-6 keeps headings and the first cards clear of the top bar. pr-16 leaves room for the 48px edge tabs plus a gap, so a page's own scrollbar never touches them (gone in Go Live Fullscreen Mode). */}
         <main
           data-golive-fullscreen={goLiveFullscreen || undefined}
-          className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden ${goLiveFullscreen ? 'pt-1' : 'pt-6 pr-14 short:pt-2'}`}
+          className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden ${goLiveFullscreen ? 'pt-1' : 'pt-6 pr-16 short:pt-2'}`}
         >
           {view === 'dashboard' && <Dashboard />}
           {/* Announcements and the Whiteboard are one workspace. A link that still asks for the Whiteboard opens it on the Whiteboard's slides. */}

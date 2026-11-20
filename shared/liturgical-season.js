@@ -81,8 +81,33 @@ export function seasonOf(date = new Date()) {
   return 'ordinary-time';
 }
 
-/** The theme for a date's season. */
-export const seasonThemeOf = (date = new Date()) => SEASON_THEME[seasonOf(date)];
+/** The theme Automatic paints on the two rose Sundays: Gaudete (3rd Sunday of Advent) and Laetare (4th Sunday of Lent). */
+export const ROSE_THEME = 'rose';
+
+/**
+ * Whether a date is Gaudete or Laetare Sunday, the two days the Church may wear rose. A colour of the day, not a season: seasonOf still
+ * says Advent or Lent, so the Lectionary and the Planner are unaffected.
+ */
+export function isRoseSunday(date = new Date()) {
+  const year = date.getFullYear();
+  return daysBetween(firstSundayOfAdvent(year), date) === 14 || daysBetween(easterSunday(year), date) === -21;
+}
+
+/** The theme for a date: rose on Gaudete and Laetare Sundays, else the season's own. */
+export const seasonThemeOf = (date = new Date()) => (isRoseSunday(date) ? ROSE_THEME : SEASON_THEME[seasonOf(date)]);
+
+/**
+ * The next day Automatic changes colour after the given date, and the theme it changes to. Looks a year ahead at most; dates are local midnights.
+ */
+export function nextThemeChange(date = new Date()) {
+  const today = seasonThemeOf(date);
+  for (let i = 1; i <= 366; i++) {
+    const day = at(date.getFullYear(), date.getMonth(), date.getDate(), i);
+    const theme = seasonThemeOf(day);
+    if (theme !== today) return { date: day, theme };
+  }
+  return null;
+}
 
 /** The id that means "follow the Church calendar" rather than one fixed theme. */
 export const AUTO_SEASON_THEME = 'season-auto';

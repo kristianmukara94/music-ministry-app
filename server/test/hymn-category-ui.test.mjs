@@ -16,7 +16,7 @@ const editor = read('useSongEditor.ts');
 const saveBody = editor.slice(editor.indexOf('const save = async'), editor.indexOf('const save = async') + 1200);
 
 test('the save checks for a song category before anything is sent, for both create and edit', () => {
-  assert.match(editor, /if \(isSongCategoryMissing\(fields\.songCategory\)\) problems\.push\('songCategoryMissing'\)/, 'the form lists a missing category as a problem');
+  assert.match(editor, /if \(isSongCategoryMissing\(fields\.categories\[0\]\)\) problems\.push\('songCategoryMissing'\)/, 'the form lists a missing category as a problem');
   const check = saveBody.indexOf('if (!canSave) return false');
   const send = saveBody.indexOf('api.editHymn');
   assert.ok(check > 0, 'the save stops when there is a problem');

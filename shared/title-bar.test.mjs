@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { TITLE_BAR_COLOURS, titleBarOverlayFor } from './title-bar.js';
 
-const css = readFileSync(fileURLToPath(new URL('../src/styles.css', import.meta.url)), 'utf8');
+const css = readFileSync(fileURLToPath(new URL('./theme-tokens.css', import.meta.url)), 'utf8');
 
 /** The value of a variable inside one theme's block in styles.css. */
 function themeValue(theme, name) {

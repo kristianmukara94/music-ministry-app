@@ -13,6 +13,7 @@ export const THEME_CATALOG = Object.freeze([
   { id: 'holy-week', name: 'Holy Week', group: 'seasonal' },
   { id: 'easter', name: 'Easter', group: 'seasonal' },
   { id: 'pentecost', name: 'Pentecost', group: 'seasonal' },
+  { id: 'rose', name: 'Rose Sunday', group: 'seasonal' },
   { id: 'obsidian', name: 'Obsidian Console', group: 'signature' },
   { id: 'default', name: 'APCCMMA Default', group: 'signature' },
   { id: 'light', name: 'APCCMMA Light', group: 'signature' },

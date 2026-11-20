@@ -54,16 +54,19 @@ function SectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
-/** One output as a read-only row: a dot, its name, and LIVE or OFF in the status colour. It is not a control, so a stray click mid-service changes nothing. */
-function OutputRow({ label, on, stateLabel, collapsed }: { label: string; on: boolean; stateLabel: string; collapsed: boolean }) {
+/**
+ * One output as a read-only chip: a dot and its name, green and pulsing while live. The three share one line (the top bar already carries
+ * the projector's pill), so the footer spends one row instead of four. Not a control, so a stray click mid-service changes nothing.
+ */
+function OutputChip({ label, on, stateLabel, collapsed }: { label: string; on: boolean; stateLabel: string; collapsed: boolean }) {
   return (
-    <li title={`${label}: ${stateLabel}`} className="flex items-center gap-2 rounded-lg px-3 py-1 text-[15px] font-medium text-fg/85 short:py-0.5 short:text-sm">
-      <span
-        className={`size-2.5 shrink-0 rounded-full ${on ? 'animate-pulse bg-ok shadow-[0_0_8px_var(--color-ok)]' : 'bg-fg/40'}`}
-        aria-hidden
-      />
-      {!collapsed && <span className="flex-1 truncate">{label}</span>}
-      {!collapsed && <span className={`text-sm font-semibold tracking-wide ${on ? 'text-ok' : 'text-muted'}`}>{stateLabel}</span>}
+    <li
+      title={`${label}: ${stateLabel}`}
+      aria-label={`${label}: ${stateLabel}`}
+      className={`flex min-w-0 items-center gap-1.5 text-xs font-semibold ${on ? 'text-ok' : 'text-muted'}`}
+    >
+      <span className={`size-2 shrink-0 rounded-full ${on ? 'animate-pulse bg-ok shadow-[0_0_8px_var(--color-ok)]' : 'bg-fg/40'}`} aria-hidden />
+      {!collapsed && <span className="truncate">{label}</span>}
     </li>
   );
 }
@@ -260,14 +263,14 @@ export function Sidebar() {
           <DatabaseStatus collapsed={collapsed} />
         </div>
 
-        <div className="mt-1 short:mt-0">
-          {!collapsed && <SectionLabel>{t('side.outputs')}</SectionLabel>}
-          <ul className="flex flex-col gap-0.5 py-1 short:gap-0 short:py-0">
-            {outputRows.map((row) => (
-              <OutputRow key={row.label} label={row.label} on={row.on} stateLabel={row.on ? 'LIVE' : 'OFF'} collapsed={collapsed} />
-            ))}
-          </ul>
-        </div>
+        <ul
+          aria-label={t('side.outputs')}
+          className={`mt-1.5 flex gap-x-3 gap-y-1 short:mt-1 ${collapsed ? 'flex-col items-center' : 'flex-wrap items-center justify-center px-3'}`}
+        >
+          {outputRows.map((row) => (
+            <OutputChip key={row.label} label={row.label} on={row.on} stateLabel={row.on ? 'LIVE' : 'OFF'} collapsed={collapsed} />
+          ))}
+        </ul>
 
         {!collapsed && license?.statusText && (
           <p title={license.statusText} className={`truncate px-3 pt-2 text-center text-[11px] short:pt-1 ${license.canProject ? 'text-muted' : 'text-danger'}`}>

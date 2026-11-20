@@ -289,5 +289,5 @@ test('the sidebar draws the theme picker with "Match the laptop" and every theme
   assert.match(shell, /themeWatcher \?\?= startThemeSync\(\);/);
   assert.match(shell, /background: var\(--sidebar-bg\)/);
   const page = runInit();
-  assert.equal(page.api.themes.length, 22);
+  assert.equal(page.api.themes.length, 23);
 });

@@ -25,6 +25,7 @@
     { id: 'holy-week', name: 'Holy Week', group: 'seasonal', canvas: '#1a0406' },
     { id: 'easter', name: 'Easter', group: 'seasonal', canvas: '#fffdf6' },
     { id: 'pentecost', name: 'Pentecost', group: 'seasonal', canvas: '#200a03' },
+    { id: 'rose', name: 'Rose Sunday', group: 'seasonal', canvas: '#22091a' },
     { id: 'obsidian', name: 'Obsidian Console', group: 'signature', canvas: '#0c0d10' },
     { id: 'default', name: 'APCCMMA Default', group: 'signature', canvas: '#100306' },
     { id: 'light', name: 'APCCMMA Light', group: 'signature', canvas: '#faf6f4' },

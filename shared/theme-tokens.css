@@ -426,6 +426,24 @@
   --color-info: #1d4ed8;
 }
 
+[data-theme="rose"] {
+  --color-canvas: #22091a;
+  --color-panel: rgb(64 20 48 / 0.8);
+  --color-panel-2: rgb(92 32 68 / 0.7);
+  --color-surface: #3a122c;
+  --color-surface-2: #521c3d;
+  --color-line: rgb(170 80 130 / 0.5);
+  --color-line-strong: #b45a8f;
+  --color-fg: #fff0f6;
+  --color-muted: #f2c9dc;
+  --color-faint: #dfaac4;
+  --color-accent: #ff9ec8;
+  --color-on-accent: #22091a;
+  --color-gold: #ffc2dc;
+  --color-danger: #ff8f82;
+  --color-ok: #7fd18b;
+}
+
 [data-theme="pentecost"] {
   --color-canvas: #200a03;
   --color-panel: rgb(66 24 8 / 0.82);
