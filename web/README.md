@@ -36,10 +36,13 @@ old layout. `js/song-picker.js` is the song dialog both editors open: Holy Mass 
 and it starts on the plan's own tab and the step's own category. `songs-list` takes the same filter as
 `?serviceType=praise_worship&category=joyful`; the editors load the whole list once and narrow it on the page.
 
-A Holy Mass plan also saves its language (`EN`, `TL` or `CEB`) and its Holy Mass time (`HH:MM` on the plan's date) in the plan
-body. The slot and section names in Tagalog and Cebuano are in `js/mass-language.js`, a copy of the laptop's
-`shared/mass-language.js` that a test keeps equal. The times offered come from `PARISH_MASS_SCHEDULE` in `js/mass-schedule.js`:
-edit that list to match the parish bulletin. A planner can always choose another time.
+A Holy Mass plan also saves its language (`EN`, `TL` or `CEB`, for the readings and responses) and its Holy Mass schedule as the
+laptop keeps it, all in the plan body: `massTime` as typed (`6:00 AM`) and `massLanguage` (`English`, `Cebuano`, `Tagalog` or the
+parish's own). The slot and section names in Tagalog and Cebuano are in `js/mass-language.js`, a copy of the laptop's
+`shared/mass-language.js` that a test keeps equal. The schedule rules (reading a typed time, the order of a day's Holy Masses, and
+the clash of two Holy Masses at one time on one date) are in `js/holy-mass-schedule.js`, a byte-for-byte copy of
+`shared/mass-schedule.js`; change the shared file and copy it over. `js/schedule-ui.js` draws the fields, the taken-time warning
+with Open Existing, the editor's switcher and the calendar badges; `js/plan-calendar.js` lays out the Plans page's month calendar.
 
 A Praise & Worship song step can save the key it is sung in for that plan (`keyTransposed`), which leaves the song in the church's
 list as it is. A reading slot saves a short title and its type (`contentType`: `scripture`, `prayer` or `announcement`). The words of

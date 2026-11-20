@@ -10,6 +10,7 @@ import { bearerToken, deviceFrom } from './device.js';
 import { hashToken } from './auth.js';
 import { hit } from './rate-limit.js';
 import { EDITING_ROLES } from './rules.js';
+import { MAX_MASS_LANGUAGE, MAX_MASS_TIME, canonicalMassTime, findTimeConflict, normalizeMassLanguage, normalizeMassTime, timeConflictText } from '../../shared/mass-schedule.js';
 
 export const MAX_ITEMS = 200;
 export const MAX_PLANS_PER_PUSH = 50;
@@ -70,22 +71,33 @@ export function dateText(value) {
 
 /** The languages a Holy Mass plan can be celebrated in (shared/mass-language.js): English, Tagalog, Cebuano. */
 export const PLAN_LANGUAGES = ['EN', 'TL', 'CEB'];
-const MASS_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /**
- * A plan's details beyond its items, from the stored body: the language (EN, TL or CEB) and the parish Mass time it is for ("HH:MM" on
- * the plan's date). Each is left out when it is not set, so a plan saved before them reads as it did.
+ * A plan's details beyond its items, from the stored body: the language its texts are in (EN, TL or CEB), and its Holy Mass schedule as the
+ * laptop keeps it (shared/mass-schedule.js): `massTime` as typed ("6:00 AM", or "08:00" from the web's earlier schedule list) and
+ * `massLanguage` ('English', 'Cebuano', 'Tagalog' or the parish's own). They live in the JSONB body, so no column is added on the database.
+ * Each is left out when it is not set, so a plan saved before them reads as it did.
  */
 export function planDetails(body) {
   const out = {};
   if (PLAN_LANGUAGES.includes(body?.language)) out.language = body.language;
-  if (typeof body?.massTime === 'string' && MASS_TIME.test(body.massTime)) out.massTime = body.massTime;
+  const massTime = typeof body?.massTime === 'string' ? normalizeMassTime(body.massTime) : '';
+  if (massTime) out.massTime = massTime;
+  const massLanguage = typeof body?.massLanguage === 'string' ? normalizeMassLanguage(body.massLanguage) : '';
+  if (massLanguage) out.massLanguage = massLanguage;
   return out;
+}
+
+/** One schedule field from a request: text up to `max` characters, tidied; null or '' clears it. Throws for anything else. */
+function scheduleField(value, max, label) {
+  if (value === null || value === '') return '';
+  if (typeof value !== 'string' || value.replace(/\s+/g, ' ').trim().length > max) throw refuse(`${label} can be up to ${max} characters. Nothing was saved.`);
+  return value;
 }
 
 /**
  * The details a web save sets, on top of the ones the plan has. A field the request leaves out keeps its stored value; `massTime: null`
- * clears the time. Throws a plain ApiError for a value that is not allowed.
+ * (or '') clears the time, and `massLanguage: null` the schedule language. Throws a plain ApiError for a value that is not allowed.
  */
 export function checkPlanDetails(input, current = {}) {
   const out = planDetails(current);
@@ -94,23 +106,65 @@ export function checkPlanDetails(input, current = {}) {
     out.language = input.language;
   }
   if (input.massTime !== undefined) {
-    if (input.massTime === null) delete out.massTime;
-    else if (typeof input.massTime === 'string' && MASS_TIME.test(input.massTime)) out.massTime = input.massTime;
-    else throw refuse('Choose a Mass time from the schedule, or a time such as 08:00. Nothing was saved.');
+    const massTime = normalizeMassTime(scheduleField(input.massTime, MAX_MASS_TIME, 'A Holy Mass time'));
+    if (massTime) out.massTime = massTime;
+    else delete out.massTime;
+  }
+  if (input.massLanguage !== undefined) {
+    const massLanguage = normalizeMassLanguage(scheduleField(input.massLanguage, MAX_MASS_LANGUAGE, 'A Holy Mass language'));
+    if (massLanguage) out.massLanguage = massLanguage;
+    else delete out.massLanguage;
   }
   return out;
 }
 
-/** A plan as the API returns it: its fields, its language and Mass time when set, its Content Hub when it has one, and its ordered items. */
+/**
+ * The schedule a laptop push carries. A laptop that keeps schedules sends both fields (blank for none), and they replace the stored ones; an
+ * older laptop sends neither, and the stored ones stay. A push is never refused over a schedule: the laptop checks its own.
+ */
+export function pushedSchedule(input, stored) {
+  const out = { ...planDetails(stored) };
+  if (typeof input?.massTime !== 'string' && typeof input?.massLanguage !== 'string') return out;
+  delete out.massTime;
+  delete out.massLanguage;
+  const massTime = typeof input.massTime === 'string' ? normalizeMassTime(input.massTime) : '';
+  const massLanguage = typeof input.massLanguage === 'string' ? normalizeMassLanguage(input.massLanguage) : '';
+  return { ...out, ...(massTime ? { massTime } : {}), ...(massLanguage ? { massLanguage } : {}) };
+}
+
+/**
+ * The Holy Mass plan of this church already at `massTime` on `date`, or null: `{ id, name, massTime, massLanguage, date }`. Two Holy Masses on
+ * one day cannot share a time ("6:00 AM" and "06:00" are the same), so the web planner can offer Open Existing. `exceptId` is the plan being
+ * saved. Deleted plans and Praise & Worship plans never clash; a blank time never does.
+ */
+export async function timeConflictOn(sql, churchId, date, massTime, exceptId = null) {
+  if (!canonicalMassTime(massTime)) return null;
+  const rows = await sql`
+    SELECT id, name, body->>'massTime' AS mass_time, body->>'massLanguage' AS mass_language FROM plans
+    WHERE church_id = ${churchId} AND liturgical_date = ${date} AND COALESCE(body->>'kind', 'mass') <> 'pw' AND COALESCE(body->>'deleted', '') <> 'true'`;
+  const plans = rows.map((r) => ({ id: r.id, name: r.name, date, massTime: r.mass_time ?? '', massLanguage: r.mass_language ?? '' }));
+  return findTimeConflict(plans, { date, massTime }, exceptId);
+}
+
+/** The 409 a web create or save gets for a taken time: the plain line, and the plan already there, for Open Existing. */
+export const timeConflictResponse = (conflict) =>
+  json(409, { error: `${timeConflictText(conflict)} Open the existing one, or pick another time. Nothing was saved.`, conflict });
+
+/**
+ * A plan as the API returns it: its fields, its language when set, its Content Hub when it has one, and its ordered items. A Holy Mass plan
+ * always carries `massTime` and `massLanguage` ('' for none): a laptop reads their presence as a server that keeps schedules, so a blank one
+ * clears the laptop's and a missing one (an older server) leaves it.
+ */
 export function planOut(row) {
   const body = row.body ?? {};
+  const schedule = body.kind === 'pw' ? {} : { massTime: '', massLanguage: '' };
   // A deleted plan keeps its row, marked deleted and with no items, so every laptop learns of the delete on its next pull.
   return {
     id: row.id,
     name: row.name,
     date: dateText(row.liturgical_date),
     kind: body.kind ?? null,
-    ...(body.deleted ? {} : { ...planDetails(body), ...hubOf(body) }),
+    ...(body.deleted ? {} : { ...schedule, ...planDetails(body), ...hubOf(body) }),
     items: body.deleted ? [] : Array.isArray(body.items) ? body.items : [],
     updatedAt: new Date(row.updated_at).toISOString(),
     ...(body.deleted ? { deleted: true } : {}),
@@ -394,10 +448,12 @@ export async function pushOnePlan({ sql, transaction, churchId, userId, input, s
       }
       // A laptop does not send what is set on the web: notes, keys, reading types, Content Hub links. Each is kept while the item still holds the same thing.
       const kept = restoreWebFields(items, Array.isArray(row.body?.items) ? row.body.items : []);
-      // The language, Mass time and the plan's Content Hub are set on the web; a laptop push keeps them.
+      // The language and the plan's Content Hub are set on the web; a laptop push keeps them. The Holy Mass time and language come from a
+      // laptop that keeps them, and otherwise stay as stored (pushedSchedule).
+      const details = fields.kind === 'pw' ? planDetails(row.body) : pushedSchedule(input, row.body);
       await tx`
         UPDATE plans SET name = ${fields.name}, liturgical_date = ${fields.date},
-          body = ${JSON.stringify({ kind: fields.kind, ...planDetails(row.body), ...hubOf(row.body), items: kept })}::jsonb, updated_at = ${at}, synced_at = ${at}
+          body = ${JSON.stringify({ kind: fields.kind, ...details, ...hubOf(row.body), items: kept })}::jsonb, updated_at = ${at}, synced_at = ${at}
         WHERE id = ${id} AND church_id = ${churchId}`;
       return { id, status: 'accepted', updatedAt: at };
     });
@@ -481,26 +537,35 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
     const id = typeof body.id === 'string' ? body.id.toLowerCase() : '';
     if (!UUID.test(id)) throw refuse('A plan needs a valid id. Nothing was saved.');
     const fields = checkPlanFields(body);
-    // Optional, and sent only by the web's New plan form. A body without them, such as a laptop's, stores neither.
+    // Optional: the web's New plan form sends the language and the Holy Mass time and language, and a laptop its time and language. A body
+    // without them stores none.
     const details = checkPlanDetails(body);
     const items = checkItems(body.items, await songIdsOf(sql, churchId));
     const contentHubItems = checkContentHubItems(body.contentHubItems ?? []);
     checkHubReferences(items, contentHubItems);
     const at = now().toISOString();
+    let taken = null;
     try {
       await transaction(async (tx) => {
         const existing = await tx`SELECT id FROM plans WHERE id = ${id}`;
         if (existing.length) throw new ApiError(409, NOT_SAVED);
+        // A web planner cannot make a second Holy Mass at a time the day already has. A laptop's create is not refused: its own planner has
+        // checked, and refusing it would leave the plan stranded on that laptop.
+        if (!maker.fromLaptop && fields.kind === 'mass') {
+          taken = await timeConflictOn(tx, churchId, fields.date, details.massTime);
+          if (taken) throw new ApiError(409, 'time');
+        }
         await tx`
           INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at, synced_at)
           VALUES (${id}, ${churchId}, ${fields.name}, ${fields.date}, ${JSON.stringify({ kind: fields.kind, ...details, ...hubOf({ contentHubItems }), items })}::jsonb, ${at}, ${maker.fromLaptop ? at : null})`;
         await tx`INSERT INTO audit_log (church_id, actor_user_id, action, target_plan_id) VALUES (${churchId}, ${userId}, 'plan.created', ${id})`;
       });
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) return json(409, { error: NOT_SAVED });
+      if (err instanceof ApiError && err.status === 409) return taken ? timeConflictResponse(taken) : json(409, { error: NOT_SAVED });
       throw err;
     }
-    return json(201, { plan: { id, name: fields.name, date: fields.date, kind: fields.kind, ...details, items, updatedAt: at } });
+    const schedule = fields.kind === 'pw' ? {} : { massTime: '', massLanguage: '' };
+    return json(201, { plan: { id, name: fields.name, date: fields.date, kind: fields.kind, ...schedule, ...details, items, updatedAt: at } });
   });
 
   /**

@@ -12,7 +12,6 @@ const load = (...rel) => import(pathToFileURL(path.join(root, ...rel)).href);
 const model = await load('web', 'js', 'plan-model.js');
 const hub = await load('web', 'js', 'content-hub.js');
 const sample = await load('web', 'js', 'sample-data.js');
-const schedule = await load('web', 'js', 'mass-schedule.js');
 const { MASS_ORDER_TEMPLATES } = await load('shared', 'mass-order-text.js');
 const server = await load('server', 'lib', 'plan-sync.js');
 
@@ -219,9 +218,4 @@ test('every Hub entry the website can make is a valid note on the laptop, and a 
     }
   }
   assert.equal(webHubNote({ type: 'prayer', title: 'T', category: 'Mass Intention', text: 'x' }).category, 'Community Prayer');
-});
-
-test('the parish schedule offers the named Sunday Holy Masses', () => {
-  const labels = schedule.massTimesFor('2026-11-01').map((t) => t.label);
-  for (const label of ['6:00 AM · Early Sunday Holy Mass', '10:00 AM · Solemn Holy Mass', '5:30 PM · Youth Holy Mass']) assert.ok(labels.includes(label), label);
 });

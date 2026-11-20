@@ -77,18 +77,11 @@
         </div>
 
         <div id="mass-fields" class="new-plan-mass-fields">
-          <fieldset class="new-plan-group">
-            <legend class="new-plan-label">Liturgy language</legend>
-            <div class="language-pills">
-              <label class="language-pill"><input type="radio" name="language" value="EN" checked><span>English</span></label>
-              <label class="language-pill"><input type="radio" name="language" value="TL"><span>Tagalog</span></label>
-              <label class="language-pill"><input type="radio" name="language" value="CEB"><span>Cebuano</span></label>
-            </div>
-          </fieldset>
-          <div class="new-plan-group">
-            <label class="new-plan-label" for="plan-mass-time">Parish Holy Mass schedule</label>
-            <select id="plan-mass-time" class="new-plan-input"></select>
-          </div>
+          <section class="bc-panel" aria-labelledby="schedule-title">
+            <p id="schedule-title" class="bc-eyebrow">Holy Mass schedule</p>
+            <div id="schedule-fields" style="display: flex; flex-direction: column; gap: 16px"></div>
+          </section>
+          <div id="schedule-conflict" hidden></div>
         </div>
 
         <p id="new-plan-status" class="form-error" role="alert"></p>

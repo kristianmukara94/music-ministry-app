@@ -6,6 +6,7 @@ import { sessionFrom as loadSession } from './session.js';
 import { clientAddress } from './client-address.js';
 import { dateText } from './plan-editing.js';
 import { hit } from './rate-limit.js';
+import { normalizeMassLanguage, normalizeMassTime } from '../../shared/mass-schedule.js';
 import {
   CHANGE_PASSWORD_LIMIT,
   LOCK_MINUTES,
@@ -203,9 +204,13 @@ export function createApi({ sql, secret, now = () => new Date() }) {
     if (!session) return json(401, { error: 'Sign in first.' });
     if (session.mustChangePassword) return json(403, { error: 'Change your password before using the planner.' });
     // Every signed-in role can list the church's plans. The body is not sent, so the list stays light. `kind` says which editor
-    // a plan opens in, and is read from the body without sending it.
+    // a plan opens in, and is read from the body without sending it. A Holy Mass plan's time, language and item count are read the same
+    // way, for the calendar's schedule badges and the Available Holy Mass Schedules list.
     const rows = await sql`
-      SELECT id, name, liturgical_date, updated_at, synced_at, body->>'kind' AS kind FROM plans
+      SELECT id, name, liturgical_date, updated_at, synced_at, body->>'kind' AS kind,
+        body->>'massTime' AS mass_time, body->>'massLanguage' AS mass_language,
+        CASE WHEN jsonb_typeof(body->'items') = 'array' THEN jsonb_array_length(body->'items') ELSE 0 END AS item_count
+      FROM plans
       WHERE church_id = ${session.churchId} AND COALESCE(body->>'deleted', '') <> 'true'
       ORDER BY liturgical_date, name, id`;
     const plans = rows.map((r) => ({
@@ -215,6 +220,8 @@ export function createApi({ sql, secret, now = () => new Date() }) {
       updated_at: new Date(r.updated_at).toISOString(),
       synced_at: r.synced_at ? new Date(r.synced_at).toISOString() : null,
       kind: r.kind ?? null,
+      ...(r.kind === 'pw' ? {} : { massTime: normalizeMassTime(r.mass_time), massLanguage: normalizeMassLanguage(r.mass_language) }),
+      itemCount: Number(r.item_count) || 0,
     }));
     return json(200, plans.length ? { plans } : { plans, message: 'No plans yet. Plans are created on the church laptop and appear here after sync.' });
   });

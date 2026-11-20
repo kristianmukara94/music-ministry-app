@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Check, Church, Clock, Languages, Loader2, Plus, X } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, Church, Clock, Languages, Loader2, Plus, X } from 'lucide-react';
 import { planStatusOf } from '../../shared/liturgical-calendar.js';
 import {
   MAX_MASS_LANGUAGE,
   MAX_MASS_TIME,
   SCHEDULE_LANGUAGES,
   TIME_PRESETS,
+  findTimeConflict,
   isScheduleLanguage,
   normalizeMassLanguage,
   normalizeMassTime,
   scheduleLabel,
   type ScheduleLanguage,
+  type TimeConflict,
 } from '../../shared/mass-schedule.js';
 import { NO_DRAG } from '../components/appRegion';
 import type { PlannerT } from './strings';
@@ -39,6 +41,45 @@ export const scheduleText = (t: PlannerT, plan: Partial<MassSchedule> | null | u
 
 /** An empty schedule: what a new Holy Mass starts with. */
 export const EMPTY_SCHEDULE: MassSchedule = { massTime: '', massLanguage: '' };
+
+/**
+ * The Holy Mass already at the typed time on this day, or null. `dayPlans` are the day's Holy Mass plans; `exceptId` is the plan being edited.
+ * Read as the operator types, so the form says so before anything is sent (the service refuses it too).
+ */
+export const timeConflictOf = (dayPlans: readonly PlanSummary[] | undefined, iso: string, massTime: string, exceptId: number | null = null) =>
+  findTimeConflict(dayPlans ?? [], { date: iso, massTime }, exceptId);
+
+/** The warning line for a taken time, in the app language: "A Holy Mass at 6:00 AM (English) already exists on this date." */
+export function timeConflictMessage(t: PlannerT, conflict: TimeConflict<number>) {
+  const language = normalizeMassLanguage(conflict.massLanguage);
+  const name = isScheduleLanguage(language) ? t(`lang_${language}`) : language;
+  return name ? t('scheduleTimeTaken', { time: conflict.massTime, language: name }) : t('scheduleTimeTakenNoLanguage', { time: conflict.massTime });
+}
+
+/**
+ * The inline warning when the typed time is taken on this day, with Open Existing beside it: one press closes the form and opens that plan in
+ * the editor. Shown in the create form, Add Another Holy Mass Schedule and Edit time & language.
+ */
+export function TimeConflictBanner({ t, conflict, onOpenExisting }: { t: PlannerT; conflict: TimeConflict<number>; onOpenExisting: (id: number) => void }) {
+  return (
+    <div role="alert" data-time-conflict className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--cal-gold)]/70 bg-[var(--cal-gold)]/12 p-3">
+      <AlertTriangle size={18} className={`shrink-0 ${GOLD}`} aria-hidden />
+      <p className="min-w-0 flex-1 text-sm">
+        <span className="block font-extrabold text-[var(--cal-date)]">{timeConflictMessage(t, conflict)}</span>
+        <span className={`block text-xs font-medium ${MUTED}`}>
+          {conflict.name ? `${conflict.name} · ` : ''}{t('scheduleTimeTakenHint')}
+        </span>
+      </p>
+      <button
+        type="button"
+        onClick={() => onOpenExisting(conflict.id)}
+        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[var(--cal-gold)] px-3 text-sm font-extrabold text-[var(--cal-on-gold)] transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[var(--cal-gold)] focus-visible:ring-offset-2 focus-visible:outline-none"
+      >
+        {t('openExisting')} <ArrowRight size={14} strokeWidth={3} aria-hidden />
+      </button>
+    </div>
+  );
+}
 
 /** Closes on Escape and on a press outside `ref`, unless `busy`. */
 function useDismiss(ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
@@ -246,10 +287,14 @@ export function DaySchedulesDialog({ t, iso, dateLabel, plans, onOpen, onAdd, on
  * The editor's schedule form: Edit time & language for the open plan, or (with `name`) Add Another Holy Mass Schedule on its day. `onSave`
  * rejects with the reason it could not be kept, shown in the dialog, which stays open.
  */
-export function ScheduleFormDialog({ t, mode, dateLabel, initial, initialName, onSave, onClose }: {
-  t: PlannerT; mode: 'edit' | 'add'; dateLabel: string; initial: MassSchedule;
+export function ScheduleFormDialog({ t, mode, iso, dateLabel, initial, initialName, dayPlans, exceptId = null, onOpenExisting, onSave, onClose }: {
+  t: PlannerT; mode: 'edit' | 'add'; iso: string; dateLabel: string; initial: MassSchedule;
   /** For 'add': the new plan's suggested name. */
   initialName?: string;
+  /** The day's Holy Mass plans, for the taken-time warning; `exceptId` is the plan being edited. */
+  dayPlans: readonly PlanSummary[]; exceptId?: number | null;
+  /** Open Existing: closes this form and opens that plan. */
+  onOpenExisting: (id: number) => void;
   onSave: (schedule: MassSchedule, name: string) => Promise<void>; onClose: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
@@ -260,10 +305,11 @@ export function ScheduleFormDialog({ t, mode, dateLabel, initial, initialName, o
   useDismiss(panel, () => {
     if (!busy) onClose();
   });
+  const conflict = timeConflictOf(dayPlans, iso, schedule.massTime, mode === 'edit' ? exceptId : null);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (busy || (mode === 'add' && !name.trim())) return;
+    if (busy || conflict || (mode === 'add' && !name.trim())) return;
     setBusy(true);
     setError(null);
     try {
@@ -301,14 +347,15 @@ export function ScheduleFormDialog({ t, mode, dateLabel, initial, initialName, o
             </label>
           )}
           <ScheduleFields t={t} value={schedule} onChange={setSchedule} autoFocus />
-          {error && <p role="alert" className="rounded-lg border border-danger/50 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
+          {conflict && <TimeConflictBanner t={t} conflict={conflict} onOpenExisting={onOpenExisting} />}
+          {error && !conflict && <p role="alert" className="rounded-lg border border-danger/50 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
           <div className="flex items-center justify-end gap-2">
             <button type="button" onClick={onClose} disabled={busy} className={`inline-flex h-10 items-center rounded-lg px-4 text-sm font-extrabold ${MUTED} hover:text-[var(--cal-date)]`}>
               {t('cancel')}
             </button>
             <button
               type="submit"
-              disabled={busy || (mode === 'add' && !name.trim())}
+              disabled={busy || conflict !== null || (mode === 'add' && !name.trim())}
               className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-[var(--cal-gold)] px-4 text-sm font-extrabold text-[var(--cal-on-gold)] transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
             >
               {busy ? <Loader2 size={15} className="animate-spin" aria-hidden /> : mode === 'add' ? <Plus size={15} strokeWidth={3} aria-hidden /> : <Check size={15} strokeWidth={3} aria-hidden />}

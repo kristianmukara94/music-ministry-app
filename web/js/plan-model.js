@@ -572,13 +572,15 @@ export function withOrders(items) {
 
 /**
  * The body the plan-save route takes: the plan's id, the version the editor loaded, and the items. A Holy Mass plan also sends its details:
- * `language` (EN, TL or CEB) and `massTime` ("HH:MM", or null for none). Either planner can send the plan's `contentHubItems`. Details left out
- * are not sent, and the server keeps what it has.
+ * `language` (EN, TL or CEB), and its schedule as the laptop keeps it: `massTime` as typed ("6:00 AM") and `massLanguage` ('English',
+ * 'Cebuano', 'Tagalog' or the parish's own), each null for none. Either planner can send the plan's `contentHubItems`. Details left out are not
+ * sent, and the server keeps what it has.
  */
 export function savePayload(plan, items, details = {}) {
   const payload = { id: plan.id, baseUpdatedAt: plan.updatedAt, items };
   if (details.language !== undefined) payload.language = details.language;
   if (details.massTime !== undefined) payload.massTime = details.massTime || null;
+  if (details.massLanguage !== undefined) payload.massLanguage = details.massLanguage || null;
   if (details.contentHubItems !== undefined) payload.contentHubItems = details.contentHubItems;
   return payload;
 }
@@ -639,7 +641,7 @@ export function localDate(now = new Date()) {
 export const planTiming = (isoDate, today) => (isoDate >= today ? 'upcoming' : 'past');
 
 /** The list's layout. Anything else, such as a blank or an old stored value, is the list. */
-export const viewModeOf = (value) => (value === 'grid' ? 'grid' : 'list');
+export const viewModeOf = (value) => (value === 'grid' || value === 'calendar' ? value : 'list');
 
 const byName = (a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }) || a.id.localeCompare(b.id);
 const SORTERS = {
@@ -737,12 +739,19 @@ export function suggestPlanName({ kind, date } = {}) {
   return `${WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]} Holy Mass ${when}`;
 }
 
-/** The plan-create body for a new, empty plan. Language and Mass time belong to a Holy Mass plan; a time left unchosen is not sent. */
-export const newPlanRequest = ({ name, date, kind, language, massTime }, id) => ({
-  id,
-  name: name.trim(),
-  date,
-  kind,
-  items: [],
-  ...(kind === 'mass' ? { language, ...(massTime ? { massTime } : {}) } : {}),
-});
+/**
+ * The plan-create body for a new, empty plan. The language and the schedule (time and language) belong to a Holy Mass plan; a time or a
+ * schedule language left blank is not sent.
+ */
+export const newPlanRequest = ({ name, date, kind, language, massTime, massLanguage }, id) => {
+  const time = String(massTime ?? '').replace(/\s+/g, ' ').trim();
+  const scheduleLanguage = String(massLanguage ?? '').replace(/\s+/g, ' ').trim();
+  return {
+    id,
+    name: name.trim(),
+    date,
+    kind,
+    items: [],
+    ...(kind === 'mass' ? { language, ...(time ? { massTime: time } : {}), ...(scheduleLanguage ? { massLanguage: scheduleLanguage } : {}) } : {}),
+  };
+};

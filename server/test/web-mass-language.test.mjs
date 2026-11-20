@@ -12,7 +12,6 @@ const web = (file) => import(pathToFileURL(path.join(root, 'web', 'js', file)).h
 const readWeb = (rel) => fs.readFileSync(path.join(root, 'web', rel), 'utf8');
 
 const lang = await web('mass-language.js');
-const schedule = await web('mass-schedule.js');
 const model = await web('plan-model.js');
 const webSlots = await web('mass-slots.js');
 const laptopSlots = await import(pathToFileURL(path.join(root, 'shared', 'mass-slots.js')).href);
@@ -52,32 +51,6 @@ test('an editor row is named in the plan\'s language; an other step keeps its ow
   assert.equal(lang.slotName({ slot: null, name: 'Greeting' }, 'TL'), 'Greeting');
 });
 
-test('the Mass times follow the plan\'s day: Sunday Masses, the anticipated Mass on Saturday, the daily Masses on a weekday', () => {
-  const list = [
-    { day: 0, time: '10:00' },
-    { day: 0, time: '06:00', label: 'Early' },
-    { day: 6, time: '17:30', label: 'Anticipated' },
-    { day: -1, time: '06:00', label: 'Morning' },
-    { day: -1, time: '18:00' },
-    { day: 2, time: 'bad' },
-  ];
-  // 1 Nov 2026 is a Sunday, 31 Oct a Saturday, 3 Nov a Tuesday.
-  assert.deepEqual(schedule.massTimesFor('2026-11-01', list).map((t) => t.label), ['6:00 AM · Early', '10:00 AM', '6:00 PM']);
-  assert.deepEqual(schedule.massTimesFor('2026-10-31', list).map((t) => t.time), ['06:00', '17:30', '18:00']);
-  assert.deepEqual(schedule.massTimesFor('2026-11-03', list).map((t) => t.time), ['06:00', '18:00']);
-  assert.equal(schedule.timeLabel('00:15'), '12:15 AM');
-  assert.equal(schedule.timeLabel('12:00'), '12:00 PM');
-  assert.equal(schedule.timeLabel('8:00'), '');
-});
-
-test('the parish schedule itself is valid, and every day of the week has at least one Mass time', () => {
-  for (const entry of schedule.PARISH_MASS_SCHEDULE) {
-    assert.ok(schedule.isMassTime(entry.time), entry.time);
-    assert.ok(Number.isInteger(entry.day) && entry.day >= -1 && entry.day <= 6);
-  }
-  for (let d = 1; d <= 7; d += 1) assert.ok(schedule.massTimesFor(`2026-11-0${d}`).length > 0, `day ${d}`);
-});
-
 test('the save sends the language and Mass time when given, and only then', () => {
   const plan = { id: 'p1', updatedAt: '2026-10-27T10:00:00.000Z' };
   assert.deepEqual(model.savePayload(plan, []), { id: 'p1', baseUpdatedAt: plan.updatedAt, items: [] });
@@ -85,13 +58,18 @@ test('the save sends the language and Mass time when given, and only then', () =
     id: 'p1', baseUpdatedAt: plan.updatedAt, items: [], language: 'TL', massTime: '08:00',
   });
   assert.equal(model.savePayload(plan, [], { language: 'EN', massTime: '' }).massTime, null, 'no time clears it');
+  assert.deepEqual(model.savePayload(plan, [], { massTime: '6:00 AM', massLanguage: 'Cebuano' }), {
+    id: 'p1', baseUpdatedAt: plan.updatedAt, items: [], massTime: '6:00 AM', massLanguage: 'Cebuano',
+  }, 'the schedule as the laptop keeps it');
+  assert.equal(model.savePayload(plan, [], { massLanguage: '' }).massLanguage, null, 'no schedule language clears it');
 });
 
-test('the Holy Mass editor has the language switch and the Mass time, and saves them', () => {
+test('the Holy Mass editor has the readings language switch and the Holy Mass schedule fields, and saves them', () => {
   const html = readWeb('plan/mass.html');
   assert.match(html, /id="language"[^>]*role="radiogroup"/);
-  assert.match(html, /<select id="mass-time"/);
-  assert.match(html, /<label for="mass-time"/);
+  assert.match(html, /<div id="schedule-fields"/);
+  assert.match(html, /<div id="schedule-conflict"/);
+  assert.match(html, /<nav id="schedule-switcher" class="bc-switcher"/);
   const js = readWeb('js/mass.js');
   assert.match(js, /savePayload\(plan, massToItems\(state, ROWS\), details\)/);
   assert.match(js, /sectionName\(section, state\.language\)/);

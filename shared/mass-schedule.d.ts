@@ -27,3 +27,19 @@ export function scheduleLabel(plan: ScheduleLike | null | undefined, options?: {
 export function sameSchedule(a: ScheduleLike, b: ScheduleLike): boolean;
 export function massDayAction(plansOnDay: readonly unknown[] | null | undefined): 'create' | 'pick';
 export function cellScheduleBadges<T>(plansOnDay: readonly T[] | null | undefined, max?: number): { shown: T[]; more: number };
+export function canonicalMassTime(value: unknown): string;
+export function sameMassTime(a: unknown, b: unknown): boolean;
+/** The Holy Mass already at a time on a date: what the planners show beside Open Existing. */
+export interface TimeConflict<Id = number | string> {
+  id: Id;
+  name: string;
+  massTime: string;
+  massLanguage: string;
+  date: string;
+}
+export function findTimeConflict<P extends { id: number | string; name?: string; massTime?: string | null; massLanguage?: string | null }>(
+  plans: readonly P[] | null | undefined,
+  candidate: { date?: string; liturgicalDate?: string; massTime?: string | null },
+  exceptId?: P['id'] | null,
+): TimeConflict<P['id']> | null;
+export function timeConflictText(conflict: { massTime?: string | null; massLanguage?: string | null } | null | undefined): string;

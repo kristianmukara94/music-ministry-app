@@ -68,6 +68,21 @@
   --radius-control: 8px;
   --radius-card: 12px;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* The church laptop's broadcast planner (.planner-cal in src/styles.css): charcoal surfaces and amber gold, for the Holy Mass schedule
+     fields, the month calendar, the schedule switcher and the taken-time warning, so the two planners look alike. */
+  --bc-surface: #121212;
+  --bc-cell: rgba(255, 255, 255, 0.035);
+  --bc-cell-hover: rgba(255, 255, 255, 0.07);
+  --bc-border: #1e1e1e;
+  --bc-border-hover: #3a3a3a;
+  --bc-badge: rgba(255, 255, 255, 0.06);
+  --bc-date: #ffffff;
+  --bc-gold: #e5a93c;
+  --bc-on-gold: #121212;
+  --bc-gold-wash: rgba(229, 169, 60, 0.14);
+  --bc-text: #f2f2f2;
+  --bc-muted: #b8b8b8;
 }
 
 /* The light theme. Only colours change; every name matches the dark theme above. */
@@ -121,6 +136,19 @@
   --lang-tl-text: #92400e;
   --lang-ceb-bg: #f3e8ff;
   --lang-ceb-text: #6b21a8;
+
+  --bc-surface: #ffffff;
+  --bc-cell: rgba(0, 0, 0, 0.025);
+  --bc-cell-hover: rgba(0, 0, 0, 0.05);
+  --bc-border: rgba(0, 0, 0, 0.14);
+  --bc-border-hover: rgba(0, 0, 0, 0.3);
+  --bc-badge: rgba(0, 0, 0, 0.04);
+  --bc-date: #141414;
+  --bc-gold: #8a5a00;
+  --bc-on-gold: #ffffff;
+  --bc-gold-wash: rgba(138, 90, 0, 0.1);
+  --bc-text: #1a1a1a;
+  --bc-muted: #4a4a4a;
 }
 
 /* Colours fade while the person switches theme (theme-init.js adds the class for 250 ms), never on page load. */
@@ -2620,4 +2648,459 @@ dialog.hub-modal {
   .picker-song {
     padding: 10px 12px;
   }
+}
+
+/*
+ * Holy Mass schedules, in the church laptop's broadcast style (--bc-* above): the time and language fields, the taken-time warning with Open
+ * Existing, the editor's switcher pills, the Plans page's month calendar and the Available Holy Mass Schedules dialog.
+ */
+.bc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: var(--radius-card);
+  background: var(--bc-surface);
+  color: var(--bc-text);
+}
+.bc-eyebrow {
+  margin: 0;
+  color: var(--bc-gold);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.bc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.bc-label {
+  color: var(--bc-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.bc-input {
+  height: 44px;
+  min-width: 0;
+  padding: 0 12px;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: var(--radius-control);
+  background: var(--bc-cell);
+  color: var(--bc-text);
+  font: 600 16px var(--font-sans);
+}
+.bc-input:focus {
+  outline: none;
+  border-color: var(--bc-gold);
+  box-shadow: 0 0 0 1px var(--bc-gold);
+}
+.bc-input::placeholder {
+  color: var(--bc-muted);
+  font-weight: 500;
+}
+.bc-chips,
+.bc-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.bc-hint {
+  color: var(--bc-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.bc-chip,
+.bc-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 999px;
+  background: var(--bc-cell);
+  color: var(--bc-text);
+  font: 700 12px var(--font-sans);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.bc-pill {
+  height: 36px;
+  padding: 0 16px;
+  font-size: 14px;
+}
+.bc-chip:hover:not(:disabled),
+.bc-pill:hover:not(:disabled) {
+  border-color: var(--bc-gold);
+}
+.bc-chip[aria-pressed="true"],
+.bc-pill[aria-pressed="true"] {
+  border-color: var(--bc-gold);
+  background: var(--bc-gold);
+  color: var(--bc-on-gold);
+}
+.bc-chip:focus-visible,
+.bc-pill:focus-visible,
+.bc-btn-gold:focus-visible,
+.bc-switch:focus-visible,
+.bc-day:focus-visible,
+.bc-schedule:focus-visible {
+  outline: 2px solid var(--bc-gold);
+  outline-offset: 2px;
+}
+
+/* The taken-time warning: the line, the plan already there, and Open Existing right beside it. */
+.bc-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--bc-gold);
+  border-radius: var(--radius-card);
+  background: var(--bc-gold-wash);
+  color: var(--bc-text);
+}
+.bc-alert-icon {
+  flex: none;
+  color: var(--bc-gold);
+}
+.bc-alert-text {
+  flex: 1 1 200px;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+}
+.bc-alert-text strong {
+  color: var(--bc-date);
+  font-weight: 800;
+}
+.bc-alert-text span {
+  color: var(--bc-muted);
+  font-size: 12px;
+}
+.bc-btn-gold {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--bc-gold);
+  color: var(--bc-on-gold);
+  font: 800 14px var(--font-sans);
+  text-decoration: none;
+  cursor: pointer;
+}
+.bc-btn-gold:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+/* The editor header's switcher: a pill per Holy Mass on the day, the open one in gold, then + Add Time. */
+.bc-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.bc-switcher:empty {
+  display: none;
+}
+.bc-switch-label {
+  margin-right: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.bc-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 16rem;
+  height: 32px;
+  padding: 0 12px;
+  overflow: hidden;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 999px;
+  background: var(--bc-cell);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+a.bc-switch:hover {
+  border-color: var(--bc-gold);
+}
+.bc-switch.is-on {
+  border-color: var(--bc-gold);
+  background: var(--bc-gold);
+  color: var(--bc-on-gold);
+}
+.bc-switch.is-add {
+  border-style: dashed;
+  border-color: var(--bc-gold);
+  background: transparent;
+  color: var(--bc-gold);
+}
+
+/* The Plans page's month calendar. */
+.bc-calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: var(--radius-card);
+  background: var(--bc-surface);
+  color: var(--bc-text);
+}
+.bc-cal-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.bc-cal-title {
+  margin: 0;
+  color: var(--bc-date);
+  font: 800 22px var(--font-sans);
+}
+.bc-cal-nav {
+  display: inline-flex;
+  gap: 6px;
+}
+.bc-cal-nav button {
+  height: 36px;
+  min-width: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--bc-text);
+  font: 700 13px var(--font-sans);
+  cursor: pointer;
+}
+.bc-cal-nav button:hover {
+  border-color: var(--bc-gold);
+  color: var(--bc-gold);
+}
+.bc-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.bc-cal-weekday {
+  padding: 4px 6px;
+  color: var(--bc-muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.bc-day {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+  min-height: 96px;
+  padding: 6px;
+  border: 1px solid var(--bc-border);
+  border-radius: var(--radius-control);
+  background: var(--bc-cell);
+  color: var(--bc-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bc-day:hover:not(:disabled) {
+  border-color: var(--bc-border-hover);
+  background: var(--bc-cell-hover);
+}
+.bc-day:disabled {
+  cursor: default;
+  opacity: 1;
+}
+.bc-day.is-outside {
+  opacity: 0.45;
+}
+.bc-day.is-today {
+  border-color: var(--bc-gold);
+}
+.bc-day-num {
+  color: var(--bc-date);
+  font: 800 14px 'JetBrains Mono', monospace;
+}
+.bc-badge {
+  display: block;
+  overflow: hidden;
+  padding: 2px 6px;
+  border-left: 3px solid var(--bc-date);
+  border-radius: 4px;
+  background: var(--bc-badge);
+  color: var(--bc-text);
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-badge.is-pw {
+  border-left-color: var(--bc-gold);
+  color: var(--bc-gold);
+}
+.bc-badge.is-more {
+  border-left-color: transparent;
+  background: transparent;
+  color: var(--bc-muted);
+}
+@media (max-width: 640px) {
+  .bc-calendar {
+    padding: 10px;
+  }
+  .bc-day {
+    min-height: 64px;
+    padding: 4px;
+  }
+  .bc-badge {
+    padding: 1px 3px;
+    font-size: 10px;
+  }
+  .bc-cal-weekday {
+    padding: 2px;
+    font-size: 10px;
+  }
+}
+
+/* Available Holy Mass Schedules: one row per Holy Mass on the day, then Add Another Holy Mass Schedule. */
+dialog.bc-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 16px;
+  background: var(--bc-surface);
+  color: var(--bc-text);
+}
+dialog.bc-dialog::backdrop {
+  background: var(--overlay);
+}
+.bc-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px;
+}
+.bc-dialog-title {
+  margin: 4px 0 0;
+  color: var(--bc-date);
+  font: 800 24px var(--font-sans);
+}
+.bc-schedules {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 50vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.bc-schedule {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: var(--radius-card);
+  background: var(--bc-cell);
+  color: var(--bc-text);
+  text-decoration: none;
+}
+.bc-schedule:hover {
+  border-color: var(--bc-gold);
+  background: var(--bc-cell-hover);
+}
+.bc-schedule-time {
+  color: var(--bc-date);
+  font: 800 16px 'JetBrains Mono', monospace;
+}
+.bc-schedule-time.is-blank {
+  color: var(--bc-muted);
+}
+.bc-lang {
+  padding: 2px 8px;
+  border: 1px solid var(--bc-gold);
+  border-radius: 999px;
+  background: var(--bc-gold-wash);
+  color: var(--bc-gold);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.bc-schedule-main {
+  flex: 1;
+  min-width: 0;
+}
+.bc-schedule-name {
+  display: block;
+  overflow: hidden;
+  color: var(--bc-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-schedule-count {
+  flex: none;
+  color: var(--bc-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.bc-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.bc-dialog-actions .bc-btn-gold {
+  flex: 1 1 auto;
+  height: 48px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.bc-btn-quiet {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--bc-text);
+  font: 700 14px var(--font-sans);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.plan-list.is-calendar {
+  overflow: visible;
+  border: 0;
+  background: transparent;
 }

@@ -7,7 +7,7 @@ import { ordoDay } from '../services/lectionaryService';
 import type { PwSessionSummary } from '../praise-worship/types';
 import { NO_DRAG } from '../components/appRegion';
 import { cellScheduleBadges, compareMassSchedules, hasSchedule, massDayAction } from '../../shared/mass-schedule.js';
-import { DaySchedulesDialog, EMPTY_SCHEDULE, ScheduleFields, scheduleText } from './MassSchedule';
+import { DaySchedulesDialog, EMPTY_SCHEDULE, ScheduleFields, TimeConflictBanner, scheduleText, timeConflictOf } from './MassSchedule';
 import type { PlannerT } from './strings';
 import type { DayNotes, MassSchedule, PlanSummary } from './types';
 
@@ -494,6 +494,12 @@ export function PlannerCalendarView({ kind, t, lang, today, month, onMonthChange
           color={(days.get(createFor) ?? calendarDayOf(createFor)).color}
           pwSlotCount={pwSlotCount}
           kinds={[kind]}
+          iso={createFor}
+          dayPlans={massByDate.get(createFor) ?? []}
+          onOpenExisting={(id) => {
+            setCreateFor(null);
+            onOpen({ kind: 'mass', id });
+          }}
           onCreate={(made, name, schedule) => onCreate(made, createFor, name, schedule)}
           onClose={() => setCreateFor(null)}
         />,
@@ -581,10 +587,12 @@ function DayPlansPopover({ t, title, plans, top, left, onOpen, onCreate, onClose
 }
 
 /** Create a plan for a day: a Holy Mass plan (its four parts, with the day's readings) or a Praise & Worship session (the built-in lineup). */
-function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlotCount, kinds, onCreate, onClose }: {
-  t: PlannerT; dateLabel: string; ordoName: string; suggestedName: string; color: LiturgicalColor; pwSlotCount: number;
+function CreatePlanDialog({ t, iso, dateLabel, ordoName, suggestedName, color, pwSlotCount, kinds, dayPlans, onOpenExisting, onCreate, onClose }: {
+  t: PlannerT; iso: string; dateLabel: string; ordoName: string; suggestedName: string; color: LiturgicalColor; pwSlotCount: number;
   /** The kinds of plan offered: the calendar's own kind, so each calendar only makes its own plans. */
   kinds: readonly PlanKind[];
+  /** The day's Holy Mass plans, for the taken-time warning, and Open Existing beside it. */
+  dayPlans: readonly PlanSummary[]; onOpenExisting: (id: number) => void;
   onCreate: (kind: PlanKind, name: string, schedule?: MassSchedule) => Promise<void>; onClose: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
@@ -598,9 +606,11 @@ function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlot
   useDismiss(panel, () => {
     if (!busy) onClose();
   });
+  // A Holy Mass at a time the day already has is not made: the form says so, with Open Existing.
+  const conflict = kinds.includes('mass') ? timeConflictOf(dayPlans, iso, schedule.massTime) : null;
 
   const create = async (kind: PlanKind) => {
-    if (busy || !name.trim()) return;
+    if (busy || !name.trim() || (kind === 'mass' && conflict)) return;
     setBusy(kind);
     setError(null);
     try {
@@ -652,10 +662,11 @@ function CreatePlanDialog({ t, dateLabel, ordoName, suggestedName, color, pwSlot
           </label>
 
           {kinds.includes('mass') && <ScheduleFields t={t} value={schedule} onChange={setSchedule} />}
+          {conflict && <TimeConflictBanner t={t} conflict={conflict} onOpenExisting={onOpenExisting} />}
 
           <div className="flex flex-col gap-2.5">
             {kinds.includes('mass') && (
-            <button type="submit" disabled={busy !== null || !name.trim()} className={`${option} border-[var(--cal-border-hover)] bg-[var(--cal-cell)] hover:border-[var(--cal-date)]`}>
+            <button type="submit" disabled={busy !== null || !name.trim() || conflict !== null} className={`${option} border-[var(--cal-border-hover)] bg-[var(--cal-cell)] hover:border-[var(--cal-date)]`}>
               <span className={`grid size-11 shrink-0 place-items-center rounded-lg border-l-4 bg-[var(--cal-badge)] ${COLOR_EDGE[color]} ${TEXT}`}>
                 {busy === 'mass' ? <Loader2 size={20} className="animate-spin" aria-hidden /> : <Church size={20} aria-hidden />}
               </span>

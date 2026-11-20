@@ -137,3 +137,50 @@ export function cellScheduleBadges(plansOnDay, max = 2) {
   if (list.length <= max) return { shown: list, more: 0 };
   return { shown: list.slice(0, max), more: list.length - max };
 }
+
+/**
+ * A typed time in one canonical form for comparing: "6:00 AM", "6 am", "06:00" and "6:00a.m." all read "6:00 AM". A time that cannot be
+ * read is kept as typed (tidied, lower case), so two identical unusual times still match. Blank stays blank.
+ */
+export function canonicalMassTime(value) {
+  const time = normalizeMassTime(value);
+  if (!time) return '';
+  const minutes = parseMassTime(time);
+  if (minutes == null) return time.toLowerCase();
+  const hour = Math.floor(minutes / 60);
+  return `${hour % 12 || 12}:${String(minutes % 60).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+
+/** Whether two typed times are the same time of day ("6:00 AM" and "06:00" are). A blank time never matches anything. */
+export const sameMassTime = (a, b) => {
+  const ca = canonicalMassTime(a);
+  return ca !== '' && ca === canonicalMassTime(b);
+};
+
+/** A plan's date, whichever side it comes from: the laptop's `liturgicalDate`, or the website's `date` / `liturgical_date`. */
+const dateOfPlan = (plan) => String(plan?.liturgicalDate ?? plan?.date ?? plan?.liturgical_date ?? '');
+
+/**
+ * The Holy Mass that already uses a time on a date, or null. Two Holy Masses on one day cannot share a time, whatever their languages, so a
+ * planner never confuses two lineups. `plans` is any list of Holy Mass plans (laptop or website shape); `candidate` is `{ date, massTime }`;
+ * `exceptId` is the plan being edited, which never clashes with itself. A blank time never clashes (plans from before schedules).
+ * Returns `{ id, name, massTime, massLanguage, date }` of the plan already there, so the planner can offer to open it.
+ */
+export function findTimeConflict(plans, candidate, exceptId = null) {
+  const date = String(candidate?.date ?? candidate?.liturgicalDate ?? '');
+  if (!date || !canonicalMassTime(candidate?.massTime)) return null;
+  const clash = sortMassSchedules((plans ?? []).filter((p) => p && dateOfPlan(p) === date), 'asc')
+    .find((p) => (exceptId == null || String(p.id) !== String(exceptId)) && sameMassTime(p.massTime, candidate.massTime));
+  if (!clash) return null;
+  return { id: clash.id, name: String(clash.name ?? ''), massTime: normalizeMassTime(clash.massTime), massLanguage: normalizeMassLanguage(clash.massLanguage), date };
+}
+
+/**
+ * The English line shown when a time is taken: "A Holy Mass at 6:00 AM (English) already exists on this date." The planners show it in
+ * the app language from their own strings (scheduleTimeTaken); this is the server's and the desktop service's wording.
+ */
+export function timeConflictText(conflict) {
+  if (!conflict) return '';
+  const language = normalizeMassLanguage(conflict.massLanguage);
+  return `A Holy Mass at ${normalizeMassTime(conflict.massTime)}${language ? ` (${language})` : ''} already exists on this date.`;
+}

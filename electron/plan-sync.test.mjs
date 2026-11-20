@@ -13,7 +13,7 @@ import { PGlite } from '@electric-sql/pglite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
 const { HYMN_DELETE_MIGRATIONS, HYMN_FILING_MIGRATIONS, HYMN_FONT_SCALE_MIGRATIONS, LYRICS_MIGRATIONS } = await import('./lyrics.js');
-const { MASS_PLAN_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_LANGUAGE_MIGRATIONS, PLAN_NOTES_MIGRATIONS } = await import('./mass-plans.js');
+const { MASS_PLAN_MIGRATIONS, MASS_SCHEDULE_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_LANGUAGE_MIGRATIONS, PLAN_NOTES_MIGRATIONS } = await import('./mass-plans.js');
 const { PW_MIGRATIONS } = await import('./pw-sessions.js');
 const { NOTES_COPY_MIGRATIONS, NOTES_SLOT_MIGRATIONS, PRAYER_NOTES_MIGRATIONS, PRAYER_NOTES_SPLIT_MIGRATIONS } = await import('./notes.js');
 const { WEB_HUB_MIGRATIONS } = await import('./web-hub-notes.js');
@@ -106,8 +106,10 @@ function laptopDb() {
 }
 
 /** A laptop: its database, its cloud link (with the token in the encrypted file), and its engine on a fake timer. */
-function laptop(token = laptopToken, { skewMs = 0 } = {}) {
+function laptop(token = laptopToken, { skewMs = 0, schedule = false } = {}) {
   const db = laptopDb();
+  // A laptop that keeps Holy Mass schedules (mass_time, mass_language). Most tests use one from before them, as older laptops still sync.
+  if (schedule) for (const sqlText of MASS_SCHEDULE_MIGRATIONS) db.exec(sqlText);
   const record = { token, church: 'St Mary', admin: 'planner', label: 'Booth', lastSeenAt: null, linkedAddress: BASE };
   const file = memoryFile(plainStorage.encryptString(JSON.stringify(record)));
   // The laptop's own clock runs skewMs away from the server's. Nothing in the sync may trust it on its own.
@@ -925,4 +927,41 @@ test('a second laptop pulling a plan the first one sent gets the same cards, not
   l.db.prepare('UPDATE pw_sessions SET name = ?, updated_at = ? WHERE id = ?').run('Night, renamed', T2, session.id);
   await l.engine.runOnce();
   assert.deepEqual((await serverRow(created.id)).body.items.map((i) => i.key), ['worship.1', 'worship.2', 'custom_abc123']);
+});
+
+// ---- Holy Mass schedules round-trip between the laptop and the website. Synthetic names only. ----
+
+test('a Holy Mass time and language set on the website reach the laptop, and a laptop change goes back, without dropping either', async () => {
+  const created = await serverCreate(laptopToken, { name: 'Sample Liturgical Title' });
+  serverNow = new Date(T2);
+  await serverEdit(laptopToken, created.id, { massTime: '06:00', massLanguage: 'Cebuano' });
+  const l = laptop(laptopToken, { schedule: true });
+  await l.engine.runOnce();
+  const pulled = localMass(l.db, created.id);
+  assert.deepEqual([pulled.mass_time, pulled.mass_language], ['06:00', 'Cebuano']);
+  assert.equal(l.store.dirtyPlans().length, 0, 'a pulled schedule is not sent back');
+
+  // The operator moves the Holy Mass on the laptop: the next run pushes the new time and language.
+  l.db.prepare("UPDATE mass_plans SET mass_time = '9:30 AM', mass_language = 'Tagalog', updated_at = ? WHERE uuid = ?").run(T3, created.id);
+  serverNow = new Date(T3);
+  network.bodies.length = 0;
+  await l.engine.runOnce();
+  const sent = network.bodies.flatMap((b) => JSON.parse(b.body)?.plans ?? []).find((p) => p.id === created.id);
+  assert.deepEqual([sent?.massTime, sent?.massLanguage], ['9:30 AM', 'Tagalog'], 'the push carries the schedule');
+  const stored = (await serverRow(created.id)).body;
+  assert.deepEqual([stored.massTime, stored.massLanguage], ['9:30 AM', 'Tagalog']);
+});
+
+test('a laptop from before schedules still syncs, and its pushes keep the schedule the website set', async () => {
+  const created = await serverCreate(laptopToken, { name: 'Sample Liturgical Title' });
+  serverNow = new Date(T2);
+  await serverEdit(laptopToken, created.id, { massTime: '8:00 AM', massLanguage: 'English' });
+  const old = laptop();
+  await old.engine.runOnce();
+  editLocal(old.db, created.id, { name: 'Sample Mass Item', at: T3 });
+  serverNow = new Date(T3);
+  await old.engine.runOnce();
+  const stored = await serverRow(created.id);
+  assert.equal(stored.name, 'Sample Mass Item');
+  assert.deepEqual([stored.body.massTime, stored.body.massLanguage], ['8:00 AM', 'English']);
 });

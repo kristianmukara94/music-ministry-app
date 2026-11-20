@@ -1354,7 +1354,14 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar, onAddSchedul
             key={`${scheduleForm}:${currentPlan.id}`}
             t={t}
             mode={scheduleForm}
+            iso={currentPlan.liturgicalDate}
             dateLabel={formatIsoDay(currentPlan.liturgicalDate, region)}
+            dayPlans={dayPlans}
+            exceptId={currentPlan.id}
+            onOpenExisting={(id) => {
+              setScheduleForm(null);
+              onPlanChange(id);
+            }}
             initial={scheduleForm === 'edit' ? { massTime: currentPlan.massTime ?? '', massLanguage: currentPlan.massLanguage ?? '' } : EMPTY_SCHEDULE}
             initialName={currentPlan.name}
             onSave={async (schedule, name) => {

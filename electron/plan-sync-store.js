@@ -11,6 +11,7 @@ import { DEFAULT_TEMPLATE } from '../shared/pw.js';
 import { slotIdOfNumber } from '../shared/mass-slots.js';
 import { MASS_PARTS, MASS_STEP_PARTS } from '../shared/mass-parts.js';
 import { noteSource } from '../shared/notes.js';
+import { normalizeMassLanguage, normalizeMassTime } from '../shared/mass-schedule.js';
 import {
   MapRefused, massEntries, massBody, mergeEntries, praiseBody, praiseEntries, PRAISE_READING_TYPES, READING_TYPES, WEB_NOTE_PREFIX, WEB_REFERENCE_PREFIX,
 } from './plan-sync-map.js';
@@ -107,6 +108,11 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
       }
     })();
 
+  // Whether this database keeps Holy Mass schedules (MASS_SCHEDULE_MIGRATIONS). A test database built from part of the migration list may not.
+  const hasSchedule = one("SELECT COUNT(*) AS n FROM pragma_table_info('mass_plans') WHERE name IN ('mass_time', 'mass_language')").n === 2;
+  const scheduleOf = (id) =>
+    hasSchedule ? one("SELECT COALESCE(mass_time, '') AS massTime, COALESCE(mass_language, '') AS massLanguage FROM mass_plans WHERE id = ?", id) : null;
+
   const hymnUuidOf = (id) => one('SELECT uuid FROM hymns WHERE id = ?', Number(id))?.uuid ?? null;
   const hymnByUuid = (uuid) => one('SELECT id, title FROM hymns WHERE uuid = ?', uuid) ?? null;
 
@@ -144,7 +150,13 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
     if (!isCalendarDate(plan.date)) throw new MapRefused('This plan has no valid date. Open it and choose a date, and it will be sent.');
     const name = String(plan.name ?? '').replace(/\0/g, '').trim().slice(0, 120).trim() || 'Untitled Plan';
     const head = { id: plan.uuid, name, date: plan.date };
-    if (plan.kind === 'mass') return { ...head, kind: 'mass', items: massBody(massEntries(massRows(plan.id), hymnUuidOf, (noteId) => webHub.entryIdOf(plan.uuid, noteId))).items };
+    if (plan.kind === 'mass') {
+      // The Holy Mass time and language ride with the plan, so the website lists the day's Holy Masses as the laptop does. A server from before
+      // schedules ignores them.
+      const schedule = scheduleOf(plan.id);
+      const items = massBody(massEntries(massRows(plan.id), hymnUuidOf, (noteId) => webHub.entryIdOf(plan.uuid, noteId))).items;
+      return { ...head, kind: 'mass', ...(schedule ? { massTime: normalizeMassTime(schedule.massTime), massLanguage: normalizeMassLanguage(schedule.massLanguage) } : {}), items };
+    }
     return { ...head, kind: 'pw', items: praiseBody(praiseEntries(segmentRows(plan.id), hymnUuidOf)).items };
   }
 
@@ -250,6 +262,11 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
         id, e.row.block, e.row.module, e.row.sourceId, e.row.label, i + 1, slot,
       );
     });
+    // A server that keeps schedules always sends massLanguage on a Holy Mass plan ('' for none), so its absence means an older server, and the
+    // laptop's own time and language stay.
+    if (hasSchedule && typeof sp.massLanguage === 'string') {
+      run('UPDATE mass_plans SET mass_time = ?, mass_language = ? WHERE id = ?', normalizeMassTime(sp.massTime), normalizeMassLanguage(sp.massLanguage), id);
+    }
     run('UPDATE mass_plans SET server_updated_at = ?, synced_updated_at = ? WHERE id = ?', sp.updatedAt, sp.updatedAt, id);
     return unresolved.length;
   }

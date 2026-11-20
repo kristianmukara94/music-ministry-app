@@ -5,7 +5,8 @@
 import { ApiError } from './admin.js';
 import { sessionFrom } from './session.js';
 import { EDITING_ROLES } from './rules.js';
-import { checkContentHubItems, checkHubReferences, checkItems, checkPlanDetails, dateText, hubOf, planOut } from './plan-sync.js';
+import { checkContentHubItems, checkHubReferences, checkItems, checkPlanDetails, dateText, hubOf, planOut, timeConflictOn, timeConflictResponse } from './plan-sync.js';
+import { sameMassTime } from '../../shared/mass-schedule.js';
 import { pickerFilterOf } from '../../shared/lineup-templates.js';
 
 export { dateText };
@@ -146,6 +147,12 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
       const kind = row.body?.kind ?? null;
       // A Holy Mass plan's language and Mass time. A Praise & Worship plan has neither, so a request for one is ignored.
       const details = kind === 'pw' ? {} : checkPlanDetails(body, row.body);
+      // A new Holy Mass time must not be one another Holy Mass on the day already has. Only a changed time is checked, so a day that already
+      // holds two (each made on its own laptop) can still be saved.
+      if (kind !== 'pw' && details.massTime && !sameMassTime(details.massTime, row.body?.massTime)) {
+        const taken = await timeConflictOn(tx, who.churchId, dateText(row.liturgical_date), details.massTime, planId);
+        if (taken) return { taken };
+      }
       // A request that leaves the Content Hub out keeps what the plan has.
       const hub = body.contentHubItems === undefined ? hubOf(row.body) : hubOf({ contentHubItems: checkContentHubItems(body.contentHubItems) });
       checkHubReferences(items, hub.contentHubItems ?? []);
@@ -153,6 +160,7 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
       await tx`INSERT INTO audit_log (church_id, actor_user_id, action, target_plan_id) VALUES (${who.churchId}, ${who.userId}, 'plan.saved', ${planId})`;
       return { savedAt: at };
     });
+    if (result.taken) return timeConflictResponse(result.taken);
     if (result.conflict) {
       return json(409, {
         error: 'This plan was changed on another device since you opened it. Reload it to see the latest version. Nothing was saved.',

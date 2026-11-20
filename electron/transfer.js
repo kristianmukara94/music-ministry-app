@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import { isPrimaryCategory, scopeForLegacy } from '../shared/song-taxonomy.js';
 import { MASS_ORDER_ID, MASS_ORDER_LANGS, MAX_MASS_ORDER_ID, checkMassOrderText, cleanTitle, isCustomId } from '../shared/mass-order-text.js';
 import { MASS_PARTS } from '../shared/mass-parts.js';
+import { normalizeMassLanguage, normalizeMassTime } from '../shared/mass-schedule.js';
 
 export const TRANSFER_FORMAT = 'apccmma-library';
 export const TRANSFER_FORMAT_VERSION = 1;
@@ -129,7 +130,21 @@ function readSetlists(db) {
     .map((row) => ({ ...row, hymnIds: items.filter((i) => i.setlistId === row.id).map((i) => i.hymnId) }));
 }
 
+/** Whether this database keeps Holy Mass schedules (MASS_SCHEDULE_MIGRATIONS in mass-plans.js). A database from before them exports none. */
+const hasScheduleColumns = (db) =>
+  db.prepare("SELECT COUNT(*) AS n FROM pragma_table_info('mass_plans') WHERE name IN ('mass_time', 'mass_language')").get().n === 2;
+
+/**
+ * Puts an imported plan's Holy Mass time and language on the plan. A file from before schedules carries neither, and the plan keeps what it
+ * has. Two Holy Masses at one time are not refused here: an import copies what another laptop already holds, and the planner shows both.
+ */
+function writePlanSchedule(db, planId, record) {
+  if (!hasScheduleColumns(db) || (record.massTime === undefined && record.massLanguage === undefined)) return;
+  db.prepare('UPDATE mass_plans SET mass_time = ?, mass_language = ? WHERE id = ?').run(normalizeMassTime(record.massTime), normalizeMassLanguage(record.massLanguage), planId);
+}
+
 function readPlans(db) {
+  const schedule = hasScheduleColumns(db) ? ", COALESCE(mass_time, '') AS massTime, COALESCE(mass_language, '') AS massLanguage" : '';
   const items = db
     .prepare(
       `SELECT plan_id AS planId, liturgical_block AS liturgicalBlock, source_module AS sourceModule, source_id AS sourceId,
@@ -137,7 +152,7 @@ function readPlans(db) {
     )
     .all();
   return db
-    .prepare('SELECT id, uuid, name, liturgical_date AS liturgicalDate, updated_at AS updatedAt FROM mass_plans ORDER BY liturgical_date, id')
+    .prepare(`SELECT id, uuid, name, liturgical_date AS liturgicalDate, updated_at AS updatedAt${schedule} FROM mass_plans ORDER BY liturgical_date, id`)
     .all()
     .map((row) => ({ ...row, items: items.filter((i) => i.planId === row.id) }));
 }
@@ -264,6 +279,8 @@ export function collectLibrary(db, options, { laptop, exportedAt = new Date().to
     name: p.name,
     liturgicalDate: p.liturgicalDate,
     updatedAt: p.updatedAt,
+    // The Holy Mass time and language, from a database that keeps them. A file without them imports as before.
+    ...(p.massTime !== undefined ? { massTime: p.massTime, massLanguage: p.massLanguage } : {}),
     // A lyrics item points at a song by its UUID. One whose song is gone is left out.
     items: p.items
       .map((i) => (i.sourceModule === 'lyrics' ? { ...i, sourceId: uuidOf(Number(i.sourceId)) } : i))
@@ -647,11 +664,13 @@ export function applyImport(db, data, choices = {}) {
         const info = db.prepare('INSERT INTO mass_plans (uuid, name, liturgical_date, updated_at) VALUES (?, ?, ?, ?)').run(r.id, r.name, r.liturgicalDate, r.updatedAt);
         const planId = Number(info.lastInsertRowid);
         writePlanItems(db, planId, r.items ?? [], songIdMap);
+        writePlanSchedule(db, planId, r);
         added.plans += 1;
       } else if (decide('plans', r.id) === 'use') {
         db.prepare('UPDATE mass_plans SET name = ?, liturgical_date = ?, updated_at = ? WHERE id = ?').run(r.name, r.liturgicalDate, r.updatedAt, entry.localId);
         db.prepare('DELETE FROM mass_plan_items WHERE plan_id = ?').run(entry.localId);
         writePlanItems(db, entry.localId, r.items ?? [], songIdMap);
+        writePlanSchedule(db, entry.localId, r);
         changed.used += 1;
       } else {
         changed.kept += 1;

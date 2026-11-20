@@ -27,7 +27,13 @@ async function request(name, { method = 'GET', query = '', body } = {}) {
     throw new Error('Your session has ended, so this was not saved. Sign in again in another tab, then try again here.');
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(typeof data.error === 'string' && data.error.length <= 200 ? data.error : NEUTRAL);
+  if (!res.ok) {
+    const err = new Error(typeof data.error === 'string' && data.error.length <= 200 ? data.error : NEUTRAL);
+    err.status = res.status;
+    // A Holy Mass time another plan on the date already has: the plan already there, so the page can offer Open Existing.
+    if (data.conflict && typeof data.conflict.id === 'string') err.conflict = data.conflict;
+    throw err;
+  }
   return data;
 }
 

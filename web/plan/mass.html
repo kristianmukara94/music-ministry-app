@@ -38,25 +38,22 @@
         </div>
       </div>
       <p id="view-only" hidden style="margin: 0; font-size: 13px; color: var(--muted)"></p>
+      <nav id="schedule-switcher" class="bc-switcher" aria-label="Holy Masses on this day"></nav>
       <div style="display: flex; flex-wrap: wrap; gap: 10px">
         <span style="display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 99px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; font-weight: 600">Songs <span id="songs-label" style="font-family: 'JetBrains Mono', monospace; margin-left: 8px; color: var(--eyebrow)"></span></span>
         <span style="display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 99px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; font-weight: 600">Readings <span id="readings-label" style="font-family: 'JetBrains Mono', monospace; margin-left: 8px; color: var(--eyebrow)"></span></span>
         <span id="steps-label" style="display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 99px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; font-weight: 600"></span>
       </div>
 
-      <section class="plan-details" aria-label="Language and Holy Mass time" style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px 28px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface)">
+      <section class="plan-details bc-panel" aria-label="Holy Mass time and language" style="flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 16px 28px">
+        <p class="bc-eyebrow" style="flex: 1 1 100%">Holy Mass schedule</p>
+        <div id="schedule-fields" style="flex: 2 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 16px"></div>
         <div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 8px">
-          <span id="language-label" class="eyebrow">LANGUAGE OF THE MASS</span>
-          <div id="language" class="segmented" role="radiogroup" aria-labelledby="language-label" style="display: flex; gap: 6px; padding: 4px; border: 1px solid var(--border); border-radius: 12px; background: var(--input-bg)"></div>
+          <span id="language-label" class="bc-label">Readings &amp; responses</span>
+          <div id="language" class="segmented" role="radiogroup" aria-labelledby="language-label" style="display: flex; gap: 6px; padding: 4px; border: 1px solid var(--bc-border-hover); border-radius: 12px; background: var(--bc-cell)"></div>
         </div>
-        <div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 8px">
-          <label for="mass-time" class="eyebrow">PARISH MASS SCHEDULE</label>
-          <div style="display: flex; flex-wrap: wrap; gap: 8px">
-            <select id="mass-time" style="flex: 1 1 180px; min-width: 0; height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px"></select>
-            <input id="mass-time-other" type="time" aria-label="Other Holy Mass time" hidden style="flex: 0 1 150px; min-width: 0; height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; color-scheme: dark">
-          </div>
-        </div>
-        <p id="details-note" style="flex: 1 1 100%; margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)"></p>
+        <div id="schedule-conflict" style="flex: 1 1 100%" hidden></div>
+        <p id="details-note" style="flex: 1 1 100%; margin: 0; font-size: 12px; line-height: 1.5; color: var(--bc-muted)"></p>
       </section>
     </header>
 

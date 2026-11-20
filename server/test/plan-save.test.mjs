@@ -235,12 +235,13 @@ test('a plan saved before languages reads with neither detail, so it opens in En
   const read = await editing().getPlan({ httpMethod: 'GET', headers: { cookie }, queryStringParameters: { id: PLAN_A } });
   const { plan } = JSON.parse(read.body);
   assert.equal('language' in plan, false);
-  assert.equal('massTime' in plan, false);
+  // A Holy Mass plan always carries its schedule, blank when none is set, so a laptop can tell this server keeps schedules.
+  assert.deepEqual([plan.massTime, plan.massLanguage], ['', '']);
 });
 
-test('an unknown language or a malformed Mass time is refused, and nothing is written', async () => {
+test('an unknown language or a Holy Mass time or language that cannot be kept is refused, and nothing is written', async () => {
   const cookie = await cookieFor('planner', 'K7QM-4XD2');
-  for (const bad of [{ language: 'FR' }, { language: 'tl' }, { massTime: '8:00' }, { massTime: '24:00' }, { massTime: 800 }]) {
+  for (const bad of [{ language: 'FR' }, { language: 'tl' }, { massTime: 800 }, { massTime: 'x'.repeat(21) }, { massLanguage: 5 }, { massLanguage: 'x'.repeat(31) }]) {
     const res = await save(cookie, bad);
     assert.equal(res.statusCode, 400, JSON.stringify(bad));
   }

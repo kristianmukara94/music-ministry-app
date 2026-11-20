@@ -157,3 +157,58 @@ test('every schedule string is in English, Tagalog and Cebuano, and English says
   assert.equal(plannerT('tl', 'massTime'), 'Oras ng Misa');
   assert.equal(plannerT('ceb', 'massTime'), 'Oras sa Misa');
 });
+
+// ---- Duplicate times: one Holy Mass per time on a date, with Open Existing in the planners. ----
+
+test('typed times reduce to one canonical time, so "6:00 AM", "6 am" and "06:00" are the same Holy Mass time', async () => {
+  const { canonicalMassTime, sameMassTime } = await import('./mass-schedule.js');
+  for (const typed of ['6:00 AM', '6 am', '06:00', '6:00a.m.', ' 6:00   AM ']) assert.equal(canonicalMassTime(typed), '6:00 AM', typed);
+  assert.equal(canonicalMassTime('17:30'), '5:30 PM');
+  assert.equal(canonicalMassTime('After the Procession'), 'after the procession', 'an unread time is kept as typed');
+  assert.equal(canonicalMassTime(''), '');
+  assert.equal(sameMassTime('6:00 AM', '06:00'), true);
+  assert.equal(sameMassTime('6:00 AM', '6:00 PM'), false);
+  assert.equal(sameMassTime('', ''), false, 'blank times never match');
+});
+
+test('a time already used on the date is a conflict whatever its language, naming the plan there; the edited plan never clashes with itself', async () => {
+  const { findTimeConflict, timeConflictText } = await import('./mass-schedule.js');
+  const day = [plan(1, '6:00 AM', 'English'), plan(2, '8:00 AM', 'Cebuano'), plan(3, '', 'Tagalog'), plan(4, '6:00 AM', 'English', '2026-12-13')];
+  const conflict = findTimeConflict(day, { date: DAY, massTime: '06:00' });
+  assert.deepEqual(conflict, { id: 1, name: 'Sample Mass Item', massTime: '6:00 AM', massLanguage: 'English', date: DAY });
+  assert.equal(timeConflictText(conflict), 'A Holy Mass at 6:00 AM (English) already exists on this date.');
+  assert.equal(timeConflictText({ massTime: '6:00 AM', massLanguage: '' }), 'A Holy Mass at 6:00 AM already exists on this date.');
+  assert.equal(findTimeConflict(day, { date: DAY, massTime: '6 am' }, 1), null, 'editing the 6:00 AM plan itself');
+  assert.equal(findTimeConflict(day, { date: DAY, massTime: '8:00 AM' }, 1)?.id, 2);
+  assert.equal(findTimeConflict(day, { date: DAY, massTime: '' }), null);
+  assert.equal(findTimeConflict(day, { date: '2026-12-20', massTime: '6:00 AM' }), null);
+  // The website's plan list names the date liturgical_date; a loaded web plan names it date. Both are read.
+  assert.equal(findTimeConflict([{ id: 'w', name: 'Sample Liturgical Title', liturgical_date: DAY, massTime: '6:00 AM' }], { date: DAY, massTime: '06:00' })?.id, 'w');
+});
+
+test('the taken-time warning and Open Existing are in English, Tagalog and Cebuano, and the English says Holy Mass', () => {
+  for (const lang of PLANNER_LANGS) {
+    for (const key of ['scheduleTimeTaken', 'scheduleTimeTakenNoLanguage', 'scheduleTimeTakenHint', 'openExisting']) {
+      assert.ok(plannerT(lang, key) && plannerT(lang, key) !== key, `${lang}.${key}`);
+    }
+  }
+  assert.equal(plannerT('en', 'scheduleTimeTaken', { time: '6:00 AM', language: 'English' }), 'A Holy Mass at 6:00 AM (English) already exists on this date.');
+  assert.equal(plannerT('en', 'openExisting'), 'Open Existing');
+});
+
+test('both desktop dialogs show the warning with Open Existing, block the save, and Open Existing loads that plan', () => {
+  const ui = read('src/planner/MassSchedule.tsx');
+  assert.match(ui, /export function TimeConflictBanner/);
+  assert.match(ui, /onClick=\{\(\) => onOpenExisting\(conflict\.id\)\}[\s\S]*?\{t\('openExisting'\)\}/);
+  // Edit time & language and Add Another Holy Mass Schedule.
+  assert.match(ui, /const conflict = timeConflictOf\(dayPlans, iso, schedule\.massTime, mode === 'edit' \? exceptId : null\);/);
+  assert.match(ui, /if \(busy \|\| conflict \|\| \(mode === 'add' && !name\.trim\(\)\)\) return;/);
+  assert.match(ui, /\{conflict && <TimeConflictBanner t=\{t\} conflict=\{conflict\} onOpenExisting=\{onOpenExisting\} \/>\}/);
+  const editor = read('src/planner/MassPlanner.tsx');
+  assert.match(editor, /<ScheduleFormDialog[\s\S]*?dayPlans=\{dayPlans\}[\s\S]*?exceptId=\{currentPlan\.id\}[\s\S]*?onOpenExisting=\{\(id\) => \{\s*setScheduleForm\(null\);\s*onPlanChange\(id\);/);
+  // The calendar's Create a plan.
+  const cal = read('src/planner/PlannerCalendarView.tsx');
+  assert.match(cal, /const conflict = kinds\.includes\('mass'\) \? timeConflictOf\(dayPlans, iso, schedule\.massTime\) : null;/);
+  assert.match(cal, /onOpenExisting=\{\(id\) => \{\s*setCreateFor\(null\);\s*onOpen\(\{ kind: 'mass', id \}\);/);
+  assert.match(cal, /disabled=\{busy !== null \|\| !name\.trim\(\) \|\| conflict !== null\}/);
+});

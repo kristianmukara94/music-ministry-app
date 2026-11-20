@@ -6,7 +6,7 @@ import { isSlotId } from '../shared/mass-slots.js';
 import { noteSource } from '../shared/notes.js';
 import { announcementSource } from '../shared/flow-insert.js';
 import { DEFAULT_MASS_LANGUAGE, isMassLanguage, massLanguageOf } from '../shared/mass-language.js';
-import { normalizeMassLanguage, normalizeMassTime, planLanguageForSchedule, sameSchedule, scheduleLabel, sortMassSchedules } from '../shared/mass-schedule.js';
+import { findTimeConflict, normalizeMassLanguage, normalizeMassTime, planLanguageForSchedule, sortMassSchedules, timeConflictText } from '../shared/mass-schedule.js';
 
 export const PLAN_BLOCKS = ['introductory', 'word', 'eucharist', 'communion', 'concluding'];
 export const PLAN_MODULES = ['lyrics', 'lectionary', 'announcements', 'media', 'mass_order', 'bible', 'custom', 'notes'];
@@ -193,7 +193,7 @@ export function createMassPlanService(db) {
       FROM mass_plans p ORDER BY p.liturgical_date DESC, p.id DESC`),
     plan: db.prepare(`SELECT p.id, p.name, p.liturgical_date AS liturgicalDate, p.language, ${SCHEDULE} FROM mass_plans p WHERE p.id = ?`),
     insertPlan: db.prepare('INSERT INTO mass_plans (name, liturgical_date, language) VALUES (?, ?, ?)'),
-    sameDay: db.prepare(`SELECT p.id, ${SCHEDULE} FROM mass_plans p WHERE p.liturgical_date = ?`),
+    sameDay: db.prepare(`SELECT p.id, p.name, p.liturgical_date AS liturgicalDate, ${SCHEDULE} FROM mass_plans p WHERE p.liturgical_date = ?`),
     ...(hasScheduleColumns ? { setSchedule: db.prepare('UPDATE mass_plans SET mass_time = ?, mass_language = ? WHERE id = ?') } : {}),
     setLanguage: db.prepare('UPDATE mass_plans SET language = ? WHERE id = ?'),
     deletePlan: db.prepare('DELETE FROM mass_plans WHERE id = ?'),
@@ -229,13 +229,14 @@ export function createMassPlanService(db) {
   };
 
   /**
-   * A schedule from the planner, tidied, and checked against the day's other Holy Masses: a second plan with the same time and language on
-   * the same day is refused, so two lineups are never confused on air. Blank time or language never clash (plans from before schedules).
+   * A schedule from the planner, tidied, and checked against the day's other Holy Masses: a second plan at the same time on the same day
+   * ("6:00 AM" and "06:00" are the same time), whatever its language, is refused, so two lineups are never confused on air. The planner
+   * checks first and offers Open Existing (findTimeConflict in shared/mass-schedule.js); this is the last word. Blank times never clash.
    */
   const checkedSchedule = (date, input, exceptId = null) => {
     const schedule = { massTime: normalizeMassTime(input?.massTime), massLanguage: normalizeMassLanguage(input?.massLanguage) };
-    const clash = q.sameDay.all(date).find((other) => other.id !== exceptId && sameSchedule(other, schedule));
-    if (clash) throw new Error(`A ${scheduleLabel(schedule)} Holy Mass is already planned for ${date}. Open it from the list, or pick another time.`);
+    const clash = findTimeConflict(q.sameDay.all(date), { date, massTime: schedule.massTime }, exceptId);
+    if (clash) throw new Error(`${timeConflictText(clash)} Open the existing one, or pick another time.`);
     return schedule;
   };
 

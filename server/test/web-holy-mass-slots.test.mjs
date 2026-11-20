@@ -156,7 +156,7 @@ test('the editor draws the five sections as collapsible, slots first, and rememb
   assert.match(page, /const slotRows = section\.rows\.filter\(\(r\) => r\.slot\);/);
   assert.match(page, /OTHER STEPS/);
   assert.match(page, /localStorage\.setItem\(COLLAPSED_KEY/);
-  assert.match(page, /state = fresh\(\{ \.\.\.massFromItems\(plan\.items, ROWS\), language: plan\.language, massTime: plan\.massTime \}\);/);
+  assert.match(page, /state = fresh\(\{ \.\.\.massFromItems\(plan\.items, ROWS\), language: plan\.language, massTime: plan\.massTime, massLanguage: plan\.massLanguage \}\);/);
   assert.match(page, /massToItems\(state, ROWS\)/);
 });
 

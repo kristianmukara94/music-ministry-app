@@ -149,7 +149,7 @@ test('a new plan can carry its language and Mass time; left out, neither is stor
 
 test('a new plan with a language or Mass time that is not allowed is refused, and nothing is created', async () => {
   const cookie = await cookieFor('planner');
-  for (const bad of [{ language: 'FR' }, { massTime: '8:00' }, { massTime: 800 }]) {
+  for (const bad of [{ language: 'FR' }, { massTime: 800 }, { massTime: 'x'.repeat(21) }, { massLanguage: ['English'] }]) {
     const id = randomUUID();
     const res = await sync().createPlan({ httpMethod: 'POST', headers: { cookie }, body: JSON.stringify(body({ id, ...bad })) });
     assert.equal(res.statusCode, 400, JSON.stringify(bad));
@@ -653,4 +653,84 @@ test('the synced_at migration adds the column to an older database and is safe t
   await pg.exec(migration);
   const columns = (await pg.query("SELECT is_nullable FROM information_schema.columns WHERE table_name = 'plans' AND column_name = 'synced_at'")).rows;
   assert.deepEqual(columns, [{ is_nullable: 'YES' }]);
+});
+
+// ---- Holy Mass schedules (time and language) between the laptop, the server and the web planner. Synthetic names only. ----
+
+const schedulePlant = async (massTime, massLanguage, over = {}) => {
+  const id = await plantPlan(CHURCH_A, { name: over.name ?? 'Sample Liturgical Title', kind: over.kind ?? 'mass', items: [] });
+  await pg.query(`UPDATE plans SET body = body || $2::jsonb WHERE id = $1`, [id, JSON.stringify({ massTime, massLanguage })]);
+  return id;
+};
+
+test('a laptop push carries the Holy Mass time and language; a pull and the plan list return them; blanks clear them', async () => {
+  const id = await plantPlan(CHURCH_A, { name: 'Sample Liturgical Title', kind: 'mass', items: [] });
+  const push = async (over) => {
+    const stored = await serverRow(id);
+    const res = await sync().pushPlans(pushReq(laptopA, [body({ id, kind: 'mass', baseUpdatedAt: new Date(stored.updated_at).toISOString(), items: [], ...over })]));
+    assert.equal(JSON.parse(res.body).results[0].status, 'accepted');
+    clock = new Date(clock.getTime() + 1000);
+    return (await serverRow(id)).body;
+  };
+  const after = await push({ massTime: ' 6:00  AM ', massLanguage: 'cebuano' });
+  assert.deepEqual([after.massTime, after.massLanguage], ['6:00 AM', 'Cebuano'], 'tidied as the laptop tidies them');
+
+  const pulled = JSON.parse((await sync().pullPlans(pullReq({ headers: headers(laptopA) }))).body).plans.find((p) => p.id === id);
+  assert.deepEqual([pulled.massTime, pulled.massLanguage], ['6:00 AM', 'Cebuano']);
+  const cookie = await cookieFor('planner');
+  const row = await listed(cookie, id);
+  assert.deepEqual([row.massTime, row.massLanguage, row.itemCount], ['6:00 AM', 'Cebuano', 0]);
+
+  // An older laptop sends neither field: the stored schedule stays.
+  const kept = await push({});
+  assert.deepEqual([kept.massTime, kept.massLanguage], ['6:00 AM', 'Cebuano']);
+  // A laptop that cleared them sends blanks: the server clears them, and a pull says so with blanks (not a missing field).
+  const cleared = await push({ massTime: '', massLanguage: '' });
+  assert.equal('massTime' in cleared || 'massLanguage' in cleared, false);
+  const again = JSON.parse((await sync().pullPlans(pullReq({ headers: headers(laptopA) }))).body).plans.find((p) => p.id === id);
+  assert.deepEqual([again.massTime, again.massLanguage], ['', '']);
+});
+
+test('the web planner cannot create a second Holy Mass at the same time on a date: 409 with the plan already there, and nothing is made', async () => {
+  const existing = await schedulePlant('6:00 AM', 'English');
+  const cookie = await cookieFor('planner');
+  const create = (over) => sync().createPlan({ httpMethod: 'POST', headers: { cookie }, body: JSON.stringify(body({ name: 'Sample Mass Item', ...over })) });
+
+  const id = randomUUID();
+  const res = await create({ id, massTime: '06:00', massLanguage: 'Cebuano' });
+  assert.equal(res.statusCode, 409);
+  const answer = JSON.parse(res.body);
+  assert.equal(answer.error, 'A Holy Mass at 6:00 AM (English) already exists on this date. Open the existing one, or pick another time. Nothing was saved.');
+  assert.deepEqual(answer.conflict, { id: existing, name: 'Sample Liturgical Title', massTime: '6:00 AM', massLanguage: 'English', date: '2026-11-01' });
+  assert.equal(await serverRow(id), undefined);
+
+  // Another time, another day, a blank time and a Praise & Worship plan are all fine.
+  for (const over of [{ massTime: '8:00 AM', massLanguage: 'Cebuano' }, { date: '2026-11-08', massTime: '6:00 AM' }, {}, { kind: 'pw', massTime: '6:00 AM' }]) {
+    clock = new Date(clock.getTime() + 1000);
+    assert.equal((await create({ id: randomUUID(), ...over })).statusCode, 201, JSON.stringify(over));
+  }
+  // A laptop's create is not refused: its own planner checked, and the plan must not be stranded on that laptop.
+  const fromLaptop = await sync().createPlan({ httpMethod: 'POST', headers: headers(laptopA), body: JSON.stringify(body({ id: randomUUID(), massTime: '6 am', massLanguage: 'Tagalog' })) });
+  assert.equal(fromLaptop.statusCode, 201);
+});
+
+test('a web save that moves a Holy Mass onto a taken time is refused with the plan already there; keeping its own time is fine', async () => {
+  const six = await schedulePlant('6:00 AM', 'English');
+  const eight = await schedulePlant('8:00 AM', 'Cebuano', { name: 'Sample Mass Item' });
+  const cookie = await cookieFor('planner');
+  const save = async (id, details) => {
+    const stored = await serverRow(id);
+    return editing().savePlan({ httpMethod: 'POST', headers: { cookie }, body: JSON.stringify({ id, baseUpdatedAt: new Date(stored.updated_at).toISOString(), items: [], ...details }) });
+  };
+  const refused = await save(eight, { massTime: '06:00', massLanguage: 'Cebuano' });
+  assert.equal(refused.statusCode, 409);
+  assert.equal(JSON.parse(refused.body).conflict.id, six);
+  assert.equal((await serverRow(eight)).body.massTime, '8:00 AM', 'nothing was written');
+
+  clock = new Date(clock.getTime() + 1000);
+  assert.equal((await save(six, { massTime: '06:00', massLanguage: 'English' })).statusCode, 200, 'a plan never clashes with itself');
+  clock = new Date(clock.getTime() + 1000);
+  assert.equal((await save(eight, { massTime: '9:30 AM', massLanguage: 'Tagalog' })).statusCode, 200);
+  const stored = (await serverRow(eight)).body;
+  assert.deepEqual([stored.massTime, stored.massLanguage], ['9:30 AM', 'Tagalog']);
 });

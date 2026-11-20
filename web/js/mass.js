@@ -6,10 +6,11 @@
 import { MASS_PLAN } from './sample-data.js';
 import { SLOT_COUNT } from './mass-slots.js';
 import { MASS_LANGUAGES, languageName, massLanguageOf, sectionName, slotName } from './mass-language.js';
-import { isMassTime, massTimesFor, timeLabel } from './mass-schedule.js';
+import { isScheduleLanguage, normalizeMassLanguage, planLanguageForSchedule, scheduleLanguageForPlan, schedulesOn } from './holy-mass-schedule.js';
+import { asSchedulePlan, conflictIn, mountScheduleFields, onOpenExisting, openExistingHref, showConflict, switcherHtml } from './schedule-ui.js';
 import { esc, mountSidebar } from './shell.js';
 import { guard } from './auth.js';
-import { getPlan, listSongs, savePlan, watchSongList } from './plan-api.js';
+import { getPlan, listPlans, listSongs, savePlan, watchSongList } from './plan-api.js';
 import { usedHubIds } from './content-hub.js';
 import { entryListHtml, entrySummaryHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
 import { mountSongPicker, resetSongPickers } from './song-picker.js';
@@ -28,6 +29,7 @@ import {
   withEntry,
   withEntryKey,
   withoutEntry,
+  editorPathFor,
 } from './plan-model.js';
 
 mountSidebar();
@@ -69,6 +71,23 @@ const songWatch = watchSongList((list) => {
 });
 let collapsed = readCollapsed();
 let state = fresh(null);
+// The church's other Holy Mass plans on this plan's day (from the plan list), for the switcher and the taken-time warning.
+let dayPlans = [];
+
+// The Holy Mass time and language, as the laptop asks for them. English, Tagalog and Cebuano also set the readings and responses language,
+// as they do on the laptop; another language leaves it as chosen.
+const scheduleFields = mountScheduleFields(document.getElementById('schedule-fields'), {
+  id: 'plan-schedule',
+  disabled: true,
+  onChange: ({ massTime, massLanguage }) => {
+    if (!plan || !canEdit) return;
+    const texts = planLanguageForSchedule(massLanguage);
+    const relabel = texts && texts !== state.language;
+    setDetail({ massTime, massLanguage, ...(relabel ? { language: texts } : {}) });
+    if (relabel) renderKeepingDraft();
+    else renderHeader();
+  },
+});
 
 function fresh(saved) {
   return {
@@ -79,10 +98,11 @@ function fresh(saved) {
     extra: saved?.extra ?? [],
     meta: saved?.meta ?? {},
     contentHubItems: structuredClone(plan?.contentHubItems ?? []),
-    // The plan's language (EN, TL, CEB) and its Mass time ("HH:MM", or '' for none). `otherTime` shows the time box for a time not on the schedule.
+    // The language its readings and responses are in (EN, TL, CEB), and its Holy Mass schedule as the laptop keeps it: the time as typed
+    // ("6:00 AM") and the schedule language ('English', 'Cebuano', 'Tagalog' or the parish's own), '' for none.
     language: massLanguageOf(saved?.language),
-    massTime: isMassTime(saved?.massTime) ? saved.massTime : '',
-    otherTime: false,
+    massTime: saved?.massTime ?? '',
+    massLanguage: saved?.massLanguage ?? '',
     dirty: false,
     noteSaved: false,
     saving: false,
@@ -124,7 +144,7 @@ function renderHeader() {
   const steps = ROWS.map((r) => stepOf(r.id));
   const songSteps = steps.filter((s) => s.kind === 'song');
   const readings = steps.filter((s) => s.kind === 'reading');
-  const when = plan ? [dateLabel(plan.date), state.massTime ? timeLabel(state.massTime) : ''].filter(Boolean).join(' · ') : '';
+  const when = plan ? [dateLabel(plan.date), state.massTime].filter(Boolean).join(' · ') : '';
   document.getElementById('eyebrow').textContent = plan ? `HOLY MASS PLAN · ${when} · ${languageName(state.language).toUpperCase()}` : 'HOLY MASS PLAN';
   document.getElementById('title').textContent = plan ? plan.name : 'No plan open';
   document.title = `${plan ? plan.name : 'Holy Mass plan'} · APCCMMA Web Planner`;
@@ -135,7 +155,8 @@ function renderHeader() {
   document.getElementById('steps-label').textContent = `${slotsFilled} of ${SLOT_COUNT} slots · ${OTHER} other steps`;
   const save = saveButton(state.saving);
   const saveEl = document.getElementById('save');
-  saveEl.disabled = !plan || !canEdit || save.disabled;
+  // A Holy Mass time another plan on the day already has is not saved: the warning beside the schedule offers Open Existing.
+  saveEl.disabled = !plan || !canEdit || save.disabled || takenBy() !== null;
   saveEl.textContent = save.label;
   document.getElementById('discard').disabled = !plan || state.saving;
   const note = document.getElementById('view-only');
@@ -144,36 +165,53 @@ function renderHeader() {
   renderDetails();
 }
 
-/** The plan's details card: the language switch and the Mass time from the parish schedule (or another time). */
+/** The Holy Mass already at this plan's typed time on its day, or null. */
+function takenBy() {
+  return plan ? conflictIn(dayPlans, plan.date, state.massTime, plan.id) : null;
+}
+
+/** The header's switcher: the day's Holy Masses in the order they are celebrated, this one marked with its time as typed, then + Add Time. */
+function renderSwitcher() {
+  const nav = document.getElementById('schedule-switcher');
+  if (!plan) {
+    nav.innerHTML = '';
+    return;
+  }
+  const others = dayPlans.filter((p) => p.id !== plan.id);
+  const day = schedulesOn([...others, asSchedulePlan({ ...plan, massTime: state.massTime, massLanguage: state.massLanguage })], plan.date);
+  const root = document.documentElement.dataset.base ?? '';
+  nav.innerHTML = switcherHtml(day, plan.id, {
+    pathOf: (p) => `${root}${editorPathFor({ id: p.id, kind: 'mass' })}`,
+    addHref: canEdit ? `new.html?date=${encodeURIComponent(plan.date)}&kind=mass` : null,
+  });
+}
+
+/** The plan's details card: the schedule (time and language), the taken-time warning, and the readings language switch. */
 function renderDetails() {
   const locked = !plan || !canEdit;
   document.getElementById('language').innerHTML = MASS_LANGUAGES.map((l) => {
     const on = l.code === state.language;
-    return `<button type="button" role="radio" data-lang="${l.code}" aria-checked="${on}" tabindex="${on ? 0 : -1}" ${locked ? 'disabled' : ''} style="flex:1;min-width:0;height:40px;padding:0 10px;border-radius:8px;font-size:14px;cursor:pointer;${on ? 'border:1px solid var(--primary);background:var(--primary);color:var(--on-primary);font-weight:700' : 'border:1px solid transparent;background:transparent;color:var(--text);font-weight:600'}">${esc(l.name)}</button>`;
+    return `<button type="button" role="radio" data-lang="${l.code}" aria-checked="${on}" tabindex="${on ? 0 : -1}" ${locked ? 'disabled' : ''} style="flex:1;min-width:0;height:40px;padding:0 10px;border-radius:8px;font-size:14px;cursor:pointer;${on ? 'border:1px solid var(--bc-gold);background:var(--bc-gold);color:var(--bc-on-gold);font-weight:800' : 'border:1px solid transparent;background:transparent;color:var(--bc-text);font-weight:600'}">${esc(l.name)}</button>`;
   }).join('');
-
-  const select = document.getElementById('mass-time');
-  const offered = plan ? massTimesFor(plan.date) : [];
-  const listed = offered.some((t) => t.time === state.massTime);
-  const options = [
-    `<option value="">No Holy Mass time set</option>`,
-    ...offered.map((t) => `<option value="${t.time}">${esc(t.label)}</option>`),
-    ...(state.massTime && !listed ? [`<option value="${state.massTime}">${esc(timeLabel(state.massTime))} · not on the schedule</option>`] : []),
-    `<option value="other">Other time…</option>`,
-  ];
-  select.innerHTML = options.join('');
-  select.value = state.otherTime ? 'other' : state.massTime;
-  select.disabled = locked;
-  const other = document.getElementById('mass-time-other');
-  other.hidden = !state.otherTime;
-  other.disabled = locked;
-  if (state.otherTime && !other.value) other.value = state.massTime;
+  showConflict(document.getElementById('schedule-conflict'), takenBy());
+  renderSwitcher();
 
   document.getElementById('details-note').textContent = plan
     ? `Slot names are shown in ${languageName(state.language)}${state.language === 'EN' ? '' : ', with the English name beneath'}. Song titles and typed text are not translated.`
     : '';
   document.getElementById('steps').setAttribute('lang', HTML_LANG[state.language]);
   document.getElementById('drawer').setAttribute('lang', HTML_LANG[state.language]);
+}
+
+/**
+ * Sets the readings and responses language. A Holy Mass whose schedule language is English, Tagalog or Cebuano is relabelled to match, as on
+ * the laptop; the parish's own language is left as typed.
+ */
+function chooseTextsLanguage(code) {
+  const relabel = isScheduleLanguage(normalizeMassLanguage(state.massLanguage)) ? scheduleLanguageForPlan(code) : '';
+  setDetail({ language: code, ...(relabel ? { massLanguage: relabel } : {}) });
+  if (relabel) scheduleFields.set({ massTime: state.massTime, massLanguage: relabel });
+  renderKeepingDraft();
 }
 
 /** Changes a plan detail in this session. Nothing is saved until Save plan. */
@@ -372,13 +410,17 @@ function openHub(mode) {
 /** Reads the saved plan and the song list from the server. A failure keeps what was on screen and shows the plain message. */
 async function load() {
   try {
-    const [saved, list] = await Promise.all([getPlan(planId), listSongs()]);
+    const [saved, list, all] = await Promise.all([getPlan(planId), listSongs(), listPlans().catch(() => null)]);
+    // The other Holy Masses on this plan's day, for the switcher and the taken-time warning. Without the list, the server still checks.
+    dayPlans = all ? all.plans.filter((p) => p.kind !== 'pw' && p.liturgical_date === saved.plan.date).map(asSchedulePlan) : [];
     plan = saved.plan;
     canEdit = saved.canEdit;
     songs = songsForEditor(list.songs, saved.songs);
     planSongs = saved.songs;
     songWatch.seen(list);
-    state = fresh({ ...massFromItems(plan.items, ROWS), language: plan.language, massTime: plan.massTime });
+    state = fresh({ ...massFromItems(plan.items, ROWS), language: plan.language, massTime: plan.massTime, massLanguage: plan.massLanguage });
+    scheduleFields.set({ massTime: state.massTime, massLanguage: state.massLanguage });
+    scheduleFields.setDisabled(!canEdit);
     resetSongPickers();
   } catch (err) {
     if (plan) state.error = err.message;
@@ -389,17 +431,26 @@ async function load() {
 
 async function save() {
   if (!plan || !canEdit || state.saving) return;
+  if (takenBy()) {
+    document.querySelector('#schedule-conflict [data-open-existing]')?.focus();
+    return;
+  }
   state.saving = true;
   state.error = '';
   renderHeader();
   try {
-    const details = { language: state.language, massTime: state.massTime || null, contentHubItems: state.contentHubItems };
+    const details = { language: state.language, massTime: state.massTime.trim() || null, massLanguage: state.massLanguage.trim() || null, contentHubItems: state.contentHubItems };
     const response = await savePlan(savePayload(plan, massToItems(state, ROWS), details));
-    Object.assign(plan, details);
+    Object.assign(plan, details, { massTime: details.massTime ?? '', massLanguage: details.massLanguage ?? '' });
     plan.updatedAt = response.savedAt;
     state.dirty = false;
   } catch (err) {
-    state.error = err.message;
+    if (err.conflict) {
+      // Saved on another device since the list was read: the server names the Holy Mass already at that time.
+      dayPlans = [...dayPlans.filter((p) => p.id !== err.conflict.id), asSchedulePlan({ ...err.conflict, kind: 'mass' })];
+    } else {
+      state.error = err.message;
+    }
   } finally {
     state.saving = false;
     renderHeader();
@@ -422,8 +473,7 @@ document.querySelector('main').addEventListener('click', (event) => {
     void songWatch.check();
   } else if (target.dataset.lang) {
     if (target.dataset.lang === state.language) return;
-    setDetail({ language: target.dataset.lang });
-    renderKeepingDraft();
+    chooseTextsLanguage(target.dataset.lang);
     document.querySelector(`[data-lang="${target.dataset.lang}"]`)?.focus();
   } else if (target.dataset.toggle) {
     collapsed = collapsed.includes(target.dataset.toggle) ? collapsed.filter((g) => g !== target.dataset.toggle) : [...collapsed, target.dataset.toggle];
@@ -452,26 +502,10 @@ document.querySelector('main').addEventListener('click', (event) => {
   }
 });
 
-// The Mass time: a time from the schedule, none, or "Other time…", which shows a time box for a time not on the schedule.
-document.getElementById('mass-time').addEventListener('change', (event) => {
-  const value = event.target.value;
-  if (value === 'other') {
-    state.otherTime = true;
-    renderDetails();
-    document.getElementById('mass-time-other').focus();
-    return;
-  }
-  setDetail({ massTime: value, otherTime: false });
-  document.getElementById('mass-time-other').value = '';
-  renderHeader();
-});
-
-document.getElementById('mass-time-other').addEventListener('change', (event) => {
-  const value = event.target.value;
-  if (!isMassTime(value)) return;
-  setDetail({ massTime: value, otherTime: false });
-  event.target.value = '';
-  renderHeader();
+// Open Existing: the Holy Mass already at that time opens in this editor. Unsaved changes here are kept only if the planner says so.
+onOpenExisting(document.getElementById('schedule-conflict'), (id) => {
+  if (state.dirty && !window.confirm('Leave this plan? Your unsaved changes here will be lost.')) return;
+  location.assign(openExistingHref(id, document.documentElement.dataset.base ?? ''));
 });
 
 // Arrow keys move between the languages, as in any radio group.
@@ -481,8 +515,7 @@ document.getElementById('language').addEventListener('keydown', (event) => {
   event.preventDefault();
   const codes = MASS_LANGUAGES.map((l) => l.code);
   const next = codes[(codes.indexOf(state.language) + step + codes.length) % codes.length];
-  setDetail({ language: next });
-  renderKeepingDraft();
+  chooseTextsLanguage(next);
   document.querySelector(`[data-lang="${next}"]`)?.focus();
 });
 

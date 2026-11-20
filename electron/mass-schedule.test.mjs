@@ -77,11 +77,12 @@ test('a Tagalog or Cebuano Holy Mass drafts its texts in that language unless th
   assert.equal(plans.createPlan({ name: 'Sample Mass Item', liturgicalDate: DAY, massTime: '7:00 PM', massLanguage: 'Tagalog', language: 'EN' }).language, 'EN');
 });
 
-test('a second Holy Mass with the same time and language on the same day is refused; another time or another day is fine', () => {
+test('a second Holy Mass at the same time on the same day is refused, whatever its language; another time or another day is fine', () => {
   const plans = createMassPlanService(open());
   plans.createPlan({ name: 'Sample Mass Item', liturgicalDate: DAY, massTime: '6:00 AM', massLanguage: 'English' });
-  assert.throws(() => plans.createPlan({ name: 'Sample Mass Item', liturgicalDate: DAY, massTime: '06:00', massLanguage: 'english' }), /already planned/);
-  plans.createPlan({ name: 'Sample Mass Item', liturgicalDate: DAY, massTime: '6:00 AM', massLanguage: 'Cebuano' });
+  assert.throws(() => plans.createPlan({ name: 'Sample Mass Item', liturgicalDate: DAY, massTime: '06:00', massLanguage: 'english' }), /A Holy Mass at 6:00 AM \(English\) already exists on this date\./);
+  assert.throws(() => plans.createPlan({ name: 'Sample Mass Item', liturgicalDate: DAY, massTime: '6 am', massLanguage: 'Cebuano' }), /already exists on this date/);
+  plans.createPlan({ name: 'Sample Mass Item', liturgicalDate: DAY, massTime: '8:00 AM', massLanguage: 'Cebuano' });
   plans.createPlan({ name: 'Sample Mass Item', liturgicalDate: '2026-12-13', massTime: '6:00 AM', massLanguage: 'English' });
   assert.equal(onDay(plans).length, 2);
 });
@@ -113,7 +114,7 @@ test('editing a schedule into one another plan on the day already has is refused
   const plans = createMassPlanService(open());
   const six = plans.createPlan({ name: 'Sample Mass Item', liturgicalDate: DAY, massTime: '6:00 AM', massLanguage: 'English' });
   const eight = plans.createPlan({ name: 'Sample Mass Item', liturgicalDate: DAY, massTime: '8:00 AM', massLanguage: 'Cebuano' });
-  assert.throws(() => plans.setSchedule(eight.id, { massTime: '6:00 AM', massLanguage: 'English' }), /already planned/);
+  assert.throws(() => plans.setSchedule(eight.id, { massTime: '06:00', massLanguage: 'Cebuano' }), /already exists on this date/);
   assert.deepEqual(plans.setSchedule(six.id, { massTime: '6:00 AM', massLanguage: 'English' }), { massTime: '6:00 AM', massLanguage: 'English' });
   assert.deepEqual(plans.setSchedule(six.id, { massTime: '', massLanguage: '' }), { massTime: '', massLanguage: '' });
 });

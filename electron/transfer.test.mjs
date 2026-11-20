@@ -8,7 +8,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
 const { HYMN_DELETE_MIGRATIONS, HYMN_FILING_MIGRATIONS, HYMN_FONT_SCALE_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } = await import('./lyrics.js');
-const { MASS_PLAN_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_LANGUAGE_MIGRATIONS, PLAN_NOTES_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS } = await import('./mass-plans.js');
+const { MASS_PLAN_MIGRATIONS, MASS_SCHEDULE_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_LANGUAGE_MIGRATIONS, PLAN_NOTES_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS } = await import('./mass-plans.js');
 const { PW_MIGRATIONS } = await import('./pw-sessions.js');
 const { SONG_CATEGORY_MIGRATIONS, SONG_CATEGORY_MODE_MIGRATIONS, SONG_SCOPE_MIGRATIONS } = await import('./song-categories.js');
 const {
@@ -450,4 +450,34 @@ test('a file from before the Holy Mass Order was shared still imports, with noth
   const target = makeMassOrderDb();
   assert.deepEqual(previewImport(target, data).counts.massOrder, { new: 0, same: 0, changed: 0 });
   assert.equal(applyImport(target, data).added.massOrder, 0);
+});
+
+test('a Holy Mass time and language travel in the file; a file from before schedules leaves a plan\'s own', () => {
+  const withSchedule = () => {
+    const db = makeDb();
+    for (const sql of MASS_SCHEDULE_MIGRATIONS) db.exec(sql);
+    return db;
+  };
+  const source = withSchedule();
+  source.prepare("INSERT INTO mass_plans (name, liturgical_date, mass_time, mass_language) VALUES ('Sample Liturgical Title', '2026-12-06', '6:00 AM', 'Cebuano')").run();
+  const data = decodeTransfer(exportFrom(source));
+  assert.deepEqual([data.plans[0].massTime, data.plans[0].massLanguage], ['6:00 AM', 'Cebuano']);
+
+  const target = withSchedule();
+  applyImport(target, data);
+  assert.deepEqual({ ...target.prepare('SELECT mass_time, mass_language FROM mass_plans').get() }, { mass_time: '6:00 AM', mass_language: 'Cebuano' });
+
+  // An older file has neither field: the plan keeps the schedule it has.
+  const legacy = structuredClone(data);
+  delete legacy.plans[0].massTime;
+  delete legacy.plans[0].massLanguage;
+  legacy.plans[0].updatedAt = '2026-12-01T00:00:00.000Z';
+  applyImport(target, legacy, { [`plans:${legacy.plans[0].id}`]: 'use' });
+  assert.deepEqual({ ...target.prepare('SELECT mass_time, mass_language FROM mass_plans').get() }, { mass_time: '6:00 AM', mass_language: 'Cebuano' });
+
+  // A database from before schedules exports none and imports the plan without them.
+  const old = makeDb();
+  applyImport(old, data);
+  assert.equal(old.prepare('SELECT COUNT(*) AS n FROM mass_plans').get().n, 1);
+  assert.equal('massTime' in decodeTransfer(exportFrom(old)).plans[0], false);
 });
