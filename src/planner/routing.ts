@@ -36,9 +36,13 @@ export interface PlayOptions {
  * Stages a Holy Mass song on its title card, with its slot's name above it. Next then goes to its first stanza. Resolves false when the song is gone
  * or has no stanzas.
  */
-async function stageSong(item: QueueItem): Promise<boolean> {
+async function songItemFrame(item: QueueItem): Promise<Frame | null> {
   const hymn = await liveLyrics.getHymn(Number(item.sourceId));
-  const frame = hymn && !hymn.deletedAt && hymn.stanzas.length > 0 ? songTitleFrame(hymn, slotById(item.slot)?.name) : null;
+  return hymn && !hymn.deletedAt && hymn.stanzas.length > 0 ? songTitleFrame(hymn, slotById(item.slot)?.name) : null;
+}
+
+async function stageSong(item: QueueItem): Promise<boolean> {
+  const frame = await songItemFrame(item);
   if (!frame) return false;
   dispatch({ type: 'projector/stage', frame });
   return true;
@@ -49,12 +53,12 @@ async function stageSong(item: QueueItem): Promise<boolean> {
  * Whiteboard steps through its Whiteboard folder (its deck), not through every PowerPoint picture, which all share one Announcements folder.
  * A deck slice's row (see deckSlice) steps from its slide to the end of the deck, and an older single slide's row shows its picture alone.
  */
-async function stageAnnouncement(sourceId: string): Promise<boolean> {
+async function announcementItemFrame(sourceId: string): Promise<Frame | null> {
   const source = announcementSource(sourceId);
-  if (!source) return false;
+  if (!source) return null;
   const [list, board] = await Promise.all([bridge.announcements.slides(null), bridge.whiteboard.list().catch(() => [])]);
   const slide = list.find((s) => s.id === source.slideId);
-  if (!slide) return false;
+  if (!slide) return null;
   const picture = board.find((w) => w.slideId === slide.id && w.image);
   /** The slides around `first` that the row plays: all of its deck, the deck from `first` on, or `first` alone. */
   const around = <T extends { folderId: number | null }>(first: T, deck: T[]) => {
@@ -62,9 +66,12 @@ async function stageAnnouncement(sourceId: string): Promise<boolean> {
     const same = deck.filter((s) => s.folderId === first.folderId);
     return source.from ? same.slice(Math.max(0, same.indexOf(first))) : same;
   };
-  const frame = picture
-    ? frameForWhiteboardSlide(picture, around(picture, board.filter((w) => w.image)))
-    : announcementFrame(slide, around(slide, list));
+  return picture ? frameForWhiteboardSlide(picture, around(picture, board.filter((w) => w.image))) : announcementFrame(slide, around(slide, list));
+}
+
+async function stageAnnouncement(sourceId: string): Promise<boolean> {
+  const frame = await announcementItemFrame(sourceId);
+  if (!frame) return false;
   dispatch({ type: 'projector/stage', frame });
   return true;
 }
@@ -152,6 +159,41 @@ export async function openQueueItem(item: QueueItem, index: number, opts: PlayOp
     }
   }
   return false;
+}
+
+/**
+ * The first slide a queue item would put on the projector, built without staging it: what the Go Live console shows when a lineup row is
+ * selected but not played, so its slides can be checked and edited while the projector keeps what it shows. Null for an item with no slide of
+ * its own (a missing item, a picture or video on the background layer, a lower-third or private note, an empty song).
+ */
+export async function queueItemFrame(item: QueueItem, index: number): Promise<Frame | null> {
+  if (item.stale) return null;
+  switch (item.module) {
+    case 'lyrics':
+      return songItemFrame(item);
+    case 'announcements':
+      return announcementItemFrame(item.sourceId);
+    case 'lectionary': {
+      const [date, readingType] = item.sourceId.split('|');
+      return readingFrame(date, readingType);
+    }
+    case 'mass_order': {
+      const language = await planLanguage(useLive.getState().state.queuePlanId);
+      return massPartFrame(item.sourceId, language ? uiLangOf(language) : useUi.getState().lang);
+    }
+    case 'custom': {
+      const stage = textRowActions(item, index, slotById(item.slot)?.name ?? item.label)?.find((a) => a.type === 'projector/stage');
+      return stage && 'frame' in stage ? (stage.frame as Frame) : null;
+    }
+    case 'notes': {
+      const source = noteSource(item.sourceId);
+      const note = source ? await bridge.notes.get(source.id).catch(() => null) : null;
+      return note?.display === 'full' ? slideFramesOf(note, source?.slides)[0] ?? null : null;
+    }
+    case 'bible':
+      return (await biblePassageFrame(item.sourceId))?.frame ?? null;
+  }
+  return null;
 }
 
 /**

@@ -31,7 +31,8 @@ export function useSegmentTimer(scope: 'pw' | 'mass', segmentKey: string | null,
 }
 
 /**
- * B (Blackout), L (Lower Third) and H (Hide Text) on a live console. ← → Space and 1–9 are already handled (OperatorApp, the cue navigator).
+ * B (Blackout), L (Lower Third), H (Hide Text) and E (the Output Preview Editor on the slide on air) on a live console. ← → Space and 1–9 are
+ * already handled (OperatorApp, the cue navigator).
  * The keys give way, as every console key does, to a text field, an open dialog, the command palette, the shortcut capture, a control that
  * already handled the key, and a saved shortcut on the same key.
  */

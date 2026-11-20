@@ -4,6 +4,8 @@ import { SECURE_WEB_PREFERENCES, setupAntiTamper } from './anti-tamper.js';
 import { createCloudDevice } from './cloud-device.js';
 import { createLicenseManager, PROJECTION_OUTPUTS } from './license-manager.js';
 import { createSongSync, SONG_ROWS_SQL } from './song-sync.js';
+import { createThemeSync } from './theme-sync.js';
+import { paintedTheme, withThemeParam } from '../shared/theme-catalog.js';
 import { createPlanSync } from './plan-sync.js';
 import { createPlanSyncStore } from './plan-sync-store.js';
 import fs from 'node:fs';
@@ -1142,7 +1144,12 @@ function startLicenseHeartbeat() {
 // The cloud address is shown on the Cloud sync screen, so the user can see where the laptop is pointing. It is not part of any message.
 const withAddress = async (result) => ({ ...result, address: cloudUrl() });
 ipcMain.handle('cloud:status', async () => withAddress(await cloud().status()));
-ipcMain.handle('cloud:link', async (_event, input) => withAddress(await cloud().link(String(input?.code ?? ''), String(input?.label ?? '').slice(0, 80))));
+ipcMain.handle('cloud:link', async (_event, input) => {
+  const result = await cloud().link(String(input?.code ?? ''), String(input?.label ?? '').slice(0, 80));
+  // A theme chosen before the laptop was linked goes to the church's website now.
+  if (result?.linked) themeSync.resume();
+  return withAddress(result);
+});
 ipcMain.handle('cloud:unlink', async () => withAddress(await cloud().unlink()));
 // The input is checked in cloud-device.js, which runs here in the main process, before anything is sent. Only these three fields
 // are read, so nothing else from the screen reaches the cloud request.
@@ -1161,10 +1168,33 @@ ipcMain.handle('cloud:create-church-admin', (_event, input) =>
 );
 ipcMain.handle('cloud:defaultLabel', () => os.hostname());
 
+/** The theme the windows are painted with now: the saved choice, with Automatic resolved to today's season. */
+const currentPaintedTheme = () => paintedTheme(readConfig(app.getPath('userData')).theme);
+
+// The colour theme sync (see theme-sync.js): every theme change is sent to the church's website 300 ms later, so its pages repaint live.
+// The state lives in config.json, so a change made offline is still sent after a restart.
+const themeSync = createThemeSync({
+  readState: () => readConfig(app.getPath('userData')).theme_sync,
+  writeState: (state) => writeConfig(app.getPath('userData'), { theme_sync: state }),
+  push: (change) => cloud().pushTheme(change),
+});
+ipcMain.handle('cloud:theme-status', () => themeSync.status());
+// Opens the church's web planner in the browser, already in this laptop's theme, so the first frame is not the wrong colours.
+ipcMain.handle('cloud:open-website', () => {
+  const address = cloudUrl();
+  if (!address) return false;
+  return shell.openExternal(withThemeParam(`${address.replace(/\/+$/, '')}/`,currentPaintedTheme(), address)).then(() => true);
+});
+
 // The song list sync: runs in the background and sends metadata only (see song-sync.js). The screen sees its state, never the token.
 const songSync = createSongSync({
   readRows: () => announcements.db.prepare(SONG_ROWS_SQL).all(),
-  push: (songs) => cloud().pushSongs(songs),
+  push: async (songs) => {
+    const counts = await cloud().pushSongs(songs);
+    // The cloud answered, so a theme change that could not be sent earlier goes now.
+    themeSync.resume();
+    return counts;
+  },
 });
 ipcMain.handle('cloud:songs-status', () => songSync.status());
 // The plan sync's state, for the read-only line on the Cloud sync screen. It is null until the database is open.
@@ -1486,7 +1516,8 @@ ipcMain.handle('launch:open', async (event, target) => {
     await dialog.showMessageBox(win, { type: 'warning', title: 'APCCMMA', message: 'This shortcut cannot be opened.', detail: LAUNCH_REFUSED_DETAIL });
     return false;
   }
-  if (launch.kind === 'url') return shell.openExternal(launch.url);
+  // A shortcut to the church's own website opens in this laptop's theme (?theme=); any other address is opened as typed.
+  if (launch.kind === 'url') return shell.openExternal(withThemeParam(launch.url, currentPaintedTheme(), cloudUrl()));
   if (launch.confirm && !approvedLaunches.has(launch.path)) {
     const { response } = await dialog.showMessageBox(win, {
       type: 'warning',
@@ -1575,6 +1606,10 @@ app.whenReady().then(() => {
   app.on('before-quit', () => clearInterval(purgeTimer));
   songSync.start();
   app.on('before-quit', () => songSync.stop());
+  // The theme the laptop starts in (Automatic may have moved to a new season while it was off), and anything left unsent last time.
+  themeSync.themeChanged(currentPaintedTheme());
+  themeSync.resume();
+  app.on('before-quit', () => themeSync.stop());
   // Plans sync in both directions in the background, after the database is open. There is no button for it.
   // One cloud client for the plan sync, so the server clock offset it measures is kept between runs.
   const planCloud = cloud();
@@ -1690,6 +1725,8 @@ app.whenReady().then(() => {
   });
   settings = setupSettings({
     userData: app.getPath('userData'),
+    // Every saved theme (and Automatic saving itself when the season turns) is sent to the website. A repeat of the same theme sends nothing.
+    onThemeSaved: (id) => themeSync.themeChanged(paintedTheme(id)),
     getDb: () => announcements.db,
     getStatus: () => dbStatus,
     appVersion: app.getVersion(),

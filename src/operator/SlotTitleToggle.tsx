@@ -45,7 +45,7 @@ export function SlotTitleToggle({ live = false }: { live?: boolean }) {
         aria-label={live ? 'Hide title' : 'Show slot title'}
         onClick={toggle}
         title={`${what} ${scope}`}
-        className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border font-bold tracking-wide whitespace-nowrap uppercase transition focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${
+        className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border font-semibold whitespace-nowrap transition focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none ${
           live ? 'h-8 px-2 text-[11px]' : 'h-9 self-start px-3 text-xs'
         } ${lit ? 'border-accent bg-accent/15 text-accent' : 'border-fg/15 bg-panel-2 text-fg/80 hover:border-accent/50 hover:text-fg'}`}
       >

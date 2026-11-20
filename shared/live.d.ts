@@ -153,6 +153,8 @@ export type Frame =
       footer?: string;
       /** Set on a Holy Mass song's title card (see songTitleFrame): the song it opens. Such a card is the Holy Mass's, not a Praise & Worship lineup's. */
       massSong?: { hymnId: number };
+      /** The slide's key for its own look (slideLooks), stamped by the Praise & Worship lineup (frameFor): its card and step. */
+      lookKey?: string;
     };
 
 /** A background layer item: an image or a looping video. */
@@ -293,9 +295,13 @@ export interface LiveState {
   /** What the open panel offers a phone. Set by the panel while it is open. */
   remotePanel?: RemotePanel;
   pwLineup?: { key: string; name: string; minutes: number }[];
+  /** The Output Preview Editor's per-slide looks, by slide key (shared/slide-look.js). Absent in older states. */
+  slideLooks?: Record<string, import('./slide-look.js').SlideLook>;
 }
 
 export type LiveAction =
+  | { type: 'slideLook/set'; key: string; look: import('./slide-look.js').SlideLook | null }
+  | { type: 'slideLook/clear' }
   | { type: 'output/toggle'; output: OutputKey }
   | { type: 'output/set'; output: OutputKey; on: boolean }
   /** A direct show ends the Mass Queue's selection. Overlays from the operator's buttons pass DIRECT_DECK. */

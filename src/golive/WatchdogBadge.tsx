@@ -113,7 +113,7 @@ export function WatchdogBadge() {
         aria-expanded={open}
         aria-haspopup="dialog"
         title={hint}
-        className={`inline-flex h-10 items-center gap-2 rounded-full border px-3 text-xs font-bold tracking-wider uppercase transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none ${LOOK[look].pill}`}
+        className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs font-bold tracking-wider uppercase transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none ${LOOK[look].pill}`}
       >
         <Icon size={15} aria-hidden />
         <span role="status" aria-live="assertive">
@@ -128,7 +128,7 @@ export function WatchdogBadge() {
         title={`${forceLabel} (${HOTKEY})`}
         aria-pressed={manual}
         aria-keyshortcuts="Control+Shift+B"
-        className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-md border px-3 text-xs font-extrabold tracking-wide uppercase transition focus-visible:ring-2 focus-visible:ring-danger/60 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${
+        className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-xs font-extrabold tracking-wide uppercase transition focus-visible:ring-2 focus-visible:ring-danger/60 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${
           manual ? 'border-danger bg-danger text-canvas hover:brightness-110' : 'border-danger/60 text-danger hover:bg-danger/15'
         }`}
       >

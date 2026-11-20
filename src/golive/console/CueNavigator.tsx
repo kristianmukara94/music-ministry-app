@@ -42,6 +42,13 @@ interface Props {
   empty?: string;
   /** Changes when the item on air changes: the search and the tab start over. */
   itemKey: string;
+  /** Opens the Output Preview Editor on a cue (its Edit button). Without it, the cues have no Edit button. */
+  onEdit?: (index: number) => void;
+  /**
+   * What the 1–9, C and V keys drive when the grid shows an item that is not on air (a lineup row selected, not played): the item on air, so
+   * the keys never jump to a slide of the item being looked at. The grid then shows no Key badges. Left out, the keys drive the cues shown.
+   */
+  keyTarget?: { cues: Cue[]; activeIndex: number; onSelect: (index: number) => void };
 }
 
 /**
@@ -49,7 +56,7 @@ interface Props {
  * as a compact numbered index for a long item. A click goes live at once. The search finds words, a tag or a slide number; the tabs keep one
  * song or one section. The number keys go to the first nine cues, C to the first chorus and V to the next verse.
  */
-export function CueNavigator({ cues, activeIndex, onSelect, disabled = false, empty, itemKey }: Props) {
+export function CueNavigator({ cues, activeIndex, onSelect, disabled = false, empty, itemKey, onEdit, keyTarget }: Props) {
   const t = useGoLiveT();
   const textCase = useLive((s) => textCaseOf(s.state.settings.textCase));
   const [view, setView] = useState<CueView>(savedView);
@@ -70,9 +77,10 @@ export function CueNavigator({ cues, activeIndex, onSelect, disabled = false, em
 
   const tabs = useMemo(() => cueTabs(cues), [cues]);
   const shown = useMemo(() => filterCues(cues, { query, tab }), [cues, query, tab]);
-  const keys = useMemo(() => cueKeys(cues), [cues]);
-  const groups = useMemo(() => chipGroupsOf(cues), [cues]);
-  useChipKeys({ groups, activeIndex, onSelect, disabled });
+  const keys = useMemo(() => (keyTarget ? new Map<number, number>() : cueKeys(cues)), [cues, keyTarget]);
+  const keyCues = keyTarget?.cues ?? cues;
+  const groups = useMemo(() => chipGroupsOf(keyCues), [keyCues]);
+  useChipKeys({ groups, activeIndex: keyTarget?.activeIndex ?? activeIndex, onSelect: keyTarget?.onSelect ?? onSelect, disabled });
 
   return (
     <section aria-labelledby="cue-heading" className={`${CARD} flex flex-col p-4`}>
@@ -146,7 +154,7 @@ export function CueNavigator({ cues, activeIndex, onSelect, disabled = false, em
                 const tone =
                   where === 'live' ? 'border-accent bg-accent/15 ring-1 ring-accent' : where === 'next' ? 'border-accent/45 bg-panel-2' : 'border-line bg-panel-2 hover:border-fg/30';
                 return (
-                  <li key={cue.index} className="min-w-0">
+                  <li key={cue.index} className="group relative min-w-0">
                     <button
                       type="button"
                       disabled={disabled}
@@ -155,7 +163,7 @@ export function CueNavigator({ cues, activeIndex, onSelect, disabled = false, em
                       aria-label={label}
                       aria-keyshortcuts={key ? String(key) : undefined}
                       title={view === 'index' ? label : undefined}
-                      className={`w-full rounded-lg border text-left transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:cursor-not-allowed ${tone} ${
+                      className={`w-full rounded-lg border text-left transition ${onEdit && view === 'cards' ? 'pt-8' : ''} focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:cursor-not-allowed ${tone} ${
                         view === 'index' ? 'grid min-h-10 place-items-center p-1.5 text-center font-mono text-sm font-bold tabular-nums' : 'flex min-h-[78px] flex-col justify-between gap-1.5 p-2.5'
                       } ${where === 'live' ? 'text-accent' : 'text-fg'}`}
                     >
@@ -175,6 +183,23 @@ export function CueNavigator({ cues, activeIndex, onSelect, disabled = false, em
                         </>
                       )}
                     </button>
+                    {/* Edit sits beside the cue, never inside it (a button holds no button): on a card in its top row, on an index tile on hover. */}
+                    {onEdit && (
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => onEdit(cue.index)}
+                        aria-label={t('consoleEditCueLabel', { n: pad2(cue.number) })}
+                        data-cue-edit
+                        className={
+                          view === 'index'
+                            ? 'absolute -top-1.5 -right-1.5 z-10 rounded-md border border-line-strong bg-surface px-1.5 py-px text-[10px] font-semibold text-fg opacity-0 shadow transition group-hover:opacity-100 hover:border-accent hover:text-accent focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:hidden'
+                            : 'absolute top-2 right-2 z-10 rounded-md border border-line bg-canvas px-2 py-0.5 text-[11px] text-fg/85 transition hover:border-accent hover:text-accent focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none disabled:opacity-40'
+                        }
+                      >
+                        {t('consoleEditCue')}
+                      </button>
+                    )}
                   </li>
                 );
               })}

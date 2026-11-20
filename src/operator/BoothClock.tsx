@@ -27,10 +27,10 @@ function PresetSwitch() {
   const t = useT();
   const preset = useUi((s) => s.boothPreset);
   return (
-    <div role="radiogroup" aria-label={t('booth.preset')} className="flex flex-wrap justify-center gap-1 rounded-lg border border-fg/10 bg-fg/[0.04] p-1">
+    <div role="radiogroup" aria-label={t('booth.preset')} className="flex flex-wrap justify-center gap-1 rounded-lg border border-fg/10 bg-fg/[0.04] p-1 short:p-0.5">
       {BOOTH_PRESETS.map((p) => (
         <button key={p} type="button" role="radio" aria-checked={preset === p} onClick={() => setUi({ boothPreset: p })}
-          className={`rounded-md px-2.5 py-1 text-[11px] font-bold tracking-wide whitespace-nowrap transition ${
+          className={`rounded-md px-2.5 py-1 text-[11px] font-bold tracking-wide whitespace-nowrap transition short:py-0.5 ${
             preset === p ? 'bg-fg text-canvas' : 'text-fg/70 hover:bg-fg/10 hover:text-fg'
           }`}>
           {t(PRESET_LABEL[p])}
@@ -68,17 +68,17 @@ export function BoothClock() {
         </span>
       }
     >
-      <div className="flex h-full flex-col items-center justify-center gap-1 px-5 py-5 text-center">
-        <div className={`text-lg font-medium ${tone.text}`}>{t('clock.title')}</div>
+      <div className="flex h-full flex-col items-center justify-center gap-1 px-5 py-5 text-center short:gap-0.5 short:py-1">
+        <div className={`text-lg font-medium short:hidden ${tone.text}`}>{t('clock.title')}</div>
         <time
           dateTime={now.toISOString()}
-          className={`font-mono text-5xl leading-none font-bold tracking-tight xl:text-[64px] tabular-nums ${tone.text} ${tone.glow}`}
+          className={`font-mono text-5xl leading-none font-bold tracking-tight xl:text-[64px] tabular-nums short:text-4xl short:xl:text-[36px] ${tone.text} ${tone.glow}`}
           aria-live="off"
         >
           {time}
         </time>
-        <div className={`mt-2 text-lg font-medium tracking-wide ${tone.text}`}>{date}</div>
-        <div className="mt-4">
+        <div className={`mt-2 text-lg font-medium tracking-wide short:mt-0 short:text-sm ${tone.text}`}>{date}</div>
+        <div className="mt-4 short:mt-1">
           <PresetSwitch />
         </div>
       </div>

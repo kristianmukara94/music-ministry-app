@@ -208,9 +208,10 @@ export const canDeleteSlide = (count) => Number.isInteger(count) && count > 1;
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------
 // The console's own keys. ← → Space and 1–9 are already the operator window's and the cue navigator's (OperatorApp, useChipKeys); the
-// console adds B (Blackout), L (Lower Third) and H (Hide Text). None of them fire while the operator is typing.
+// console adds B (Blackout), L (Lower Third), H (Hide Text) and E (the Output Preview Editor on the slide on air). None of them fire while the
+// operator is typing, and none while a dialog is open (useConsoleKeys).
 
-const CONSOLE_KEYS = { b: 'blackout', l: 'lowerThird', h: 'hideText' };
+const CONSOLE_KEYS = { b: 'blackout', l: 'lowerThird', h: 'hideText', e: 'edit' };
 
 /** True when focus is in a field: an input, a textarea, a select or an editable element. Keys there are the field's. */
 export function isTypingTarget(target) {
@@ -229,7 +230,65 @@ export function consoleKeyAction(e) {
 }
 
 /** The key legend under the program monitor, in key order. */
-export const CONSOLE_SHORTCUTS = ['← / → / Space', '1–9', 'B', 'L', 'H'];
+export const CONSOLE_SHORTCUTS = ['← / → / Space', '1–9', 'E', 'B', 'L', 'H'];
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------
+// The Output Preview Editor's text helpers. They change the words in the editor only; Save writes them through the console's copy-on-write paths.
+
+/** The words of `text` broken into `lines` lines (at most one per word) as evenly as they go: the longest line is as short as it can be. */
+export function balanceLines(text, lines) {
+  const words = String(text ?? '').trim().split(/\s+/).filter(Boolean);
+  const n = Math.max(1, Math.min(Math.floor(Number(lines) || 1), words.length));
+  if (words.length <= 1 || n === 1) return words.join(' ');
+  // best[k][i]: the smallest longest-line for the first i words in k lines, with cut[k][i] where the last line starts.
+  const width = (from, to) => words.slice(from, to).join(' ').length;
+  const best = Array.from({ length: n + 1 }, () => new Array(words.length + 1).fill(Infinity));
+  const cut = Array.from({ length: n + 1 }, () => new Array(words.length + 1).fill(0));
+  best[0][0] = 0;
+  for (let k = 1; k <= n; k++) {
+    for (let i = k; i <= words.length; i++) {
+      for (let j = k - 1; j < i; j++) {
+        const worst = Math.max(best[k - 1][j], width(j, i));
+        // Ties go to the later cut, so a short line falls at the end rather than the start.
+        if (worst <= best[k][i]) {
+          best[k][i] = worst;
+          cut[k][i] = j;
+        }
+      }
+    }
+  }
+  const out = [];
+  for (let k = n, i = words.length; k > 0; k--) {
+    const j = cut[k][i];
+    out.unshift(words.slice(j, i).join(' '));
+    i = j;
+  }
+  return out.join('\n');
+}
+
+/** Every word's first letter capital and the rest small, line by line: "Sample Slide Line". */
+export function toTitleCase(text) {
+  return String(text ?? '')
+    .toLocaleLowerCase()
+    .replace(/(^|[\s(\[{"“\-/])(\p{L})/gu, (_, before, letter) => before + letter.toLocaleUpperCase());
+}
+
+/** The editor's count under the preview: lines with words, and the longest of them in characters. */
+export function lineStats(text) {
+  const lines = String(text ?? '').split('\n').map((l) => l.trimEnd()).filter((l) => l.trim().length > 0);
+  return { lines: lines.length, maxChars: lines.reduce((m, l) => Math.max(m, [...l].length), 0) };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------
+// The floating Program mini screen: it docks bottom-right once the monitors have scrolled up out of sight.
+
+/** How far below the top of the window the monitors' bottom edge must have gone before the mini screen docks, in pixels. */
+export const MINI_DOCK_THRESHOLD = 80;
+
+/** Whether the mini screen shows: the monitors are scrolled away and nothing else (a dialog, the Quick-Live popup) has the operator. */
+export function miniScreenShown({ monitorsBottom, blocked = false, threshold = MINI_DOCK_THRESHOLD }) {
+  return !blocked && Number.isFinite(monitorsBottom) && monitorsBottom < threshold;
+}
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------
 // Stage backdrop quick themes: one click sets the Live slide background to a dark colour. Hex, because the slide background takes a colour.

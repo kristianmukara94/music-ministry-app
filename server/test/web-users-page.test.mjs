@@ -105,9 +105,9 @@ test('the page keeps to the Content Security Policy and adds no outside scripts'
   assert.doesNotMatch(html, /\son\w+="/, 'no inline event handler');
 });
 
-test('the status colours are the design\'s', () => {
-  assert.match(css, /--status-active-text: #34d399;/);
-  assert.match(css, /--status-active-bg: rgba\(52, 211, 153, 0\.12\);/);
-  assert.match(css, /--status-disabled-text: #f87171;/);
-  assert.match(css, /--status-disabled-bg: rgba\(239, 68, 68, 0\.12\);/);
+test('the status colours are the laptop theme\'s ok and danger colours', () => {
+  assert.match(css, /--status-active-text: var\(--color-ok\);/);
+  assert.match(css, /--status-active-bg: color-mix\(in srgb, var\(--color-ok\) 12%, transparent\);/);
+  assert.match(css, /--status-disabled-text: var\(--color-danger\);/);
+  assert.match(css, /--status-disabled-bg: color-mix\(in srgb, var\(--color-danger\) 12%, transparent\);/);
 });

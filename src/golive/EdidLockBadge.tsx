@@ -186,7 +186,7 @@ export function EdidLockBadge() {
         aria-expanded={open}
         aria-haspopup="dialog"
         title={hintFor(t, role)}
-        className={`inline-flex h-10 items-center gap-2 rounded-full border px-3 text-xs font-bold tracking-wider uppercase transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none ${LOOK[role.state]}`}
+        className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs font-bold tracking-wider uppercase transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none ${LOOK[role.state]}`}
       >
         <Icon size={15} aria-hidden />
         <span role="status" aria-live="polite">

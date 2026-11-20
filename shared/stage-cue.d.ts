@@ -70,10 +70,17 @@ export function draftPending(state: EditorState): boolean;
 export function editorReducer(state: EditorState, action: EditorAction): EditorState;
 export function canDeleteSlide(count: number): boolean;
 
-export type ConsoleKeyAction = 'blackout' | 'lowerThird' | 'hideText';
+export type ConsoleKeyAction = 'blackout' | 'lowerThird' | 'hideText' | 'edit';
 export function isTypingTarget(target: unknown): boolean;
 export function consoleKeyAction(e: { key?: string; repeat?: boolean; ctrlKey?: boolean; altKey?: boolean; metaKey?: boolean; shiftKey?: boolean; target?: unknown } | null | undefined): ConsoleKeyAction | null;
 export const CONSOLE_SHORTCUTS: readonly string[];
+
+export function balanceLines(text: string, lines: number): string;
+export function toTitleCase(text: string): string;
+export function lineStats(text: string): { lines: number; maxChars: number };
+
+export const MINI_DOCK_THRESHOLD: number;
+export function miniScreenShown(options: { monitorsBottom: number; blocked?: boolean; threshold?: number }): boolean;
 
 export type BackdropThemeId = 'burgundy' | 'obsidian' | 'ember' | 'midnight';
 export const BACKDROP_THEMES: readonly { id: BackdropThemeId; color: string }[];

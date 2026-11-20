@@ -49,6 +49,8 @@ interface Props {
   fallback?: ReactNode;
   /** The slide number for the title when there is no target. */
   number?: number | null;
+  /** Opens the Output Preview Editor on the slide on air. Null when there is nothing on air to open it on. */
+  onOpenEditor?: (() => void) | null;
 }
 
 /**
@@ -57,7 +59,7 @@ interface Props {
  * Sync each change is saved as the typing pauses. + Add Slide After writes a new slide that waits off screen. Delete Slide asks first
  * (Confirm Delete / Cancel), and is off for an item's only slide. Delete and Backspace only ask; they never delete on their own.
  */
-export function SlideEditorCard({ target, emptyHint, fallback, number = null }: Props) {
+export function SlideEditorCard({ target, emptyHint, fallback, number = null, onOpenEditor = null }: Props) {
   const t = useGoLiveT();
   const slide = target ? { key: target.key, text: target.text, tag: target.tag } : null;
   const [state, send] = useReducer(editorReducer, slide, (s) => editorInit(s, savedMode()));
@@ -128,13 +130,18 @@ export function SlideEditorCard({ target, emptyHint, fallback, number = null }: 
     <section aria-labelledby="slide-editor-title" className={`${CARD} flex flex-col gap-3 p-4`}>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2.5">
         <h2 id="slide-editor-title" className={CARD_TITLE}>
-          {t('consoleEditorTitle', { n: shownNumber ? pad2(shownNumber) : '--' })}
+          {shownNumber ? t('consoleEditorTitle', { n: pad2(shownNumber) }) : t('consoleEditorTitleNone')}
         </h2>
         <button type="button" role="switch" aria-checked={live} onClick={toggleMode} title={t(live ? 'consoleLiveSyncTip' : 'consoleStagedTip')} className={live ? BTN_ACTIVE : BTN}>
           <span aria-hidden className={`size-1.5 rounded-full ${live ? 'animate-pulse bg-danger' : 'bg-ok'}`} />
           {t(live ? 'consoleLiveSync' : 'consoleStaged')}
         </button>
       </div>
+      {onOpenEditor && (
+        <button type="button" onClick={onOpenEditor} aria-keyshortcuts="E" className={`${BTN_ACTIVE} w-full`}>
+          {t('consoleOpenEditor')}
+        </button>
+      )}
 
       {!target ? (
         fallback ?? <p className="text-sm text-muted">{emptyHint}</p>

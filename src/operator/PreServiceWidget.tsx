@@ -106,17 +106,17 @@ function CheckRow({ check }: { check: Check }) {
   const { icon: Icon } = check;
   const tone = check.ok === null ? 'text-faint' : check.ok ? 'text-ok' : 'text-warn';
   return (
-    <li className="flex min-w-0 items-center gap-3 rounded-lg border border-fg/10 bg-fg/[0.03] px-3 py-2.5">
-      <span className={`grid size-8 shrink-0 place-items-center rounded-md bg-fg/[0.06] ${tone}`}>
+    <li className="flex min-w-0 items-center gap-3 rounded-lg border border-fg/10 bg-fg/[0.03] px-3 py-2.5 short:py-1.5">
+      <span className={`grid size-8 shrink-0 place-items-center rounded-md bg-fg/[0.06] short:size-7 ${tone}`}>
         <Icon size={16} aria-hidden />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 text-sm font-semibold text-fg">
+        <div className="flex items-center gap-1.5 text-sm font-semibold text-fg short:leading-tight">
           {check.ok === true && <CheckCircle2 size={14} aria-hidden className="shrink-0 text-ok" />}
           {check.ok === false && <AlertTriangle size={14} aria-hidden className="shrink-0 text-warn" />}
           <span className="truncate">{t(check.label)}</span>
         </div>
-        <div className="truncate text-xs text-muted" title={check.detail}>{check.ok === null ? t('ready.checking') : check.detail}</div>
+        <div className="truncate text-xs text-muted short:leading-tight" title={check.detail}>{check.ok === null ? t('ready.checking') : check.detail}</div>
       </div>
       {check.fix && (
         <button type="button" onClick={check.fix.run} disabled={check.fix.locked} title={check.fix.locked ? LICENSE_LOCKED_TIP : undefined}
@@ -205,14 +205,14 @@ function Countdown() {
   // The last ten minutes before Mass are amber, so the booth sees time is short.
   const soon = !next.started && next.at - now.getTime() <= 10 * 60 * 1000;
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
+    <div className="flex h-full flex-col items-center justify-center gap-1 text-center short:gap-0.5">
       <div className="text-xs font-semibold tracking-wide text-fg/70 uppercase">{next.label || t('count.title')} · {when}</div>
       {next.started ? (
         <div className="text-2xl font-bold text-ok">{t('count.started')}</div>
       ) : (
         <>
           <div className="text-xs text-muted">{t('count.startsIn')}</div>
-          <div className={`font-mono text-4xl leading-none font-bold tabular-nums ${soon ? 'text-warn' : 'text-fg'}`} aria-live="off">
+          <div className={`font-mono text-4xl leading-none font-bold tabular-nums short:text-3xl ${soon ? 'text-warn' : 'text-fg'}`} aria-live="off">
             {formatCountdown(next.at - now.getTime())}
           </div>
         </>
@@ -242,23 +242,27 @@ export function PreServiceWidget() {
   return (
     <section aria-labelledby="pre-service-title" className="grid shrink-0 grid-cols-1 overflow-hidden rounded-[10px] border border-fg/[0.12] bg-panel lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="flex min-w-0 flex-col">
-        <header className="flex min-h-12 items-center justify-between gap-3 border-b border-fg/10 px-4 py-2.5">
+        <header className="flex min-h-12 items-center justify-between gap-3 border-b border-fg/10 px-4 py-2.5 short:min-h-8 short:py-1">
           <h2 id="pre-service-title" className="text-xs font-semibold tracking-wide text-fg/70 uppercase">{t('ready.eyebrow')}</h2>
           <span role="status" className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-extrabold tracking-wider uppercase ${badge}`}>
             {allReady ? (
               <><CheckCircle2 size={12} aria-hidden /> {ready}/{checks.length} {t('ready.ready')}</>
             ) : settled ? (
-              <><AlertTriangle size={12} aria-hidden /> {t('ready.actionNeeded')} · {ready}/{checks.length}</>
+              // Ready count first, then what is left to do: "3/4 Ready · 1 Action".
+              <span title={t('ready.actionNeeded')} className="inline-flex items-center gap-1.5">
+                <AlertTriangle size={12} aria-hidden /> {ready}/{checks.length} {t('ready.ready')} · {checks.length - ready}{' '}
+                {checks.length - ready === 1 ? t('ready.actionOne') : t('ready.actionMany')}
+              </span>
             ) : (
               t('ready.checking')
             )}
           </span>
         </header>
-        <ul className="grid grid-cols-1 gap-2 p-3 md:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-2 p-3 md:grid-cols-2 short:gap-1.5 short:p-2">
           {checks.map((c) => <CheckRow key={c.key} check={c} />)}
         </ul>
       </div>
-      <div className="min-h-[150px] border-t border-fg/10 p-4 lg:border-t-0 lg:border-l">
+      <div className="min-h-[150px] border-t border-fg/10 p-4 lg:border-t-0 lg:border-l short:min-h-0 short:p-2.5">
         <Countdown />
       </div>
     </section>

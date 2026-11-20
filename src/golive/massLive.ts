@@ -306,23 +306,33 @@ export async function stepMass(delta: 1 | -1): Promise<void> {
  * the first slide never flashes on screen. A full-screen prayer goes up at its last slide straight away. A lower-third prayer (which has no
  * slides) and a play that has to ask to turn the projector on start the item at its first slide, as any other play does.
  */
-async function playMassFromEnd(index: number): Promise<void> {
+function playMassFromEnd(index: number): Promise<void> {
+  return playMassItemAt(index, 'last');
+}
+
+/**
+ * Plays queue item `index` from slide `slide` (or its last slide): for a slide picked on an item the console shows without playing it (a lineup
+ * row selected, not on air), and for Back from the item after it. The slide is staged before the take, so the item's first slide never flashes
+ * on screen. A lower-third prayer (which has no slides) and a play that has to ask to turn the projector on start the item at its first slide.
+ */
+export async function playMassItemAt(index: number, slide: number | 'last'): Promise<void> {
   const state = useLive.getState().state;
   const item = state.queue[index];
-  if (!item) return;
-  if (!isAnyOutputLive(state) && useUi.getState().projectorPromptChoice !== 'skip') {
+  if (!item || item.stale) return;
+  if (slide === 0 || (!isAnyOutputLive(state) && useUi.getState().projectorPromptChoice !== 'skip')) {
     await playMassAt(index);
     return;
   }
   if (item.module === 'notes') {
     const source = noteSource(item.sourceId);
-    const note = item.stale || !source ? null : await bridge.notes.get(source.id).catch(() => null);
+    const note = source ? await bridge.notes.get(source.id).catch(() => null) : null;
     if (note?.display !== 'full') {
       await playMassAt(index);
       return;
     }
+    const count = slideFramesOf(note, source?.slides).length;
     dispatch({ type: 'queue/cursor', index });
-    takePrayer(note, 'MASS_QUEUE', Math.max(0, slideFramesOf(note, source?.slides).length - 1), source?.slides);
+    takePrayer(note, 'MASS_QUEUE', Math.max(0, Math.min(slide === 'last' ? count - 1 : slide, count - 1)), source?.slides);
     return;
   }
   const before = frameKey(state.projector.staged);
@@ -332,8 +342,9 @@ async function playMassFromEnd(index: number): Promise<void> {
   const first = useLive.getState().state.projector.staged;
   const hymn = await hymnOf(first);
   const steps = stepsOf(first, hymn);
-  const last = steps ? frameAt(first, steps.count - 1, hymn, slotById(item.slot)?.name) : null;
-  if (last) dispatch({ type: 'projector/stage', frame: last });
+  const target = steps ? (slide === 'last' ? steps.count - 1 : Math.min(slide, steps.count - 1)) : 0;
+  const at = target > 0 ? frameAt(first, target, hymn, slotById(item.slot)?.name) : null;
+  if (at) dispatch({ type: 'projector/stage', frame: at });
   dispatch({ type: 'projector/take', source: 'MASS_QUEUE' });
 }
 

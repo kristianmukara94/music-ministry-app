@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { Frame, MediaFrame, SlideLine } from '../../shared/live.js';
 import { presentedFrame, slotTitleShown } from '../../shared/live.js';
 import { OnAirLook, useOutput } from './outputState';
@@ -23,6 +23,11 @@ import { PwSlideFace } from '../praise-worship/PwSlideFace';
 import { lyricBottomOf } from '../../shared/lyric-area.js';
 import { textAreaShare } from '../../shared/text-area.js';
 import { welcomeBackground } from '../../shared/welcome-settings.js';
+import { frameWithAlign, slideLookAt, slideLookKeyOf, type SlideLook } from '../../shared/slide-look.js';
+
+/** A look drawn in place of the saved one: the Output Preview Editor's draft. Undefined (the default) draws the saved look. */
+const DraftLook = createContext<SlideLook | null | undefined>(undefined);
+import { withBackdropTheme } from '../../shared/stage-cue.js';
 import { SlideBackgroundLayer } from './BackgroundMedia';
 import { EditedMediaRenderer } from '../media/EditedMediaRenderer';
 import { SanctuaryAlertOverlay } from './SanctuaryAlertOverlay';
@@ -347,20 +352,34 @@ function FittedPrayer({ label, text, className, style = null }: { label: string;
  * slides then draw no background of their own, so it shows through them.
  */
 function FrameView({ frame: given, sharedBackground = false }: { frame: Frame; sharedBackground?: boolean }) {
+  // The slide's own look (the Output Preview Editor's "This Slide"), when it has one: each of its settings replaces the projector's for this
+  // slide only. See shared/slide-look.js.
+  const lookKey = useOutput((s) => slideLookKeyOf(s, given));
+  const saved = useOutput((s) => slideLookAt(s, lookKey));
+  const draft = useContext(DraftLook);
+  const own = draft === undefined ? saved : draft;
   // The operator's text case (Aa / AA / aa) is applied here, before any text is drawn, so every fit and the line balancing below measure the
   // letters as they are shown: capitals are wider, and balancing the as-typed text would leave UPPERCASE lines too long for the slide.
-  const textCase = useTextCase();
-  const frame = useMemo(() => applyFrameTextCase(given, textCase), [given, textCase]);
+  const settingsCase = useTextCase();
+  const textCase = own?.textCase ?? settingsCase;
+  // The alignment: the slide's own, else the Text Alignment setting, else each slide's own style. Folded into the frame's own field for it.
+  const settingsAlign = useOutput((s) => s.settings.slideAlign ?? null);
+  const align = own?.align ?? settingsAlign;
+  const frame = useMemo(() => frameWithAlign(applyFrameTextCase(given, textCase), align), [given, textCase, align]);
   const slideFont = useSlideFont();
-  const slideScale = useSlideScale();
-  // The background behind the Live set's slides: its own saved setting, separate from the Welcome background.
-  const ownBackground = welcomeBackground(useOutput((s) => s.welcome.slideBackground));
+  const settingsScale = useSlideScale();
+  const slideScale = own?.fontScale ?? settingsScale;
+  // The background behind the Live set's slides: its own saved setting, separate from the Welcome background. A slide's own backdrop is
+  // one of the console's quick themes, laid over that setting.
+  const savedBackground = useOutput((s) => s.welcome.slideBackground);
+  const ownBackground = welcomeBackground(own?.backdrop ? withBackdropTheme(savedBackground, own.backdrop) : savedBackground);
   // A face that has media draws no colour of its own; the shared layer below already has its shade, so the face adds none.
   const pwBackground = sharedBackground ? SEE_THROUGH : ownBackground;
   // The title above a slide's text, on every kind of slide: the slot or reading banner, a prayer's or announcement's heading, a song's label. The
   // operator can hide it, for every slide or for one Holy Mass plan. A heading that is all the slide says stays, so hiding titles never blanks the screen.
   const showSlotTitle = useOutput(slotTitleShown);
-  const edgeToEdge = useEdgeToEdge();
+  const settingsEdge = useEdgeToEdge();
+  const edgeToEdge = own?.maxFit ?? settingsEdge;
   // Edge-to-edge text reaches the bottom of the slide, so it keeps the band's room clear while a lower third is on.
   const bandOn = useOutput((s) => s.lowerThird.live !== null);
   switch (frame.kind) {
@@ -858,10 +877,11 @@ export function ProjectorView(props: { mirror?: boolean; embedded?: boolean }) {
  * here is on air, so it uses the working look and has no fades, background video or lower third. `counter` is the operator's place in the item,
  * drawn in the slide's own proportions so it stays in the margin the text keeps clear, however small the preview is.
  */
-export function FramePreview({ frame, counter, background }: { frame: Frame; counter?: string; background?: { src: string; mediaType: 'image' | 'video' } | null }) {
+export function FramePreview({ frame, counter, background, look }: { frame: Frame; counter?: string; background?: { src: string; mediaType: 'image' | 'video' } | null; /** The editor's draft look, drawn in place of the saved one. */ look?: SlideLook | null }) {
   const introSlideMode = useOutput((s) => s.introSlideMode);
   const shown = presentedFrame(frame, introSlideMode);
   return (
+    <DraftLook.Provider value={look}>
     <OnAirLook.Provider value={false}>
       <div className="relative isolate h-full w-full overflow-hidden bg-stone-950 text-white select-none [container-type:size]">
         {/* A Media Library background, as the projector puts one behind the text: covering the slide, under its usual shade. */}
@@ -889,6 +909,7 @@ export function FramePreview({ frame, counter, background }: { frame: Frame; cou
         )}
       </div>
     </OnAirLook.Provider>
+    </DraftLook.Provider>
   );
 }
 

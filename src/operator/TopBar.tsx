@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ChevronRight, Image as WelcomeIcon, Megaphone, Monitor, MonitorOff, Pause, Play, Radio, Square, Tag, type LucideIcon } from 'lucide-react';
 import { dispatch, useLive } from '../live/store';
 import { LICENSE_LOCKED_TIP, useProjectionLocked } from '../live/license';
@@ -23,28 +23,28 @@ const DRAG = '[-webkit-app-region:drag]';
 const NO_DRAG = '[-webkit-app-region:no-drag]';
 
 const BASE =
-  'relative flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap text-[13px] font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas';
+  'relative flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap text-xs font-medium max-[1365px]:px-2 transition-all min-[1800px]:text-[13px] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas';
 
 type Tone = { idle: string; active: string };
 
 /** Blackout: a solid gold button, the one control that must always be easy to find. Dark red and breathing while the screen is black. */
 const EMERGENCY: Tone = {
-  idle: 'rounded-md border border-accent/60 bg-accent px-3.5 py-1.5 text-sm font-extrabold tracking-wide text-on-accent uppercase shadow-[0_0_14px_color-mix(in_oklab,var(--color-accent)_35%,transparent)] hover:brightness-110',
-  active: 'blackout-breathe rounded-md border border-danger bg-danger/20 px-3.5 py-1.5 font-extrabold tracking-wide uppercase text-danger',
+  idle: 'rounded-md border border-accent/60 bg-accent px-2.5 py-1.5 text-sm font-extrabold tracking-normal text-on-accent uppercase min-[1366px]:tracking-wide shadow-[0_0_14px_color-mix(in_oklab,var(--color-accent)_35%,transparent)] hover:brightness-110',
+  active: 'blackout-breathe rounded-md border border-danger bg-danger/20 px-2.5 py-1.5 font-extrabold tracking-normal uppercase min-[1366px]:tracking-wide text-danger',
 };
 
 /** The shared button chrome: a faint surface, a one-pixel border, icon and label. Every non-emergency control starts from it. */
-const CHROME = 'rounded-md border border-line-strong bg-panel-2 px-3 py-1.5 text-fg/90 hover:border-fg/30 hover:bg-fg/[0.08] hover:text-fg';
+const CHROME = 'rounded-md border border-line-strong bg-panel-2 px-2.5 py-1.5 text-fg/90 hover:border-fg/30 hover:bg-fg/[0.08] hover:text-fg';
 
 /** Pause switches: amber while the output is frozen, so a paused screen never passes for a live one. */
 const PAUSE: Tone = {
   idle: CHROME,
-  active: 'rounded-md border border-warn/70 bg-warn/15 px-3 py-1.5 font-semibold text-warn ring-1 ring-warn/30 hover:bg-warn/25',
+  active: 'rounded-md border border-warn/70 bg-warn/15 px-2.5 py-1.5 font-semibold text-warn ring-1 ring-warn/30 hover:bg-warn/25',
 };
 
 /** Stop: an ordinary button that warns in red on hover, because it clears the projector. */
 const STOP: Tone = {
-  idle: 'rounded-md border border-line-strong bg-panel-2 px-3 py-1.5 text-fg/90 hover:border-danger/60 hover:bg-danger/10 hover:text-danger',
+  idle: 'rounded-md border border-line-strong bg-panel-2 px-2.5 py-1.5 text-fg/90 hover:border-danger/60 hover:bg-danger/10 hover:text-danger',
   active: '',
 };
 
@@ -52,24 +52,24 @@ const STOP: Tone = {
 const OUTPUT: Tone = {
   idle: CHROME,
   active:
-    'rounded-md border border-accent/70 bg-accent/15 px-3 py-1.5 text-accent ring-1 ring-accent/30 shadow-[0_0_14px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]',
+    'rounded-md border border-accent/70 bg-accent/15 px-2.5 py-1.5 text-accent ring-1 ring-accent/30 shadow-[0_0_14px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]',
 };
 
 /** Workspace views open a window or panel in the booth only. Lit in the info colour, not gold, because nothing goes on air. */
 const VIEW: Tone = {
   idle: CHROME,
-  active: 'rounded-md border border-info/60 bg-info/15 px-3 py-1.5 text-info hover:bg-info/25',
+  active: 'rounded-md border border-info/60 bg-info/15 px-2.5 py-1.5 text-info hover:bg-info/25',
 };
 
 /** Go Live: green while the operator is on the Go Live console with the service on air. */
 const GO_LIVE: Tone = {
   idle: CHROME,
-  active: 'rounded-md border border-ok/60 bg-ok/15 px-3 py-1.5 font-semibold text-ok ring-1 ring-ok/30 hover:bg-ok/25',
+  active: 'rounded-md border border-ok/60 bg-ok/15 px-2.5 py-1.5 font-semibold text-ok ring-1 ring-ok/30 hover:bg-ok/25',
 };
 
 /** Back to Main Live: amber, glowing while an ad-hoc item is on the screen over the service lineup. */
 const BACK_TO_MAIN =
-  'rounded-md border border-warn/70 bg-warn/15 px-3 py-1.5 font-semibold text-warn ring-1 ring-warn/30 hover:bg-warn/25';
+  'rounded-md border border-warn/70 bg-warn/15 px-2.5 py-1.5 font-semibold text-warn ring-1 ring-warn/30 hover:bg-warn/25';
 const BACK_TO_MAIN_GLOW = 'shadow-[0_0_14px_color-mix(in_oklab,var(--color-warn)_45%,transparent)]';
 
 const DISABLED = 'cursor-not-allowed opacity-40 hover:bg-panel-2 hover:border-line-strong hover:text-fg/90';
@@ -86,11 +86,12 @@ const noop = () => {};
 /**
  * Holds a control at the width of its widest state. Going live, pausing or a label changing (Go Live, Live Active, Back to Main Live) then
  * never changes the bar's width, so a zone never wraps onto another row and the workspace below never moves up or down. The other states
- * are laid out invisibly in the same grid cell: hidden, they take no clicks or focus and are not read out.
+ * are laid out invisibly in the same grid cell: hidden, they take no clicks or focus and are not read out. The control on show stretches to
+ * the slot, its label centred, so the reserved width reads as a wider button rather than an empty gap after a short one.
  */
 function StableSlot({ ghosts, children }: { ghosts: ReactNode[]; children: ReactNode }) {
   return (
-    <div className="grid shrink-0 items-center justify-items-start">
+    <div className="grid shrink-0 items-center justify-items-stretch [&>div>*]:w-full [&>div>*]:justify-center">
       {ghosts.map((ghost, i) => (
         <div key={i} aria-hidden className="pointer-events-none invisible" style={CELL}>
           {ghost}
@@ -103,6 +104,20 @@ function StableSlot({ ghosts, children }: { ghosts: ReactNode[]; children: React
   );
 }
 
+/**
+ * A control's label. With a `compact` form the full label shows from 1800px up and the compact one below it; ghosts
+ * draw the same pair, so the width lock follows the breakpoint. `null` hides the label below 1800px (the button keeps an aria-label).
+ */
+function Label({ full, compact }: { full: string; compact?: string | null }) {
+  if (compact === undefined) return <span>{full}</span>;
+  return (
+    <>
+      <span className="hidden min-[1800px]:inline">{full}</span>
+      {compact !== null && <span className="min-[1800px]:hidden">{compact}</span>}
+    </>
+  );
+}
+
 function ControlButton({
   icon: Icon,
   label,
@@ -111,12 +126,15 @@ function ControlButton({
   active = false,
   toggle = true,
   disabled = false,
+  compact,
   onClick,
   children,
 }: {
   icon: LucideIcon;
   label: string;
   tone: Tone;
+  /** The label below 1800px (1280px to 1680px screens), so the bar stays one row. `null`: the icon alone. */
+  compact?: string | null;
   /** The tooltip. On a disabled control it says why the control is unavailable. */
   title?: string;
   active?: boolean;
@@ -134,10 +152,11 @@ function ControlButton({
       disabled={disabled}
       title={title}
       aria-pressed={toggle ? active : undefined}
+      aria-label={compact === undefined ? undefined : label}
       className={`${BASE} ${NO_DRAG} ${active ? tone.active : tone.idle} ${disabled ? DISABLED : ''}`}
     >
       <Icon className="size-4 shrink-0" aria-hidden strokeWidth={2.25} />
-      <span>{label}</span>
+      <Label full={label} compact={compact} />
       {children}
     </button>
   );
@@ -188,14 +207,14 @@ function WelcomeControl() {
   const tip = withKey(live ? t('top.tipWelcomeLive') : t('top.tipWelcome'), key);
   // The widest the control gets: live, with the stepper at its longest counter. Held from the start, so going live never shifts the bar.
   const ghosts = [
-    <ControlButton key="off" icon={WelcomeIcon} label={t('top.welcome')} tone={OUTPUT} active={false} onClick={noop} />,
+    <ControlButton key="off" icon={WelcomeIcon} label={t('top.welcome')} compact={t('top.welcomeShort')} tone={OUTPUT} active={false} onClick={noop} />,
     <WelcomeCapsule key="live" ghost stepper={slideCount > 1} counter={slideCount > 1 ? `${slideCount}/${slideCount}` : ''} tip={tip} />,
   ];
 
   if (!live) {
     return (
       <StableSlot ghosts={ghosts}>
-        <ControlButton icon={WelcomeIcon} label={t('top.welcome')} tone={OUTPUT} title={tip} active={false} onClick={liveCommands.welcome} />
+        <ControlButton icon={WelcomeIcon} label={t('top.welcome')} compact={t('top.welcomeShort')} tone={OUTPUT} title={tip} active={false} onClick={liveCommands.welcome} />
       </StableSlot>
     );
   }
@@ -217,17 +236,19 @@ function WelcomeCapsule({ stepper, counter, tip, ghost = false }: { stepper: boo
       role="group"
       aria-label={t('top.welcome')}
       data-testid={ghost ? undefined : 'welcome-compound'}
-      className={`${NO_DRAG} flex h-9 shrink-0 items-stretch overflow-hidden rounded-md border border-accent/70 bg-accent/15 text-[13px] font-medium whitespace-nowrap text-accent ring-1 ring-accent/30 shadow-[0_0_14px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]`}
+      className={`${NO_DRAG} flex h-9 shrink-0 items-stretch overflow-hidden rounded-md border border-accent/70 bg-accent/15 text-xs font-medium whitespace-nowrap text-accent min-[1800px]:text-[13px] ring-1 ring-accent/30 shadow-[0_0_14px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]`}
     >
       <button
         type="button"
         onClick={ghost ? undefined : liveCommands.welcome}
         title={tip}
+        aria-label={t('top.welcome')}
         aria-pressed
-        className="flex items-center gap-1.5 px-3 transition-colors hover:bg-accent/15 focus-visible:bg-accent/20 focus-visible:outline-none"
+        className="flex flex-1 items-center justify-center gap-1.5 px-2.5 max-[1365px]:px-2 transition-colors hover:bg-accent/15 focus-visible:bg-accent/20 focus-visible:outline-none"
       >
         <WelcomeIcon className="size-4 shrink-0" aria-hidden strokeWidth={2.25} />
-        <span>{t('top.welcome')}</span>
+        {/* With the stepper the capsule is the Welcome icon and the counter below 1800px; its group label and tooltip still name it. */}
+        <Label full={t('top.welcome')} compact={stepper ? null : t('top.welcomeShort')} />
         {!stepper && (
           <span className="text-[11px] font-bold tracking-wider uppercase">
             <span aria-hidden>· </span>
@@ -244,11 +265,9 @@ function WelcomeCapsule({ stepper, counter, tip, ghost = false }: { stepper: boo
             title={t('top.tipWelcomeNext')}
             aria-label={`${t('top.welcomeNext')} (${counter})`}
             data-testid={ghost ? undefined : 'welcome-next'}
-            className="flex items-center gap-1.5 px-3 transition-colors hover:bg-accent/15 focus-visible:bg-accent/20 focus-visible:outline-none"
+            className="flex items-center gap-1.5 px-2.5 max-[1365px]:px-2 transition-colors hover:bg-accent/15 focus-visible:bg-accent/20 focus-visible:outline-none"
           >
-            {/* The full label on wide screens, a compact one on 1280px and 1366px booth laptops. */}
-            <span className="hidden 2xl:inline">{t('top.welcomeNext')}</span>
-            <span className="2xl:hidden">{t('top.welcomeNextShort')}</span>
+            {/* The counter and chevron alone, at every width: a word label here made the Welcome slot the widest on the bar. */}
             <span className="rounded bg-accent/20 px-1.5 py-px text-[11px] font-bold tabular-nums" aria-hidden>
               {counter}
             </span>
@@ -323,10 +342,11 @@ function BackToMainButton({ glow, title, state, onClick }: { glow: boolean; titl
       title={title}
       data-testid={state ? 'top-go-live' : undefined}
       data-state={state}
+      aria-label={t('top.backToMainLive')}
       className={`${BASE} ${NO_DRAG} ${BACK_TO_MAIN} ${glow ? BACK_TO_MAIN_GLOW : ''}`}
     >
       <Radio className="size-4 shrink-0" aria-hidden strokeWidth={2.25} />
-      <span>{t('top.backToMainLive')}</span>
+      <Label full={t('top.backToMainLive')} compact={t('top.backToMainLiveShort')} />
       {glow && <span className="size-2 shrink-0 animate-pulse rounded-full bg-warn" aria-hidden />}
     </button>
   );
@@ -391,18 +411,21 @@ function LowerThirdCapsule({
       role="group"
       aria-label={t('top.lowerThird')}
       data-testid={ghost ? undefined : 'lower-third-compound'}
-      className={`${NO_DRAG} flex h-9 shrink-0 items-stretch overflow-hidden rounded-md border border-accent/70 bg-accent/15 text-[13px] font-medium whitespace-nowrap text-accent ring-1 ring-accent/30 shadow-[0_0_14px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]`}
+      className={`${NO_DRAG} flex h-9 shrink-0 items-stretch overflow-hidden rounded-md border border-accent/70 bg-accent/15 text-xs font-medium whitespace-nowrap text-accent min-[1800px]:text-[13px] ring-1 ring-accent/30 shadow-[0_0_14px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]`}
     >
       <button
         type="button"
         onClick={toggle}
         title={tip}
         aria-pressed
-        className="flex items-center gap-1.5 px-3 transition-colors hover:bg-accent/15 focus-visible:bg-accent/20 focus-visible:outline-none"
+        className="flex flex-1 items-center justify-center gap-1.5 px-2.5 max-[1365px]:px-2 transition-colors hover:bg-accent/15 focus-visible:bg-accent/20 focus-visible:outline-none"
       >
         <Tag className="size-4 shrink-0" aria-hidden strokeWidth={2.25} />
         <span>{t('top.lowerThird')}</span>
-        <Dot tone={paused ? 'warn' : 'ok'} />
+        {/* Below 1366px the pause half's amber tint alone shows a paused band, so the dot steps aside to keep the bar on one row. */}
+        <span className="flex max-[1365px]:hidden">
+          <Dot tone={paused ? 'warn' : 'ok'} />
+        </span>
       </button>
       <span className="my-1.5 w-px shrink-0 bg-accent/40" aria-hidden />
       <button
@@ -412,20 +435,20 @@ function LowerThirdCapsule({
         aria-label={paused ? t('top.lowerThirdPaused') : t('top.pauseLowerThird')}
         aria-pressed={paused}
         data-testid={ghost ? undefined : 'lower-third-pause'}
-        className={`flex items-center gap-1.5 px-3 transition-colors focus-visible:outline-none ${
+        className={`flex items-center gap-1.5 px-2.5 max-[1365px]:px-2 transition-colors focus-visible:outline-none ${
           paused ? 'bg-warn/15 font-semibold text-warn hover:bg-warn/25' : 'hover:bg-accent/15 focus-visible:bg-accent/20'
         }`}
       >
         {paused ? <Play className="size-4 shrink-0" aria-hidden strokeWidth={2.25} /> : <Pause className="size-4 shrink-0" aria-hidden strokeWidth={2.25} />}
-        <span>{paused ? t('top.pausedShort') : t('top.pauseShort')}</span>
       </button>
     </div>
   );
 }
 
 /**
- * A master switch: a pill with a dot, green and LIVE when on, red and OFF when off. The Projector and Remote switches
- * both use it, so they look the same.
+ * A master switch: a pill with a dot, green and LIVE when on, quiet and OFF when off (off is the normal resting state before a service, so it
+ * does not shout in red; the dashboard's readiness check is what flags a projector still off). The Projector and Remote switches both use
+ * it, so they look the same.
  */
 function MasterSwitch({ on, label, title, onClick }: { on: boolean; label: string; title: string; onClick: () => void }) {
   const t = useT();
@@ -440,17 +463,27 @@ function MasterSwitch({ on, label, title, onClick }: { on: boolean; label: strin
       title={locked ? LICENSE_LOCKED_TIP : title}
       onClick={onClick}
       disabled={locked}
-      className={`${BASE} ${NO_DRAG} rounded-full border px-3.5 py-1.5 tracking-wide ${locked ? DISABLED : ''} ${
+      className={`${BASE} ${NO_DRAG} rounded-full border px-2.5 py-1.5 tracking-wide ${locked ? DISABLED : ''} ${
         on
           ? 'border-ok/50 bg-ok/15 text-ok hover:bg-ok/25'
-          : 'border-danger/50 bg-danger/15 text-danger hover:bg-danger/25'
+          : 'border-line-strong bg-panel-2 text-muted hover:border-fg/30 hover:text-fg'
       }`}
     >
       <span
-        className={`size-2 shrink-0 rounded-full ${on ? 'animate-pulse bg-ok shadow-[0_0_6px_var(--color-ok)]' : 'bg-danger'}`}
+        className={`size-2 shrink-0 rounded-full ${on ? 'animate-pulse bg-ok shadow-[0_0_6px_var(--color-ok)]' : 'border border-current bg-transparent'}`}
         aria-hidden
       />
-      {label} <span aria-hidden>•</span> <span className="uppercase">{state}</span>
+      <span>{label}</span>
+      <span aria-hidden className="max-[1365px]:hidden">
+        •
+      </span>
+      {/* LIVE and OFF share one cell, held at the wider word, so switching never nudges the bar. */}
+      <span className="grid justify-items-start uppercase">
+        <span style={CELL}>{state}</span>
+        <span style={CELL} className="invisible" aria-hidden>
+          {on ? t('status.off') : t('status.live')}
+        </span>
+      </span>
     </button>
   );
 }
@@ -503,42 +536,40 @@ export function TopBar() {
     announcements: useShortcutKey('announcements'),
   };
 
-  // In a narrower window the live outputs drop to a second row. The divider that groups the zones would then be left hanging
-  // at the end of the first row, so it is shown only while both zones share a row.
-  const controls = useRef<HTMLDivElement>(null);
-  const state = useRef<HTMLDivElement>(null);
-  const overlays = useRef<HTMLDivElement>(null);
-  const [stacked, setStacked] = useState(false);
-  useLayoutEffect(() => {
-    const box = controls.current;
-    if (!box) return;
-    const measure = () => {
-      if (state.current && overlays.current) setStacked(overlays.current.offsetTop > state.current.offsetTop + 4);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(box);
-    return () => observer.disconnect();
-  }, [promptChoice]);
-
   return (
-    // pr-[144px] keeps the master switch clear of the Windows caption buttons (about 46px each).
-    <header className={`relative z-20 flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-line bg-canvas py-1.5 pr-[144px] pl-4 select-none ${DRAG}`}>
-      <div ref={controls} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5">
+    // One 48px row from 1280px up: flex-nowrap, never a second row. Below 1800px the longer labels switch to their compact
+    // forms (see Label), so the whole bar fits a 1280px or 1366px booth laptop. pr-[140px] keeps the master switches clear of the
+    // Windows caption buttons (about 46px each). The gaps between groups are the drag area.
+    <header className={`relative z-20 flex h-12 shrink-0 flex-nowrap items-center justify-between gap-2 border-b border-line bg-canvas pr-[140px] pl-3 select-none max-[1365px]:gap-1.5 max-[1365px]:pl-2 ${DRAG}`}>
+      {/* Narrower than 1280px the controls scroll sideways inside the bar instead of wrapping onto a second row. */}
+      <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden max-[1365px]:gap-1.5 [scrollbar-width:none]">
         {/* Zone A: master output and safety transport. */}
-        <div ref={state} role="group" aria-label={t('top.groupState')} className="flex items-center gap-1.5">
+        <div role="group" aria-label={t('top.groupState')} className="flex shrink-0 flex-nowrap items-center gap-1">
           {promptChoice === 'skip' && (
-            <span role="status" className="flex h-9 items-center gap-2 rounded-full border border-fg/30 bg-panel-2 px-3.5 text-[11px] font-bold tracking-wider text-fg/80 uppercase">
-              {t('top.projectorSkipped')}
+            <>
+              <span role="status" className="hidden h-9 shrink-0 items-center gap-2 rounded-full border border-fg/30 bg-panel-2 px-2.5 text-[11px] font-bold tracking-wider whitespace-nowrap text-fg/80 uppercase min-[1920px]:flex">
+                {t('top.projectorSkipped')}
+                <button
+                  type="button"
+                  onClick={() => setUi({ projectorPromptChoice: 'ask' })}
+                  title={t('top.tipAskAgain')}
+                  className={`${NO_DRAG} rounded text-accent underline underline-offset-2 hover:brightness-110 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none`}
+                >
+                  {t('top.askAgain')}
+                </button>
+              </span>
+              {/* Below 1920px the chip is one round button, so the bar keeps to one row: its tooltip and name say both parts. */}
               <button
                 type="button"
                 onClick={() => setUi({ projectorPromptChoice: 'ask' })}
-                title={t('top.tipAskAgain')}
-                className={`${NO_DRAG} rounded text-accent underline underline-offset-2 hover:brightness-110 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none`}
+                title={`${t('top.projectorSkipped')} · ${t('top.tipAskAgain')}`}
+                aria-label={`${t('top.projectorSkipped')} · ${t('top.askAgain')}`}
+                data-testid="projector-skipped-compact"
+                className={`${NO_DRAG} grid size-8 shrink-0 place-items-center rounded-full border border-fg/30 bg-panel-2 text-fg/80 transition hover:border-accent hover:text-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none min-[1920px]:hidden`}
               >
-                {t('top.askAgain')}
+                <MonitorOff className="size-4" aria-hidden strokeWidth={2.25} />
               </button>
-            </span>
+            </>
           )}
           <StableSlot
             ghosts={[
@@ -557,13 +588,14 @@ export function TopBar() {
           </StableSlot>
           <StableSlot
             ghosts={[
-              <ControlButton key="run" icon={Pause} label={t('top.pauseProjector')} tone={PAUSE} onClick={noop} />,
-              <ControlButton key="paused" icon={Play} label={t('top.projectorPaused')} tone={PAUSE} active onClick={noop} />,
+              <ControlButton key="run" icon={Pause} label={t('top.pauseProjector')} compact={t('top.pauseShort')} tone={PAUSE} onClick={noop} />,
+              <ControlButton key="paused" icon={Play} label={t('top.projectorPaused')} compact={t('top.pausedShort')} tone={PAUSE} active onClick={noop} />,
             ]}
           >
             <ControlButton
               icon={projector.paused ? Play : Pause}
               label={projector.paused ? t('top.projectorPaused') : t('top.pauseProjector')}
+              compact={projector.paused ? t('top.pausedShort') : t('top.pauseShort')}
               title={
                 !outputs.projector
                   ? t('top.tipProjectorRequired')
@@ -579,11 +611,11 @@ export function TopBar() {
           <ControlButton icon={Square} label={t('top.stop')} title={withKey(t('top.tipStop'), keys.stop)} tone={STOP} toggle={false} onClick={() => dispatch({ type: 'stop' })} />
         </div>
 
-        {!stacked && <Divider />}
+        <Divider />
 
         {/* Zone B: what is on air over the projector, then the booth-only views. */}
-        <div ref={overlays} className="flex items-center gap-2">
-          <div role="group" aria-label={t('top.groupOverlays')} className="flex items-center gap-1.5">
+        <div className="flex shrink-0 flex-nowrap items-center gap-2 max-[1365px]:gap-1.5">
+          <div role="group" aria-label={t('top.groupOverlays')} className="flex flex-nowrap items-center gap-1">
             <WelcomeControl />
             <StableSlot
               ghosts={[
@@ -603,10 +635,11 @@ export function TopBar() {
             <LowerThirdControl />
           </div>
           <Divider />
-          <div role="group" aria-label={t('top.groupViews')} className="flex items-center gap-1.5">
+          <div role="group" aria-label={t('top.groupViews')} className="flex flex-nowrap items-center gap-1">
             <ControlButton
               icon={Monitor}
               label={t('top.preview')}
+              compact={null}
               title={previewOpen ? t('top.tipPreviewOpen') : t('top.tipPreview')}
               tone={VIEW}
               active={previewOpen}
@@ -618,8 +651,8 @@ export function TopBar() {
         </div>
       </div>
 
-      {/* Zone C: stays on the first row, level with the transport controls, even when the live outputs wrap to a second row below them. */}
-      <div role="group" aria-label={t('top.groupConnections')} className="ml-auto flex h-9 shrink-0 items-center gap-2 self-start">
+      {/* Zone C: the hardware and connection switches, pinned to the right edge of the same row. */}
+      <div role="group" aria-label={t('top.groupConnections')} className="ml-auto flex h-9 shrink-0 flex-nowrap items-center gap-1.5">
         <RemoteMaster />
         <ProjectorMaster />
       </div>

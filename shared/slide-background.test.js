@@ -59,7 +59,9 @@ test('the Live preview, the Current and Next slides, and the projector all pass 
   assert.match(next, /const background = welcomeBackground\(useLive\(\(s\) => s\.state\.welcome\.slideBackground\)\);/, 'the preview reads the Live slide background');
   assert.match(next, /<Face shown=\{current\} blackLabel=\{t\('previewBlack'\)\} background=\{background\} \/>/, 'the current slide');
   assert.match(next, /<Face shown=\{next\} blackLabel=\{t\('previewBlack'\)\} background=\{background\} \/>/, 'the next slide');
-  assert.match(read('src/output/ProjectorView.tsx'), /const ownBackground = welcomeBackground\(useOutput\(\(s\) => s\.welcome\.slideBackground\)\);/, 'the projector reads the Live slide background');
+  assert.match(read('src/output/ProjectorView.tsx'), /const savedBackground = useOutput\(\(s\) => s\.welcome\.slideBackground\);/, 'the projector reads the Live slide background');
+  // A slide's own backdrop (the Output Preview Editor) is one of the quick themes, laid over it.
+  assert.match(read('src/output/ProjectorView.tsx'), /const ownBackground = welcomeBackground\(own\?\.backdrop \? withBackdropTheme\(savedBackground, own\.backdrop\) : savedBackground\);/);
   assert.match(read('src/output/ProjectorView.tsx'), /const pwBackground = sharedBackground \? SEE_THROUGH : ownBackground;/, 'and uses it unless the Media Library background covers every slide');
   assert.match(read('src/output/ProjectorView.tsx'), /footer=\{frame\.footer\} background=\{pwBackground\} edgeToEdge=\{edgeToEdge\} bandOn=\{bandOn\} \/>/, 'the projector passes it to the slide');
   // The operator's Live preview is the projector itself (mirror), so it shows the same background.

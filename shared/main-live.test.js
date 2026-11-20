@@ -125,7 +125,7 @@ test('the song band an ad-hoc item left is replaced by the main run band; the op
 
 test('top bar: Go Live sits between Pause Projector and Stop, where Pause Lower 3rd was', () => {
   const bar = read('src/operator/TopBar.tsx');
-  const zoneA = bar.slice(bar.indexOf("aria-label={t('top.groupState')}"), bar.indexOf('{!stacked && <Divider />}'));
+  const zoneA = bar.slice(bar.indexOf("aria-label={t('top.groupState')}"), bar.indexOf('<Divider />', bar.indexOf("aria-label={t('top.groupState')}")));
   const pauseProjector = zoneA.indexOf("t('top.pauseProjector')");
   const goLive = zoneA.indexOf('<GoLiveShortcut />');
   const stop = zoneA.indexOf("t('top.stop')");

@@ -324,6 +324,30 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
   }
 
   /**
+   * Sends the colour theme this laptop is painted with (theme-sync). Resolves with the server's answer: { applied, theme, themeUpdatedAt }.
+   * Rejects with an Error marked `revoked` when the laptop is not linked, `retry` for a failure that will pass (offline, rate limited,
+   * the server busy, or a website from before theme sync that has no theme-sync yet), and unmarked when the server refused the theme.
+   */
+  async function pushTheme({ theme, themeUpdatedAt }) {
+    const record = readRecord();
+    if (record === null) throw Object.assign(new Error(MESSAGES.notLinked), { revoked: true });
+    if (record === 'unreadable') throw Object.assign(new Error(MESSAGES.unreadable), { revoked: true });
+    let res;
+    try {
+      res = await call('theme-sync', { method: 'POST', body: { theme, themeUpdatedAt }, token: record.token });
+    } catch {
+      throw Object.assign(new Error(MESSAGES.offline), { retry: true });
+    }
+    if (isRevoked(res)) {
+      forgetLink();
+      throw Object.assign(new Error(MESSAGES.revokedOnWeb), { revoked: true });
+    }
+    if (res.ok) return { applied: Boolean(res.body.applied), theme: res.body.theme ?? null, themeUpdatedAt: res.body.themeUpdatedAt ?? null };
+    const passing = res.notJson || res.status === 404 || res.status === 429 || res.status >= 500;
+    throw Object.assign(new Error(serverMessage(res)), passing ? { retry: true } : {});
+  }
+
+  /**
    * Calls a plan function with this laptop's token. Rejects with `offline` when the cloud cannot be reached, and with `revoked` when
    * the laptop was unlinked on the website. Other refusals come back in the result, for the sync to count.
    */
@@ -400,7 +424,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
   }
 
   return {
-    link, status, unlink, createWebUser, createChurchAdmin, renewLicense, licenseExpiresAt, pushSongs,
+    link, status, unlink, createWebUser, createChurchAdmin, renewLicense, licenseExpiresAt, pushSongs, pushTheme,
     pullPlans, createPlan, pushPlan, deletePlan, getPlan,
     serverOffset: () => serverOffsetMs,
   };

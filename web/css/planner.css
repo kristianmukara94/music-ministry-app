@@ -1,66 +1,65 @@
 /*
- * APCCMMA Web Planner: the design tokens and the base styles shared by every page. Every colour, font and corner radius on the site
- * comes from :root below, so the palette changes in one place. :root holds the dark theme and :root[data-theme='light'] the light
- * one's colours; js/theme-init.js sets data-theme before the page paints. Layout stays inline in the markup, as designed; anything with a
- * hover state is a class here, because an inline style cannot have one.
+ * APCCMMA Web Planner: the design tokens and the base styles shared by every page. The colours are the church laptop's own themes:
+ * css/theme-tokens.css (a copy of shared/theme-tokens.css) defines --color-* for every [data-theme], and :root below maps the website's
+ * names onto them, so every page paints in whichever theme the laptop is in. js/theme-init.js sets data-theme before the page paints,
+ * and js/theme-sync.js changes it live. No colour here is fixed to one theme. Layout stays inline in the markup, as designed; anything
+ * with a hover state is a class here, because an inline style cannot have one.
  */
 :root {
-  color-scheme: dark;
-
-  /* Midnight navy surfaces. */
-  --app-bg: #080c14;
-  --surface: #111726;
-  --surface-hover: #172033;
-  --border: #1c263b;
-  --input-bg: #0b101b;
-  --border-input: #50638a !important;
-  --sidebar-bg: #080c14;
-  /* The light tile behind the parish emblem, whose linework is black. */
+  /* Surfaces: the laptop's canvas, its opaque cards (--color-surface) and its hairlines. */
+  --app-bg: var(--color-canvas);
+  --surface: var(--color-surface);
+  --surface-hover: var(--color-surface-2);
+  --border: var(--color-line);
+  --input-bg: var(--color-canvas);
+  --border-input: var(--color-line-strong) !important;
+  --sidebar-bg: var(--color-surface);
+  /* The light tile behind the parish emblem, whose linework is black, on every theme. */
   --brand-tile: #f4efe6;
-  /* Dialog backdrops, and the shadow under menus and the phone action bar. Cards have no shadow on the dark theme. */
-  --overlay: rgba(8, 12, 20, 0.8);
-  --shadow-strong: rgba(8, 12, 20, 0.7);
+  /* Dialog backdrops, and the shadow under menus and the phone action bar. Cards have no shadow on the dark themes. */
+  --overlay: color-mix(in srgb, var(--color-canvas) 80%, transparent);
+  --shadow-strong: rgb(0 0 0 / 0.6);
   --card-shadow: none;
 
-  /* Sapphire blue: primary buttons, the chosen tab, focus and text links. */
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --on-primary: #ffffff;
-  --focus: #3b82f6;
-  --focus-ring: rgba(59, 130, 246, 0.35);
-  --primary-wash: rgba(37, 99, 235, 0.14);
+  /* The theme's accent: primary buttons, the chosen tab, focus and text links. Its label colour is --color-on-accent. */
+  --primary: var(--color-accent);
+  --primary-hover: color-mix(in srgb, var(--color-accent) 85%, var(--color-fg));
+  --on-primary: var(--color-on-accent);
+  --focus: var(--color-accent);
+  --focus-ring: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  --primary-wash: color-mix(in srgb, var(--color-accent) 14%, transparent);
 
   /* Text. */
-  --heading: #f4efe6;
-  --eyebrow: #c89b52;
-  --text: #e2e8f0;
-  --muted: #7c8ba1;
+  --heading: var(--color-fg);
+  --eyebrow: var(--color-gold);
+  --text: var(--color-fg);
+  --muted: var(--color-muted);
 
-  /* Gold accents, built from the eyebrow colour. */
-  --gold-edge: rgba(200, 155, 82, 0.4);
-  --gold-wash: rgba(200, 155, 82, 0.12);
+  /* Gold accents. */
+  --gold-edge: color-mix(in srgb, var(--color-gold) 40%, transparent);
+  --gold-wash: color-mix(in srgb, var(--color-gold) 12%, transparent);
 
-  /* Status. */
-  --pill-bg: #064e3b;
-  --pill-text: #34d399;
-  --pill-border: #059669;
-  --warn-bg: #33240c;
-  --warn-text: #f2bd6b;
-  --danger: #fca5a5;
-  --status-active-text: #34d399;
-  --status-active-bg: rgba(52, 211, 153, 0.12);
-  --status-disabled-text: #f87171;
-  --status-disabled-bg: rgba(239, 68, 68, 0.12);
-  --status-saved: #34d399;
-  --status-unsaved: #fbbf24;
+  /* Status: the theme's ok, warn and danger colours, each already readable on its own 10% chip (shared/theme-contrast.js). */
+  --pill-bg: color-mix(in srgb, var(--color-ok) 14%, transparent);
+  --pill-text: var(--color-ok);
+  --pill-border: color-mix(in srgb, var(--color-ok) 45%, transparent);
+  --warn-bg: color-mix(in srgb, var(--color-warn) 14%, transparent);
+  --warn-text: var(--color-warn);
+  --danger: var(--color-danger);
+  --status-active-text: var(--color-ok);
+  --status-active-bg: color-mix(in srgb, var(--color-ok) 12%, transparent);
+  --status-disabled-text: var(--color-danger);
+  --status-disabled-bg: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  --status-saved: var(--color-ok);
+  --status-unsaved: var(--color-warn);
 
-  /* Song language badges. */
-  --lang-en-bg: #1e3a8a;
-  --lang-en-text: #93c5fd;
-  --lang-tl-bg: #78350f;
-  --lang-tl-text: #fde047;
-  --lang-ceb-bg: #581c87;
-  --lang-ceb-text: #f0abfc;
+  /* Song language badges: info, gold and ok tints, so the three stay apart on every theme. */
+  --lang-en-bg: color-mix(in srgb, var(--color-info) 14%, transparent);
+  --lang-en-text: var(--color-info);
+  --lang-tl-bg: color-mix(in srgb, var(--color-gold) 14%, transparent);
+  --lang-tl-text: var(--color-gold);
+  --lang-ceb-bg: color-mix(in srgb, var(--color-ok) 14%, transparent);
+  --lang-ceb-text: var(--color-ok);
 
   --font-serif: 'Playfair Display', Georgia, serif;
   --font-sans: 'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif;
@@ -69,89 +68,29 @@
   --radius-card: 12px;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 
-  /* The church laptop's broadcast planner (.planner-cal in src/styles.css): charcoal surfaces and amber gold, for the Holy Mass schedule
-     fields, the month calendar, the schedule switcher and the taken-time warning, so the two planners look alike. */
-  --bc-surface: #121212;
-  --bc-cell: rgba(255, 255, 255, 0.035);
-  --bc-cell-hover: rgba(255, 255, 255, 0.07);
-  --bc-border: #1e1e1e;
-  --bc-border-hover: #3a3a3a;
-  --bc-badge: rgba(255, 255, 255, 0.06);
-  --bc-date: #ffffff;
-  --bc-gold: #e5a93c;
-  --bc-on-gold: #121212;
-  --bc-gold-wash: rgba(229, 169, 60, 0.14);
-  --bc-text: #f2f2f2;
-  --bc-muted: #b8b8b8;
+  /* The month calendar, the Holy Mass schedule fields and the schedule switcher: the same roles as the laptop's planner calendar. */
+  --bc-surface: var(--color-surface);
+  --bc-cell: color-mix(in srgb, var(--color-fg) 3.5%, transparent);
+  --bc-cell-hover: color-mix(in srgb, var(--color-fg) 7%, transparent);
+  --bc-border: var(--color-line);
+  --bc-border-hover: var(--color-line-strong);
+  --bc-badge: color-mix(in srgb, var(--color-fg) 6%, transparent);
+  --bc-date: var(--color-fg);
+  --bc-gold: var(--color-accent);
+  --bc-on-gold: var(--color-on-accent);
+  --bc-gold-wash: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  --bc-text: var(--color-fg);
+  --bc-muted: var(--color-muted);
 }
 
-/* The light theme. Only colours change; every name matches the dark theme above. */
-:root[data-theme='light'] {
-  color-scheme: light;
-
-  --app-bg: #f8fafc;
-  --surface: #ffffff;
-  --surface-hover: #f1f5f9;
-  --border: #e2e8f0;
-  --input-bg: #ffffff;
-  --border-input: #8494aa !important;
-  --sidebar-bg: #ffffff;
-  --brand-tile: #ffffff;
-  --overlay: rgba(15, 23, 42, 0.45);
-  --shadow-strong: rgba(15, 23, 42, 0.16);
-  --card-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
-
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --on-primary: #ffffff;
-  --focus: #2563eb;
-  --focus-ring: rgba(37, 99, 235, 0.3);
-  --primary-wash: rgba(37, 99, 235, 0.08);
-
-  --heading: #0f172a;
-  --eyebrow: #92400e;
-  --text: #0f172a;
-  --muted: #64748b;
-
-  /* Amber 300 edge and amber 100 wash: the Holy Mass and Praise & Worship badges. */
-  --gold-edge: #fcd34d;
-  --gold-wash: #fef3c7;
-
-  --pill-bg: #d1fae5;
-  --pill-text: #047857;
-  --pill-border: #6ee7b7;
-  --warn-bg: #fef3c7;
-  --warn-text: #92400e;
-  --danger: #b91c1c;
-  --status-active-text: #047857;
-  --status-active-bg: rgba(16, 185, 129, 0.12);
-  --status-disabled-text: #b91c1c;
-  --status-disabled-bg: rgba(239, 68, 68, 0.1);
-  --status-saved: #047857;
-  --status-unsaved: #b45309;
-
-  --lang-en-bg: #dbeafe;
-  --lang-en-text: #1e40af;
-  --lang-tl-bg: #fef3c7;
-  --lang-tl-text: #92400e;
-  --lang-ceb-bg: #f3e8ff;
-  --lang-ceb-text: #6b21a8;
-
-  --bc-surface: #ffffff;
-  --bc-cell: rgba(0, 0, 0, 0.025);
-  --bc-cell-hover: rgba(0, 0, 0, 0.05);
-  --bc-border: rgba(0, 0, 0, 0.14);
-  --bc-border-hover: rgba(0, 0, 0, 0.3);
-  --bc-badge: rgba(0, 0, 0, 0.04);
-  --bc-date: #141414;
-  --bc-gold: #8a5a00;
-  --bc-on-gold: #ffffff;
-  --bc-gold-wash: rgba(138, 90, 0, 0.1);
-  --bc-text: #1a1a1a;
-  --bc-muted: #4a4a4a;
+/* The light themes (the same list as theme-tokens.css's color-scheme rule): softer backdrops, and cards lift on a shadow. */
+:root:is([data-theme="light"], [data-theme="ice-blue"], [data-theme="mint"], [data-theme="sage"], [data-theme="linen"], [data-theme="shell"], [data-theme="christmas"], [data-theme="easter"]) {
+  --overlay: color-mix(in srgb, var(--color-fg) 45%, transparent);
+  --shadow-strong: rgb(0 0 0 / 0.16);
+  --card-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 1px 3px rgb(0 0 0 / 0.04);
 }
 
-/* Colours fade while the person switches theme (theme-init.js adds the class for 250 ms), never on page load. */
+/* Colours fade while the theme changes on an open page (theme-init.js adds the class for 250 ms), never on page load. */
 .theme-switching,
 .theme-switching *,
 .theme-switching *::before,
@@ -169,7 +108,7 @@
 }
 
 /*
- * Cards lift slightly on the light theme (--card-shadow is none on the dark one). The last selector catches the cards whose
+ * Cards lift slightly on the light themes (--card-shadow is none on the dark ones). The last selector catches the cards whose
  * styles are inline in the markup, which no class reaches.
  */
 .change-password-form,
@@ -182,52 +121,54 @@
   box-shadow: var(--card-shadow);
 }
 
-/* The Light / Dark / System switch at the foot of the sidebar (shell.js). */
-.theme-toggle {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--app-bg);
-}
-
-.theme-toggle button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+/* The colour theme picker at the foot of the sidebar (shell.js). */
+.theme-picker {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
-  min-width: 0;
-  height: 32px;
-  padding: 0 6px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
   font-size: 12px;
   font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  color: var(--muted);
 }
 
-.theme-toggle svg {
-  flex: none;
+.theme-picker-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.theme-toggle button:hover:not([aria-pressed='true']) {
+.theme-picker-label [data-laptop-theme] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.theme-picker select {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-control);
+  background: var(--input-bg);
   color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
 }
 
-.theme-toggle button[aria-pressed='true'] {
-  border-color: var(--border);
-  background: var(--surface);
-  color: var(--heading);
-  box-shadow: 0 1px 2px var(--shadow-strong);
+.theme-picker select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
-.theme-toggle button[aria-pressed='true'] svg {
-  color: var(--focus);
+/* The open list of a <select> takes the theme's opaque surface, so no menu opens as a white box on a dark theme. */
+option,
+optgroup {
+  background-color: var(--color-surface-2);
+  color: var(--color-fg);
 }
 
 body {
@@ -382,8 +323,8 @@ button:focus-visible {
 
 /* The temporary-password screen, shown before anything else for an account that must change its password. */
 .change-password {
-  --cp-red: #ef4444;
-  --cp-red-text: #f87171;
+  --cp-red: var(--color-danger);
+  --cp-red-text: var(--color-danger);
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -1805,7 +1746,7 @@ button.danger {
 }
 
 button.danger:hover:not(:disabled) {
-  background: rgba(252, 165, 165, 0.12);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
 
 .setlist-print {

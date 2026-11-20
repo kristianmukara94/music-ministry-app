@@ -67,6 +67,11 @@ export const PROJECTOR_SETTINGS_DEFAULTS = {
    */
   textCase: 'original',
   /**
+   * The alignment of slide text on the projector, the TV and the previews: 'left', 'center' or 'right' for every slide, or null to keep each
+   * slide's own (centred unless its style says otherwise). The Go Live console's Text Alignment sets it.
+   */
+  slideAlign: null,
+  /**
    * Whether a slide shows the small banner naming its Holy Mass slot or reading ("FIRST READING", "CONGREGATION RESPONSE") above its text.
    * A Holy Mass plan can override it for its own Mass (see slotTitleShown in live.js).
    */
@@ -127,6 +132,7 @@ export function sanitizeProjectorSettings(raw) {
     edgeToEdge: typeof p.edgeToEdge === 'boolean' ? p.edgeToEdge : PROJECTOR_SETTINGS_DEFAULTS.edgeToEdge,
     balanceLines: typeof p.balanceLines === 'boolean' ? p.balanceLines : PROJECTOR_SETTINGS_DEFAULTS.balanceLines,
     textCase: TEXT_CASES.includes(p.textCase) ? p.textCase : PROJECTOR_SETTINGS_DEFAULTS.textCase,
+    slideAlign: ['left', 'center', 'right'].includes(p.slideAlign) ? p.slideAlign : null,
     showSlotTitle: typeof p.showSlotTitle === 'boolean' ? p.showSlotTitle : PROJECTOR_SETTINGS_DEFAULTS.showSlotTitle,
     backgroundEverywhere: typeof p.backgroundEverywhere === 'boolean' ? p.backgroundEverywhere : PROJECTOR_SETTINGS_DEFAULTS.backgroundEverywhere,
     advancedOutput: typeof p.advancedOutput === 'boolean' ? p.advancedOutput : PROJECTOR_SETTINGS_DEFAULTS.advancedOutput,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ClipboardList, HandHeart, Loader2, Play } from 'lucide-react';
+import { CalendarDays, ClipboardList, HandHeart, Loader2, Maximize2, Minimize2, Play } from 'lucide-react';
 import { plannerTabTipKey, resolveMatchingPlannerTarget } from '../../shared/planner-target.js';
 import { scheduleLabel } from '../../shared/mass-schedule.js';
 import { plannerT } from '../../shared/planner-i18n.js';
@@ -20,6 +20,7 @@ import { onAirLabel, projectorState, runOnAir } from './onAir';
 import { openMatchingPlanner } from './openPlanner';
 import { useGoLiveT } from './strings';
 import { EdidLockBadge } from './EdidLockBadge';
+import { toggleGoLiveFullscreen } from './fullscreen';
 import { WatchdogBadge } from './WatchdogBadge';
 import { WhiteboardCard } from './WhiteboardCard';
 
@@ -72,6 +73,7 @@ export function GoLiveConsole() {
   const live = useLive((s) => s.state);
   const choice = useUi((s) => s.goLiveChoice);
   const lang = useUi((s) => s.lang);
+  const fullscreen = useUi((s) => s.goLiveFullscreen);
   const loaded = usePw((s) => s.session);
   const [plans, setPlans] = useState<PlanSummary[] | null>(null);
   const [sessions, setSessions] = useState<PwSessionSummary[] | null>(null);
@@ -221,30 +223,29 @@ export function GoLiveConsole() {
           </button>
         </nav>
 
+        {/* Fullscreen Mode: a layout switch only. The tabs, picker and Go Live stay in this bar, and the output keeps running. */}
+        <button
+          type="button"
+          data-testid="golive-fullscreen-toggle"
+          aria-pressed={fullscreen}
+          title={t(fullscreen ? 'consoleExitFullscreenTip' : 'consoleFullscreenTip')}
+          onClick={toggleGoLiveFullscreen}
+          className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-md border px-4 text-sm font-semibold tracking-wide uppercase transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none ${
+            fullscreen ? 'border-accent bg-accent/15 text-accent hover:bg-accent/25' : 'border-line bg-panel text-fg/80 hover:bg-fg/10 hover:text-fg'
+          }`}
+        >
+          {fullscreen ? <Minimize2 size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}
+          {t(fullscreen ? 'consoleExitFullscreen' : 'consoleFullscreen')}
+        </button>
+
         <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
-          {/* The projector at a glance. What is on screen is in its tooltip and its label for screen readers. */}
-          <span
-            className={`inline-flex h-10 items-center gap-2 rounded-full border px-3 text-xs font-bold tracking-wider uppercase ${PILL[projector]}`}
-            role="status"
-            title={`${t('onScreen')}: ${onAir ?? t('nothingOnScreen')}`}
-            aria-label={`${pillWord}. ${t('onScreen')}: ${onAir ?? t('nothingOnScreen')}`}
-          >
-            <span aria-hidden className={`size-2 rounded-full ${projector === 'on' ? 'bg-ok' : projector === 'black' ? 'bg-warn' : 'bg-fg/40'}`} />
-            {pillWord}
-          </span>
-
-          {/* The projector's hardware lock to its physical monitor (EDID). */}
-          <EdidLockBadge />
-
-          {/* The sanctuary display watchdog, and the booth's emergency Force Failover (Ctrl+Shift+B). */}
-          <WatchdogBadge />
-
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             {tab === 'pw' ? (
               <label className="flex min-w-0 items-center gap-2">
                 <span className={`${LABEL} sr-only @5xl/pw:not-sr-only`}>{t('pickSession')}</span>
                 <select
-                  className={`${SELECT} w-56`}
+                  className={`${SELECT} w-[26rem] max-w-[38vw]`}
+                  title={pwSession ? `${dateOf(pwSession.liturgicalDate)} · ${pwSession.name}` : undefined}
                   value={pickedPw ?? ''}
                   disabled={busy || pwOptions.length === 0}
                   onChange={(e) => {
@@ -266,7 +267,8 @@ export function GoLiveConsole() {
               <label className="flex min-w-0 items-center gap-2">
                 <span className={`${LABEL} sr-only @5xl/pw:not-sr-only`}>{t('pickPlan')}</span>
                 <select
-                  className={`${SELECT} w-56`}
+                  className={`${SELECT} w-[26rem] max-w-[38vw]`}
+                  title={massPlan?.name}
                   value={pickedMass ?? ''}
                   disabled={busy || massOptions.length === 0}
                   onChange={(e) => {
@@ -306,6 +308,26 @@ export function GoLiveConsole() {
         </div>
       </div>
 
+      {/* The booth's system strip: projector, display lock, watchdog and Force Failover, on their own row under the console bar. */}
+      <div className="-mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-panel/60 px-2 py-1.5">
+        {/* The projector at a glance. What is on screen is in its tooltip and its label for screen readers. */}
+        <span
+          className={`inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs font-bold tracking-wider uppercase ${PILL[projector]}`}
+          role="status"
+          title={`${t('onScreen')}: ${onAir ?? t('nothingOnScreen')}`}
+          aria-label={`${pillWord}. ${t('onScreen')}: ${onAir ?? t('nothingOnScreen')}`}
+        >
+          <span aria-hidden className={`size-2 rounded-full ${projector === 'on' ? 'bg-ok' : projector === 'black' ? 'bg-warn' : 'bg-fg/40'}`} />
+          {pillWord}
+        </span>
+
+        {/* The projector's hardware lock to its physical monitor (EDID). */}
+        <EdidLockBadge />
+
+        {/* The sanctuary display watchdog, and the booth's emergency Force Failover (Ctrl+Shift+B). */}
+        <WatchdogBadge />
+      </div>
+
       {error && (
         <p role="alert" className="rounded-lg border border-danger/50 bg-danger/10 px-4 py-3 text-sm text-danger">
           {error}
@@ -317,7 +339,10 @@ export function GoLiveConsole() {
           <>
             {pwOnAirId != null && pickedPw != null && pwOnAirId !== pickedPw && pwSession && (
               <p role="status" className="rounded-[10px] border border-accent bg-panel-2 px-5 py-3 text-sm">
-                {t('massPickedOther', { loaded: sessions?.find((s) => s.id === pwOnAirId)?.name ?? '', picked: pwSession.name })}
+                {t('massPickedOther', {
+                  loaded: sessions?.find((s) => s.id === pwOnAirId)?.name ?? '',
+                  picked: pwSession.name,
+                })}
               </p>
             )}
             <LiveView />
@@ -334,7 +359,10 @@ export function GoLiveConsole() {
         <>
           {loadedPlan && massPlan && loadedPlan.id !== massPlan.id && (
             <p role="status" className="rounded-[10px] border border-accent bg-panel-2 px-5 py-3 text-sm">
-              {t('massPickedOther', { loaded: loadedPlan.name, picked: massPlan.name })}
+              {t('massPickedOther', {
+                loaded: loadedPlan.name,
+                picked: massPlan.name,
+              })}
             </p>
           )}
           <MassLiveView planName={loadedPlan?.name ?? null} />

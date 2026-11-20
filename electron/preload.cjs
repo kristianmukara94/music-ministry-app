@@ -251,6 +251,8 @@ contextBridge.exposeInMainWorld('apcc', {
       ipcRenderer.invoke('cloud:create-church-admin', { setupKey, churchName, username, displayName, deviceLabel }),
     defaultLabel: () => ipcRenderer.invoke('cloud:defaultLabel'),
     renewLicense: (setupKey) => ipcRenderer.invoke('cloud:renew-license', { setupKey }),
+    themeStatus: () => ipcRenderer.invoke('cloud:theme-status'),
+    openWebsite: () => ipcRenderer.invoke('cloud:open-website'),
   },
 
   license: {

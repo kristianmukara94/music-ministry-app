@@ -25,8 +25,8 @@ export function DatabaseStatus({ collapsed }: { collapsed: boolean }) {
   const dot = state === null ? 'bg-fg/30' : healthy ? 'bg-ok shadow-[0_0_8px_var(--color-ok)]' : 'bg-danger';
 
   return (
-    <div className="mt-3 flex" title={`${label}\n${detail}`} role="status">
-      <span className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold tracking-wide ${pill}`}>
+    <div className="mt-3 flex short:mt-1" title={`${label}\n${detail}`} role="status">
+      <span className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold tracking-wide short:py-0.5 short:text-xs ${pill}`}>
         <span className={`size-2.5 shrink-0 rounded-full ${dot}`} aria-hidden />
         {!collapsed && <span className="truncate">v{state?.version ?? __APP_VERSION__} - {healthy ? 'DB ok' : 'DB error'}</span>}
       </span>

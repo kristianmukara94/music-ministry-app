@@ -92,7 +92,7 @@ test('the preview and the projector place the band from the same lyric bottom', 
   assert.equal(lyricBottomOf({ kind: 'text' }), null, 'a note is not lyrics');
   assert.equal(lyricBottomOf({ kind: 'pw', slide: { kind: 'prayer', text: '', placeholder: true, label: 'x' } }), null, 'a placeholder has no text');
   assert.match(read('src/output/ProjectorView.tsx'), /lyricBottomShare=\{lyricBottomOf\(shownFrame\)\}/, 'the projector places the band from it');
-  assert.match(read('src/praise-worship/LiveView.tsx'), /lyricBottomOf\(live\.projector\.live\)/, 'the live console places the band from it');
+  assert.match(read('src/golive/console/OutputsCard.tsx'), /lyricBottomOf\(s\.state\.projector\.live\)/, 'the live console places the band from it');
   assert.match(read('src/output/LowerThirdView.tsx'), /lyricBottomShare=\{lyricBottomOf\(onScreen\)\}/, 'the livestream places the band from it');
 });
 

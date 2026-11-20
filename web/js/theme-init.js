@@ -1,79 +1,161 @@
-// The colour theme: Light, Dark or System (the default, which follows the browser's prefers-color-scheme).
+// The colour theme: the same themes as the church laptop (web/css/theme-tokens.css is a copy of shared/theme-tokens.css), following
+// whichever theme the laptop was last painted with.
 //
-// This is a classic script loaded in <head> before the stylesheets, without defer or type="module", so it sets
-// <html data-theme="light|dark"> before the first paint and a page never flashes the wrong theme. It is a file rather than an
-// inline script because the site's Content-Security-Policy allows scripts from 'self' only (vercel.json).
+// This is a classic script loaded in <head> before the stylesheets, without defer or type="module", so it sets <html data-theme="…">
+// before the first paint and a page never flashes the wrong theme. It is a file rather than an inline script because the site's
+// Content-Security-Policy allows scripts from 'self' only (vercel.json).
 //
-// Only an explicit Light or Dark choice is kept, in localStorage under apccmma.theme. Choosing System removes it, so the page
-// follows the device again. shell.js draws the switch in the sidebar and calls window.apccmmaTheme.set().
+// Where the theme comes from, first match wins:
+//   1. a theme this browser chose for itself in the sidebar (localStorage apccmma.themeOverride)
+//   2. the laptop's theme: from ?theme= on a link the laptop opened, or from the server (js/theme-sync.js calls receive()), kept in
+//      localStorage apccmma.theme with the time the laptop chose it in apccmma.themeUpdatedAt
+//   3. the laptop's default theme, Obsidian Console
+// A newer laptop theme repaints the page live: only the data-theme attribute changes, so nothing typed on the page is lost.
 (function () {
   var KEY = 'apccmma.theme';
-  var THEME_COLOR = { dark: '#080c14', light: '#f8fafc' };
+  var STAMP = 'apccmma.themeUpdatedAt';
+  var OVERRIDE = 'apccmma.themeOverride';
+  var DEFAULT_THEME = 'obsidian';
+  // Must match shared/theme-catalog.js and the canvases in theme-tokens.css (shared/theme-tokens.test.js checks both).
+  var THEMES = [
+    { id: 'advent', name: 'Advent', group: 'seasonal', canvas: '#130a26' },
+    { id: 'christmas', name: 'Christmas', group: 'seasonal', canvas: '#fcf8ee' },
+    { id: 'ordinary-time', name: 'Ordinary Time', group: 'seasonal', canvas: '#071a10' },
+    { id: 'lent', name: 'Lent', group: 'seasonal', canvas: '#161019' },
+    { id: 'holy-week', name: 'Holy Week', group: 'seasonal', canvas: '#1a0406' },
+    { id: 'easter', name: 'Easter', group: 'seasonal', canvas: '#fffdf6' },
+    { id: 'pentecost', name: 'Pentecost', group: 'seasonal', canvas: '#200a03' },
+    { id: 'obsidian', name: 'Obsidian Console', group: 'signature', canvas: '#0c0d10' },
+    { id: 'default', name: 'APCCMMA Default', group: 'signature', canvas: '#100306' },
+    { id: 'light', name: 'APCCMMA Light', group: 'signature', canvas: '#faf6f4' },
+    { id: 'classic', name: 'Classic', group: 'signature', canvas: '#0d1b2e' },
+    { id: 'olive', name: 'Olive', group: 'signature', canvas: '#141a0c' },
+    { id: 'black-gold', name: 'Black & Gold', group: 'dark', canvas: '#0a0a0a' },
+    { id: 'deep-teal', name: 'Deep Teal', group: 'dark', canvas: '#031f1e' },
+    { id: 'burgundy', name: 'Burgundy', group: 'dark', canvas: '#2a0610' },
+    { id: 'wine', name: 'Wine', group: 'dark', canvas: '#15070f' },
+    { id: 'slate', name: 'Slate', group: 'dark', canvas: '#111418' },
+    { id: 'ice-blue', name: 'Ice Blue', group: 'light', canvas: '#eef6fb' },
+    { id: 'mint', name: 'Mint', group: 'light', canvas: '#eefaf4' },
+    { id: 'sage', name: 'Sage', group: 'light', canvas: '#f1f4ee' },
+    { id: 'linen', name: 'Linen', group: 'light', canvas: '#f8f3ea' },
+    { id: 'shell', name: 'Shell', group: 'light', canvas: '#f6f5f8' },
+  ];
   var root = document.documentElement;
-  var lightQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: light)') : null;
+  var fadeTimer;
 
-  /** The saved choice: 'light', 'dark' or 'system'. localStorage can throw in a private window, which means 'system'. */
-  function preference() {
+  function find(id) {
+    for (var i = 0; i < THEMES.length; i += 1) if (THEMES[i].id === id) return THEMES[i];
+    return null;
+  }
+
+  // localStorage can throw in a private window: then nothing is remembered, and the page still paints.
+  function read(key) {
     try {
-      var saved = localStorage.getItem(KEY);
-      return saved === 'light' || saved === 'dark' ? saved : 'system';
+      return localStorage.getItem(key);
     } catch (e) {
-      return 'system';
+      return null;
+    }
+  }
+  function write(key, value) {
+    try {
+      if (value === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, value);
+    } catch (e) {
+      // Not saved: the theme still applies to this page.
     }
   }
 
-  /** System resolves to light only when the browser asks for it, so a browser that says nothing keeps the dark design. */
-  function resolve(pref) {
-    if (pref === 'light' || pref === 'dark') return pref;
-    return lightQuery && lightQuery.matches ? 'light' : 'dark';
+  /** The laptop's theme as last heard. A value saved by the old Light / Dark switch that is not a theme id counts as nothing. */
+  function synced() {
+    var saved = read(KEY);
+    return find(saved) ? saved : DEFAULT_THEME;
+  }
+  /** A theme this browser chose for itself, or null when it matches the laptop. */
+  function override() {
+    var saved = read(OVERRIDE);
+    return find(saved) ? saved : null;
+  }
+  function current() {
+    return override() || synced();
   }
 
-  function apply(pref) {
-    var theme = resolve(pref);
+  function apply() {
+    var theme = current();
     root.setAttribute('data-theme', theme);
-    root.setAttribute('data-theme-pref', pref);
     var meta = document.querySelector('meta[name="theme-color"]');
     if (!meta) {
       meta = document.createElement('meta');
       meta.name = 'theme-color';
       document.head.appendChild(meta);
     }
-    meta.content = THEME_COLOR[theme];
-    document.dispatchEvent(new CustomEvent('apccmma:themechange', { detail: { preference: pref, theme: theme } }));
+    meta.content = find(theme).canvas;
+    document.dispatchEvent(new CustomEvent('apccmma:themechange', { detail: { theme: theme, synced: synced(), override: override() } }));
   }
 
-  function set(pref) {
-    if (pref !== 'light' && pref !== 'dark') pref = 'system';
-    try {
-      if (pref === 'system') localStorage.removeItem(KEY);
-      else localStorage.setItem(KEY, pref);
-    } catch (e) {
-      // Not saved: the choice still applies to this page.
-    }
-    // Colours fade only while the person switches, never on load. The class comes off once the fade is over.
+  /** Colours fade only while the theme changes on an open page, never on load. The class comes off once the fade is over. */
+  function applyWithFade() {
     root.classList.add('theme-switching');
-    apply(pref);
-    window.clearTimeout(set.timer);
-    set.timer = window.setTimeout(function () {
+    apply();
+    window.clearTimeout(fadeTimer);
+    fadeTimer = window.setTimeout(function () {
       root.classList.remove('theme-switching');
     }, 250);
   }
 
-  apply(preference());
-
-  // On System, follow the device when it changes, for example at sunset.
-  if (lightQuery) {
-    var onChange = function () {
-      if (preference() === 'system') apply('system');
-    };
-    if (lightQuery.addEventListener) lightQuery.addEventListener('change', onChange);
-    else if (lightQuery.addListener) lightQuery.addListener(onChange);
+  /** The sidebar picker: a theme id keeps this browser on that theme; anything else ('' for "Match the laptop") follows the laptop again. */
+  function choose(id) {
+    write(OVERRIDE, find(id) ? id : null);
+    applyWithFade();
   }
 
-  // A choice made in another tab applies here too.
+  /**
+   * A theme from the server (js/theme-sync.js). It is taken when the laptop chose it after the one this page has, and then repaints the
+   * page at once. Returns true when it changed what the laptop theme is.
+   */
+  function receive(theme, updatedAt) {
+    if (!find(theme) || typeof updatedAt !== 'string' || isNaN(Date.parse(updatedAt))) return false;
+    var known = read(STAMP);
+    if (known && !isNaN(Date.parse(known)) && Date.parse(updatedAt) <= Date.parse(known)) return false;
+    var before = current();
+    var changed = read(KEY) !== theme;
+    write(KEY, theme);
+    write(STAMP, updatedAt);
+    if (current() !== before) applyWithFade();
+    else if (changed) apply();
+    return changed;
+  }
+
+  // A link opened from the laptop says which theme it is in. It counts as the laptop's theme as of now, and comes off the address so a
+  // bookmark does not pin it.
+  (function fromAddress() {
+    var match = /[?&]theme=([\w-]+)/.exec(window.location.search || '');
+    if (!match || !find(match[1])) return;
+    write(KEY, match[1]);
+    write(STAMP, new Date().toISOString());
+    try {
+      var url = new URL(window.location.href);
+      url.searchParams.delete('theme');
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+    } catch (e) {
+      // An old browser keeps ?theme= in the address; it does no harm.
+    }
+  })();
+
+  apply();
+
+  // A theme chosen or received in another tab applies here too.
   window.addEventListener('storage', function (event) {
-    if (event.key === KEY || event.key === null) apply(preference());
+    if (event.key === KEY || event.key === OVERRIDE || event.key === null) applyWithFade();
   });
 
-  window.apccmmaTheme = { preference: preference, set: set };
+  window.apccmmaTheme = {
+    themes: THEMES,
+    defaultTheme: DEFAULT_THEME,
+    current: current,
+    synced: synced,
+    override: override,
+    choose: choose,
+    receive: receive,
+  };
 })();

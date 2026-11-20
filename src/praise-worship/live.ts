@@ -1,5 +1,6 @@
 import { livePosition, slidesFor, step, type PwPosition, type PwSegment, type PwSlide } from '../../shared/pw.js';
 import { pwT } from '../../shared/pw-i18n.js';
+import { pwLookKey } from '../../shared/slide-look.js';
 import { blackoutOverPw, isAnyOutputLive, welcomeOverPw } from '../../shared/live.js';
 import type { Frame, LiveState, LowerThird } from '../../shared/live.js';
 import { dispatch, useLive } from '../live/store';
@@ -121,11 +122,11 @@ function repaginateOnAir() {
 
 const lang = () => useUi.getState().lang;
 
-/** The projector frame for a step. */
+/** The projector frame for a step. It carries the step's look key, so the slide's own look (the Output Preview Editor) follows it on screen. */
 export function frameFor(segment: PwSegment, s: LiveStep): Frame {
   if (s.kind === 'black') return { kind: 'blackout' };
   const footer = s.slide.kind === 'lyrics' ? s.slide.hymnTitle : s.slide.kind === 'prayer' ? pwT(lang(), 'prayTogether') : undefined;
-  return { kind: 'pw', slide: s.slide, segmentName: segment.name, type: segment.type, index: s.index, total: s.total, footer };
+  return { kind: 'pw', slide: s.slide, segmentName: segment.name, type: segment.type, index: s.index, total: s.total, footer, lookKey: pwLookKey(segment.key, s.index) };
 }
 
 /** The song titles of a segment on one line. A long list would fill the screen, so it keeps the first title and counts the rest. */

@@ -159,10 +159,13 @@ test('the editor\'s switcher: a pill per Holy Mass on the day, the open one mark
   assert.doesNotMatch(ui.switcherHtml(day, SIX, { pathOf: () => '' }), /Add Time/, 'a viewer gets no + Add Time');
 });
 
-test('the broadcast colours have a light value for every dark one, and every label says Holy Mass', () => {
+test('the broadcast colours follow the laptop theme tokens, and every label says Holy Mass', () => {
   const css = readWeb('css/planner.css');
-  const dark = [...css.matchAll(/^\s*(--bc-[a-z-]+):/gm)].map((m) => m[1]);
-  for (const name of new Set(dark)) assert.equal(dark.filter((n) => n === name).length, 2, `${name} is set for dark and light`);
+  // One value each, taken from the theme, so the calendar matches whichever theme the laptop is in, light or dark.
+  const declared = [...css.matchAll(/^\s*(--bc-[a-z-]+):\s*([^;]+);/gm)];
+  assert.ok(declared.length >= 12);
+  for (const [, name, value] of declared) assert.match(value, /var\(--color-[\w-]+\)/, `${name} comes from a theme token`);
+  assert.equal(new Set(declared.map((m) => m[1])).size, declared.length);
   // The labels this adds say "Holy Mass", never "Mass" alone.
   assert.match(ui.scheduleFieldsHtml(), /<label class="bc-label" for="schedule-time">Holy Mass time<\/label>/);
   assert.match(ui.switcherHtml([ui.asSchedulePlan(listed(SIX, '', ''))], SIX, { pathOf: () => '' }), /Holy Masses on this day/);

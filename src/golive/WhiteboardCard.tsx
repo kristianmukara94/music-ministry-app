@@ -177,7 +177,12 @@ export function WhiteboardCard({ t }: { t: GoLiveT }) {
     );
   };
 
-  const grid = (group: WhiteboardSlide[]) => <ul className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">{group.map(slideCard)}</ul>;
+  // A folder holds about two rows of cards and scrolls past that, so a 95-slide deck no longer makes the Go Live page thousands of pixels long.
+  const grid = (group: WhiteboardSlide[]) => (
+    <div className="max-h-[560px] overflow-y-auto rounded-lg pr-1 [scrollbar-gutter:stable]">
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">{group.map(slideCard)}</ul>
+    </div>
+  );
 
   /** A folder's slides under their own heading, which can be folded away and can send the whole folder to the Mass Queue. */
   const section = (key: number | typeof UNFILED, name: string, group: WhiteboardSlide[], icon: typeof Folder) => {

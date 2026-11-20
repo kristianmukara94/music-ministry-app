@@ -9,7 +9,9 @@ import {
   type NewWebUser,
   type SongsSyncState,
   type PlansSyncState,
+  type ThemeSyncState,
 } from '../live/bridge';
+import { THEMES } from '../theme/themes';
 import {
   checkChurchSetup,
   checkWebUser,
@@ -35,6 +37,15 @@ const primary =
   'flex h-10 items-center gap-2 rounded-md bg-accent px-4 text-xs font-bold uppercase text-on-accent shadow-md hover:brightness-110 disabled:opacity-40';
 const field = 'h-10 rounded-md border border-fg/15 bg-panel-2 px-3 font-mono text-sm outline-none focus:border-accent';
 
+/** The website-theme line: which theme the web planner shows, and whether this laptop's latest choice has reached it. */
+function themeSyncText(state: ThemeSyncState | null): string {
+  if (!state?.theme) return 'Not sent yet';
+  const name = THEMES.find((t) => t.id === state.theme)?.name ?? state.theme;
+  if (!state.themeDirty) return `${name}, shown on the website`;
+  if (state.status === 'syncing') return `${name}, sending…`;
+  return `${name}, sent when the cloud can be reached`;
+}
+
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-xl border border-line bg-panel p-5">
@@ -52,6 +63,7 @@ export function CloudSyncSettings() {
   const [link, setLink] = useState<CloudLink | null>(null);
   const [code, setCode] = useState('');
   const [label, setLabel] = useState('');
+  const [themeSync, setThemeSync] = useState<ThemeSyncState | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addingUser, setAddingUser] = useState(false);
@@ -79,6 +91,7 @@ export function CloudSyncSettings() {
     const load = () => {
       cloud.songsStatus().then(setSongs).catch(() => {});
       cloud.plansStatus().then(setPlans).catch(() => {});
+      cloud.themeStatus().then(setThemeSync).catch(() => {});
     };
     void load();
     const timer = window.setInterval(load, 30000);
@@ -414,7 +427,15 @@ export function CloudSyncSettings() {
               <dd>{songsStatusText(songs)}</dd>
               <dt className="text-muted">Plans</dt>
               <dd>{plansStatusText(plans)}</dd>
+              <dt className="text-muted">Website theme</dt>
+              <dd>{themeSyncText(themeSync)}</dd>
             </dl>
+            <div>
+              {/* Opens in the browser already in this laptop's theme, and the page keeps following it live. */}
+              <button type="button" onClick={() => void cloud.openWebsite().catch(() => {})} className={button}>
+                <Cloud size={14} aria-hidden="true" /> Open web planner
+              </button>
+            </div>
             {view.offline && <p className="text-xs text-muted">Showing the last known link. The cloud could not be reached just now.</p>}
 
             {addingUser ? (

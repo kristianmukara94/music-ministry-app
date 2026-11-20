@@ -122,34 +122,40 @@ export function pwSongTarget({ t, segmentIndex, steps, onAir, hymn }: { t: PwT; 
 }
 
 /**
- * A Holy Mass item that is not a song (a Mass part, a reading, a psalm, a prayer, a typed response, a passage): the slide on screen or staged,
- * saved to this plan's own copy of the item. Null for an item with no words to change here (a picture, a missing item).
+ * A Holy Mass item that is not a song (a Mass part, a reading, a psalm, a prayer, a typed response, a passage): slide `page` of it (the slide on
+ * screen or staged when `page` is left out), saved to this plan's own copy of the item. `frame` is the item's slide on screen or staged, and it
+ * stays there: a change to another of the item's slides never moves the screen. Null for an item with no words to change here (a picture, a
+ * missing item) or no such slide.
  */
-export function massPagesTarget({ t, item, index, frame, note }: { t: PwT; item: QueueItem; index: number; frame: Frame; note: Note | null }): SlideEditTarget | null {
+export function massPagesTarget({ t, item, index, frame, note, page }: { t: PwT; item: QueueItem; index: number; frame: Frame; note: Note | null; page?: number }): SlideEditTarget | null {
   const pages = item.stale ? null : slidePagesOf(frame, note);
   const current = slideIndexOf(frame);
-  if (!pages || pages[current] === undefined) return null;
+  const at = page ?? current;
+  if (!pages || pages[at] === undefined || pages[current] === undefined) return null;
   const save = async (next: string[], showPage: number, inPlace: boolean) => {
     if (slidesTooLong(next)) throw new Error(t('slideTooLong', { max: MAX_NOTE_BODY }));
     await saveItemSlides({ index, item, note, pages: next, showPage, inPlace });
   };
-  const rest = pagesWithout(pages, current);
+  const rest = pagesWithout(pages, at);
+  // The slide on screen after a slide is taken out: the next one when it was the one on screen, else the same slide, one place earlier when
+  // the slide taken out came before it.
+  const shownAfterDelete = (left: number) => (at === current ? slideAfterDelete(current, left) : at < current ? current - 1 : current);
   return {
-    key: `mass:${item.id}:${current}`,
-    number: current + 1,
-    text: pages[current],
+    key: `mass:${item.id}:${at}`,
+    number: at + 1,
+    text: pages[at],
     tag: item.label,
     tagOptions: null,
     apply: async (text) => {
       if (!text.trim()) throw new Error('A slide needs some words. To take one out, use Delete Slide.');
-      if (text === pages[current]) return;
-      await save(pages.map((p, i) => (i === current ? text : p)), current, true);
+      if (text === pages[at]) return;
+      await save(pages.map((p, i) => (i === at ? text : p)), current, at === current);
     },
-    // The new slide goes after the one on screen, which keeps its place on screen.
+    // The new slide goes after this one. The slide on screen keeps its place on screen (one place later when the new slide comes before it).
     add: async (text) => {
-      const at = Math.min(current + 1, pages.length);
-      await save([...pages.slice(0, at), text, ...pages.slice(at)], current, false);
+      const after = Math.min(at + 1, pages.length);
+      await save([...pages.slice(0, after), text, ...pages.slice(after)], after <= current ? current + 1 : current, false);
     },
-    remove: rest && canDeleteSlide(pages.length) ? () => save(rest, slideAfterDelete(current, rest.length), false) : null,
+    remove: rest && canDeleteSlide(pages.length) ? () => save(rest, shownAfterDelete(rest.length), false) : null,
   };
 }

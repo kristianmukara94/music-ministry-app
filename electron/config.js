@@ -23,6 +23,8 @@ const DEFAULTS = {
   database_path: null,
   default_language: 'en',
   theme: 'obsidian',
+  // The theme last painted and whether the cloud has it yet (electron/theme-sync.js): { theme, updatedAt, dirty }, or null.
+  theme_sync: null,
   preview_window_bounds: null,
   projector: PROJECTOR_SETTINGS_DEFAULTS,
   lower_third: LOWER_THIRD_DEFAULTS,
@@ -94,12 +96,21 @@ function sanitizeBounds(raw) {
   return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
 }
 
+/** The theme sync's saved state: a painted theme id (never season-auto), an ISO time, and whether it is still unsent. */
+function sanitizeThemeSync(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (!THEME_IDS.includes(raw.theme) || raw.theme === 'season-auto') return null;
+  if (typeof raw.updatedAt !== 'string' || Number.isNaN(Date.parse(raw.updatedAt))) return null;
+  return { theme: raw.theme, updatedAt: raw.updatedAt, dirty: raw.dirty === true };
+}
+
 /** Keeps only known keys with valid values. Anything else falls back to the default. */
 function sanitize(raw) {
   return {
     database_path: typeof raw.database_path === 'string' && raw.database_path.trim() ? raw.database_path : null,
     default_language: LANGUAGES.includes(raw.default_language) ? raw.default_language : DEFAULTS.default_language,
     theme: THEME_IDS.includes(raw.theme) ? raw.theme : DEFAULTS.theme,
+    theme_sync: sanitizeThemeSync(raw.theme_sync),
     preview_window_bounds: sanitizeBounds(raw.preview_window_bounds),
     projector: sanitizeProjectorSettings(raw.projector),
     lower_third: sanitizeLowerThirdStyle(raw.lower_third),

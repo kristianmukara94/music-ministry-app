@@ -16,6 +16,7 @@ import { NotesPrayersView } from '../notes/NotesPrayersView';
 import { UnifiedDeckView } from '../whiteboard/UnifiedDeckView';
 import { PlannerView } from '../planner/PlannerView';
 import { GoLiveConsole } from '../golive/GoLiveConsole';
+import { useGoLiveFullscreenSync } from '../golive/fullscreen';
 import { Settings } from '../settings/Settings';
 import { EulaGate } from '../components/EulaModal';
 import { bridge } from '../live/bridge';
@@ -165,7 +166,11 @@ export function OperatorApp() {
   const view = useUi((s) => s.view);
   const previewOpen = useUi((s) => s.previewOpen);
   const lang = useUi((s) => s.lang);
+  // Go Live Fullscreen Mode: the console fills the window. Only the chrome around it goes; <main> keeps its place, so the console is never
+  // remounted and nothing on air is reset. Other views keep the normal layout, and the mode comes back when Go Live opens again.
+  const goLiveFullscreen = useUi((s) => s.goLiveFullscreen) && view === 'goLive';
   useGlobalHotkeys();
+  useGoLiveFullscreenSync();
   useSanctuaryAlertHotkey();
   // The saved default language applies at launch. The sidebar switch then overrides it for this session.
   useEffect(() => {
@@ -206,9 +211,12 @@ export function OperatorApp() {
       <LicenseBanner />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-clip">
-        <Sidebar />
-        {/* pt-6 keeps headings and the first cards clear of the top bar. pr-14 leaves room for the edge tabs. */}
-        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pt-6 pr-14">
+        {!goLiveFullscreen && <Sidebar />}
+        {/* pt-6 keeps headings and the first cards clear of the top bar. pr-14 leaves room for the edge tabs (gone in Go Live Fullscreen Mode). */}
+        <main
+          data-golive-fullscreen={goLiveFullscreen || undefined}
+          className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden ${goLiveFullscreen ? 'pt-1' : 'pt-6 pr-14 short:pt-2'}`}
+        >
           {view === 'dashboard' && <Dashboard />}
           {/* Announcements and the Whiteboard are one workspace. A link that still asks for the Whiteboard opens it on the Whiteboard's slides. */}
           {(view === 'announcements' || view === 'whiteboard') && <UnifiedDeckView />}
@@ -226,7 +234,7 @@ export function OperatorApp() {
         </main>
       </div>
 
-      <EdgeTabs />
+      {!goLiveFullscreen && <EdgeTabs />}
       <RemoteDrawer />
       {/* The floating preview sits above whatever module is open. The top bar's Preview button toggles it. */}
       {previewOpen && <PreviewPanel />}

@@ -71,7 +71,7 @@
   height: 8px;
   border-radius: 50%;
   background: var(--pill-text);
-  box-shadow: 0 0 8px rgba(52, 211, 153, 0.8);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--pill-text) 80%, transparent);
 }
 
 .sync-dot::after {
@@ -373,7 +373,7 @@
 }
 
 .code-input[data-state='invalid'] {
-  border-color: rgba(245, 185, 113, 0.55);
+  border-color: color-mix(in srgb, var(--warn-text) 55%, transparent);
 }
 
 .sign-in-error {

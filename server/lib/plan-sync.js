@@ -10,6 +10,7 @@ import { bearerToken, deviceFrom } from './device.js';
 import { hashToken } from './auth.js';
 import { hit } from './rate-limit.js';
 import { EDITING_ROLES } from './rules.js';
+import { applyPushedTheme } from './theme-sync.js';
 import { MAX_MASS_LANGUAGE, MAX_MASS_TIME, canonicalMassTime, findTimeConflict, normalizeMassLanguage, normalizeMassTime, timeConflictText } from '../../shared/mass-schedule.js';
 
 export const MAX_ITEMS = 200;
@@ -662,7 +663,9 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
     const counts = { accepted: 0, conflict: 0, error: 0 };
     for (const r of results) counts[r.status] += 1;
     await sql`INSERT INTO audit_log (church_id, actor_user_id, action, detail) VALUES (${churchId}, ${device.user_id}, 'plan.synced', ${JSON.stringify(counts)}::jsonb)`;
-    return json(200, { results, counts });
+    // A laptop may send its colour theme with its plans. Laptops from before themes synced send none, and nothing changes for them.
+    const theme = await applyPushedTheme({ sql, churchId, body, now });
+    return json(200, theme === undefined ? { results, counts } : { results, counts, theme });
   });
 
   return { createPlan: createRoute, pullPlans: pullRoute, pushPlans: pushRoute, deletePlan: deleteRoute, getPlan: getRoute };

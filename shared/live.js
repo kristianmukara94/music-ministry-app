@@ -2,6 +2,7 @@ import { sanitizeProjectorSettings, PROJECTOR_SETTINGS_DEFAULTS, INTRO_SLIDE_MOD
 import { WELCOME_DEFAULTS, sanitizeWelcomeSettings } from './welcome-settings.js';
 import { sanitizeLowerThirdStyle, LOWER_THIRD_DEFAULTS } from './lower-third-style.js';
 import { sanitizeAlert } from './sanctuary-alert.js';
+import { sanitizeSlideLook } from './slide-look.js';
 // Single source of truth for what the congregation sees.
 // Plain JS so the Electron main process (authoritative copy) and the
 // renderer (browser fallback + optimistic UI) run the exact same reducer.
@@ -110,6 +111,8 @@ export function initialLiveState() {
     queueCursor: -1,
     // Praise & Worship: the session loaded for live use and where the operator is in it. Null when none is loaded.
     pw: null,
+    // The Output Preview Editor's "This Slide" looks, by slide key (see shared/slide-look.js). Kept for this run of the app only.
+    slideLooks: {},
   };
 }
 
@@ -297,6 +300,23 @@ function reduce(s, a) {
 
     // Hide Text: the words leave the screen and everything behind them stays (the background, its video, the slide's colour, the lower third).
     // The slide and the operator's place in the run are kept, so showing the text again is instant. A new slide on air lifts it (showFrame).
+    // One slide's own look (case, alignment, scale, MAX, backdrop) over the projector settings, or null to drop it. Every output draws it.
+    case 'slideLook/set': {
+      if (typeof a.key !== 'string' || !a.key) return s;
+      const look = sanitizeSlideLook(a.look);
+      const looks = s.slideLooks ?? {};
+      if (!look && !(a.key in looks)) return s;
+      if (look && JSON.stringify(looks[a.key]) === JSON.stringify(look)) return s;
+      const next = { ...looks };
+      if (look) next[a.key] = look;
+      else delete next[a.key];
+      return { ...s, slideLooks: next };
+    }
+
+    // Every slide's own look dropped at once.
+    case 'slideLook/clear':
+      return s.slideLooks && Object.keys(s.slideLooks).length > 0 ? { ...s, slideLooks: {} } : s;
+
     case 'projector/hideText': {
       const p = s.projector;
       const hidden = a.hidden ?? !p.textHidden;

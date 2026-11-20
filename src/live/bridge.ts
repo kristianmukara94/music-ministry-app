@@ -756,6 +756,18 @@ export interface CloudApi {
   createChurchAdmin(input: NewChurchAdmin): Promise<CreatedChurchAdmin>;
   renewLicense(setupKey: string): Promise<{ licenseExpiresAt: string | null }>;
   defaultLabel(): Promise<string>;
+  /** The website's copy of this laptop's colour theme (electron/theme-sync.js). themeDirty: chosen here but not sent yet. */
+  themeStatus(): Promise<ThemeSyncState>;
+  /** Opens the church's web planner in the browser, in this laptop's theme. False when no cloud address is set. */
+  openWebsite(): Promise<boolean>;
+}
+
+export interface ThemeSyncState {
+  theme: string | null;
+  themeUpdatedAt: string | null;
+  themeDirty: boolean;
+  status: 'idle' | 'syncing' | 'synced' | 'offline' | 'waiting' | 'error';
+  message: string | null;
 }
 
 const offlineCloud: CloudApi = {
@@ -770,6 +782,8 @@ const offlineCloud: CloudApi = {
   saveAddress: async () => ({ ok: false, message: 'Open the desktop app to change the cloud address.' }),
   syncSongsNow: async () => ({ status: 'idle', lastSyncedAt: null, message: null }),
   defaultLabel: async () => 'This computer',
+  themeStatus: async () => ({ theme: null, themeUpdatedAt: null, themeDirty: false, status: 'idle', message: null }),
+  openWebsite: async () => false,
 };
 
 /** This laptop's license window. The text is written by the main process (electron/license-manager.js). */

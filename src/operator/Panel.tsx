@@ -6,10 +6,10 @@ export function Panel({ eyebrow, title, children, action, className = '' }: {
 }) {
   return (
     <section className={`flex flex-col overflow-hidden rounded-[10px] border border-fg/[0.12] bg-panel ${className}`}>
-      <header className="flex min-h-12 items-center justify-between gap-3 border-b border-fg/10 px-4 py-2.5">
+      <header className="flex min-h-12 items-center justify-between gap-3 border-b border-fg/10 px-4 py-2.5 short:min-h-9 short:py-1.5">
         <div className="min-w-0">
           <div className="text-xs font-semibold tracking-wide text-fg/70 uppercase">{eyebrow}</div>
-          {title && <h3 className="text-lg leading-tight font-semibold text-fg">{title}</h3>}
+          {title && <h3 className="text-lg leading-tight font-semibold text-fg short:text-base">{title}</h3>}
         </div>
         {action}
       </header>

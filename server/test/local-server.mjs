@@ -18,6 +18,7 @@ import { createChurchRenewApi, createChurchSetupApi } from '../lib/church-setup.
 import { createPlanEditingApi } from '../lib/plan-editing.js';
 import { createSongsSyncApi } from '../lib/songs-sync.js';
 import { createPlanSyncApi } from '../lib/plan-sync.js';
+import { createThemeSyncApi } from '../lib/theme-sync.js';
 import { hashPassword, hashToken, setupKey } from '../lib/auth.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -86,6 +87,13 @@ await db.query(
 const SETUP_KEY = setupKey();
 await db.query(`INSERT INTO setup_keys (key_hash) VALUES ($1)`, [hashToken(SETUP_KEY, LOCAL_SECRET)]);
 
+// A linked laptop for this run, so theme-sync (and the plan sync) can be tried with curl. Printed below; test use only.
+const LAPTOP_TOKEN = randomBytes(32).toString('base64url');
+await db.query(
+  `INSERT INTO device_tokens (token_hash, church_id, user_id, device_name) SELECT $1, $2, id, 'Local test laptop' FROM users WHERE church_id = $2 AND username = 'boss'`,
+  [hashToken(LAPTOP_TOKEN, LOCAL_SECRET), CHURCH],
+);
+
 const sql = async (strings, ...values) => {
   const text = strings.reduce((acc, s, i) => acc + s + (i < values.length ? `$${i + 1}` : ''), '');
   return (await db.query(text, values)).rows;
@@ -99,6 +107,7 @@ const churchSetup = createChurchSetupApi({ sql, transaction, secret: LOCAL_SECRE
 const planEditing = createPlanEditingApi({ sql, transaction, secret: LOCAL_SECRET });
 const songsSync = createSongsSyncApi({ sql, transaction, secret: LOCAL_SECRET });
 const planSync = createPlanSyncApi({ sql, transaction, secret: LOCAL_SECRET });
+const themeSync = createThemeSyncApi({ sql, secret: LOCAL_SECRET });
 const routes = {
   login: api.login, logout: api.logout, me: api.me, 'change-password': api.changePassword, plans: api.plans,
   'users-list': admin.list, 'users-create': admin.create, 'users-update': admin.update,
@@ -118,6 +127,8 @@ const routes = {
   'plan-sync-get': planSync.getPlan,
   'plan-sync-pull': planSync.pullPlans,
   'plan-sync-push': planSync.pushPlans,
+  theme: themeSync.webTheme,
+  'theme-sync': themeSync.laptopTheme,
 };
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
@@ -150,4 +161,5 @@ http.createServer(async (req, res) => {
   console.log(`Local planner on http://localhost:${PORT}  (test accounts: planner, viewer, fresh, boss (admin))`);
   console.log(`Test password for this run: ${PASSWORD}`);
   console.log(`Test setup key for this run (works once): ${SETUP_KEY}`);
+  console.log(`Test laptop token for this run (theme-sync, plan sync): ${LAPTOP_TOKEN}`);
 });

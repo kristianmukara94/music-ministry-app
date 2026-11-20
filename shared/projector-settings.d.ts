@@ -30,6 +30,8 @@ export interface ProjectorSettings {
   balanceLines: boolean;
   /** The case slide text is drawn in: as typed, all capitals or all small letters. 'original' by default. */
   textCase: 'original' | 'uppercase' | 'lowercase';
+  /** Every slide's alignment, or null for each slide's own. */
+  slideAlign: 'left' | 'center' | 'right' | null;
   showSlotTitle: boolean;
   backgroundEverywhere: boolean;
   advancedOutput: boolean;

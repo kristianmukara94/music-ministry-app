@@ -241,8 +241,8 @@ test('a Holy Mass song shows its section chips with the projector window closed,
   assert.match(live, /const steps = noteRowOffScreen\(state, frame\) \? null : stepsOf\(frame, hymn\);/);
   assert.match(view, /onSelect=\{\(i\) => void run\(\(\) => goWithin\(i, frame\)\)\}/, 'a chip on a staged song puts that section on screen');
   // As in Praise & Worship: the title card's cue takes no number key, and the song's sections carry its title (their tab in Jump to Cue).
-  assert.match(view, /\{ index: 0, number: 1, tag: tp\('titleChip'\), text: hymn\.title, chip: 'T', hotkey: false \}/);
-  assert.match(view, /group: hymn\.title, chip: label \}/);
+  assert.match(view, /\{ index: 0, number: 1, tag: tp\('titleChip'\), text: v\.hymn\.title, chip: 'T', hotkey: false \}/);
+  assert.match(view, /group: v\.hymn\.title, chip: label \}/);
   assert.match(view, /<CueNavigator\s/);
 });
 
@@ -260,7 +260,8 @@ test('the keyboard steps the Holy Mass the same way as its Next and Back buttons
 test('Back from the first slide of a Holy Mass item goes to the item before at its last slide, staged before the take', () => {
   const live = read('src/golive/massLive.ts');
   assert.match(live, /if \(delta === -1\) \{\s+let before = state\.queueCursor - 1;\s+while \(before >= 0 && state\.queue\[before\]\.stale\) before -= 1;\s+if \(before >= 0\) await playMassFromEnd\(before\);/);
-  assert.match(live, /if \(last\) dispatch\(\{ type: 'projector\/stage', frame: last \}\);\s+dispatch\(\{ type: 'projector\/take', source: 'MASS_QUEUE' \}\);/);
+  assert.match(live, /function playMassFromEnd\(index: number\): Promise<void> \{\s+return playMassItemAt\(index, 'last'\);/);
+  assert.match(live, /if \(at\) dispatch\(\{ type: 'projector\/stage', frame: at \}\);\s+dispatch\(\{ type: 'projector\/take', source: 'MASS_QUEUE' \}\);/);
 });
 
 test('the Go Live consoles show every section chip, with no Show all verses switch', () => {
@@ -278,7 +279,8 @@ test('a prayer split into slides steps slide by slide in the Holy Mass, with a n
   assert.match(live, /frameAt\(frame, target, await hymnOf\(frame\), slotNameAt\(state\), await noteOf\(frame\)\)/, 'a chip jumps within the prayer');
   assert.match(live, /frameAt\(frame, target, hymn, slotNameAt\(state\), await noteOf\(frame\)\)/, 'Next and Back step within the prayer');
   // Back from the item after a prayer puts the prayer up at its last slide (the last of the slides its row plays).
-  assert.match(live, /takePrayer\(note, 'MASS_QUEUE', Math\.max\(0, slideFramesOf\(note, source\?\.slides\)\.length - 1\), source\?\.slides\);/);
+  assert.match(live, /const count = slideFramesOf\(note, source\?\.slides\)\.length;/);
+  assert.match(live, /takePrayer\(note, 'MASS_QUEUE', Math\.max\(0, Math\.min\(slide === 'last' \? count - 1 : slide, count - 1\)\), source\?\.slides\);/);
   const view = read('src/golive/MassLiveView.tsx');
   assert.match(view, /const note = useNoteOf\(frame\);/);
   assert.match(view, /frameAt\(frame, steps\.index \+ 1, hymn, slotNameAt\(live\), note\)/, 'the next-slide preview shows the prayer\'s next slide');

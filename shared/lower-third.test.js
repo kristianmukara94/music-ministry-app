@@ -64,7 +64,7 @@ test('the live preview, the projector and the livestream draw the band with one 
   assert.match(view, /if \(value\.template === 'segment'\) \{[\s\S]*LOWER_THIRD_BAND\.bottom/, 'the segment band is placed in LowerThirdStage');
   assert.match(view, /export function LowerThirdView[\s\S]*<LowerThirdStage/, 'the livestream lower-third view draws through LowerThirdStage');
   assert.match(view, /export function LowerThirdOverlay[\s\S]*<LowerThirdStage/, 'the projector overlay draws through LowerThirdStage');
-  assert.match(read('src/praise-worship/LiveView.tsx'), /<LowerThirdStage value=\{live\.lowerThird\.live\}/, 'the live preview draws through LowerThirdStage');
+  assert.match(read('src/golive/console/OutputsCard.tsx'), /<LowerThirdStage value=\{band\}/, 'the live preview draws through LowerThirdStage');
   assert.match(read('src/output/ProjectorView.tsx'), /<LowerThirdOverlay value=\{lowerThirdValue\}/, 'the projector draws the overlay');
 });
 

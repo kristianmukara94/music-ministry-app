@@ -68,6 +68,20 @@ export function TypographyCard({ backdrop = true }: { backdrop?: boolean }) {
         />
       </div>
       <div className={ROW}>
+        <span className={LABEL}>{t('consoleAlign')}</span>
+        {/* Every slide's alignment (slideAlign). Until one is picked, each slide keeps its own, which is centred, so Center reads as chosen. */}
+        <div role="radiogroup" aria-label={t('consoleAlign')} className="flex gap-1">
+          {(['left', 'center', 'right'] as const).map((a) => {
+            const on = (settings.slideAlign ?? 'center') === a;
+            return (
+              <button key={a} type="button" role="radio" aria-checked={on} onClick={() => settings.slideAlign !== a && save({ slideAlign: a })} className={on ? BTN_ACTIVE : BTN}>
+                {t(a === 'left' ? 'consoleAlignLeft' : a === 'center' ? 'consoleAlignCenter' : 'consoleAlignRight')}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className={ROW}>
         <span className={LABEL}>{t('consoleScale')}</span>
         <div className="flex items-center gap-1.5">
           <button type="button" aria-label={t('typoSmaller')} title={t('typoSmaller')} onClick={() => step(-1)} disabled={index <= 0} className={`${BTN} w-9 px-0 font-extrabold`}>

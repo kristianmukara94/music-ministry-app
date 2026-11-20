@@ -7,6 +7,8 @@ import type { PwSlide, PwType } from '../../shared/pw.js';
 import { useLive } from '../live/store';
 import { slotTitleShown } from '../../shared/live.js';
 import { welcomeBackground, type WelcomeBackground } from '../../shared/welcome-settings.js';
+import { frameWithAlign, slideLookAt, type SlideLook } from '../../shared/slide-look.js';
+import { withBackdropTheme } from '../../shared/stage-cue.js';
 import { slideFontCss } from '../../shared/text-style.js';
 import { applyPwSlideTextCase, applyTextCase, textCaseOf } from '../../shared/text-fit.js';
 import { PwSlideFace } from './PwSlideFace';
@@ -21,23 +23,38 @@ export interface Shown {
   type: PwType;
   index: number;
   total: number;
+  /** The step's key for its own look (shared/slide-look.js pwLookKey), so the monitors draw the slide as the projector does. */
+  lookKey?: string;
 }
 
 const STAGE = 'relative aspect-video w-full overflow-hidden rounded-lg border border-fg/15 [container-type:size]';
 
 /** A slide, drawn with the projector's own design, or a black screen when the step is blank. */
-function Face({ shown, blackLabel, background }: { shown: Shown; blackLabel: string; background: WelcomeBackground }) {
+function Face({ shown, blackLabel, background, look: given }: { shown: Shown; blackLabel: string; background: WelcomeBackground; look?: SlideLook | null }) {
   const t = usePwT();
+  // The slide's own look: the one given (the editor's draft), else the one saved for its key. Each of its settings replaces the projector's.
+  const saved = useLive((s) => slideLookAt(s.state, shown.lookKey));
+  const look = given === undefined ? saved : given;
   // The thumbnails follow the font and size the operator picks, so the change shows in the preview as it is made.
   const slideFont = useLive((s) => slideFontCss(s.state.settings.slideFont));
-  const slideScale = useLive((s) => s.state.settings.slideFontScale);
+  const settingsScale = useLive((s) => s.state.settings.slideFontScale);
+  const slideScale = look?.fontScale ?? settingsScale;
   const titleShown = useLive((s) => slotTitleShown(s.state));
   // The projector's text case (Aa / AA / aa) and edge-to-edge (MAX), so the operator sees the congregation's slide 1:1. The case is applied to
   // the words before PwSlideFace fits them, as the projector does, so UPPERCASE is measured as drawn.
-  const textCase = useLive((s) => textCaseOf(s.state.settings.textCase));
-  const edgeToEdge = useLive((s) => s.state.settings.edgeToEdge === true);
+  const settingsCase = useLive((s) => textCaseOf(s.state.settings.textCase));
+  const textCase = look?.textCase ?? settingsCase;
+  const settingsEdge = useLive((s) => s.state.settings.edgeToEdge === true);
+  const edgeToEdge = look?.maxFit ?? settingsEdge;
+  const settingsAlign = useLive((s) => s.state.settings.slideAlign ?? null);
+  const align = look?.align ?? settingsAlign;
   const bandOn = useLive((s) => s.state.lowerThird.live !== null);
-  const slide = useMemo(() => applyPwSlideTextCase(shown.slide, textCase), [shown.slide, textCase]);
+  const slide = useMemo(() => {
+    const cased = applyPwSlideTextCase(shown.slide, textCase);
+    return cased ? frameWithAlign({ kind: 'pw', slide: cased, segmentName: '', type: shown.type, index: 0, total: 1 }, align).slide : cased;
+  }, [shown.slide, shown.type, textCase, align]);
+  const savedBackground = useLive((s) => s.state.welcome.slideBackground);
+  const face = useMemo(() => (look?.backdrop ? welcomeBackground(withBackdropTheme(savedBackground, look.backdrop)) : background), [look?.backdrop, savedBackground, background]);
   if (!slide) {
     return (
       <div data-theme="default" className="absolute inset-0 grid place-items-center bg-canvas text-muted">
@@ -53,7 +70,7 @@ function Face({ shown, blackLabel, background }: { shown: Shown; blackLabel: str
       index={shown.index}
       total={shown.total}
       footer={applyTextCase(slideFooter(slide, t('prayTogether')), textCase) || undefined}
-      background={background}
+      background={face}
       slideFont={slideFont}
       slideScale={slideScale}
       hideTitle={!titleShown}
@@ -67,13 +84,13 @@ function Face({ shown, blackLabel, background }: { shown: Shown; blackLabel: str
  * One step drawn alone, filling a monitor that declares `container-type: size`: the Go Live console's program and preview monitors. The same
  * face, background layer, case and size as the projector, so the operator sees the congregation's slide 1:1.
  */
-export function PwStageFace({ shown }: { shown: Shown }) {
+export function PwStageFace({ shown, look }: { shown: Shown; /** A look to draw in place of the saved one: the editor's draft. */ look?: SlideLook | null }) {
   const t = usePwT();
   const background = welcomeBackground(useLive((s) => s.state.welcome.slideBackground));
   return (
     <>
       {background.media && <SlideBackgroundLayer media={background.media} visible={shown.slide !== null} />}
-      <Face shown={shown} blackLabel={t('previewBlack')} background={background} />
+      <Face shown={shown} blackLabel={t('previewBlack')} background={background} look={look} />
     </>
   );
 }

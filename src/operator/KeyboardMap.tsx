@@ -15,6 +15,9 @@ const TRANSLATED: Record<string, StringKey> = {
   clear: 'keys.clear',
 };
 
+/** Shortcuts listed before Show all. */
+const PREVIEW_COUNT = 4;
+
 const KEYCAP = 'min-w-[52px] shrink-0 whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-center font-mono text-xs font-bold shadow-md shadow-black/30 transition';
 const KEYCAP_TONE = {
   idle: 'border-fg/[0.15] bg-panel-2 text-fg hover:border-fg/35',
@@ -31,6 +34,8 @@ export function KeyboardMap() {
   const [capturingId, setCapturingId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // The panel shares the bottom row with the clock: four shortcuts fit without a scrollbar, the rest are a click away.
+  const [showAll, setShowAll] = useState(false);
 
   const nameOf = (s: Shortcut) => (TRANSLATED[s.actionId] ? t(TRANSLATED[s.actionId]) : (actionById(s.actionId)?.label ?? s.label));
   const save = (next: Shortcut[]) => setUi({ shortcuts: next });
@@ -134,7 +139,7 @@ export function KeyboardMap() {
   } else {
     body = (
       <ul className="flex flex-col gap-2 p-3">
-        {shortcuts.map((s) => {
+        {(showAll ? shortcuts : shortcuts.filter((s, i) => i < PREVIEW_COUNT || s.id === capturingId)).map((s) => {
           const action = actionById(s.actionId);
           const rebinding = capturingId === s.id;
           const active = !rebinding && s.key !== '' && Boolean(action?.isActive?.(live));
@@ -180,6 +185,12 @@ export function KeyboardMap() {
       {body}
       <div className="flex flex-col gap-1 px-4 pb-3">
         {notice && <p role="alert" className="text-xs font-medium text-danger">{notice}</p>}
+        {!adding && shortcuts.length > PREVIEW_COUNT && (
+          <button type="button" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}
+            className="self-start rounded text-xs font-semibold text-accent hover:underline focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none">
+            {showAll ? t('keys.showLess') : `${t('keys.showAll')} (${shortcuts.length})`}
+          </button>
+        )}
         <p className="text-xs leading-normal font-normal text-muted">{t('keys.hint')}</p>
         {!isDefault && !adding && (
           <button type="button" onClick={restore} className="self-start text-xs text-muted underline underline-offset-2 hover:text-accent">{t('keys.restore')}</button>

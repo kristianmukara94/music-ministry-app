@@ -86,9 +86,9 @@ test('the projector frame, its title and the P&W footer are in the live case bef
   const pwCased = applyFrameTextCase(pw, 'uppercase');
   assert.equal(pwCased.footer, 'SAMPLE SONG TITLE', 'the song title footer follows the case');
   assert.equal(pwCased.slide.text, 'SAMPLE LYRIC LINE');
-  // The view applies it in FrameView, ahead of every slide component and its fit.
+  // The view applies it in FrameView, ahead of every slide component and its fit (with the slide's own look, when it has one, over it).
   const view = read('src/output/ProjectorView.tsx');
-  const caseAt = view.indexOf('const frame = useMemo(() => applyFrameTextCase(given, textCase), [given, textCase]);');
+  const caseAt = view.indexOf('const frame = useMemo(() => frameWithAlign(applyFrameTextCase(given, textCase), align), [given, textCase, align]);');
   assert.ok(caseAt > 0 && caseAt < view.indexOf('case \'lyrics\':'), 'the frame is cased before any slide is drawn');
 });
 
@@ -102,7 +102,8 @@ test('the P&W CURRENT SLIDE and NEXT SLIDE previews show the live case, as the p
   assert.equal(applyPwSlideTextCase(null, 'uppercase'), null, 'a black step stays black');
 
   const preview = read('src/praise-worship/CurrentNextPreview.tsx');
-  assert.match(preview, /const textCase = useLive\(\(s\) => textCaseOf\(s\.state\.settings\.textCase\)\);/, 'the previews read the live case');
+  assert.match(preview, /const settingsCase = useLive\(\(s\) => textCaseOf\(s\.state\.settings\.textCase\)\);/, 'the previews read the live case');
+  assert.match(preview, /const textCase = look\?\.textCase \?\? settingsCase;/, 'under the slide’s own case, when it has one');
   assert.match(preview, /applyPwSlideTextCase\(shown\.slide, textCase\)/, 'the slide is cased before PwSlideFace fits it');
   assert.match(preview, /segmentName=\{applyTextCase\(shown\.segmentName, textCase\)\}/);
   assert.match(preview, /footer=\{applyTextCase\(slideFooter\(slide, t\('prayTogether'\)\), textCase\) \|\| undefined\}/, 'the footer song title too');

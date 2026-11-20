@@ -205,6 +205,12 @@ export function setupSettings(deps) {
   // window (a slide editor, say) is told too, and repaints with the same calibrated colours.
   handle('setTheme', (win, theme) => {
     const saved = service.setTheme(theme);
+    // The website follows the laptop's theme (electron/theme-sync.js). A failure there must never fail the save.
+    try {
+      deps.onThemeSaved?.(saved);
+    } catch {
+      /* the theme sync retries on its own */
+    }
     for (const other of BrowserWindow.getAllWindows()) {
       if (other.isDestroyed()) continue;
       // Frameless output windows have no overlay and Electron throws for them; the save must not fail because of that.

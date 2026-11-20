@@ -11,6 +11,10 @@ CREATE TABLE churches (
   accent_gold   TEXT NOT NULL DEFAULT '#ecc98a' CHECK (accent_gold ~ '^#[0-9a-f]{6}$'),
   font_choice   TEXT NOT NULL DEFAULT 'Archivo'
                 CHECK (font_choice IN ('Archivo', 'Cormorant Garamond', 'JetBrains Mono')),
+  -- The colour theme last chosen on one of the church's laptops, which the website paints too (server/lib/theme-sync.js). A database
+  -- created before it needs server/db/migrations/2026-11-20-church-theme.sql; until then the theme simply does not sync.
+  theme         TEXT CHECK (theme IS NULL OR theme ~ '^[a-z][a-z-]{1,31}$'),
+  theme_updated_at TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   license_expires_at TIMESTAMPTZ                   -- when the church's license ends; NULL is perpetual
 );

@@ -53,7 +53,7 @@ test('Jump to Cue: Cards and Index views, a search over words, tags and numbers,
   assert.match(cues, /\{value \?\? t\('consoleAll'\)\}/, 'All, then each tab');
   assert.match(cues, /t\('consoleKey', \{ n: key \}\)/);
   assert.match(cues, /title=\{view === 'index' \? label : undefined\}/, 'the index buttons carry their slide as a tooltip');
-  assert.match(cues, /useChipKeys\(\{ groups, activeIndex, onSelect, disabled \}\)/, '1–9, C and V keep working, and give way to fields');
+  assert.match(cues, /useChipKeys\(\{ groups, activeIndex: keyTarget\?\.activeIndex \?\? activeIndex, onSelect: keyTarget\?\.onSelect \?\? onSelect, disabled \}\)/, '1–9, C and V keep working (on the item on air while another is shown), and give way to fields');
   assert.match(read('src/components/LiveStageCanvas.tsx'), /closest\?\.\('input, textarea, select, \[contenteditable="true"\]'\)\) return;/);
 });
 
@@ -114,4 +114,29 @@ test('every console label is in English, Tagalog and Cebuano', () => {
   assert.equal(goLiveT('tl', 'consoleStaged'), 'Naka-draft: Ligtas');
   assert.equal(goLiveT('ceb', 'consoleConfirmDelete'), 'Kumpirmaha ang Pagpapas');
   assert.equal(goLiveT('en', 'consoleKicker', { state: 'Now Live', n: '03', total: '12', role: 'Sample Tag' }), 'Now Live · Segment 03 of 12 · Sample Tag');
+});
+
+test('a lineup row is selected, not played: its slides show in Jump to Cue to edit, and the projector keeps what it shows', () => {
+  const mass = read('src/golive/MassLiveView.tsx');
+  const pw = read('src/praise-worship/LiveView.tsx');
+  // The rows pick a selection; only Go live, a slide of it, or a note drawer's Take live plays it.
+  assert.match(mass, /onPick=\{\(i\) => setBrowse\(i === cursor \? null : i\)\}/);
+  assert.doesNotMatch(mass, /onPick=\{\(i\) => void run\(\(\) => playMassAt\(i\)\)\}/);
+  assert.match(pw, /onClick=\{\(\) => onPick\(i\)\}/);
+  assert.doesNotMatch(pw, /onClick=\{\(\) => jumpTo\(i\)\}/);
+  // A selected Holy Mass row's slides are built without staging them.
+  const routing = read('src/planner/routing.ts');
+  const builder = routing.slice(routing.indexOf('export async function queueItemFrame'), routing.indexOf('export async function takeQueueItem'));
+  assert.ok(builder.length > 0);
+  assert.doesNotMatch(builder, /dispatch\(/, 'queueItemFrame never touches the live state');
+  // While another item is shown, the number keys still drive the item on air.
+  for (const view of [mass, pw]) {
+    assert.match(view, /keyTarget=\{\{ cues/);
+    assert.match(view, /t\('consoleBackToLive'\)|tg\('consoleBackToLive'\)/);
+  }
+  for (const lang of GOLIVE_LANGS) {
+    for (const key of ['consoleBrowsing', 'consoleBrowseHint', 'consoleBrowseGoLive', 'consoleBackToLive', 'consoleBrowseNoSlides', 'consoleBrowseLoading']) {
+      assert.notEqual(goLiveT(lang, key), key, `${lang} has ${key}`);
+    }
+  }
 });

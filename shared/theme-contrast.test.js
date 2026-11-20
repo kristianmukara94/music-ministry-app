@@ -1,4 +1,4 @@
-// Tests for the theme contrast engine and for every theme in src/styles.css. Run with: node --test shared/theme-contrast.test.js
+// Tests for the theme contrast engine and for every theme in shared/theme-tokens.css (imported by src/styles.css). Run with: node --test shared/theme-contrast.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -18,6 +18,8 @@ import {
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const css = readFileSync(join(root, 'src/styles.css'), 'utf8');
+// The [data-theme] blocks and the light color-scheme list live in the shared token sheet; the @theme defaults stay in styles.css.
+const tokensCss = readFileSync(join(root, 'shared/theme-tokens.css'), 'utf8');
 
 const keyOf = Object.fromEntries(Object.entries(TOKEN_VARS).map(([k, v]) => [v, k]));
 const declarations = (body) =>
@@ -25,7 +27,7 @@ const declarations = (body) =>
 
 /** Each theme's palette as the browser sees it: the @theme defaults with the [data-theme] block on top. */
 const defaults = declarations(css.match(/@theme \{([\s\S]*?)\n\}/)[1]);
-const THEMES = [...css.matchAll(/\[data-theme="([\w-]+)"\] \{([\s\S]*?)\n\}/g)].map((m) => ({
+const THEMES = [...tokensCss.matchAll(/\[data-theme="([\w-]+)"\] \{([\s\S]*?)\n\}/g)].map((m) => ({
   id: m[1],
   palette: { ...defaults, ...declarations(m[2]) },
 }));
@@ -53,7 +55,7 @@ test('on-accent picks whichever of near-black and white reads better', () => {
   assert.equal(pickOnColor('#5a1426'), '#ffffff'); // maroon button
 });
 
-test('the styles.css theme list is complete', () => {
+test('the shared/theme-tokens.css theme list is complete', () => {
   // 15 colour themes + 7 seasons. A new theme block is picked up by every test below automatically.
   assert.equal(THEMES.length, 22);
 });
@@ -85,10 +87,10 @@ for (const { id, palette } of THEMES) {
   });
 }
 
-test('the first-paint color-scheme in styles.css agrees with the engine for every theme', () => {
+test('the first-paint color-scheme in shared/theme-tokens.css agrees with the engine for every theme', () => {
   // Native <select> menus follow color-scheme; before themes.ts runs, the CSS list decides it.
-  const list = css.match(/:root:is\(([^)]*\))\s*\{\s*color-scheme: light;/);
-  assert.ok(list, 'no light color-scheme rule in styles.css');
+  const list = tokensCss.match(/:root:is\(([^)]*\))\s*\{\s*color-scheme: light;/);
+  assert.ok(list, 'no light color-scheme rule in shared/theme-tokens.css');
   const light = new Set([...list[1].matchAll(/data-theme="([\w-]+)"/g)].map((m) => m[1]));
   for (const { id, palette } of THEMES) {
     const { scheme } = resolveReadableThemeTokens(palette);

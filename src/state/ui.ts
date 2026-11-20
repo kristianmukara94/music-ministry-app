@@ -86,6 +86,11 @@ interface UiState {
   /** A Go Live console tab the top bar's Go Live shortcut asked for. The console switches to it and clears it, so it fires once. Not persisted. */
   goLiveTabRequest: 'mass' | 'pw' | null;
   /**
+   * Go Live Fullscreen Mode: the console fills the window (no sidebar, no edge tabs) and the window goes fullscreen. A layout switch only:
+   * nothing on air changes. Applies while the Go Live view is open. Not persisted, so a restart opens the normal layout.
+   */
+  goLiveFullscreen: boolean;
+  /**
    * A plan the Go Live console's Planner tab asked the Planner to open: its kind, its id (null opens that kind's calendar) and its date, so the
    * calendar sits on its month. The Planner takes it and clears it, so it fires once. Not persisted.
    */
@@ -160,6 +165,7 @@ export const useUi = create<UiState>()(
       slideStyleOpen: false,
       goLiveChoice: null,
       goLiveTabRequest: null,
+      goLiveFullscreen: false,
       plannerRequest: null,
       showAllVerses: false,
       lyricsGoLive: false,

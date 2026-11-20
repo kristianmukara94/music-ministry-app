@@ -47,7 +47,7 @@ const NOT_YET_BUILT: ViewKey[] = [];
 /** Category labels: small, spaced, with a hairline running out to the right. Shared by the navigation and the footer headings. */
 function SectionLabel({ children }: { children: ReactNode }) {
   return (
-    <div className="mt-3 mb-1 flex items-center gap-2 px-3">
+    <div className="mt-3 mb-1 flex items-center gap-2 px-3 short:mt-1.5 short:mb-0.5">
       <span className="shrink-0 text-xs font-bold tracking-widest text-accent uppercase">{children}</span>
       <span className="h-px flex-1 bg-fg/10" aria-hidden />
     </div>
@@ -57,13 +57,13 @@ function SectionLabel({ children }: { children: ReactNode }) {
 /** One output as a read-only row: a dot, its name, and LIVE or OFF in the status colour. It is not a control, so a stray click mid-service changes nothing. */
 function OutputRow({ label, on, stateLabel, collapsed }: { label: string; on: boolean; stateLabel: string; collapsed: boolean }) {
   return (
-    <li title={`${label}: ${stateLabel}`} className="flex items-center gap-2 rounded-lg px-3 py-1 text-[15px] font-medium text-fg/85">
+    <li title={`${label}: ${stateLabel}`} className="flex items-center gap-2 rounded-lg px-3 py-1 text-[15px] font-medium text-fg/85 short:py-0.5 short:text-sm">
       <span
         className={`size-2.5 shrink-0 rounded-full ${on ? 'animate-pulse bg-ok shadow-[0_0_8px_var(--color-ok)]' : 'bg-fg/40'}`}
         aria-hidden
       />
       {!collapsed && <span className="flex-1 truncate">{label}</span>}
-      {!collapsed && <span className={`text-sm font-semibold tracking-wide ${on ? 'text-ok' : 'text-danger'}`}>{stateLabel}</span>}
+      {!collapsed && <span className={`text-sm font-semibold tracking-wide ${on ? 'text-ok' : 'text-muted'}`}>{stateLabel}</span>}
     </li>
   );
 }
@@ -74,7 +74,7 @@ function QuickRow({ icon: Icon, label, collapsed, onClick, children }: {
 }) {
   return (
     <button type="button" onClick={onClick} title={label}
-      className="flex w-full items-center gap-3 rounded-lg px-3 py-1 text-left text-[15px] font-medium text-fg/85 transition-colors hover:bg-fg/[0.06] hover:text-fg">
+      className="flex w-full items-center gap-3 rounded-lg px-3 py-1 text-left text-[15px] font-medium text-fg/85 transition-colors hover:bg-fg/[0.06] hover:text-fg short:py-0.5 short:text-sm">
       <Icon size={18} strokeWidth={1.7} className="shrink-0 text-fg/70" aria-hidden />
       {!collapsed && <span className="flex-1">{label}</span>}
       {!collapsed && children}
@@ -84,11 +84,39 @@ function QuickRow({ icon: Icon, label, collapsed, onClick, children }: {
 
 const KBD = 'rounded-md border border-fg/15 bg-fg/[0.04] px-2 py-0.5 font-mono text-[11px] text-fg/75';
 
+/** EN, TL, CEB as a radio group. Shared by the Language row and the compact quick-action bar. */
+function LangSwitch() {
+  const t = useT();
+  const lang = useUi((s) => s.lang);
+  return (
+    <div role="radiogroup" aria-label={t('side.language')} className="flex gap-1">
+      {LANGS.map((l) => (
+        <button key={l.code} type="button" role="radio" aria-checked={lang === l.code} onClick={() => setUi({ lang: l.code })}
+          className={`rounded-md border px-2 py-0.5 font-mono text-[11px] font-semibold transition ${
+            lang === l.code ? 'border-accent bg-accent/15 text-accent' : 'border-fg/15 bg-fg/[0.04] text-fg/75 hover:text-fg'
+          }`}>
+          {l.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** A square icon button for the compact quick-action bar. The tooltip and accessible name carry the label and its shortcut. */
+function QuickIcon({ icon: Icon, label, onClick, pressed }: { icon: LucideIcon; label: string; onClick: () => void; pressed?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} title={label} aria-label={label} aria-pressed={pressed}
+      className="grid size-8 shrink-0 place-items-center rounded-lg text-fg/70 transition-colors hover:bg-fg/[0.06] hover:text-fg">
+      <Icon size={18} strokeWidth={1.7} aria-hidden />
+    </button>
+  );
+}
+
 export function Sidebar() {
   const t = useT();
   const churchName = useChurchName();
   const ministryName = useMinistryName();
-  const { view, collapsed, lang } = useUi();
+  const { view, collapsed } = useUi();
   const outputs = useLive((s) => s.state.outputs);
   const license = useLicense((s) => s.status);
   const lowerThirdLive = useLive((s) => s.state.lowerThird.live);
@@ -127,11 +155,11 @@ export function Sidebar() {
 
       {/* Brand: the crest and the app name, in gold. Clicking it returns to the dashboard. */}
       <button type="button" onClick={() => setUi({ view: 'dashboard' })} title={t('nav.dashboard')} aria-current={view === 'dashboard' ? 'page' : undefined}
-        className={`mt-2 mb-1 flex shrink-0 items-center rounded-xl px-1 py-1 text-left transition hover:bg-fg/[0.04] ${collapsed ? 'justify-center' : 'gap-2.5'}`}>
-        <ChurchEmblem alt={churchName || 'APCCMMA'} className="h-14 w-14" />
+        className={`mt-2 mb-1 flex shrink-0 items-center rounded-xl px-1 py-1 text-left transition hover:bg-fg/[0.04] short:mt-1 short:mb-0 short:py-0.5 ${collapsed ? 'justify-center' : 'gap-2.5'}`}>
+        <ChurchEmblem alt={churchName || 'APCCMMA'} className="h-14 w-14 short:h-11 short:w-11" />
         {!collapsed && (
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-[34px] leading-none font-extrabold tracking-tight text-accent [text-shadow:0_0_18px_color-mix(in_oklab,var(--color-accent)_30%,transparent)]">APCCMMA</span>
+            <span className="truncate text-[34px] leading-none font-extrabold short:text-[30px] tracking-tight text-accent [text-shadow:0_0_18px_color-mix(in_oklab,var(--color-accent)_30%,transparent)]">APCCMMA</span>
             {/* The parish name from the profile, above the ministry line. Long names wrap to two lines rather than being cut off. */}
             {churchName && (
               <span title={churchName} className="mt-1 line-clamp-2 text-[10px] leading-tight font-bold tracking-wide text-fg/90 uppercase">
@@ -164,7 +192,7 @@ export function Sidebar() {
               return (
                 <button key={key} type="button" onClick={() => setUi({ view: key })} title={soon ? `${t(label)} · ${t('nav.comingSoon')}` : t(label)}
                   disabled={soon} aria-current={active ? 'page' : undefined}
-                  className={`flex w-full items-center gap-3 rounded-lg border-l-[3px] py-1.5 text-[16px] transition-colors duration-150 ${
+                  className={`flex w-full items-center gap-2.5 rounded-lg border-l-[3px] py-1.5 text-[15px] leading-tight transition-colors duration-150 short:py-1 ${
                     collapsed ? 'justify-center px-0' : 'px-3'
                   } my-px ${
                     soon
@@ -174,8 +202,9 @@ export function Sidebar() {
                         : 'border-transparent font-medium text-fg/85 hover:bg-fg/[0.06] hover:text-fg'
                   }`}>
                   <Icon size={20} strokeWidth={1.6} aria-hidden className="shrink-0" />
-                  {!collapsed && !short && <span className="flex-1 truncate text-left">{t(label)}</span>}
-                  {!collapsed && short && <span className="flex-1 truncate text-left"><span className="hidden xl:inline">{t(label)}</span><span className="xl:hidden">{t(short)}</span></span>}
+                  {/* A long label (Announcements & Whiteboard) wraps onto a second compact line rather than ending in an ellipsis mid-word. */}
+                  {!collapsed && !short && <span data-testid="nav-label" className="line-clamp-2 flex-1 text-left [overflow-wrap:anywhere]">{t(label)}</span>}
+                  {!collapsed && short && <span data-testid="nav-label" className="line-clamp-2 flex-1 text-left [overflow-wrap:anywhere]"><span className="hidden xl:inline">{t(label)}</span><span className="xl:hidden">{t(short)}</span></span>}
                   {!collapsed && onAir && <Activity size={18} aria-hidden className="shrink-0 animate-pulse text-ok" />}
                   {/* Coming-soon items are muted: plain small text, no pill, so they never compete with working tools. */}
                   {!collapsed && soon && <span className="text-[10px] font-medium tracking-wide text-faint uppercase">{t('nav.comingSoon')}</span>}
@@ -189,51 +218,51 @@ export function Sidebar() {
       {/* Footer: quick actions, the database badge, and the outputs. Fixed at the bottom, never scrolled away. */}
       <div className="flex shrink-0 flex-col border-t border-fg/[0.08] pt-1">
         {!collapsed && <SectionLabel>{t('side.quickActions')}</SectionLabel>}
-        <div className="flex flex-col gap-0.5">
+        {/* On a short window (768px tall) the four quick actions fold into one toolbar row, so every navigation link above stays visible. */}
+        {!collapsed && (
+          <div className="hidden items-center gap-0.5 px-2 short:flex" data-testid="quick-actions-compact">
+            <QuickIcon icon={Search} label={`${t('side.search')} (Ctrl+K)`} onClick={() => setUi({ paletteOpen: true })} />
+            <QuickIcon icon={ArrowDownUp} label={t('side.exportImport')} pressed={ioOpen} onClick={() => setIoOpen((o) => !o)} />
+            <QuickIcon icon={Maximize} label={`${t('side.fullscreen')} (Ctrl+Shift+F)`} onClick={toggleFullscreen} />
+            <span className="ml-auto flex items-center gap-1.5">
+              <Languages size={16} strokeWidth={1.7} className="shrink-0 text-fg/70" aria-hidden />
+              <LangSwitch />
+            </span>
+          </div>
+        )}
+        <div className={`flex flex-col gap-0.5 ${collapsed ? '' : 'short:hidden'}`}>
           <QuickRow icon={Search} label={t('side.search')} collapsed={collapsed} onClick={() => setUi({ paletteOpen: true })}>
             <kbd className={KBD}>Ctrl+K</kbd>
           </QuickRow>
 
-          <div className="flex items-center gap-3 rounded-lg px-3 py-1 text-[15px] font-medium text-fg/85">
+          <div className="flex items-center gap-3 rounded-lg px-3 py-1 text-[15px] font-medium text-fg/85 short:py-0.5 short:text-sm">
             <Languages size={18} strokeWidth={1.7} className="shrink-0 text-fg/70" aria-hidden />
             {!collapsed && <span className="flex-1">{t('side.language')}</span>}
-            {!collapsed && (
-              <div role="radiogroup" aria-label={t('side.language')} className="flex gap-1">
-                {LANGS.map((l) => (
-                  <button key={l.code} type="button" role="radio" aria-checked={lang === l.code} onClick={() => setUi({ lang: l.code })}
-                    className={`rounded-md border px-2 py-0.5 font-mono text-[11px] font-semibold transition ${
-                      lang === l.code ? 'border-accent bg-accent/15 text-accent' : 'border-fg/15 bg-fg/[0.04] text-fg/75 hover:text-fg'
-                    }`}>
-                    {l.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            {!collapsed && <LangSwitch />}
           </div>
 
           <QuickRow icon={ArrowDownUp} label={t('side.exportImport')} collapsed={collapsed} onClick={() => setIoOpen((o) => !o)} />
-          {ioOpen && !collapsed && (
-            <div className="mb-1 ml-10 flex gap-2">
-              <button type="button" onClick={exportSettings} className="rounded-full border border-fg/15 px-3 py-1 text-xs text-fg/85 transition hover:border-accent/50 hover:bg-fg/[0.06]">{t('side.export')}</button>
-              <button type="button" onClick={() => fileInput.current?.click()} className="rounded-full border border-fg/15 px-3 py-1 text-xs text-fg/85 transition hover:border-accent/50 hover:bg-fg/[0.06]">{t('side.import')}</button>
-              <input ref={fileInput} type="file" accept="application/json" hidden
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) importSettings(f).catch((err) => alert(err.message)); e.target.value = ''; }} />
-              <button type="button" onClick={() => setLibraryOpen(true)} className="rounded-full border border-fg/15 px-3 py-1 text-xs text-fg/85 transition hover:border-accent/50 hover:bg-fg/[0.06]">Library</button>
-            </div>
-          )}
-
           <QuickRow icon={Maximize} label={t('side.fullscreen')} collapsed={collapsed} onClick={toggleFullscreen}>
             <kbd className={KBD}>Ctrl+Shift+F</kbd>
           </QuickRow>
         </div>
+        {ioOpen && !collapsed && (
+          <div className="mb-1 ml-10 flex gap-2 short:mt-0.5 short:ml-3">
+            <button type="button" onClick={exportSettings} className="rounded-full border border-fg/15 px-3 py-1 text-xs text-fg/85 transition hover:border-accent/50 hover:bg-fg/[0.06]">{t('side.export')}</button>
+            <button type="button" onClick={() => fileInput.current?.click()} className="rounded-full border border-fg/15 px-3 py-1 text-xs text-fg/85 transition hover:border-accent/50 hover:bg-fg/[0.06]">{t('side.import')}</button>
+            <input ref={fileInput} type="file" accept="application/json" hidden
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) importSettings(f).catch((err) => alert(err.message)); e.target.value = ''; }} />
+            <button type="button" onClick={() => setLibraryOpen(true)} className="rounded-full border border-fg/15 px-3 py-1 text-xs text-fg/85 transition hover:border-accent/50 hover:bg-fg/[0.06]">Library</button>
+          </div>
+        )}
 
-        <div className="mt-2 flex justify-center">
+        <div className="mt-2 flex justify-center short:mt-0">
           <DatabaseStatus collapsed={collapsed} />
         </div>
 
-        <div className="mt-1">
+        <div className="mt-1 short:mt-0">
           {!collapsed && <SectionLabel>{t('side.outputs')}</SectionLabel>}
-          <ul className="flex flex-col gap-0.5 py-1">
+          <ul className="flex flex-col gap-0.5 py-1 short:gap-0 short:py-0">
             {outputRows.map((row) => (
               <OutputRow key={row.label} label={row.label} on={row.on} stateLabel={row.on ? 'LIVE' : 'OFF'} collapsed={collapsed} />
             ))}
@@ -241,7 +270,7 @@ export function Sidebar() {
         </div>
 
         {!collapsed && license?.statusText && (
-          <p title={license.statusText} className={`truncate px-3 pt-2 text-center text-[11px] ${license.canProject ? 'text-muted' : 'text-danger'}`}>
+          <p title={license.statusText} className={`truncate px-3 pt-2 text-center text-[11px] short:pt-1 ${license.canProject ? 'text-muted' : 'text-danger'}`}>
             {license.statusText}
           </p>
         )}
@@ -249,7 +278,7 @@ export function Sidebar() {
         {/* Licensing footer. Subtle on purpose: it identifies the licensed build without competing with the operator's tools. */}
         <p
           title={FOOTER_TEXT}
-          className="mt-1 truncate border-t border-fg/[0.08] px-3 pt-2 pb-1 text-center text-[10px] tracking-wide text-faint"
+          className="mt-1 truncate border-t border-fg/[0.08] px-3 pt-2 pb-1 text-center text-[10px] tracking-wide text-faint short:pt-1 short:pb-0"
         >
           {collapsed ? '©' : FOOTER_TEXT}
         </p>

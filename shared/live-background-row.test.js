@@ -61,7 +61,8 @@ test('Lower 3rd, Blackout and Hide Text work from the transport bar and the B, L
   assert.match(bar, /hideText: \(\) => dispatch\(\{ type: 'projector\/hideText' \}\)/);
   assert.match(bar, /onClick=\{\(\) => dispatch\(\{ type: 'lowerThird\/pause' \}\)\}/, 'a band on air keeps its split Pause');
   for (const file of ['src/praise-worship/LiveView.tsx', 'src/golive/MassLiveView.tsx']) {
-    assert.match(read(file), /useConsoleKeys\(\(action\) => consoleOutputActions\[action\]\(\),/, `${file} binds B, L and H`);
+    // E opens the Output Preview Editor; B, L and H run the output actions.
+    assert.match(read(file), /useConsoleKeys\(\(action\) => \(action === 'edit' \? [^:]+ : consoleOutputActions\[action\]\(\)\),/, `${file} binds B, L and H`);
   }
 });
 
