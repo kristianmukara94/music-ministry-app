@@ -706,6 +706,26 @@ export interface SongsSyncState {
   status: 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
   lastSyncedAt?: string | null;
   message?: string | null;
+  unsent?: boolean;
+  /** The server's counts from the last send: created, updated, unchanged and removed song titles. */
+  counts?: { created?: number; updated?: number; unchanged?: number; removed?: number } | null;
+  skipped?: number;
+  autoSync?: boolean;
+}
+
+/** A plan that could not be sent, as this laptop knows it. The title stays on this laptop. */
+export interface FailedPlan {
+  uuid: string;
+  title: string;
+  date: string | null;
+  kind: 'mass' | 'pw' | null;
+  massTime: string;
+  massLanguage: string;
+  /** The exact reason, as the website or the laptop gave it. */
+  reason: string;
+  /** A stable code: not_on_website, invalid, db_schema, rate_limited, not_allowed, laptop_refused… */
+  code: string | null;
+  at: string;
 }
 
 export interface PlansSyncState {
@@ -713,6 +733,18 @@ export interface PlansSyncState {
   lastSyncedAt?: string | null;
   message?: string | null;
   counts?: { sent: number; received: number; deleted: number; failed: number; held?: number } | null;
+  failures?: FailedPlan[];
+  autoSync?: boolean;
+}
+
+/** One line of Recent Sync Activity (shared/cloud-sync-panel.js). */
+export interface SyncActivityEntry {
+  at: string;
+  direction: 'push' | 'pull' | 'both';
+  channel: 'plans' | 'songs' | 'theme';
+  status: 'ok' | 'warn' | 'error';
+  summary: string;
+  trigger: string;
 }
 
 /** Mass intention privacy on this database and this laptop. */
@@ -760,6 +792,18 @@ export interface CloudApi {
   themeStatus(): Promise<ThemeSyncState>;
   /** Opens the church's web planner in the browser, in this laptop's theme. False when no cloud address is set. */
   openWebsite(): Promise<boolean>;
+  /** Plans and songs now, whether or not Auto-Sync is paused. */
+  syncNow(): Promise<{ plans: PlansSyncState; songs: SongsSyncState }>;
+  retryFailedPlans(): Promise<PlansSyncState>;
+  /** Sends every plan again and reads every website plan again. */
+  forcePushPlans(): Promise<PlansSyncState>;
+  pushThemeNow(): Promise<ThemeSyncState>;
+  autoSync(): Promise<{ autoSync: boolean }>;
+  setAutoSync(on: boolean): Promise<{ autoSync: boolean }>;
+  /** The last ten sync events, newest first. */
+  activity(): Promise<SyncActivityEntry[]>;
+  /** Non-sensitive connection and schema health, as text for the clipboard. Never a token or password. */
+  diagnostics(): Promise<string>;
 }
 
 export interface ThemeSyncState {
@@ -784,6 +828,14 @@ const offlineCloud: CloudApi = {
   defaultLabel: async () => 'This computer',
   themeStatus: async () => ({ theme: null, themeUpdatedAt: null, themeDirty: false, status: 'idle', message: null }),
   openWebsite: async () => false,
+  syncNow: async () => ({ plans: { status: 'idle', lastSyncedAt: null, message: null, counts: null }, songs: { status: 'idle', lastSyncedAt: null, message: null } }),
+  retryFailedPlans: async () => ({ status: 'idle', lastSyncedAt: null, message: null, counts: null }),
+  forcePushPlans: async () => ({ status: 'idle', lastSyncedAt: null, message: null, counts: null }),
+  pushThemeNow: async () => ({ theme: null, themeUpdatedAt: null, themeDirty: false, status: 'idle', message: null }),
+  autoSync: async () => ({ autoSync: true }),
+  setAutoSync: async (on: boolean) => ({ autoSync: on }),
+  activity: async () => [],
+  diagnostics: async () => 'Open the desktop app to read cloud sync diagnostics.',
 };
 
 /** This laptop's license window. The text is written by the main process (electron/license-manager.js). */

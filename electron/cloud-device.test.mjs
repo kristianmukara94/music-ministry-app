@@ -289,7 +289,7 @@ test('the Create web user button is written inside the linked branch, so it is h
   assert.equal(cloudViewState({ linked: false }).kind, 'unlinked');
   const screen = fs.readFileSync(SCREEN, 'utf8');
   const linkedBranch = screen.indexOf("view.kind === 'linked'");
-  assert.ok(linkedBranch > 0 && screen.indexOf('Create web user') > linkedBranch, 'the button only appears for a linked laptop');
+  assert.ok(linkedBranch > 0 && screen.indexOf('Create Web User') > linkedBranch, 'the button only appears for a linked laptop');
 });
 
 test('a laptop that is not linked cannot add a web user, and nothing is sent', async () => {
@@ -909,4 +909,37 @@ test('the Cloud sync screen shows the address the laptop uses, above any error, 
   const main = fs.readFileSync(path.join(here, 'main.js'), 'utf8');
   assert.match(main, /const withAddress = async \(result\) => \(\{ \.\.\.result, address: cloudUrl\(\) \}\)/);
   assert.match(main, /ipcMain\.handle\('cloud:status', async \(\) => withAddress/);
+});
+
+test('plans go in one push request with one result each; codes come through, and an old website\'s wording reads as not on the website', async () => {
+  let requests = 0;
+  const { device } = await linkedLaptop({
+    'plan-sync-push': (opts) => {
+      requests += 1;
+      const { plans } = JSON.parse(opts.body);
+      return respond(200, {
+        results: plans.map((p, i) =>
+          i === 0 ? { id: p.id, status: 'accepted', updatedAt: '2026-11-21T00:00:00.000Z' }
+            : i === 1 ? { id: p.id, status: 'error', code: 'kind_changed', message: 'A plan cannot change between Holy Mass and Praise & Worship once it is on the website.' }
+              : { id: p.id, status: 'error', message: 'This plan could not be saved. Try again, or ask your admin.' }),
+      });
+    },
+  });
+  const plan = (n) => ({ id: `6f1c2b3a-0000-4000-8000-00000000000${n}`, name: 'Sample Plan Title', date: '2026-12-06', kind: 'mass', items: [], baseUpdatedAt: '2026-11-20T00:00:00.000Z' });
+  const results = await device.pushPlans([plan(1), plan(2), plan(3)]);
+  assert.equal(requests, 1);
+  assert.deepEqual(results.map((r) => [r.status, r.code ?? null]), [['accepted', null], ['error', 'kind_changed'], ['error', null]]);
+  const { resultCode } = await import('./plan-sync.js');
+  assert.equal(resultCode(results[2]), 'not_on_website');
+});
+
+test('a refused push request gives every plan the same plain reason and a code', async () => {
+  const { device } = await linkedLaptop({ 'plan-sync-push': () => respond(429, { error: 'Too many plan syncs from this laptop. Wait ten minutes and try again.' }) });
+  const plan = { id: '6f1c2b3a-0000-4000-8000-0000000000b1', name: 'Sample Plan Title', date: '2026-12-06', kind: 'mass', items: [], baseUpdatedAt: null };
+  const results = await device.pushPlans([plan, { ...plan, id: '6f1c2b3a-0000-4000-8000-0000000000b2' }]);
+  assert.deepEqual(results.map((r) => [r.code, r.message]), Array(2).fill(['rate_limited', 'Too many plan syncs from this laptop. Wait ten minutes and try again.']));
+  const { device: broken } = await linkedLaptop({ 'plan-sync-push': () => respond(500, { error: 'The website\'s database is missing "synced_at". Ask your admin to run the latest database migration. The plan will be sent again.', code: 'db_schema' }) });
+  const [one] = await broken.pushPlans([plan]);
+  assert.equal(one.code, 'db_schema');
+  assert.match(one.message, /run the latest database migration/);
 });

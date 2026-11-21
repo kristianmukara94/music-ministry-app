@@ -19,7 +19,7 @@ const { NOTES_COPY_MIGRATIONS, NOTES_SLOT_MIGRATIONS, PRAYER_NOTES_MIGRATIONS, P
 const { WEB_HUB_MIGRATIONS } = await import('./web-hub-notes.js');
 const { TRANSFER_MIGRATIONS } = await import('./transfer.js');
 const { PLAN_SYNC_MIGRATIONS } = await import('./plan-sync-schema.js');
-const { createPlanSync } = await import('./plan-sync.js');
+const { createPlanSync, UNEXPECTED_FAILURE, PUSH_BATCH } = await import('./plan-sync.js');
 const { createPlanSyncStore } = await import('./plan-sync-store.js');
 const { createCloudDevice } = await import('./cloud-device.js');
 const { createPlanSyncApi, NOT_SAVED } = await import('../server/lib/plan-sync.js');
@@ -562,7 +562,7 @@ test('a 409 compares the website plan first: identical content is only marked in
   assert.ok(network.calls > before, 'the website was asked first');
 });
 
-test('a 409 for a plan of another church is refused and held, and it is not sent', async () => {
+test('a 409 for an id another church holds: the laptop plan gets a new id and is created, and the other plan is untouched', async () => {
   const foreign = randomUUID();
   await pg.query(`INSERT INTO churches (id, display_code, name) VALUES ('00000000-0000-4000-8000-00000000000b', 'R2VT-9HJ6', 'Holy Cross')`);
   await pg.query(`INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at) VALUES ($1, '00000000-0000-4000-8000-00000000000b', 'Their plan', '2026-11-01', '{"kind":"mass","items":[]}', $2)`, [foreign, T2]);
@@ -570,9 +570,15 @@ test('a 409 for a plan of another church is refused and held, and it is not sent
   localMassPlan(l.db, { name: 'Ours, same id', at: T3, uuid: foreign });
   serverNow = new Date(T3);
   const status = await l.engine.runOnce();
-  assert.equal(status.counts.held, 1, 'the plan is held');
-  assert.equal(await serverNameOf(foreign), 'Their plan', 'the other church\'s plan is untouched');
-  assert.equal(localMass(l.db, foreign).name, 'Ours, same id', 'the laptop copy is kept');
+  assert.equal(status.counts.held, 0, 'nothing is held');
+  assert.equal(status.counts.failed, 0);
+  assert.equal(await serverNameOf(foreign), 'Their plan', "the other church's plan is untouched");
+  assert.equal(localMass(l.db, foreign), undefined, 'the old id is gone from the laptop');
+  const moved = l.db.prepare("SELECT uuid, name FROM mass_plans WHERE name = 'Ours, same id'").get();
+  assert.notEqual(moved.uuid, foreign);
+  assert.equal(await serverNameOf(moved.uuid), 'Ours, same id', "created on this church's website under its new id");
+  assert.equal(l.store.dirtyPlans().length, 0);
+  assert.throws(() => l.db.prepare('UPDATE mass_plans SET uuid = ? WHERE uuid = ?').run(randomUUID(), moved.uuid), /cannot be changed/, 'the id is fixed again');
 });
 
 // ---- Notes stay on the laptop (point 1) ----
@@ -818,7 +824,9 @@ test('an unexpected error on one plan is counted, shows no raw text, and the pla
   const state = await engine.runOnce();
   assert.deepEqual(synced, ['b']);
   assert.equal(state.counts.failed, 1);
-  assert.equal(state.message, null);
+  assert.equal(state.message, UNEXPECTED_FAILURE, 'a plain reason, never the raw error');
+  assert.doesNotMatch(JSON.stringify(state.failures), /private detail/);
+  assert.equal(state.failures[0].code, 'laptop_error');
   assert.equal(logged.mock.calls[0].arguments[0], '[plan-sync] step=send name=TypeError');
 });
 
@@ -964,4 +972,159 @@ test('a laptop from before schedules still syncs, and its pushes keep the schedu
   const stored = await serverRow(created.id);
   assert.equal(stored.name, 'Sample Mass Item');
   assert.deepEqual([stored.body.massTime, stored.body.massLanguage], ['8:00 AM', 'English']);
+});
+
+// ---- Recovery: plans the website does not have, Retry, Auto-Sync, Force Push, a new link ----
+
+const NEW_CHURCH = '00000000-0000-4000-8000-0000000000c1';
+/** A second church on the same website, with a planner and a laptop token: where a relinked laptop now points. */
+async function otherChurchLaptop() {
+  await pg.query(`INSERT INTO churches (id, display_code, name) VALUES ($1, 'W3XN-7KP4', 'Sample New Church')`, [NEW_CHURCH]);
+  const user = (await pg.query(
+    `INSERT INTO users (id, church_id, username, display_name, role, password_hash, must_change_password)
+     VALUES (gen_random_uuid(), $1, 'newplanner', 'newplanner', 'planner', $2, false) RETURNING id`, [NEW_CHURCH, await hashPassword(PASSWORD)])).rows[0].id;
+  const token = randomBytes(32).toString('base64url');
+  await pg.query(`INSERT INTO device_tokens (token_hash, church_id, user_id, device_name) VALUES ($1, $2, $3, 'Booth')`, [hashToken(token, SECRET), NEW_CHURCH, user]);
+  return token;
+}
+/** Points a laptop's link at another token, as linking it again would. */
+const relink = (l, token) => l.file.write(plainStorage.encryptString(JSON.stringify({ token, church: 'Sample New Church', admin: 'newplanner', label: 'Booth', lastSeenAt: null, linkedAddress: BASE })));
+
+test('a laptop relinked to another church: an edited plan the new website lacks is created there instead of failing for ever', async () => {
+  const l = laptop();
+  const uuid = localMassPlan(l.db, { name: 'Sample Plan Title', at: T1 });
+  await l.engine.runOnce();
+  assert.equal(await serverNameOf(uuid), 'Sample Plan Title', 'synced to the first church');
+
+  relink(l, await otherChurchLaptop());
+  serverNow = new Date(T2);
+  editLocal(l.db, uuid, { name: 'Sample Plan Title (edited)', at: T2 });
+  const state = await l.engine.runOnce();
+  assert.equal(state.counts.failed, 0, JSON.stringify(state.failures));
+  assert.deepEqual(state.failures, []);
+  const moved = l.db.prepare("SELECT uuid FROM mass_plans WHERE name = 'Sample Plan Title (edited)'").get().uuid;
+  assert.notEqual(moved, uuid, 'a new id, since the first church keeps the old one');
+  const row = (await pg.query('SELECT church_id, name FROM plans WHERE id = $1', [moved])).rows[0];
+  assert.deepEqual([row.church_id, row.name], [NEW_CHURCH, 'Sample Plan Title (edited)']);
+  assert.equal(await serverNameOf(uuid), 'Sample Plan Title', "the first church's copy is untouched");
+  assert.equal(l.store.dirtyPlans().length, 0);
+});
+
+test('a plan whose website copy is gone (not in this church) is created again under its own id', async () => {
+  const l = laptop();
+  const uuid = localMassPlan(l.db, { name: 'Sample Plan Title', at: T1 });
+  await l.engine.runOnce();
+  await pg.query('DELETE FROM plans WHERE id = $1', [uuid]);
+  serverNow = new Date(T2);
+  editLocal(l.db, uuid, { name: 'Sample Plan Title (again)', at: T2 });
+  const state = await l.engine.runOnce();
+  assert.equal(state.counts.failed, 0);
+  assert.equal(state.counts.sent, 1);
+  assert.equal(await serverNameOf(uuid), 'Sample Plan Title (again)', 'same id, since nobody else holds it');
+});
+
+test('a push answered "deleted" removes the laptop copy, as a pull of the delete would', async () => {
+  const l = laptop();
+  const uuid = localMassPlan(l.db, { name: 'Sample Plan Title', at: T1 });
+  await l.engine.runOnce();
+  const stored = await serverRow(uuid);
+  await pg.query(`UPDATE plans SET body = '{"kind":"mass","items":[],"deleted":true}'::jsonb WHERE id = $1`, [uuid]);
+  // The pull does not see it (its updated time did not move), so only the push can learn of the delete.
+  assert.equal(new Date((await serverRow(uuid)).updated_at).getTime(), new Date(stored.updated_at).getTime());
+  serverNow = new Date(T2);
+  editLocal(l.db, uuid, { name: 'Sample Plan Title (late edit)', at: T2 });
+  const state = await l.engine.runOnce();
+  assert.equal(state.counts.failed, 0);
+  assert.equal(localMass(l.db, uuid), undefined);
+});
+
+test('failed plans are listed with title, date, schedule and exact reason, are retried on the next cycle, and Retry Failed sends them', async () => {
+  const l = laptop(laptopToken, { schedule: true });
+  const uuid = localMassPlan(l.db, { name: 'Sample Plan Title', date: '2026-12-06', at: T1 });
+  l.db.prepare("UPDATE mass_plans SET mass_time = '6:00 AM', mass_language = 'Cebuano', updated_at = ? WHERE uuid = ?").run(T1, uuid);
+  // The website refuses this laptop's account for now.
+  await pg.query("UPDATE users SET role = 'viewer' WHERE id = $1", [plannerId]);
+  const failed = await l.engine.runOnce();
+  assert.equal(failed.counts.failed, 1);
+  const [f] = failed.failures;
+  assert.deepEqual([f.uuid, f.title, f.date, f.kind, f.massTime, f.massLanguage, f.code], [uuid, 'Sample Plan Title', '2026-12-06', 'mass', '6:00 AM', 'Cebuano', 'not_allowed']);
+  assert.match(f.reason, /Only a planner or admin can create plans/);
+  assert.equal(l.store.dirtyPlans().length, 1, 'still waiting, so the next cycle tries it again');
+
+  await pg.query("UPDATE users SET role = 'planner' WHERE id = $1", [plannerId]);
+  const retried = await l.engine.retryFailed();
+  assert.deepEqual(retried.failures, []);
+  assert.equal(retried.counts.sent, 1);
+  assert.equal(await serverNameOf(uuid), 'Sample Plan Title');
+});
+
+test('Auto-Sync paused: no background run is scheduled, Sync Now still runs, and resuming schedules again', async () => {
+  const l = laptop();
+  l.engine.setAutoSync(false);
+  l.engine.start();
+  await new Promise((r) => setImmediate(r));
+  await l.engine.runOnce();
+  assert.equal(l.timers.length, 0, 'nothing on the timer while paused');
+  assert.equal(l.engine.status().autoSync, false);
+  const uuid = localMassPlan(l.db, { name: 'Sample Plan Title', at: T2 });
+  await l.engine.runOnce('manual');
+  assert.equal(await serverNameOf(uuid), 'Sample Plan Title', 'a manual sync still sends');
+  l.engine.setAutoSync(true);
+  assert.equal(l.engine.status().autoSync, true);
+  assert.equal(l.timers.length, 1, 'the interval is back');
+  l.engine.stop();
+});
+
+test('Force Push Plans re-sends every plan in batches and brings a stale website copy back in step', async () => {
+  const l = laptop();
+  const uuids = [];
+  // Made in two runs an hour apart: the website takes 20 new plans per laptop per 10 minutes.
+  for (let i = 0; i < 15; i += 1) uuids.push(localMassPlan(l.db, { name: `Sample Plan Title ${i}`, date: '2026-12-06', at: T1 }));
+  await l.engine.runOnce();
+  serverNow = new Date(T2);
+  for (let i = 15; i < PUSH_BATCH + 3; i += 1) uuids.push(localMassPlan(l.db, { name: `Sample Plan Title ${i}`, date: '2026-12-06', at: T2 }));
+  await l.engine.runOnce();
+  assert.equal(l.store.dirtyPlans().length, 0);
+  // The website's copy of one plan was changed behind the laptop's back without moving its time (a hand-run fix).
+  await pg.query("UPDATE plans SET name = 'Stale copy' WHERE id = $1", [uuids[0]]);
+  network.bodies = [];
+  serverNow = new Date(T3);
+  const state = await l.engine.forcePushAll();
+  assert.equal(state.counts.failed, 0);
+  assert.equal(state.counts.sent, uuids.length);
+  const pushes = network.bodies.filter((b) => b.name === 'plan-sync-push');
+  assert.equal(pushes.length, 2, `${uuids.length} plans go in two requests, not one each`);
+  assert.equal(await serverNameOf(uuids[0]), 'Sample Plan Title 0');
+});
+
+test('a new link forgets the old website versions and cursor, so every plan reaches the new church', async () => {
+  const l = laptop();
+  const clean = localMassPlan(l.db, { name: 'Sample Plan Title (clean)', at: T1 });
+  await l.engine.runOnce();
+  // The cursor the first church left: later than anything the new church has, so a pull from it would skip the new church's plans.
+  l.store.setCursor('2027-01-01T00:00:00.000Z|ffffffff-ffff-4fff-8fff-ffffffffffff');
+  const token = await otherChurchLaptop();
+  const fromWeb = await serverCreate(token, { name: 'Sample Plan Title (made on the new website)' });
+  relink(l, token);
+  serverNow = new Date(T2);
+  const state = await l.engine.resetForNewLink();
+  assert.ok(l.store.planByUuid(fromWeb.id), "the new church's own plan is pulled in");
+  assert.equal(state.counts.failed, 0, JSON.stringify(state.failures));
+  const inNew = (await pg.query('SELECT name FROM plans WHERE church_id = $1 ORDER BY name', [NEW_CHURCH])).rows.map((r) => r.name);
+  assert.deepEqual(inNew, ['Sample Plan Title (clean)', 'Sample Plan Title (made on the new website)'], 'a plan with no unsent edit still reaches the new church');
+  assert.equal(await serverNameOf(clean), 'Sample Plan Title (clean)', 'the old church keeps its copy');
+});
+
+test('a run reports to the activity log without plan titles', async () => {
+  const runs = [];
+  const db = laptopDb();
+  const cloud = createCloudDevice({ storage: plainStorage, file: memoryFile(plainStorage.encryptString(JSON.stringify({ token: laptopToken, church: 'St Mary', admin: 'planner', label: 'Booth', lastSeenAt: null, linkedAddress: BASE }))), fetchFn: serverFetch, baseUrl: BASE });
+  const engine = createPlanSync({ store: createPlanSyncStore(db), cloud, setTimer: () => 0, clearTimer: () => {}, onRun: (r) => runs.push(r) });
+  localMassPlan(db, { name: 'Sample Plan Title', at: T1 });
+  await engine.runOnce('manual');
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].trigger, 'manual');
+  assert.equal(runs[0].status, 'synced');
+  assert.equal(runs[0].counts.sent, 1);
+  assert.doesNotMatch(JSON.stringify(runs), /Sample Plan Title/);
 });

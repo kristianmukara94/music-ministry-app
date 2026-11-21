@@ -210,7 +210,7 @@ test('the status the screen gets has no token, and nothing is logged while the l
     for (const [m, original] of saved) console[m] = original;
   }
   assert.equal(JSON.stringify(sync.status()).includes(TOKEN), false);
-  assert.deepEqual(Object.keys(sync.status()).sort(), ['lastSyncedAt', 'message', 'status', 'unsent']);
+  assert.deepEqual(Object.keys(sync.status()).sort(), ['autoSync', 'counts', 'lastSyncedAt', 'message', 'skipped', 'status', 'unsent']);
   assert.equal(logged.join('\n').includes(TOKEN), false);
 });
 
@@ -341,4 +341,36 @@ test('a save made while a send is running is sent again afterwards, not lost', a
   await running;
   await clock.fireAll();
   assert.equal(sent.length, 2, 'the second save is sent once the first send is done');
+});
+
+test('Auto-Sync paused: no timer and no send after a save, Re-sync Songs still sends, and resuming sends what is waiting', async () => {
+  const timers = fakeTimers();
+  const pushed = [];
+  const runs = [];
+  const sync = createSongSync({
+    readRows: () => [row({ title: 'Sample Song Title' })],
+    push: async (songs) => {
+      pushed.push(songs.length);
+      return { created: songs.length, updated: 0, unchanged: 0, removed: 0 };
+    },
+    autoSync: false,
+    onRun: (run) => runs.push(run),
+    ...timers,
+  });
+  sync.start();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(timers.pending(), [], 'nothing on the timer while paused');
+  sync.notify();
+  assert.deepEqual(timers.pending(), [], 'a save does not schedule a send while paused');
+  assert.equal(sync.status().unsent, true);
+  const manual = await sync.runOnce('manual');
+  assert.equal(manual.status, 'synced');
+  assert.deepEqual(manual.counts, { created: 1, updated: 0, unchanged: 0, removed: 0 });
+  assert.equal(runs.at(-1).trigger, 'manual');
+  sync.notify();
+  sync.setAutoSync(true);
+  assert.equal(sync.status().autoSync, true);
+  assert.ok(timers.pending().includes(SYNC_INTERVAL_MS), 'the interval is back');
+  assert.ok(timers.pending().length >= 2, 'and the waiting save is asked for');
+  sync.stop();
 });

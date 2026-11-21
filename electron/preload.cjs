@@ -254,6 +254,14 @@ contextBridge.exposeInMainWorld('apcc', {
     renewLicense: (setupKey) => ipcRenderer.invoke('cloud:renew-license', { setupKey }),
     themeStatus: () => ipcRenderer.invoke('cloud:theme-status'),
     openWebsite: () => ipcRenderer.invoke('cloud:open-website'),
+    syncNow: () => ipcRenderer.invoke('cloud:sync-now'),
+    retryFailedPlans: () => ipcRenderer.invoke('cloud:plans-retry'),
+    forcePushPlans: () => ipcRenderer.invoke('cloud:plans-force-push'),
+    pushThemeNow: () => ipcRenderer.invoke('cloud:theme-push-now'),
+    autoSync: () => ipcRenderer.invoke('cloud:auto-sync'),
+    setAutoSync: (on) => ipcRenderer.invoke('cloud:set-auto-sync', { on: on !== false }),
+    activity: () => ipcRenderer.invoke('cloud:activity'),
+    diagnostics: () => ipcRenderer.invoke('cloud:diagnostics'),
   },
 
   license: {

@@ -7,6 +7,7 @@
 // Writes that come from the server run with the transfer import guard on, so the touch triggers do not count them as laptop edits.
 // A plan is held only when a server item has a value the laptop cannot map at all (today: a song the laptop does not have). A held plan
 // is not sent, because a send would drop the item. Every held item is counted. A reading's words never hold a plan.
+import crypto from 'node:crypto';
 import { DEFAULT_TEMPLATE } from '../shared/pw.js';
 import { slotIdOfNumber } from '../shared/mass-slots.js';
 import { MASS_PARTS, MASS_STEP_PARTS } from '../shared/mass-parts.js';
@@ -161,7 +162,9 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
   }
 
   const cursor = () => one('SELECT value FROM sync_state WHERE key = ?', CURSOR)?.value ?? null;
-  const setCursor = (value) => run('INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)', CURSOR, value);
+  // A null cursor starts the next pull from the beginning (Force Push Plans).
+  const setCursor = (value) =>
+    value === null || value === undefined ? run('DELETE FROM sync_state WHERE key = ?', CURSOR) : run('INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)', CURSOR, value);
 
   const tombstones = () => all('SELECT uuid, plan_kind AS kind FROM sync_tombstones');
   const hasTombstone = (uuid) => one('SELECT 1 AS found FROM sync_tombstones WHERE uuid = ?', uuid) !== undefined;
@@ -390,9 +393,77 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
     return unresolved.length;
   }
 
+  // ---- Recovery: what the Cloud sync screen's Retry, Force Push and a new link need ----
+
+  /** A plan's title, date, type and Holy Mass schedule, for the Failed Plans list on this laptop's screen. Null when it is gone. */
+  function describe(uuid) {
+    const plan = planByUuid(uuid);
+    if (!plan) return null;
+    const schedule = plan.kind === 'mass' ? scheduleOf(plan.id) : null;
+    return {
+      title: String(plan.name ?? '').trim() || 'Untitled Plan',
+      date: plan.date ?? null,
+      kind: plan.kind === 'praise' ? 'pw' : 'mass',
+      massTime: schedule ? normalizeMassTime(schedule.massTime) : '',
+      massLanguage: schedule ? normalizeMassLanguage(schedule.massLanguage) : '',
+    };
+  }
+
+  /** The website has no copy of this plan for this church: the next send creates it, rather than pushing over a version that is not there. */
+  function forgetServerStamp(uuid) {
+    quiet(() => {
+      run('UPDATE mass_plans SET server_updated_at = NULL WHERE uuid = ?', uuid);
+      run('UPDATE pw_sessions SET server_updated_at = NULL WHERE uuid = ?', uuid);
+    });
+  }
+
+  /**
+   * Gives a plan a new id, for a plan whose id another church's website already holds. The id is otherwise fixed (transfer.js's
+   * `<table>_uuid_fixed` trigger), so the trigger is set aside for this one update and put back exactly as it was, in one transaction.
+   * Website Content Hub links named after the old id become ordinary laptop notes: the new plan on the website has no such entries.
+   * Returns the new id.
+   */
+  function rekey(uuid) {
+    const plan = planByUuid(uuid);
+    if (!plan) throw new Error('No such plan.');
+    const table = plan.kind === 'mass' ? 'mass_plans' : 'pw_sessions';
+    const fresh = crypto.randomUUID();
+    const triggerSql = one("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?", `${table}_uuid_fixed`)?.sql ?? null;
+    const hasWebHub = one("SELECT COUNT(*) AS n FROM pragma_table_info('notes') WHERE name = 'web_hub_key'").n === 1;
+    quiet(() => {
+      if (triggerSql) db.exec(`DROP TRIGGER ${table}_uuid_fixed`);
+      try {
+        run(`UPDATE ${table} SET uuid = ?, server_updated_at = NULL, synced_updated_at = NULL WHERE id = ?`, fresh, plan.id);
+      } finally {
+        if (triggerSql) db.exec(triggerSql);
+      }
+      if (hasWebHub) run("UPDATE notes SET web_hub_key = NULL, web_hub_hash = NULL WHERE web_hub_key LIKE ? ESCAPE '\\'", `${uuid.replace(/[%_\\]/g, '\\$&')}:%`);
+      clearHold(uuid);
+    });
+    return fresh;
+  }
+
+  /** Marks every plan as changed here, so the next run sends each one (Force Push Plans). Website versions already known are kept. */
+  function markAllDirty() {
+    quiet(() => {
+      run('UPDATE mass_plans SET synced_updated_at = NULL WHERE uuid IS NOT NULL');
+      run('UPDATE pw_sessions SET synced_updated_at = NULL WHERE uuid IS NOT NULL');
+    });
+  }
+
+  /** Forgets everything learned from a website: versions, the pull cursor and holds. For a laptop just linked, perhaps to another church. */
+  function resetSyncState() {
+    quiet(() => {
+      run('UPDATE mass_plans SET server_updated_at = NULL, synced_updated_at = NULL');
+      run('UPDATE pw_sessions SET server_updated_at = NULL, synced_updated_at = NULL');
+      run("DELETE FROM sync_state WHERE key = ? OR key LIKE 'hold:%'", CURSOR);
+    });
+  }
+
   return {
     planByUuid, dirtyPlans, payloadFor, cursor, setCursor, tombstones, hasTombstone, clearTombstone,
     holdOf, clearHold, holdCount, heldPlans, hold: setHold, markSynced, setServerStamp, removeByUuid, applyServer, ingestHub,
+    describe, forgetServerStamp, rekey, markAllDirty, resetSyncState,
   };
 }
 

@@ -6,6 +6,7 @@ import { sessionFrom as loadSession } from './session.js';
 import { clientAddress } from './client-address.js';
 import { dateText } from './plan-editing.js';
 import { hit } from './rate-limit.js';
+import { withColumnFallback } from './schema-guard.js';
 import { normalizeMassLanguage, normalizeMassTime } from '../../shared/mass-schedule.js';
 import {
   CHANGE_PASSWORD_LIMIT,
@@ -206,13 +207,20 @@ export function createApi({ sql, secret, now = () => new Date() }) {
     // Every signed-in role can list the church's plans. The body is not sent, so the list stays light. `kind` says which editor
     // a plan opens in, and is read from the body without sending it. A Holy Mass plan's time, language and item count are read the same
     // way, for the calendar's schedule badges and the Available Holy Mass Schedules list.
-    const rows = await sql`
+    // A database without plans.synced_at (2026-11-09-plans-synced-at.sql not run yet) still lists its plans, all shown as not yet on a laptop.
+    const rows = await withColumnFallback('synced_at', () => sql`
       SELECT id, name, liturgical_date, updated_at, synced_at, body->>'kind' AS kind,
         body->>'massTime' AS mass_time, body->>'massLanguage' AS mass_language,
         CASE WHEN jsonb_typeof(body->'items') = 'array' THEN jsonb_array_length(body->'items') ELSE 0 END AS item_count
       FROM plans
       WHERE church_id = ${session.churchId} AND COALESCE(body->>'deleted', '') <> 'true'
-      ORDER BY liturgical_date, name, id`;
+      ORDER BY liturgical_date, name, id`, () => sql`
+      SELECT id, name, liturgical_date, updated_at, NULL AS synced_at, body->>'kind' AS kind,
+        body->>'massTime' AS mass_time, body->>'massLanguage' AS mass_language,
+        CASE WHEN jsonb_typeof(body->'items') = 'array' THEN jsonb_array_length(body->'items') ELSE 0 END AS item_count
+      FROM plans
+      WHERE church_id = ${session.churchId} AND COALESCE(body->>'deleted', '') <> 'true'
+      ORDER BY liturgical_date, name, id`);
     const plans = rows.map((r) => ({
       id: r.id,
       name: r.name,

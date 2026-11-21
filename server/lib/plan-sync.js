@@ -11,6 +11,7 @@ import { hashToken } from './auth.js';
 import { hit } from './rate-limit.js';
 import { EDITING_ROLES } from './rules.js';
 import { applyPushedTheme } from './theme-sync.js';
+import { describeDbError, withColumnFallback } from './schema-guard.js';
 import { MAX_MASS_LANGUAGE, MAX_MASS_TIME, canonicalMassTime, findTimeConflict, normalizeMassLanguage, normalizeMassTime, timeConflictText } from '../../shared/mass-schedule.js';
 
 export const MAX_ITEMS = 200;
@@ -174,8 +175,21 @@ export function planOut(row) {
 
 const refuse = (message) => new ApiError(400, message);
 
-/** The one message for a push that cannot be applied to a plan id. It is the same whichever reason applies. */
+/** The one message for a create whose id is already taken. It is the same whichever church holds the id. */
 export const NOT_SAVED = 'This plan could not be saved. Try again, or ask your admin.';
+
+/**
+ * Why a push was not applied, as a stable code (for the laptop to act on) and a plain sentence (for people). A plan that is not in this
+ * church gets one answer whether it never existed or belongs to another church, so nobody can learn what another church holds.
+ */
+export const PUSH_REFUSALS = {
+  not_on_website: "This plan is not on this church's website. It may have been made while the laptop was linked to another church; the laptop will send it again as a new plan.",
+  deleted: "This plan was deleted on the website, so this laptop's copy is removed too.",
+  kind_changed: 'A plan cannot change between Holy Mass and Praise & Worship once it is on the website. Make a new plan of the other type instead.',
+  invalid_id: 'This plan has no valid id, so the website cannot tell which plan it is. Nothing was saved.',
+  invalid_base: "The plan's last saved time could not be read. Nothing was saved.",
+};
+const refusal = (id, code) => ({ id, status: 'error', code, message: PUSH_REFUSALS[code] });
 
 /**
  * Checks one plan's items. Returns clean items sorted by order, or throws a plain ApiError. `songIds` is every song id the church
@@ -410,39 +424,39 @@ export async function pullPlans(sql, churchId, cursor, maxBytes = MAX_PULL_BYTES
  */
 export async function markPulled(sql, churchId, plans, at) {
   if (!plans.length) return;
-  await sql`
+  // Only a marker for the web's plan list. A database without the column is not an error for the laptop's pull.
+  await withColumnFallback('synced_at', () => sql`
     UPDATE plans SET synced_at = ${at}
-    WHERE church_id = ${churchId} AND id = ANY(${plans.map((p) => p.id)}::uuid[]) AND updated_at <= ${plans[plans.length - 1].updatedAt}::timestamptz`;
+    WHERE church_id = ${churchId} AND id = ANY(${plans.map((p) => p.id)}::uuid[]) AND updated_at <= ${plans[plans.length - 1].updatedAt}::timestamptz`, async () => {});
 }
 
 /** Pushes one plan in its own transaction. Returns accepted, conflict (with the server's version) or error (a plain message). */
 export async function pushOnePlan({ sql, transaction, churchId, userId, input, songIds, now }) {
   const id = typeof input?.id === 'string' ? input.id.toLowerCase() : '';
-  if (!UUID.test(id)) return { id: null, status: 'error', message: 'A plan has no valid id. Nothing was saved.' };
+  if (!UUID.test(id)) return refusal(null, 'invalid_id');
   const base = input.baseUpdatedAt;
-  if (base !== null && (typeof base !== 'string' || !ISO.test(base) || Number.isNaN(Date.parse(base)))) {
-    return { id, status: 'error', message: 'The plan\'s last saved time could not be read. Nothing was saved.' };
-  }
+  if (base !== null && (typeof base !== 'string' || !ISO.test(base) || Number.isNaN(Date.parse(base)))) return refusal(id, 'invalid_base');
   let fields;
   let items;
   try {
     fields = checkPlanFields(input);
     items = checkItems(input.items, songIds);
   } catch (err) {
-    if (err instanceof ApiError) return { id, status: 'error', message: err.message };
+    if (err instanceof ApiError) return { id, status: 'error', code: 'invalid', message: err.message };
     throw err;
   }
   const at = now().toISOString();
-  try {
-    return await transaction(async (tx) => {
+  // The write, with or without plans.synced_at: a database that has not had 2026-11-09-plans-synced-at.sql still saves the plan.
+  const write = (withSyncedAt) => transaction(async (tx) => {
       const rows = await tx`SELECT id, church_id, name, liturgical_date, body, updated_at FROM plans WHERE id = ${id} FOR UPDATE`;
       // A push only updates a plan that already exists in this church. An unknown id and a plan in another church get the same
       // refusal, and nothing is written for either. Plans are created through plan-create, never by a push.
       // A deleted plan is refused the same way: a laptop cannot bring a deleted plan back by editing it.
-      if (!rows.length || rows[0].church_id !== churchId || rows[0].body?.deleted) return { id, status: 'error', message: NOT_SAVED };
+      if (!rows.length || rows[0].church_id !== churchId) return refusal(id, 'not_on_website');
+      if (rows[0].body?.deleted) return refusal(id, 'deleted');
       const row = rows[0];
       // A plan's type is fixed once it exists. Its name and date can change.
-      if ((row.body?.kind ?? null) !== fields.kind) return { id, status: 'error', message: 'A plan cannot change its type. Nothing was saved.' };
+      if ((row.body?.kind ?? null) !== fields.kind) return refusal(id, 'kind_changed');
       // The laptop must have seen the latest save. Otherwise the server's version comes back and nothing is written.
       if (base === null || new Date(base).getTime() !== new Date(row.updated_at).getTime()) {
         return { id, status: 'conflict', serverVersion: planOut(row) };
@@ -452,16 +466,26 @@ export async function pushOnePlan({ sql, transaction, churchId, userId, input, s
       // The language and the plan's Content Hub are set on the web; a laptop push keeps them. The Holy Mass time and language come from a
       // laptop that keeps them, and otherwise stay as stored (pushedSchedule).
       const details = fields.kind === 'pw' ? planDetails(row.body) : pushedSchedule(input, row.body);
-      await tx`
-        UPDATE plans SET name = ${fields.name}, liturgical_date = ${fields.date},
-          body = ${JSON.stringify({ kind: fields.kind, ...details, ...hubOf(row.body), items: kept })}::jsonb, updated_at = ${at}, synced_at = ${at}
-        WHERE id = ${id} AND church_id = ${churchId}`;
+      const stored = JSON.stringify({ kind: fields.kind, ...details, ...hubOf(row.body), items: kept });
+      if (withSyncedAt) {
+        await tx`
+          UPDATE plans SET name = ${fields.name}, liturgical_date = ${fields.date}, body = ${stored}::jsonb, updated_at = ${at}, synced_at = ${at}
+          WHERE id = ${id} AND church_id = ${churchId}`;
+      } else {
+        await tx`
+          UPDATE plans SET name = ${fields.name}, liturgical_date = ${fields.date}, body = ${stored}::jsonb, updated_at = ${at}
+          WHERE id = ${id} AND church_id = ${churchId}`;
+      }
       return { id, status: 'accepted', updatedAt: at };
     });
+  try {
+    return await withColumnFallback('synced_at', () => write(true), () => write(false));
   } catch (err) {
-    if (err instanceof ApiError) return { id, status: 'error', message: err.message };
-    console.error(`[plan-sync] ${err.name}`);
-    return { id, status: 'error', message: 'Something went wrong. Try again.' };
+    if (err instanceof ApiError) return { id, status: 'error', code: 'invalid', message: err.message };
+    const failure = describeDbError(err);
+    // The step, the error's name and Postgres code: enough to find the cause in the logs, with nothing from the plan.
+    console.error(`[plan-sync] step=push name=${err?.name ?? 'Error'} code=${err?.code ?? '-'} result=${failure.code}`);
+    return { id, status: 'error', ...failure };
   }
 }
 
@@ -473,8 +497,10 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
       return await handler(event);
     } catch (err) {
       if (err instanceof ApiError) return json(err.status, { error: err.message });
-      console.error(`[plan-sync] ${err.name}`);
-      return json(500, { error: 'Something went wrong. Try again.' });
+      // A plain reason (a missing migration, the database out of reach) instead of "Something went wrong", so the laptop can show it.
+      const failure = describeDbError(err);
+      console.error(`[plan-sync] step=route name=${err?.name ?? 'Error'} code=${err?.code ?? '-'} result=${failure.code}`);
+      return json(failure.code === 'db_unavailable' || failure.code === 'busy' ? 503 : 500, { error: failure.message, code: failure.code });
     }
   };
 
@@ -546,8 +572,8 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
     checkHubReferences(items, contentHubItems);
     const at = now().toISOString();
     let taken = null;
-    try {
-      await transaction(async (tx) => {
+    const stored = JSON.stringify({ kind: fields.kind, ...details, ...hubOf({ contentHubItems }), items });
+    const insert = (withSyncedAt) => transaction(async (tx) => {
         const existing = await tx`SELECT id FROM plans WHERE id = ${id}`;
         if (existing.length) throw new ApiError(409, NOT_SAVED);
         // A web planner cannot make a second Holy Mass at a time the day already has. A laptop's create is not refused: its own planner has
@@ -556,11 +582,19 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
           taken = await timeConflictOn(tx, churchId, fields.date, details.massTime);
           if (taken) throw new ApiError(409, 'time');
         }
-        await tx`
-          INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at, synced_at)
-          VALUES (${id}, ${churchId}, ${fields.name}, ${fields.date}, ${JSON.stringify({ kind: fields.kind, ...details, ...hubOf({ contentHubItems }), items })}::jsonb, ${at}, ${maker.fromLaptop ? at : null})`;
+        if (withSyncedAt) {
+          await tx`
+            INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at, synced_at)
+            VALUES (${id}, ${churchId}, ${fields.name}, ${fields.date}, ${stored}::jsonb, ${at}, ${maker.fromLaptop ? at : null})`;
+        } else {
+          await tx`
+            INSERT INTO plans (id, church_id, name, liturgical_date, body, updated_at)
+            VALUES (${id}, ${churchId}, ${fields.name}, ${fields.date}, ${stored}::jsonb, ${at})`;
+        }
         await tx`INSERT INTO audit_log (church_id, actor_user_id, action, target_plan_id) VALUES (${churchId}, ${userId}, 'plan.created', ${id})`;
       });
+    try {
+      await withColumnFallback('synced_at', () => insert(true), () => insert(false));
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) return taken ? timeConflictResponse(taken) : json(409, { error: NOT_SAVED });
       throw err;

@@ -7,6 +7,7 @@ import { sessionFrom } from './session.js';
 import { EDITING_ROLES } from './rules.js';
 import { checkContentHubItems, checkHubReferences, checkItems, checkPlanDetails, dateText, hubOf, planOut, timeConflictOn, timeConflictResponse } from './plan-sync.js';
 import { sameMassTime } from '../../shared/mass-schedule.js';
+import { withColumnFallback } from './schema-guard.js';
 import { pickerFilterOf } from '../../shared/lineup-templates.js';
 
 export { dateText };
@@ -137,7 +138,8 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
     if (typeof base !== 'string' || !ISO.test(base)) throw new ApiError(400, 'The plan\'s last saved time is missing. Reload the plan and try again.');
 
     const at = now().toISOString();
-    const result = await transaction(async (tx) => {
+    // With or without plans.synced_at, so a database that has not had 2026-11-09-plans-synced-at.sql still saves.
+    const save = (withSyncedAt) => transaction(async (tx) => {
       const rows = await tx`SELECT id, name, liturgical_date, body, updated_at FROM plans WHERE id = ${planId} AND church_id = ${who.churchId} FOR UPDATE`;
       if (!rows.length || rows[0].body?.deleted) throw new ApiError(404, 'That plan is not in your church.');
       const row = rows[0];
@@ -156,10 +158,13 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
       // A request that leaves the Content Hub out keeps what the plan has.
       const hub = body.contentHubItems === undefined ? hubOf(row.body) : hubOf({ contentHubItems: checkContentHubItems(body.contentHubItems) });
       checkHubReferences(items, hub.contentHubItems ?? []);
-      await tx`UPDATE plans SET body = ${JSON.stringify({ kind, ...details, ...hub, items })}::jsonb, updated_at = ${at}, synced_at = NULL WHERE id = ${planId}`;
+      const stored = JSON.stringify({ kind, ...details, ...hub, items });
+      if (withSyncedAt) await tx`UPDATE plans SET body = ${stored}::jsonb, updated_at = ${at}, synced_at = NULL WHERE id = ${planId}`;
+      else await tx`UPDATE plans SET body = ${stored}::jsonb, updated_at = ${at} WHERE id = ${planId}`;
       await tx`INSERT INTO audit_log (church_id, actor_user_id, action, target_plan_id) VALUES (${who.churchId}, ${who.userId}, 'plan.saved', ${planId})`;
       return { savedAt: at };
     });
+    const result = await withColumnFallback('synced_at', () => save(true), () => save(false));
     if (result.taken) return timeConflictResponse(result.taken);
     if (result.conflict) {
       return json(409, {

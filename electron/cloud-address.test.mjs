@@ -153,7 +153,7 @@ test('the Cloud sync screen sends only the typed text and shows the linked-addre
   const screen = fs.readFileSync(path.join(here, '..', 'src', 'settings', 'CloudSyncSettings.tsx'), 'utf8');
   assert.match(screen, /cloud\.saveAddress\(addressText \?\? link\?\.address \?\? ''\)/);
   assert.match(screen, /Save address/);
-  assert.ok(screen.includes('This laptop is linked to the address you had before. If you change it, check the link with Check now.'));
+  assert.ok(screen.includes('Linked against the address you had before. Press Sync Now to check the link.'));
 });
 
 test('the main process validates the address and writes only cloud_url', () => {

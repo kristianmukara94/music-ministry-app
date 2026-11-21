@@ -393,18 +393,52 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
     const res = await planCall('plan-create', { method: 'POST', body: plan });
     if (res.status === 201) return { status: 'created', updatedAt: res.body.plan.updatedAt };
     if (res.status === 409) return { status: 'exists' };
-    return { status: 'error', message: serverMessage(res) };
+    return { status: 'error', message: serverMessage(res), code: requestCode(res) };
   }
+
+  /** One plan's result from plan-sync-push, as the sync reads it. An error keeps the server's code and its plain reason. */
+  const planResult = (result) => {
+    if (result?.status === 'accepted') return { status: 'accepted', updatedAt: result.updatedAt };
+    if (result?.status === 'conflict') return { status: 'conflict', serverVersion: result.serverVersion };
+    const message = typeof result?.message === 'string' && result.message.length <= 300 ? result.message : 'The website did not say why this plan was not saved. It will be sent again.';
+    return { status: 'error', message, ...(typeof result?.code === 'string' ? { code: result.code } : {}) };
+  };
 
   /** Sends one plan against its base version. Returns accepted, conflict (with the website's version) or error. */
   const pushPlan = (plan) => retryWithoutSlots(pushPlanOnce, plan);
   async function pushPlanOnce(plan) {
     const res = await planCall('plan-sync-push', { method: 'POST', body: { plans: [plan] } });
-    if (!res.ok) return { status: 'error', message: serverMessage(res) };
-    const [result] = res.body.results ?? [];
-    if (result?.status === 'accepted') return { status: 'accepted', updatedAt: result.updatedAt };
-    if (result?.status === 'conflict') return { status: 'conflict', serverVersion: result.serverVersion };
-    return { status: 'error', message: typeof result?.message === 'string' ? result.message : 'Something went wrong. Try again.' };
+    if (!res.ok) return { status: 'error', message: serverMessage(res), code: requestCode(res) };
+    return planResult((res.body.results ?? [])[0]);
+  }
+
+  /**
+   * Sends several plans in one request (the server takes up to 50), each against its own base version. Returns one result per plan, in
+   * order. A refusal of the whole request (a rate limit, a server error) becomes the same error for each plan. A plan an old website
+   * refuses for its Holy Mass slots is sent again alone, without them.
+   */
+  async function pushPlans(plans) {
+    if (!plans.length) return [];
+    const res = await planCall('plan-sync-push', { method: 'POST', body: { plans } });
+    if (!res.ok) {
+      const failed = { status: 'error', message: serverMessage(res), code: requestCode(res) };
+      return plans.map(() => failed);
+    }
+    const results = (res.body.results ?? []).map(planResult);
+    return Promise.all(plans.map(async (plan, i) => {
+      const result = results[i] ?? planResult(null);
+      return result.status === 'error' && hasSlots(plan) && OLD_SITE.test(result.message ?? '') ? pushPlanOnce(withoutSlots(plan)) : result;
+    }));
+  }
+
+  /** A code for a refused request, so the Failed Plans list can say what kind of problem it is. */
+  function requestCode(res) {
+    if (typeof res.body?.code === 'string') return res.body.code;
+    if (res.status === 429) return 'rate_limited';
+    if (res.status === 403) return 'not_allowed';
+    if (res.status === 404 || res.notJson) return 'wrong_address';
+    if (res.status >= 500) return 'server_error';
+    return 'refused';
   }
 
   /** Deletes a plan on the website. A plan already gone there counts as deleted, so a retry is safe. */
@@ -425,7 +459,7 @@ export function createCloudDevice({ storage, file, fetchFn, baseUrl, now = () =>
 
   return {
     link, status, unlink, createWebUser, createChurchAdmin, renewLicense, licenseExpiresAt, pushSongs, pushTheme,
-    pullPlans, createPlan, pushPlan, deletePlan, getPlan,
+    pullPlans, createPlan, pushPlan, pushPlans, deletePlan, getPlan,
     serverOffset: () => serverOffsetMs,
   };
 }

@@ -263,8 +263,29 @@ test('the main process sends every saved theme, resumes after song sync and link
   assert.match(main, /onThemeSaved: \(id\) => themeSync\.themeChanged\(paintedTheme\(id\)\)/);
   assert.match(settings, /deps\.onThemeSaved\?\.\(saved\)/);
   assert.match(main, /const counts = await cloud\(\)\.pushSongs\(songs\);\s*\/\/[^\n]*\n\s*themeSync\.resume\(\);/);
-  assert.match(main, /if \(result\?\.linked\) themeSync\.resume\(\);/);
+  assert.match(main, /if \(result\?\.linked\) \{\s*themeSync\.resume\(\);/);
   assert.match(main, /shell\.openExternal\(withThemeParam\(launch\.url, currentPaintedTheme\(\), cloudUrl\(\)\)\)/);
   assert.match(main, /ipcMain\.handle\('cloud:open-website'/);
   assert.match(main, /themeSync\.themeChanged\(currentPaintedTheme\(\)\);\s*themeSync\.resume\(\);/);
+});
+
+test('Push Theme Now sends the painted theme straight away, stamped now, even with nothing waiting', async () => {
+  const h = harness({ initial: { theme: 'obsidian', updatedAt: '2026-11-19T09:00:00.000Z', dirty: false } });
+  h.tick(5000);
+  const outcome = await h.sync.pushNow('obsidian');
+  assert.equal(outcome.status, 'synced');
+  assert.equal(h.sent.length, 1);
+  assert.deepEqual(h.sent[0], { theme: 'obsidian', themeUpdatedAt: new Date(T0 + 5000).toISOString() });
+  assert.equal(h.saved().dirty, false, 'marked sent');
+  assert.deepEqual(h.timers.delays(), [], 'no debounce left behind');
+  assert.equal((await h.sync.pushNow('not-a-theme')).status, 'error');
+  assert.equal(h.sent.length, 1, 'an unknown theme is never sent');
+});
+
+test('Push Theme Now while the website cannot take it keeps the theme waiting and retries', async () => {
+  const h = harness({ fail: offline() });
+  const outcome = await h.sync.pushNow('obsidian');
+  assert.equal(outcome.status, 'offline');
+  assert.equal(h.saved().dirty, true);
+  assert.equal(h.timers.delays().length, 1, 'a retry is on the timer');
 });

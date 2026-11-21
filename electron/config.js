@@ -38,6 +38,8 @@ const DEFAULTS = {
   skipped_version: null,
   remind_after: null,
   cloud_url: '',
+  // Cloud sync's background timer (Settings → Cloud sync → Auto-Sync). Off: plans and songs send only when the operator asks.
+  cloud_auto_sync: true,
   pause_on_metered: false,
   eula_accepted: false,
   registered_church: null,
@@ -122,6 +124,7 @@ function sanitize(raw) {
     skipped_version: typeof raw.skipped_version === 'string' && raw.skipped_version.trim() ? raw.skipped_version.trim() : null,
     remind_after: Number.isFinite(raw.remind_after) ? raw.remind_after : null,
     cloud_url: checkCloudAddress(raw.cloud_url).ok ? checkCloudAddress(raw.cloud_url).address : '',
+    cloud_auto_sync: raw.cloud_auto_sync !== false,
     pause_on_metered: raw.pause_on_metered === true,
     eula_accepted: raw.eula_accepted === true,
     registered_church: typeof raw.registered_church === 'string' && raw.registered_church.trim() ? raw.registered_church.trim() : null,

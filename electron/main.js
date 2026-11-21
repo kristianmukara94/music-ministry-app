@@ -5,6 +5,7 @@ import { createCloudDevice } from './cloud-device.js';
 import { createLicenseManager, PROJECTION_OUTPUTS } from './license-manager.js';
 import { createSongSync, SONG_ROWS_SQL } from './song-sync.js';
 import { createThemeSync } from './theme-sync.js';
+import { createActivityLog, diagnosticsText, planRunEntry, songRunEntry, themeEntry } from '../shared/cloud-sync-panel.js';
 import { paintedTheme, withThemeParam } from '../shared/theme-catalog.js';
 import { createPlanSync } from './plan-sync.js';
 import { createPlanSyncStore } from './plan-sync-store.js';
@@ -1147,7 +1148,12 @@ ipcMain.handle('cloud:status', async () => withAddress(await cloud().status()));
 ipcMain.handle('cloud:link', async (_event, input) => {
   const result = await cloud().link(String(input?.code ?? ''), String(input?.label ?? '').slice(0, 80));
   // A theme chosen before the laptop was linked goes to the church's website now.
-  if (result?.linked) themeSync.resume();
+  if (result?.linked) {
+    themeSync.resume();
+    // The plans' website versions and pull cursor belong to whatever the laptop was linked to before (perhaps another church), so
+    // the plan sync starts fresh: every plan is matched against, or created on, this church's website.
+    void planSync?.resetForNewLink();
+  }
   return withAddress(result);
 });
 ipcMain.handle('cloud:unlink', async () => withAddress(await cloud().unlink()));
@@ -1157,15 +1163,18 @@ ipcMain.handle('cloud:create-web-user', (_event, input) =>
   cloud().createWebUser({ username: input?.username, displayName: input?.displayName, role: input?.role }),
 );
 // Checked in cloud-device.js in the main process before anything is sent. Only these five fields are read.
-ipcMain.handle('cloud:create-church-admin', (_event, input) =>
-  cloud().createChurchAdmin({
+ipcMain.handle('cloud:create-church-admin', async (_event, input) => {
+  const result = await cloud().createChurchAdmin({
     setupKey: input?.setupKey,
     churchName: input?.churchName,
     username: input?.username,
     displayName: input?.displayName,
     deviceLabel: input?.deviceLabel,
-  }),
-);
+  });
+  // A new church: the plans start fresh on its website, as after any new link.
+  if (result?.link?.linked) void planSync?.resetForNewLink();
+  return result;
+});
 ipcMain.handle('cloud:defaultLabel', () => os.hostname());
 
 /** The theme the windows are painted with now: the saved choice, with Automatic resolved to today's season. */
@@ -1186,8 +1195,14 @@ ipcMain.handle('cloud:open-website', () => {
   return shell.openExternal(withThemeParam(`${address.replace(/\/+$/, '')}/`,currentPaintedTheme(), address)).then(() => true);
 });
 
+// Recent Sync Activity: the last ten sync events, in memory only, for the Cloud sync screen and Copy Diagnostics. No plan titles, no tokens.
+const syncActivity = createActivityLog();
+const autoSyncOn = () => readConfig(app.getPath('userData')).cloud_auto_sync !== false;
+
 // The song list sync: runs in the background and sends metadata only (see song-sync.js). The screen sees its state, never the token.
 const songSync = createSongSync({
+  autoSync: autoSyncOn(),
+  onRun: (run) => syncActivity.record(songRunEntry(run, run.trigger)),
   readRows: () => announcements.db.prepare(SONG_ROWS_SQL).all(),
   push: async (songs) => {
     const counts = await cloud().pushSongs(songs);
@@ -1199,10 +1214,53 @@ const songSync = createSongSync({
 ipcMain.handle('cloud:songs-status', () => songSync.status());
 // The plan sync's state, for the read-only line on the Cloud sync screen. It is null until the database is open.
 let planSync = null;
-ipcMain.handle('cloud:plans-status', () => planSync?.status() ?? { status: 'idle', lastSyncedAt: null, message: null, counts: null });
+ipcMain.handle('cloud:plans-status', () => planSync?.status() ?? idlePlans());
 ipcMain.handle('cloud:songs-sync-now', async () => {
-  await songSync.runOnce();
+  await songSync.runOnce('manual');
   return songSync.status();
+});
+const idlePlans = () => ({ status: 'idle', lastSyncedAt: null, message: null, counts: null, failures: [], autoSync: autoSyncOn() });
+// Sync Now: plans and songs at once, and a theme that is waiting. Runs whether or not Auto-Sync is paused.
+ipcMain.handle('cloud:sync-now', async () => {
+  const [plans, songs] = await Promise.all([planSync ? planSync.runOnce('manual') : idlePlans(), songSync.runOnce('manual')]);
+  themeSync.resume();
+  return { plans, songs };
+});
+// Retry Failed: the failed plans are still waiting to be sent, so one run sends them again and refreshes each reason.
+ipcMain.handle('cloud:plans-retry', async () => (planSync ? planSync.retryFailed() : idlePlans()));
+// Force Push Plans: every plan here is sent again and every plan on the website read again.
+ipcMain.handle('cloud:plans-force-push', async () => (planSync ? planSync.forcePushAll() : idlePlans()));
+// Push Theme Now: this laptop's painted theme goes to the website now, stamped now, even if nothing was waiting.
+ipcMain.handle('cloud:theme-push-now', async () => {
+  const theme = currentPaintedTheme();
+  const outcome = await themeSync.pushNow(theme);
+  syncActivity.record(themeEntry({ ok: outcome?.status === 'synced', theme, message: outcome?.message }, 'manual'));
+  return themeSync.status();
+});
+ipcMain.handle('cloud:auto-sync', () => ({ autoSync: autoSyncOn() }));
+// Auto-Sync On / Paused. Saved in config.json, so a pause made before a service lasts through a restart until turned back on.
+ipcMain.handle('cloud:set-auto-sync', (_event, input) => {
+  const on = input?.on !== false;
+  writeConfig(app.getPath('userData'), { cloud_auto_sync: on });
+  planSync?.setAutoSync(on);
+  songSync.setAutoSync(on);
+  syncActivity.record({ channel: 'plans', direction: 'both', status: 'ok', trigger: 'manual', summary: on ? 'Auto-Sync turned on.' : 'Auto-Sync paused: sync runs only on Sync Now.' });
+  return { autoSync: on };
+});
+ipcMain.handle('cloud:activity', () => syncActivity.list());
+// Copy Diagnostics: connection, schema and channel health, as text for the clipboard. Built from display fields only, then redacted.
+ipcMain.handle('cloud:diagnostics', async () => {
+  const link = withAddress(await cloud().status().catch((err) => ({ linked: false, error: err?.message ?? null })));
+  return diagnosticsText({
+    appVersion: app.getVersion(),
+    platform: `${process.platform} ${process.arch}`,
+    link: { linked: link.linked, address: link.address, linkedAddress: link.linkedAddress, offline: link.offline, error: link.error },
+    license: licenseManager.status(),
+    plans: planSync ? planSync.status() : idlePlans(),
+    songs: songSync.status(),
+    theme: themeSync.status(),
+    activity: syncActivity.list(),
+  });
 });
 
 /** Remote view's status. Also starts the page if it is on and a network has appeared since the last check. */
@@ -1620,10 +1678,13 @@ app.whenReady().then(() => {
       pullPlans: (cursor) => planCloud.pullPlans(cursor),
       createPlan: (plan) => planCloud.createPlan(plan),
       pushPlan: (plan) => planCloud.pushPlan(plan),
+      pushPlans: (plans) => planCloud.pushPlans(plans),
       deletePlan: (id) => planCloud.deletePlan(id),
       getPlan: (id) => planCloud.getPlan(id),
       serverOffset: () => planCloud.serverOffset(),
     },
+    autoSync: autoSyncOn(),
+    onRun: (run) => syncActivity.record(planRunEntry(run)),
   });
   planSync.start();
   app.on('before-quit', () => planSync.stop());

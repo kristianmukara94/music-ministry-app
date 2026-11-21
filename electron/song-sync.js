@@ -58,7 +58,9 @@ export function buildSongList(rows) {
  * on the website. Only one timer is ever pending for the regular run: the interval, or a retry after a failure. A save's send waits
  * on its own short timer, so a save never delays the regular retry.
  */
-export function createSongSync({ readRows, push, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout, intervalMs = SYNC_INTERVAL_MS, notifyDelayMs = NOTIFY_DELAY_MS }) {
+export function createSongSync({ readRows, push, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout, intervalMs = SYNC_INTERVAL_MS, notifyDelayMs = NOTIFY_DELAY_MS, autoSync = true, onRun = () => {} }) {
+  // Auto-Sync: off means no timer and no send after a save; Re-sync Songs (runOnce) still sends.
+  let auto = autoSync !== false;
   let state = { status: 'idle', lastSyncedAt: null, message: null };
   let attempts = 0;
   let timer = null;
@@ -87,7 +89,7 @@ export function createSongSync({ readRows, push, now = () => Date.now(), setTime
   };
 
   /** Sends the list now. A second call while one is running joins the first. Never throws: the outcome is in `status()`. */
-  function runOnce() {
+  function runOnce(trigger = 'auto') {
     if (running) return running;
     running = (async () => {
       set({ status: 'syncing', message: null });
@@ -109,7 +111,7 @@ export function createSongSync({ readRows, push, now = () => Date.now(), setTime
           set({ status: 'offline', message: err.message });
           if (timer) clearTimer(timer);
           timer = null;
-          later(BACKOFF_MS[Math.min(attempts - 1, BACKOFF_MS.length - 1)]);
+          if (auto) later(BACKOFF_MS[Math.min(attempts - 1, BACKOFF_MS.length - 1)]);
         } else {
           set({ status: 'error', message: err?.message || 'Songs could not be synced. Try again.' });
         }
@@ -117,9 +119,14 @@ export function createSongSync({ readRows, push, now = () => Date.now(), setTime
         running = null;
         // A hymn saved while this send was running is not in it, so it is asked for again.
         if (sent && unsent) notify();
-        if (keepRunning) later(intervalMs);
+        if (keepRunning && auto) later(intervalMs);
+        try {
+          onRun({ trigger, ...status() });
+        } catch {
+          // The activity log never stops a sync.
+        }
       }
-      return state;
+      return status();
     })();
     return running;
   }
@@ -130,6 +137,7 @@ export function createSongSync({ readRows, push, now = () => Date.now(), setTime
    */
   function notify() {
     unsent = true;
+    if (!auto) return;
     if (notifyTimer) clearTimer(notifyTimer);
     notifyTimer = setTimer(() => {
       notifyTimer = null;
@@ -153,7 +161,24 @@ export function createSongSync({ readRows, push, now = () => Date.now(), setTime
   }
 
   /** What the Cloud sync screen may show: status, the last time it synced, a plain message, and whether a save is still unsent. */
-  const status = () => ({ status: state.status, lastSyncedAt: state.lastSyncedAt, message: state.message, unsent });
+  const status = () => ({
+    status: state.status, lastSyncedAt: state.lastSyncedAt, message: state.message, unsent,
+    counts: state.counts ?? null, skipped: state.skipped ?? 0, autoSync: auto,
+  });
 
-  return { runOnce, start, stop, status, notify };
+  /** Turns the background timer (and the send after a save) on or off. */
+  function setAutoSync(on) {
+    auto = Boolean(on);
+    if (!auto) {
+      clear();
+      if (notifyTimer) clearTimer(notifyTimer);
+      notifyTimer = null;
+    } else {
+      if (keepRunning) later(intervalMs);
+      if (unsent) notify();
+    }
+    return status();
+  }
+
+  return { runOnce, start, stop, status, notify, setAutoSync };
 }

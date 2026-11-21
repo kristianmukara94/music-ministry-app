@@ -142,6 +142,26 @@ export function createThemeSync({
     }
   }
 
+  /**
+   * Push Theme Now: sends `painted` straight away, stamped now, even when nothing is waiting, so the website takes this laptop's theme
+   * over one chosen elsewhere. Resolves to the outcome, like flush().
+   */
+  function pushNow(painted) {
+    if (!isPaintedTheme(painted)) return Promise.resolve({ status: 'error', message: 'This theme cannot be shown on the website.' });
+    if (debounceTimer) clearTimer(debounceTimer);
+    debounceTimer = null;
+    const change = { theme: painted, updatedAt: new Date(now()).toISOString() };
+    pending = change;
+    try {
+      writeState({ ...change, dirty: true });
+    } catch {
+      // Not saved: `pending` still carries it while the app runs.
+    }
+    attempts = 0;
+    cancelRetry();
+    return running ? running.then(() => flush()) : flush();
+  }
+
   /** The cloud is reachable again (a song sync succeeded, the laptop was linked, the app started): sends a dirty theme now. */
   function resume() {
     if (debounceTimer) return;
@@ -162,5 +182,5 @@ export function createThemeSync({
     return { theme: saved?.theme ?? null, themeUpdatedAt: saved?.updatedAt ?? null, themeDirty: Boolean(saved?.dirty || pending), ...last };
   };
 
-  return { themeChanged, flush, resume, stop, status };
+  return { themeChanged, flush, resume, stop, status, pushNow };
 }

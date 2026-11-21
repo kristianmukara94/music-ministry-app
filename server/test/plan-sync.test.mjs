@@ -7,7 +7,7 @@ import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { createPlanSyncApi, markPulled, CREATE_LIMIT, NOT_SAVED, PUSH_LIMIT } from '../lib/plan-sync.js';
+import { createPlanSyncApi, markPulled, CREATE_LIMIT, NOT_SAVED, PUSH_LIMIT, PUSH_REFUSALS } from '../lib/plan-sync.js';
 import { createPlanEditingApi } from '../lib/plan-editing.js';
 import { createApi } from '../lib/handlers.js';
 import { hashPassword, hashToken } from '../lib/auth.js';
@@ -277,7 +277,8 @@ test('another church\'s plan cannot be pushed over, or read', async () => {
   const seen = (await serverRow(id)).updated_at.toISOString();
   const res = JSON.parse((await sync().pushPlans(pushReq(laptopA, [body({ id, name: 'Hijacked', baseUpdatedAt: seen })]))).body);
   assert.equal(res.results[0].status, 'error');
-  assert.equal(res.results[0].message, NOT_SAVED);
+  assert.equal(res.results[0].code, 'not_on_website');
+  assert.equal(res.results[0].message, PUSH_REFUSALS.not_on_website);
   assert.equal((await serverRow(id)).name, 'Church B');
   const cookie = await cookieFor('planner');
   assert.equal((await editing().getPlan({ httpMethod: 'GET', headers: { cookie }, queryStringParameters: { id } })).statusCode, 404);
@@ -336,9 +337,9 @@ test("a push for another church's plan and a push for an unused id get the same 
   const unused = randomUUID();
   const a = JSON.parse((await sync().pushPlans(pushReq(laptopA, [body({ id: other, baseUpdatedAt: seen })]))).body);
   const b = JSON.parse((await sync().pushPlans(pushReq(laptopA, [body({ id: unused, baseUpdatedAt: seen })]))).body);
-  const outcome = (r) => ({ status: r.status, message: r.message, keys: Object.keys(r).sort() });
+  const outcome = (r) => ({ status: r.status, code: r.code, message: r.message, keys: Object.keys(r).sort() });
   assert.deepEqual(outcome(a.results[0]), outcome(b.results[0]), 'the per-plan results match');
-  assert.equal(a.results[0].message, NOT_SAVED);
+  assert.equal(a.results[0].code, 'not_on_website');
   assert.deepEqual(a.counts, b.counts, 'the batch counts match');
   assert.equal((await serverRow(other)).name, 'Church B', "another church's plan is untouched");
   assert.equal(await serverRow(unused), undefined, 'nothing is created for the unused id');
@@ -360,7 +361,8 @@ test("a push never creates a plan: an id the server does not have is refused, an
   const id = randomUUID();
   const res = JSON.parse((await sync().pushPlans(pushReq(laptopA, [body({ id, name: "From the laptop", baseUpdatedAt: null })]))).body);
   assert.equal(res.results[0].status, "error");
-  assert.equal(res.results[0].message, NOT_SAVED);
+  assert.equal(res.results[0].code, "not_on_website");
+  assert.equal(res.results[0].message, PUSH_REFUSALS.not_on_website);
   assert.equal(await serverRow(id), undefined);
 });
 
@@ -501,7 +503,8 @@ test('a deleted plan cannot be pushed back, and its id cannot be created again',
   await sync().deletePlan(deleteReq(headers(laptopA), id));
   const pushed = JSON.parse((await sync().pushPlans(pushReq(laptopA, [body({ id, baseUpdatedAt: new Date(stored.updated_at).toISOString() })]))).body);
   assert.equal(pushed.results[0].status, 'error');
-  assert.equal(pushed.results[0].message, NOT_SAVED);
+  assert.equal(pushed.results[0].code, 'deleted');
+  assert.equal(pushed.results[0].message, PUSH_REFUSALS.deleted);
   const created = await sync().createPlan({ httpMethod: 'POST', headers: headers(laptopA), body: JSON.stringify(body({ id })) });
   assert.equal(created.statusCode, 409);
 });
