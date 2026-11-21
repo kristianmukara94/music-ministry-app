@@ -1,5 +1,7 @@
 import type { SourceLine } from '../../shared/song-batch.js';
 import type { TextStyle } from '../../shared/text-style';
+import type { SongSlide, SongSlides } from '../../shared/song-slides.js';
+import type { SlideLook } from '../../shared/slide-look.js';
 import type { CategoryTargetMode, PrimaryCategory } from '../../shared/song-taxonomy.js';
 export type { CategoryTargetMode, PrimaryCategory };
 export type HymnCategory = 'Entrance' | 'Offertory' | 'Communion' | 'Recessional' | 'General';
@@ -41,6 +43,10 @@ export interface Stanza {
    * one slide, never paged again for its length or the text size. Missing for a stanza nobody edited on air, which is paged as usual.
    */
   pages?: string[];
+  /** The slide's own formatting, from the song's default arrangement (shared/song-slides.js). */
+  look?: SlideLook;
+  /** The operator's booth notes for the slide, from the song's default arrangement. */
+  notes?: string;
 }
 
 export interface Hymn {
@@ -60,6 +66,13 @@ export interface Hymn {
   /** How the song is set on the projector. Null keeps the default look. */
   style: TextStyle | null;
   stanzas: Stanza[];
+  /**
+   * The slides an operator last left this song in on air, saved as its default (shared/song-slides.js). Used only while its lyricsHash
+   * matches the words in `stanzas`. Null or missing: the song is paged automatically.
+   */
+  defaultSlides?: SongSlides | null;
+  /** Set on a song as Go Live reads it (liveLyrics): 'default' when its stanzas are the saved arrangement's slides, else 'auto'. */
+  slideLayout?: 'default' | 'auto';
   /** Set while the song is in Recently deleted. Null or missing for a song in the library. */
   deletedAt?: string | null;
 }
@@ -168,6 +181,8 @@ export interface LyricsApi {
   saveSetlist(id: number, hymnIds: number[]): Promise<number>;
   /** Saves how this song is set on the projector. Null returns it to the default look. */
   setStyle(id: number, style: TextStyle | null): Promise<TextStyle | null>;
+  /** Saves the song's default slide arrangement (Go Live), stamped with its words' hash; null clears it (Reset Default Layout). */
+  saveDefaultSlides(id: number, slides: SongSlide[] | null): Promise<SongSlides | null>;
   /** Opens the file dialog in the main process and reads the chosen file. Null when the operator cancels. */
   importFile(): Promise<LyricsImport | null>;
   /** Opens the file picker for a Word or text file of many songs. Resolves to the file's path, or null when the operator cancels. */

@@ -6,7 +6,7 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { HYMN_DELETE_MIGRATIONS, HYMN_FILING_MIGRATIONS, HYMN_FONT_SCALE_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS, createLyricsService } = await import('./lyrics.js');
+const { HYMN_DELETE_MIGRATIONS, HYMN_FILING_MIGRATIONS, HYMN_FONT_SCALE_MIGRATIONS, HYMN_DEFAULT_SLIDES_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS, createLyricsService } = await import('./lyrics.js');
 const { SONG_CATEGORY_MIGRATIONS, SONG_CATEGORY_MODE_MIGRATIONS, SONG_SCOPE_MIGRATIONS, createSongCategoryService } = await import('./song-categories.js');
 
 const RAW = '[Verse 1]\nSample line 1\nSample line 2\n\n[Chorus]\nSample line 3';
@@ -27,7 +27,7 @@ function setup({ filing = true } = {}) {
   for (const sql of [...LYRICS_MIGRATIONS, ...LYRICS_STYLE_MIGRATIONS, ...HYMN_DELETE_MIGRATIONS, ...SONG_CATEGORY_MIGRATIONS, ...SONG_SCOPE_MIGRATIONS, ...SONG_CATEGORY_MODE_MIGRATIONS]) db.exec(sql);
   const categories = createSongCategoryService(db);
   for (const name of ['Category A', 'Category B', 'Category C', 'Category D']) categories.createSongCategory({ name });
-  const migrate = () => [...HYMN_FILING_MIGRATIONS, ...HYMN_FONT_SCALE_MIGRATIONS].forEach((sql) => db.exec(sql));
+  const migrate = () => [...HYMN_FILING_MIGRATIONS, ...HYMN_FONT_SCALE_MIGRATIONS, ...HYMN_DEFAULT_SLIDES_MIGRATIONS].forEach((sql) => db.exec(sql));
   if (filing) migrate();
   return { db, categories, migrate, service: () => createLyricsService(db) };
 }
@@ -146,6 +146,7 @@ test('a song saved before the wide column reads at its stored size', () => {
   db.exec(HYMN_FILING_MIGRATIONS[0]);
   db.prepare("INSERT INTO hymns (title, composer, category, language, musical_key, song_category, font_scale) VALUES ('Sample Song Title', '', 'Entrance', 'EN', '', 'Category A', 1.3)").run();
   db.exec(HYMN_FONT_SCALE_MIGRATIONS[0]);
+  db.exec(HYMN_DEFAULT_SLIDES_MIGRATIONS[0]);
   const service = make();
   assert.equal(service.listHymns({})[0].fontScale, 1.3);
 });

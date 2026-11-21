@@ -93,6 +93,7 @@ contextBridge.exposeInMainWorld('apcc', {
     getSetlist: (id) => ipcRenderer.invoke('lyrics:getSetlist', id),
     saveSetlist: (id, hymnIds) => ipcRenderer.invoke('lyrics:saveSetlist', id, hymnIds),
     setStyle: (id, style) => ipcRenderer.invoke('lyrics:setStyle', id, style),
+    saveDefaultSlides: (id, slides) => ipcRenderer.invoke('lyrics:saveDefaultSlides', id, slides),
     importFile: () => ipcRenderer.invoke('lyrics:importFile'),
     /** Opens the file picker for a Word or text file of many songs. Resolves to its path, or null. */
     pickBatchFile: () => ipcRenderer.invoke('lyrics:pickBatchFile'),

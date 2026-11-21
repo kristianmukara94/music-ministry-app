@@ -127,7 +127,8 @@ export function CueNavigator({ cues, activeIndex, onSelect, disabled = false, em
                     type="button"
                     aria-pressed={on}
                     onClick={() => setTab(value)}
-                    className={`shrink-0 rounded-md border px-2.5 py-1 text-xs whitespace-nowrap transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none ${
+                    title={value ?? undefined}
+                    className={`max-w-[16rem] shrink-0 truncate rounded-md border px-2.5 py-1 text-xs whitespace-nowrap transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none ${
                       on ? 'border-accent bg-accent font-bold text-on-accent' : 'border-transparent bg-panel-2 text-fg/85 hover:border-line'
                     }`}
                   >
@@ -179,7 +180,7 @@ export function CueNavigator({ cues, activeIndex, onSelect, disabled = false, em
                               <span className={`shrink-0 rounded px-1 ${where === 'live' ? 'bg-accent text-on-accent' : 'bg-fg/10 text-fg/80'}`}>{t('consoleKey', { n: key })}</span>
                             )}
                           </span>
-                          <span className="line-clamp-2 text-xs font-medium text-fg">{words || '—'}</span>
+                          <span className="line-clamp-2 w-full min-w-0 text-xs font-medium text-fg [overflow-wrap:anywhere]">{words || '—'}</span>
                         </>
                       )}
                     </button>

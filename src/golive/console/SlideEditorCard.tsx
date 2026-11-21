@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { draftPending, editorInit, editorReducer, pad2, shouldApplyLive, type EditorMode } from '../../../shared/stage-cue.js';
 import { useDeleteSlideKey } from '../../components/useDeleteSlideKey';
+import type { SlideLook } from '../../../shared/slide-look.js';
 import { useGoLiveT } from '../strings';
 import { BTN, BTN_ACTIVE, BTN_DANGER, BTN_DANGER_ACTIVE, BTN_PRIMARY, CARD, CARD_TITLE } from './styles';
 
@@ -30,12 +31,36 @@ export interface SlideEditTarget {
   tag: string | null;
   /** The tags the Section Tag menu offers, or null when this slide has no tag of its own (the tag is then shown, not edited). */
   tagOptions: string[] | null;
-  /** Saves new words (and tag). Rejects with the reason when the change is refused. */
-  apply: (text: string, tag: string | null) => Promise<void>;
+  /**
+   * Saves new words (and tag). Rejects with the reason when the change is refused. `details` is the slide's own look and booth notes, which a
+   * song keeps in its default slide arrangement with the words (the other kinds of slide keep them on air only and ignore it).
+   */
+  apply: (text: string, tag: string | null, details?: SongSlideDetails) => Promise<void>;
   /** Saves a new slide after this one, off screen. Null when this slide takes none. */
   add: ((text: string, tag: string | null) => Promise<void>) | null;
   /** Deletes this slide. Null while it cannot be deleted (the item's only slide). */
   remove: (() => Promise<void>) | null;
+  /**
+   * A song's slide: every change above is also saved as the song's default slide arrangement, so later uses of the song play these slides.
+   * Missing for any other kind of slide.
+   */
+  song?: SongDefaultControls;
+}
+
+/** A slide's own look and booth notes, as a song's default arrangement keeps them. */
+export interface SongSlideDetails {
+  look?: SlideLook | null;
+  notes?: string;
+}
+
+/** The song default controls the slide editor offers on a song's slide. */
+export interface SongDefaultControls {
+  /** 'default' while the song plays its saved arrangement, 'auto' while it is paged automatically. */
+  layout: 'default' | 'auto';
+  /** Saves this slide's look and notes into the song's default arrangement (a change of words goes through apply). */
+  saveDetails: (details: SongSlideDetails) => Promise<void>;
+  /** Reset Default Layout: clears the arrangement, so the song is paged automatically again. */
+  reset: () => Promise<void>;
 }
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));

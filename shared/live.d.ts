@@ -117,7 +117,7 @@ export type Frame =
   /** `notes` are the presenter's cues. Only the operator's windows show them. The projector never renders them. */
   /** `headline` is the large title above the body. Absent for manual text slides, which show `text` alone. */
   | { kind: 'text'; title: string; headline?: string; text: string; bg: string | null; notes?: string; style?: TextStyle | null; page?: { index: number; total: number }; key?: string; top?: number; centred?: boolean }
-  | { kind: 'lyrics'; title: string; label: string; text: string; style?: TextStyle | null; /** The song's own font size (0.75 to 1.5), times the theme's. */ fontScale?: number; key?: string; song?: { hymnId: number; position: number; count: number }; setlist?: { id: number; index: number; count: number } }
+  | { kind: 'lyrics'; title: string; label: string; text: string; /** A slide's own formatting from the song's default arrangement. */ look?: import('./slide-look.js').SlideLook; style?: TextStyle | null; /** The song's own font size (0.75 to 1.5), times the theme's. */ fontScale?: number; key?: string; song?: { hymnId: number; position: number; count: number }; setlist?: { id: number; index: number; count: number } }
   /** Responsorial psalm: the congregation response stays pinned while the verses change. */
   | { kind: 'psalm'; title: string; response: string; pages: string[]; index: number; style?: TextStyle | null; key?: string }
   /**

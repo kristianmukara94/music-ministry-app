@@ -44,12 +44,12 @@ import { TransportBar, consoleOutputActions } from './console/TransportBar';
 import { CueNavigator } from './console/CueNavigator';
 import { SlideEditorCard, type SlideEditTarget } from './console/SlideEditorCard';
 import { TypographyCard } from './console/TypographyCard';
-import { massPagesTarget, massSongRemove, songTarget } from './console/editTargets';
+import { massPagesTarget, massSongLayout, massSongRemove, songTarget } from './console/editTargets';
 import { useConsoleKeys, useSegmentTimer } from './console/hooks';
 import { SlideEditorModal, type EditorCue } from './console/SlideEditorModal';
 import { FloatingProgram } from './console/FloatingProgram';
 import { useCueMeta } from './console/cueMeta';
-import { massLookKey } from '../../shared/slide-look.js';
+import { frameOwnLook, massLookKey } from '../../shared/slide-look.js';
 import type { Frame, LineRole } from '../../shared/live.js';
 
 /** A Holy Mass slide as the editor previews it: with the words being typed in place of the saved ones. A picture has no words to change. */
@@ -57,6 +57,7 @@ function withWords(frame: Frame, text: string): Frame {
   switch (frame.kind) {
     case 'lyrics':
     case 'text':
+    case 'rosary':
       return { ...frame, text };
     case 'deck': {
       const lines = frame.slides[frame.index] ?? [];
@@ -731,7 +732,7 @@ export function MassLiveView({ planName }: { planName: string | null }) {
       if (!cueFrame) return null;
       const target: SlideEditTarget | null = isSong
         ? i >= 1
-          ? songTarget({ hymn: hymn!, stanza: i - 1, number: i + 1, key: `mass:${item.id}:${i}`, remove: massSongRemove(hymn!, i - 1) })
+          ? songTarget({ hymn: hymn!, stanza: i - 1, number: i + 1, key: `mass:${item.id}:${i}`, remove: massSongRemove(hymn!, i - 1), layout: massSongLayout(i - 1) })
           : null
         : item.module === 'lyrics'
           ? null
@@ -740,6 +741,8 @@ export function MassLiveView({ planName }: { planName: string | null }) {
         index: i,
         count: slideCount,
         lookKey: lookKeyAt(v.row, i),
+        ownLook: frameOwnLook(cueFrame),
+        ownNotes: isSong && i >= 1 ? hymn?.stanzas[i - 1]?.notes : undefined,
         target,
         tag: cues[i]?.tag ?? item.label,
         text: cues[i]?.text ?? pages?.[i] ?? '',
@@ -775,7 +778,7 @@ export function MassLiveView({ planName }: { planName: string | null }) {
       ? null
       : isSong
         ? liveSteps && liveSteps.index >= 1
-          ? songTarget({ hymn: hymn!, stanza: liveSteps.index - 1, number: liveSteps.index + 1, key: `mass:${item.id}:${liveSteps.index}`, remove: massSongRemove(hymn!, liveSteps.index - 1) })
+          ? songTarget({ hymn: hymn!, stanza: liveSteps.index - 1, number: liveSteps.index + 1, key: `mass:${item.id}:${liveSteps.index}`, remove: massSongRemove(hymn!, liveSteps.index - 1), layout: massSongLayout(liveSteps.index - 1) })
           : null
         : item.module === 'lyrics'
           ? null
@@ -954,7 +957,7 @@ export function MassLiveView({ planName }: { planName: string | null }) {
                     next={
                       nextInItem ? (
                         // The next slide is not the projector's yet, so its own look (if it has one) is handed over by its key.
-                        <FramePreview frame={nextInItem} look={live.slideLooks?.[lookKeyAt(cursor, slideAt + 1)] ?? null} />
+                        <FramePreview frame={nextInItem} look={live.slideLooks?.[lookKeyAt(cursor, slideAt + 1)] ?? frameOwnLook(nextInItem)} />
                       ) : nextItemFrame ? (
                         <FramePreview frame={nextItemFrame} />
                       ) : nextItem ? (

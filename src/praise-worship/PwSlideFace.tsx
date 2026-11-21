@@ -10,10 +10,12 @@ import { TEXT_FONTS, scaledSize } from '../../shared/text-style.js';
 import { BackgroundShade } from '../output/BackgroundMedia';
 import { useProjectorTextAutoFit } from '../output/useProjectorTextAutoFit';
 import { useTextAutoFit } from '../output/useTextAutoFit';
-import { EDGE_TO_EDGE, edgeToEdgeBox } from '../../shared/text-fit.js';
+import { EDGE_TO_EDGE, TITLE_CARD_BOX, edgeToEdgeBox } from '../../shared/text-fit.js';
 import { slideTextAlign } from '../../shared/slide-look.js';
 
 const TYPE_ICON = { prayer: Cross, song: Music, scripture: BookOpen } as const;
+/** The title card's box, in cqw only (see the note on PwSlideFace): below the segment name, above the footer and the page count. */
+const titleCardBoxStyle: CSSProperties = { top: `${TITLE_CARD_BOX.topCqw}cqw`, bottom: `${TITLE_CARD_BOX.bottomCqw}cqw`, left: `${TITLE_CARD_BOX.sideCqw}cqw`, right: `${TITLE_CARD_BOX.sideCqw}cqw` };
 
 /**
  * One Praise & Worship slide, drawn the way the projector draws it. Every size is a share of the stage
@@ -86,30 +88,15 @@ export function PwSlideFace({
   }
 
   if (slide.kind === 'title') {
-    const Icon = TYPE_ICON[type];
-    // Proportional across the whole 50%-250% range: no ceiling, so every A-/A+ step changes the title. Long titles (more than 25 characters,
-    // which wrap to three lines) start smaller, so they stay inside the frame. The line width follows the scaled size.
-    const long = slide.label.length > 25;
-    const titleCqw = (long ? 3.6 : 4.4) * (slideScale ?? 1);
-    const titleChars = charsPerLine(0.84, titleCqw * 19.2);
-    // No text-area shade on a title card: the title stands on the picture or the colour itself, with no box behind it. The title is centred
-    // on the full frame, and the header and footer badges are pinned to the top and bottom edges, above it.
     return (
       <div data-theme="default" className={rootClass} style={colorStyle}>
-        <div className="absolute inset-0 flex flex-col items-center justify-center px-[8cqw] py-[4.5cqw] text-center">
-          <Icon aria-hidden className="mb-[1.406cqw] h-[4cqw] w-[4cqw] shrink-0 text-gold opacity-80" strokeWidth={1.25} />
-          <h2 data-slide-words className="max-h-[36.563cqw] leading-[1.12] tracking-[0.08em] uppercase" style={{ fontFamily: slideFont ?? TEXT_FONTS.display.css, fontWeight: 700, fontSize: `${titleCqw}cqw` }}>
-            {slideLine(slide.label, titleChars)}
-          </h2>
-          <div aria-hidden className="mt-[1.406cqw] h-[0.197cqw] w-[12cqw] bg-gold" />
-          {slide.subtitle && <p className="mt-[1.125cqw] text-[2.2cqw] tracking-wide text-muted">{slide.subtitle}</p>}
-        </div>
+        <TitleCardText label={slide.label} subtitle={slide.subtitle} type={type} slideFont={slideFont} slideScale={slideScale} />
         <div className="absolute top-[2.813cqw] left-[6cqw] right-[6cqw] z-10 flex items-center justify-between">
-          <span className="text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{!hideTitle && segmentName}</span>
+          <span className="truncate text-[1.6cqw] font-bold tracking-[0.2em] text-gold uppercase">{!hideTitle && segmentName}</span>
         </div>
-        <div className="absolute bottom-[2.813cqw] left-[6cqw] right-[6cqw] z-10 flex items-center justify-between">
-          <span className="text-[1.6cqw] text-muted">{footer}</span>
-          {position && <span className="font-mono text-[1.6cqw] text-muted">{position}</span>}
+        <div data-slide-footer className="absolute bottom-[2.813cqw] left-[6cqw] right-[6cqw] z-10 flex items-center justify-between gap-[2cqw]">
+          <span className="min-w-0 truncate text-[1.6cqw] text-muted">{footer}</span>
+          {position && <span data-slide-counter className="shrink-0 font-mono text-[1.6cqw] text-muted">{position}</span>}
         </div>
       </div>
     );
@@ -131,8 +118,8 @@ export function PwSlideFace({
         >
           {slideText(slide.text, charsPerLine(PRAYER_WIDTH_SHARE, slide.fontPx ?? 96))}
         </FittedFaceText>
-        <div className="absolute bottom-[3.938cqw] left-[6cqw] text-[1.6cqw] text-muted">{footer}</div>
-        {position && <div className="pointer-events-none absolute right-[6cqw] bottom-[3.938cqw] z-20 font-mono text-[1.6cqw] text-muted">{position}</div>}
+        <div data-slide-footer className="absolute bottom-[3.938cqw] left-[6cqw] text-[1.6cqw] text-muted">{footer}</div>
+        {position && <div data-slide-counter className="pointer-events-none absolute right-[6cqw] bottom-[3.938cqw] z-20 font-mono text-[1.6cqw] text-muted">{position}</div>}
       </div>
     );
   }
@@ -156,8 +143,45 @@ export function PwSlideFace({
         {slideText(slide.text, charsPerLine(0.88, 5 * 19.2 * (slide.fontScale ?? 1)))}
       </FittedFaceText>
       )}
-      <div className="absolute bottom-[3.938cqw] left-[6cqw] text-[1.6cqw] text-muted">{footer}</div>
-      {position && <div className="pointer-events-none absolute right-[6cqw] bottom-[3.938cqw] z-20 font-mono text-[1.6cqw] text-muted">{position}</div>}
+      <div data-slide-footer className="absolute bottom-[3.938cqw] left-[6cqw] text-[1.6cqw] text-muted">{footer}</div>
+      {position && <div data-slide-counter className="pointer-events-none absolute right-[6cqw] bottom-[3.938cqw] z-20 font-mono text-[1.6cqw] text-muted">{position}</div>}
+    </div>
+  );
+}
+
+/**
+ * A title card's words: the icon, the title, the gold rule and the subtitle, centred in a box that ends above the footer and the page count and
+ * starts below the segment name, inside Title Safe. The title is set at its size (larger at A+, up to 250%) and steps down until the whole
+ * group fits that box: never under the rule, the count or the slide's bottom edge. A word too long for a line was already cut at soft breaks
+ * for its set size (slideLine), and `apcc-prose` breaks any that is still wider than the box at the smallest size, so nothing runs off the sides.
+ */
+function TitleCardText({ label, subtitle, type, slideFont, slideScale }: { label: string; subtitle?: string; type: PwType; slideFont?: string; slideScale?: number }) {
+  const Icon = TYPE_ICON[type];
+  // Long titles (more than 25 characters, which wrap to three lines) start smaller. The line width follows the scaled size.
+  const long = label.length > 25;
+  const titleCqw = (long ? 3.6 : 4.4) * (slideScale ?? 1);
+  const titleChars = charsPerLine(0.84, titleCqw * 19.2);
+  const naturalSize = `${titleCqw}cqw`;
+  const boxRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLHeadingElement>(null);
+  const iconRef = useRef<HTMLDivElement>(null);
+  const ruleRef = useRef<HTMLDivElement>(null);
+  const subtitleRef = useRef<HTMLParagraphElement>(null);
+  useTextAutoFit({ boxRef, textRef, reservedRef: [iconRef, ruleRef, subtitleRef], naturalSize, deps: [label, subtitle, slideFont], heightShare: 1, keepLines: false });
+  return (
+    <div ref={boxRef} data-title-card className="absolute flex flex-col items-center justify-center-safe overflow-hidden text-center" style={titleCardBoxStyle}>
+      <div ref={iconRef} className="mb-[1.406cqw] shrink-0">
+        <Icon aria-hidden className="block h-[4cqw] w-[4cqw] text-gold opacity-80" strokeWidth={1.25} />
+      </div>
+      <h2 ref={textRef} data-slide-words className="apcc-prose w-full max-w-full leading-[1.12] tracking-[0.08em] uppercase [overflow-clip-margin:0.2em] [overflow:clip]" style={{ fontFamily: slideFont ?? TEXT_FONTS.display.css, fontWeight: 700, fontSize: naturalSize }}>
+        {slideLine(label, titleChars)}
+      </h2>
+      <div ref={ruleRef} aria-hidden data-title-rule className="mt-[1.406cqw] h-[0.197cqw] w-[12cqw] shrink-0 bg-gold" />
+      {subtitle && (
+        <p ref={subtitleRef} className="apcc-prose mt-[1.125cqw] line-clamp-2 max-w-full shrink-0 text-[2.2cqw] tracking-wide text-muted">
+          {subtitle}
+        </p>
+      )}
     </div>
   );
 }
@@ -177,7 +201,7 @@ function EdgeToEdgeFaceText({ box, textAlign, fontFamily, children }: { box: { l
     <div
       ref={boxRef}
       data-edge-to-edge
-      className="absolute flex items-center justify-center overflow-hidden"
+      className="absolute flex items-center-safe justify-center overflow-hidden"
       style={{ left: `${box.left}cqw`, right: `${box.right}cqw`, top: `${box.top}cqw`, bottom: `${box.bottom}cqw` }}
     >
       <p ref={textRef} data-slide-words className="apcc-prose w-full font-serif font-semibold whitespace-pre-line" style={{ fontFamily, fontSize: naturalSize, lineHeight: EDGE_TO_EDGE.leading, textAlign }}>

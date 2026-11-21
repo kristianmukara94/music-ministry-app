@@ -96,7 +96,7 @@ test('every renderer takes its alignment from the one resolver, never a left fal
 test('the centred stage keeps clear of the footer and page count', () => {
   const projector = read('src/output/ProjectorView.tsx');
   // The safe box centres both ways and reserves the bottom for the page count, which sits inside that reserve.
-  assert.match(projector, /data-safe-fit className=\{`relative flex h-full w-full flex-col items-center justify-center overflow-hidden pb-\[9cqh\]/);
+  assert.match(projector, /data-safe-fit className=\{`relative flex h-full w-full flex-col items-center justify-center-safe overflow-hidden pb-\[9cqh\]/);
   assert.match(projector, /const HEADED_SAFE_BOTTOM = 9;/);
   for (const [, bottom] of projector.matchAll(/absolute right-\[4cqw\] bottom-\[(\d+)cqh\]/g)) assert.ok(Number(bottom) < 9, 'the page count sits in the reserved bottom');
   // The Praise & Worship face: the words end above the footer row and the page count.

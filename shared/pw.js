@@ -437,7 +437,7 @@ function songSlides(segment, hymns, { band, scale, withTitle }) {
       for (const [part, text] of list.entries()) {
         const { top, centred } = tops[k];
         k += 1;
-        slides.push({ kind: 'lyrics', label: stanza.stanzaType, chip: sectionChip(stanza.stanzaType), text, hymnId: hymn.id, hymnTitle: hymn.title, sectionId, position: hymn.stanzas.indexOf(stanza), stanzaCount: hymn.stanzas.length, part, parts: list.length, fontPx: 96, top, centred, align: hymn.style?.textAlign ?? 'center', ...(fontScale !== 1 ? { fontScale } : {}) });
+        slides.push({ kind: 'lyrics', label: stanza.stanzaType, chip: sectionChip(stanza.stanzaType), text, hymnId: hymn.id, hymnTitle: hymn.title, sectionId, position: hymn.stanzas.indexOf(stanza), stanzaCount: hymn.stanzas.length, part, parts: list.length, fontPx: 96, top, centred, align: hymn.style?.textAlign ?? 'center', ...(fontScale !== 1 ? { fontScale } : {}), ...(stanza.look ? { look: stanza.look } : {}) });
       }
     }
   }
@@ -675,4 +675,15 @@ export function removeLineupCard(segments, groups, index) {
   if (!list[index]) return { segments: list, index: Math.min(index, Math.max(list.length - 1, 0)) };
   const next = list.filter((_, i) => i !== index);
   return { segments: next, index: Math.min(index, Math.max(next.length - 1, 0)) };
+}
+
+/** The longest name a card keeps. */
+export const MAX_CARD_NAME = 120;
+
+/**
+ * A card's name as it is saved from its title slide: runs of spaces and line breaks become one space, the ends are trimmed, and it is cut to
+ * MAX_CARD_NAME. The slide editor's live preview draws the same name, so what the operator sees while typing is what Save keeps.
+ */
+export function cardNameOf(text) {
+  return String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_CARD_NAME);
 }

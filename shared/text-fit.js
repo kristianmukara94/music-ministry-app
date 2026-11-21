@@ -297,16 +297,19 @@ export function applyFrameTextCase(frame, mode) {
  * - `lowerThirdClearCqh` / `lowerThirdClearCqw`: kept free at the bottom while a lower third (or a note or alert banner) is on screen, the same
  *   18% of the height the projector clears for other text, so the band never covers the last line.
  */
-export const EDGE_TO_EDGE = Object.freeze({ padXcqw: 1.5, padYcqh: 1.5, ceilingCqw: 22, leading: 1.12, heightShare: 0.98, footerClearCqw: 6.6, headerClearCqw: 6.6, lowerThirdClearCqh: 18, lowerThirdClearCqw: 10.2 });
+// Edge-to-edge goes thin only at the sides (1.5% to 98.5% across): at the top and the bottom it keeps Title Safe's 5% (padYcqh on a Holy Mass
+// slide, safeYcqw = 5% of the 56.25cqw height on a Praise & Worship face), so the words never reach the slide's top or bottom edge.
+export const EDGE_TO_EDGE = Object.freeze({ padXcqw: 1.5, padYcqh: 5, safeYcqw: 2.8125, ceilingCqw: 22, leading: 1.12, heightShare: 0.98, footerClearCqw: 6.6, headerClearCqw: 6.6, lowerThirdClearCqh: 18, lowerThirdClearCqw: 10.2 });
 
 /**
- * The box a Praise & Worship lyric is fitted in when edge-to-edge is on, as offsets from the slide's edges in cqw: thin at every side, with
- * room kept for the label at the top and the footer at the bottom only when they are shown.
+ * The box a Praise & Worship lyric is fitted in when edge-to-edge is on, as offsets from the slide's edges in cqw: thin at the sides, Title Safe
+ * at the top and the bottom, with room kept for the label at the top and the footer at the bottom only when they are shown.
  */
 export function edgeToEdgeBox({ header = false, footer = false, lowerThird = false } = {}) {
   const edge = EDGE_TO_EDGE.padXcqw;
-  const bottom = Math.max(edge, footer ? EDGE_TO_EDGE.footerClearCqw : 0, lowerThird ? EDGE_TO_EDGE.lowerThirdClearCqw : 0);
-  return { left: edge, right: edge, top: header ? EDGE_TO_EDGE.headerClearCqw : edge, bottom };
+  const safe = EDGE_TO_EDGE.safeYcqw;
+  const bottom = Math.max(safe, footer ? EDGE_TO_EDGE.footerClearCqw : 0, lowerThird ? EDGE_TO_EDGE.lowerThirdClearCqw : 0);
+  return { left: edge, right: edge, top: Math.max(safe, header ? EDGE_TO_EDGE.headerClearCqw : 0), bottom };
 }
 
 /** A lower third with its words in `mode`: the tag and both lines. 'original' gives back the same value. */
@@ -317,3 +320,11 @@ export function applyLowerThirdCase(value, mode) {
   for (const key of ['tag', 'line1', 'line2']) if (typeof out[key] === 'string') out[key] = applyTextCase(out[key], m);
   return out;
 }
+
+/**
+ * The box a Praise & Worship title card's words (icon, title, gold rule, subtitle) are fitted in, as offsets from the slide's edges in cqw. The
+ * slide is 100cqw wide and 56.25cqw tall. Title Safe (90%) keeps 2.8125cqw clear at the top and bottom and 5cqw at the sides; the segment name
+ * and the footer with its page count sit just inside it, each 1.6cqw text from 2.813cqw off the edge, so they end about 4.8cqw in. The box starts
+ * below the one and ends above the other, so a title fitted to it never reaches the rule's neighbours or the slide's edge.
+ */
+export const TITLE_CARD_BOX = Object.freeze({ topCqw: 6, bottomCqw: 6.6, sideCqw: 8 });

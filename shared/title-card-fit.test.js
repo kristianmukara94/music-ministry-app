@@ -1,4 +1,4 @@
-// The Title Card is centred on the full 16:9 canvas, with no box behind it. Its size is proportional to the operator's scale across the whole
+// The Title Card is centred in a box clear of the header and footer, with no shade behind it. Its size is proportional to the operator's scale across the whole
 // 70%-150% range: short titles at 4.4cqw and long titles (more than 25 characters, which wrap to three lines) at 3.6cqw, each times the scale,
 // with no ceiling, so every A-/A+ step is visible. The compact icon sits above the heading, the header and footer badges are pinned to the
 // edges, the slide canvas clips, the preview reads the scale from the store, and every preview surface is a 16:9 frame that clips.
@@ -38,27 +38,29 @@ test('every A-/A+ step is a visible size change on a Title Card, for short and l
   assert.ok(titleCqw(SHORT, 1.5) - titleCqw(SHORT, 1.4) > 0.4, 'at 150% it is bigger again');
 });
 
-test('the Title Card code has no ceiling, the proportional formula, and a 65% height limit (36.563cqw on a 16:9 frame)', () => {
+test('the Title Card code has no ceiling and the proportional formula; the fit, not a fixed height cap, keeps it on the slide', () => {
   const face = read('src/praise-worship/PwSlideFace.tsx');
-  assert.match(face, /const long = slide\.label\.length > 25;/);
+  assert.match(face, /const long = label\.length > 25;/);
   assert.match(face, /const titleCqw = \(long \? 3\.6 : 4\.4\) \* \(slideScale \?\? 1\);/);
   assert.match(face, /const titleChars = charsPerLine\(0\.84, titleCqw \* 19\.2\);/, 'the line width follows the scaled size');
   assert.doesNotMatch(face, /Math\.min\(4\.8|Math\.min\(6\.0|5\.8\)|7\.0\)/, 'no ceiling is left on the title');
-  assert.match(face, /<h2 data-slide-words className="max-h-\[36\.563cqw\] leading-\[1\.12\] tracking-\[0\.08em\] uppercase"/);
-  assert.match(face, /fontSize: `\$\{titleCqw\}cqw`/);
+  assert.doesNotMatch(face, /max-h-\[36\.563cqw\]/, 'no fixed cap: it let a wrapped title run under the rule and off the bottom');
+  assert.match(face, /const naturalSize = `\$\{titleCqw\}cqw`;/);
+  assert.match(face, /useTextAutoFit\(\{ boxRef, textRef, reservedRef: \[iconRef, ruleRef, subtitleRef\], naturalSize, deps: \[label, subtitle, slideFont\], heightShare: 1, keepLines: false \}\);/);
   assert.doesNotMatch(face, /top-\[14cqh\] bottom-\[12cqh\]/, 'the sub-band box is gone');
 });
 
-test('the title is centred on the full frame, with the compact icon above the heading', () => {
+test('the title is centred in its fitted box, with the compact icon above the heading', () => {
   const face = read('src/praise-worship/PwSlideFace.tsx');
-  assert.match(face, /<div className="absolute inset-0 flex flex-col items-center justify-center px-\[8cqw\] py-\[4\.5cqw\] text-center">/);
-  assert.match(face, /className="mb-\[1\.406cqw\] h-\[4cqw\] w-\[4cqw\] shrink-0 text-gold opacity-80"/);
+  assert.match(face, /data-title-card className="absolute flex flex-col items-center justify-center-safe overflow-hidden text-center" style=\{titleCardBoxStyle\}/);
+  assert.match(face, /<div ref=\{iconRef\} className="mb-\[1\.406cqw\] shrink-0">/);
+  assert.match(face, /className="block h-\[4cqw\] w-\[4cqw\] text-gold opacity-80"/);
 });
 
 test('the header and footer badges are pinned to the top and bottom edges, above the title', () => {
   const face = read('src/praise-worship/PwSlideFace.tsx');
   assert.match(face, /<div className="absolute top-\[2\.813cqw\] left-\[6cqw\] right-\[6cqw\] z-10 flex items-center justify-between">/);
-  assert.match(face, /<div className="absolute bottom-\[2\.813cqw\] left-\[6cqw\] right-\[6cqw\] z-10 flex items-center justify-between">/);
+  assert.match(face, /<div data-slide-footer className="absolute bottom-\[2\.813cqw\] left-\[6cqw\] right-\[6cqw\] z-10 flex items-center justify-between gap-\[2cqw\]">/);
 });
 
 test('the preview reads the scale from the store, and passes it into the slide, so Current and Next re-render at once', () => {

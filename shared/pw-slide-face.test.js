@@ -16,6 +16,6 @@ test('the slide face uses no container-height units, so a preview box cannot col
 
 test('the title card keeps its icon, rule and subtitle spacing in container widths', () => {
   assert.match(code, /mb-\[1\.406cqw\]/, 'the gap under the icon');
-  assert.match(code, /max-h-\[36\.563cqw\]/, 'the title height limit, as 65% of a 16:9 frame');
+  assert.match(code, /const titleCardBoxStyle: CSSProperties = \{ top: `\$\{TITLE_CARD_BOX\.topCqw\}cqw`, bottom: `\$\{TITLE_CARD_BOX\.bottomCqw\}cqw`, left: `\$\{TITLE_CARD_BOX\.sideCqw\}cqw`, right: `\$\{TITLE_CARD_BOX\.sideCqw\}cqw` \};/, 'the title box, in container widths');
   assert.match(code, /h-\[0\.197cqw\]/, 'the rule keeps a visible thickness');
 });

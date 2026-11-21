@@ -113,7 +113,9 @@ test('the editor: header stepper, preview modes, safe guides, inline editing, he
   assert.match(modal, /\{resolved\.hasOverride && \(/, 'Reset Override only while the slide has its own look');
   assert.match(modal, /onClick=\{\(\) => edit\(\{ look: null \}\)\}/);
   // Save writes the words through the console's copy-on-write target, then the look and the notes; Save & Go Live then takes the slide.
-  assert.match(modal, /await target\.apply\(draft\.text, draft\.tag\)/);
+  // A song's slide hands its look and notes over with its words, for the song's default slide arrangement; a look-only change saves them alone.
+  assert.match(modal, /await target\.apply\(draft\.text, draft\.tag, details\)/);
+  assert.match(modal, /await target\.song\.saveDetails\(details\)/);
   assert.match(modal, /dispatch\(\{ type: 'slideLook\/set', key: cue\.lookKey, look: sanitizeSlideLook\(draft\.look\) \}\)/);
   assert.match(modal, /if \(goLive && !cue\.onAir\) await cue\.goLive\(\);/);
   assert.match(modal, /cue\.onAir \? t\('consoleEdSaveUpdate'\) : t\('consoleEdSaveLive'\)/);

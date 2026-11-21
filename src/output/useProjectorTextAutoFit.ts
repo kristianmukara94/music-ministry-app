@@ -54,7 +54,8 @@ export function useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps, ke
       if (roomHeight <= 0 || roomWidth <= 0) return;
       // Measured with words unbreakable, so the widest word shows in scrollWidth and the text steps down until it fits whole (see useTextAutoFit).
       text.style.overflowWrap = 'normal';
-      const clear = () => text.scrollHeight <= roomHeight + 1 && text.scrollWidth <= roomWidth + 1;
+      // Its own width counts as well as the box's: a column narrower than the box (max-w) must not have a word run past its side.
+      const clear = () => text.scrollHeight <= roomHeight + 1 && text.scrollWidth <= Math.min(roomWidth, text.clientWidth) + 1;
       const run = (floor: number) => {
         const picked = pickFitStep((scale, leading) => {
           text.style.fontSize = scale === 1 ? naturalSize : `calc(${naturalSize} * ${scale})`;

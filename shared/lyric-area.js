@@ -5,7 +5,7 @@
 import { LOWER_THIRD_BAND, LOWER_THIRD_MIN, LYRIC_BAND_GAP_PX, LYRIC_PX, STAGE_H, STAGE_W, bandHeightPx, fitBand } from './lower-third-layout.js';
 import { LINEUP_LINE_HEIGHT, prayerFit, prayerPages, prayerTextHeight } from './prayer-fit.js';
 import { PRAYER_MAX_PX, prayerBlockHeightPx } from './prayer-slides.js';
-import { blockTopShare, textAreaShare } from './text-area.js';
+import { TALLEST_BLOCK_SHARE, blockTopShare, textAreaShare } from './text-area.js';
 
 /** Lyrics and prayer text are centred in the shared text area (see shared/text-area.js), as a share of the height. */
 export const TEXT_CENTRE = textAreaShare().centre;
@@ -14,7 +14,7 @@ export const TEXT_CENTRE = textAreaShare().centre;
  * The lineup text column: 88% of the width, at the lineup line height. `maxHeightPx` is the tallest block the fit allows. `scale` is the
  * operator's size scale: the text is measured at its scaled size, so a larger scale holds fewer lines on a page and splits sooner.
  */
-export function lineupFitAt(fontPx = LYRIC_PX, maxHeightPx = STAGE_H * 0.7, scale = 1) {
+export function lineupFitAt(fontPx = LYRIC_PX, maxHeightPx = STAGE_H * TALLEST_BLOCK_SHARE, scale = 1) {
   return prayerFit({ widthPx: STAGE_W * 0.88, fontPx: fontPx * scale, lineHeight: LINEUP_LINE_HEIGHT, maxHeightPx });
 }
 

@@ -102,7 +102,7 @@ export interface PwHymn {
   /** The song's own projector font size, as a multiple of the theme's (1 or missing: the theme's own). */
   fontScale?: number;
   /** `pages`: a stanza edited on air keeps exactly these slides, never paged again. */
-  stanzas: { id: number; stanzaType: string; lyricsText: string; pages?: string[] }[];
+  stanzas: { id: number; stanzaType: string; lyricsText: string; pages?: string[]; look?: import('./slide-look.js').SlideLook }[];
 }
 
 export interface PwHymnTag {
@@ -129,7 +129,7 @@ export interface PwResolved {
 
 export type PwSlide =
   | { kind: 'title'; label: string; subtitle: string }
-  | { kind: 'lyrics'; label: string; chip: string; text: string; hymnId: number; hymnTitle: string; sectionId: string; position?: number; stanzaCount?: number; part?: number; parts?: number; fontPx?: number; top?: number; centred?: boolean; align?: 'left' | 'center' | 'right'; fontScale?: number }
+  | { kind: 'lyrics'; label: string; chip: string; text: string; look?: import('./slide-look.js').SlideLook; hymnId: number; hymnTitle: string; sectionId: string; position?: number; stanzaCount?: number; part?: number; parts?: number; fontPx?: number; top?: number; centred?: boolean; align?: 'left' | 'center' | 'right'; fontScale?: number }
   | { kind: 'prayer'; label: string; text: string; placeholder?: boolean; fontPx?: number; notice?: 'stale' | 'too-long'; part?: number; parts?: number; top?: number; centred?: boolean; align?: 'left' | 'center' | 'right' }
   /** A PowerPoint slide from the Whiteboard, shown as its picture. */
   | { kind: 'picture'; label: string; src: string };
@@ -202,3 +202,6 @@ export function livePosition(segments: PwSegment[], pw: { segmentKey: string | n
 export function groupOrdered(segments: PwSegment[], groups: PwGroup[]): PwSegment[];
 export function moveSegment(segments: PwSegment[], groups: PwGroup[], from: number, group: string, slot: number): PwSegment[];
 export function nudgeSegment(segments: PwSegment[], groups: PwGroup[], index: number, delta: 1 | -1): { segments: PwSegment[]; index: number };
+
+export const MAX_CARD_NAME: number;
+export function cardNameOf(text: unknown): string;

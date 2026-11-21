@@ -11,8 +11,8 @@ interface Options {
   boxRef: RefObject<HTMLElement | null>;
   /** The text block that is sized. Its size as set (the song's own size, times the text scale) is the ceiling. */
   textRef: RefObject<HTMLElement | null>;
-  /** Anything above or below the text inside the box (the stanza's label), whose height is taken off the room. */
-  reservedRef?: RefObject<HTMLElement | null>;
+  /** Anything above or below the text inside the box (the stanza's label; a title card's icon, rule and subtitle), whose height is taken off the room. */
+  reservedRef?: RefObject<HTMLElement | null> | RefObject<HTMLElement | null>[];
   /** The size the text is set for, as CSS: what it is drawn at when it fits, and what it is reset to before each fit. */
   naturalSize: string;
   /** Anything that changes what is drawn: the words, the style, the scale. A change fits the text again. */
@@ -58,8 +58,12 @@ export function useTextAutoFit({ boxRef, textRef, reservedRef, naturalSize, deps
       text.style.removeProperty('text-wrap');
       const ceiling = parseFloat(getComputedStyle(text).fontSize);
       const style = getComputedStyle(box);
-      const reserved = reservedRef?.current;
-      const reservedHeight = reserved ? reserved.offsetHeight + parseFloat(getComputedStyle(reserved).marginTop) + parseFloat(getComputedStyle(reserved).marginBottom) : 0;
+      const reservedHeight = (Array.isArray(reservedRef) ? reservedRef : [reservedRef]).reduce((sum, ref) => {
+        const el = ref?.current;
+        if (!el) return sum;
+        const css = getComputedStyle(el);
+        return sum + el.offsetHeight + parseFloat(css.marginTop) + parseFloat(css.marginBottom);
+      }, 0);
       const roomHeight = (box.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)) * heightShare - reservedHeight;
       const roomWidth = box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
       if (!Number.isFinite(ceiling) || roomHeight <= 0 || roomWidth <= 0) return;
@@ -69,7 +73,8 @@ export function useTextAutoFit({ boxRef, textRef, reservedRef, naturalSize, deps
 
       const fits = (px: number) => {
         text.style.fontSize = `${px}px`;
-        return text.scrollHeight <= roomHeight && text.scrollWidth <= roomWidth + 1;
+        // Its own width counts as well as the box's: a column narrower than the box (max-w) must not have a word run past its side.
+        return text.scrollHeight <= roomHeight && text.scrollWidth <= Math.min(roomWidth, text.clientWidth) + 1;
       };
       const floor = (box.clientWidth * FIT_FLOOR_CQW) / 100;
       // Tested at its exact size first: a whole pixel is a large step in a small preview, so the size just below it says nothing about this one.

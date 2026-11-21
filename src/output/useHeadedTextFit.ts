@@ -48,7 +48,7 @@ export function useHeadedTextFit({ boxRef, titleRef, bodyRef, titleSize, bodySiz
         const leading = parseFloat(computed.lineHeight) / ceiling || 1.2;
         const titleOk = (px: number) => {
           title.style.fontSize = `${px}px`;
-          const clear = title.scrollWidth <= roomWidth + 1;
+          const clear = title.scrollWidth <= Math.min(roomWidth, title.clientWidth) + 1;
           // A slide that is only a title may use the whole slide.
           return clear && (!body || titleFits(title.scrollHeight, px, leading, roomHeight));
         };
@@ -69,7 +69,7 @@ export function useHeadedTextFit({ boxRef, titleRef, bodyRef, titleSize, bodySiz
         const room = roomHeight - titleBlock;
         const bodyOk = (px: number) => {
           body.style.fontSize = `${px}px`;
-          return body.scrollHeight <= room + 1 && body.scrollWidth <= roomWidth + 1;
+          return body.scrollHeight <= room + 1 && body.scrollWidth <= Math.min(roomWidth, body.clientWidth) + 1;
         };
         const size = bodyOk(ceiling) ? ceiling : fitFontSize(ceiling, floor, bodyOk);
         body.style.fontSize = size === natural ? bodySize : `${size}px`;

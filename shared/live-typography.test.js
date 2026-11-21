@@ -193,8 +193,11 @@ test('edge-to-edge is a saved projector setting, off by default, and toggling it
 });
 
 test('MAX keeps only a thin edge clearance, and room for the footer, label and lower third only when they are shown', () => {
-  assert.ok(EDGE_TO_EDGE.padXcqw < 6 && EDGE_TO_EDGE.padYcqh < 4, 'thinner than the normal 6% / 4% inset');
-  assert.deepEqual(edgeToEdgeBox(), { left: 1.5, right: 1.5, top: 1.5, bottom: 1.5 });
+  assert.ok(EDGE_TO_EDGE.padXcqw < 6, 'thinner than the normal 6% inset at the sides');
+  // Top and bottom keep Title Safe (5% of the height): MAX never reaches the slide's top or bottom edge.
+  assert.equal(EDGE_TO_EDGE.padYcqh, 5);
+  assert.equal(EDGE_TO_EDGE.safeYcqw, 56.25 * 0.05);
+  assert.deepEqual(edgeToEdgeBox(), { left: 1.5, right: 1.5, top: 2.8125, bottom: 2.8125 });
   assert.equal(edgeToEdgeBox({ footer: true }).bottom, EDGE_TO_EDGE.footerClearCqw);
   assert.equal(edgeToEdgeBox({ header: true }).top, EDGE_TO_EDGE.headerClearCqw);
   assert.equal(edgeToEdgeBox({ footer: true, lowerThird: true }).bottom, Math.max(EDGE_TO_EDGE.footerClearCqw, EDGE_TO_EDGE.lowerThirdClearCqw));

@@ -33,9 +33,23 @@ export function textAreaStyle() {
   return { top: `${share.top * 100}%`, height: `${share.height * 100}%` };
 }
 
-/** Where a block of text of `heightPx` starts, as a share of the height, when it is centred in the text area. */
+/** Title Safe (90%): the top 5% of the stage is kept clear of every slide's words. */
+export const TITLE_SAFE_TOP = 0.05;
+
+/** The tallest block pagination lays out on a page, as a share of the height (a full lyric page; see lineupFitAt in shared/lyric-area.js). */
+export const TALLEST_BLOCK_SHARE = 0.7;
+
+/**
+ * The highest a block may start, as a share of the height: where the tallest page pagination makes is centred. Every page laid out normally
+ * starts here or lower, so this only stops a block taller than any page (a page typed on air and kept whole, or text at a large scale) from
+ * being centred up past Title Safe, above the slide's top edge. Such a block starts here, and the surface's fit draws it smaller to end above
+ * the footer.
+ */
+export const TEXT_TOP_MIN = (textAreaPx().centre - (TALLEST_BLOCK_SHARE * H) / 2) / H;
+
+/** Where a block of text of `heightPx` starts, as a share of the height, when it is centred in the text area: never above TEXT_TOP_MIN. */
 export function blockTopShare(heightPx) {
-  return (textAreaPx().centre - heightPx / 2) / H;
+  return Math.max(TEXT_TOP_MIN, (textAreaPx().centre - heightPx / 2) / H);
 }
 
 /**

@@ -21,7 +21,7 @@ export interface StageHymn {
   /** The song's own projector font size, as a multiple of the theme's (1 or missing: the theme's own). */
   fontScale?: number;
   deletedAt?: string | null;
-  stanzas: { stanzaType: string; lyricsText: string }[];
+  stanzas: { stanzaType: string; lyricsText: string; look?: import('./slide-look.js').SlideLook }[];
 }
 export function lyricsStanzaFrame(hymn: StageHymn, index: number): Frame | null;
 export function songTitleFrame(hymn: StageHymn & { composer?: string | null }, slotName?: string | null): Extract<Frame, { kind: 'pw' }>;

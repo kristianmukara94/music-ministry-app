@@ -23,7 +23,7 @@ import { PwSlideFace } from '../praise-worship/PwSlideFace';
 import { lyricBottomOf } from '../../shared/lyric-area.js';
 import { textAreaShare } from '../../shared/text-area.js';
 import { welcomeBackground } from '../../shared/welcome-settings.js';
-import { frameWithAlign, slideTextAlign, slideLookAt, slideLookKeyOf, type SlideLook } from '../../shared/slide-look.js';
+import { frameOwnLook, frameWithAlign, slideTextAlign, slideLookAt, slideLookKeyOf, type SlideLook } from '../../shared/slide-look.js';
 
 /** A look drawn in place of the saved one: the Output Preview Editor's draft. Undefined (the default) draws the saved look. */
 const DraftLook = createContext<SlideLook | null | undefined>(undefined);
@@ -168,11 +168,11 @@ type HeadedPlace = { top: number } | { centre: number };
  * The flexible space that places the block. It gives way first, so a block too tall for its place rises before its text is made smaller.
  */
 function headedSpacers(place: HeadedPlace | null): { justify: string; before: number; after: number } {
-  if (!place) return { justify: 'justify-center', before: 0, after: 0 };
+  if (!place) return { justify: 'justify-center-safe', before: 0, after: 0 };
   if ('top' in place) return { justify: 'justify-start', before: Math.max(0, place.top * 100 - HEADED_SAFE_TOP), after: 0 };
   // The safe box's own centre, moved to the height asked for by a space on one side.
   const shift = 2 * ((HEADED_SAFE_TOP + 100 - HEADED_SAFE_BOTTOM) / 2 - place.centre * 100);
-  return { justify: 'justify-center', before: Math.max(0, -shift), after: Math.max(0, shift) };
+  return { justify: 'justify-center-safe', before: Math.max(0, -shift), after: Math.max(0, shift) };
 }
 
 /**
@@ -245,7 +245,7 @@ function Slide({ lines, style = null, safe = false, header = true }: { lines: Sl
       <div
         ref={textRef}
         data-slide-words
-        className={`relative flex max-w-[86cqw] flex-col gap-[2.2cqh] leading-[1.22] ${sizes ? '' : 'text-center text-[length:min(4.1cqw,88px)]'}`}
+        className={`apcc-prose relative flex max-w-[86cqw] flex-col gap-[2.2cqh] leading-[1.22] ${sizes ? '' : 'text-center text-[length:min(4.1cqw,88px)]'}`}
         style={{ textAlign: slideTextAlign(style?.textAlign), fontFamily: fontCss(style) ?? slideFont, fontSize: naturalSize }}
       >
         {lines.map((line, i) => {
@@ -277,7 +277,7 @@ function SafeFit({ naturalSize, deps, render, header = true, inset = true }: { n
   // True on the congregation's projector, false on the operator's mirror and previews. The warning is for the operator only.
   const audience = useContext(OnAirLook);
   return (
-    <div ref={boxRef} data-safe-fit className={`relative flex h-full w-full flex-col items-center justify-center overflow-hidden pb-[9cqh] ${!inset ? '' : header ? 'px-[6cqw] pt-[9cqh]' : 'px-[6cqw] pt-[6cqh]'}`}>
+    <div ref={boxRef} data-safe-fit className={`relative flex h-full w-full flex-col items-center justify-center-safe overflow-hidden pb-[9cqh] ${!inset ? '' : header ? 'px-[6cqw] pt-[9cqh]' : 'px-[6cqw] pt-[6cqh]'}`}>
       {render(textRef)}
       {!audience && overflow && <TextFitBadge />}
     </div>
@@ -328,10 +328,15 @@ function FittedPrayer({ label, text, className, style = null }: { label: string;
       const step = Math.max(0.5, width / 960);
       let size = max;
       el.style.fontSize = `${size}px`;
-      while (el.offsetHeight > room && size > min) {
+      // Measured with words unbreakable, so a word wider than the column shows in scrollWidth and the prayer shrinks for it too, not only for
+      // its height (see useTextAutoFit). Its own `overflow-wrap` (apcc-prose) comes back after: it breaks only a word still too wide at the floor.
+      el.style.overflowWrap = 'normal';
+      const tooBig = () => el.offsetHeight > room || el.scrollWidth > el.clientWidth + 1;
+      while (tooBig() && size > min) {
         size -= step;
         el.style.fontSize = `${size}px`;
       }
+      el.style.overflowWrap = '';
     };
     fit();
     // The box changes size with the window, the mirror's zoom, and a lower third raising the bottom. Fit again each time.
@@ -342,9 +347,9 @@ function FittedPrayer({ label, text, className, style = null }: { label: string;
 
   const look = { color: style?.textColor, fontFamily: fontCss(style) ?? slideFont, textAlign: slideTextAlign(style?.textAlign) };
   return (
-    <div ref={boxRef} className="flex min-h-0 w-full flex-1 flex-col items-center justify-center overflow-hidden">
+    <div ref={boxRef} className="flex min-h-0 w-full flex-1 flex-col items-center justify-center-safe overflow-hidden">
       {label && <div ref={labelRef} className="shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase">{label}</div>}
-      <p ref={textRef} data-slide-words className={`${label ? 'mt-[1.5cqh]' : ''} ${className}`} style={look}>{slideText(text, charsPerLine(0.84, 4.5 * 19.2))}</p>
+      <p ref={textRef} data-slide-words className={`apcc-prose ${label ? 'mt-[1.5cqh]' : ''} ${className}`} style={look}>{slideText(text, charsPerLine(0.84, 4.5 * 19.2))}</p>
     </div>
   );
 }
@@ -357,7 +362,8 @@ function FrameView({ frame: given, sharedBackground = false }: { frame: Frame; s
   // The slide's own look (the Output Preview Editor's "This Slide"), when it has one: each of its settings replaces the projector's for this
   // slide only. See shared/slide-look.js.
   const lookKey = useOutput((s) => slideLookKeyOf(s, given));
-  const saved = useOutput((s) => slideLookAt(s, lookKey));
+  // A look set on air goes over the one the slide brings from its song's default arrangement (frameOwnLook).
+  const saved = useOutput((s) => slideLookAt(s, lookKey)) ?? frameOwnLook(given);
   const draft = useContext(DraftLook);
   const own = draft === undefined ? saved : draft;
   // The operator's text case (Aa / AA / aa) is applied here, before any text is drawn, so every fit and the line balancing below measure the
@@ -412,16 +418,16 @@ function FrameView({ frame: given, sharedBackground = false }: { frame: Frame; s
           {frame.style?.bgColor && <div className="absolute inset-0" style={{ backgroundColor: frame.style.bgColor }} />}
           <div className="absolute inset-x-0 top-0 flex flex-col items-center px-[6cqw] pt-[5cqh] text-center">
             {showSlotTitle && <div className={`${SLOT_TITLE} text-gold/70`}>Congregation response</div>}
-            <p data-slide-words className={`${showSlotTitle ? 'mt-[1.5cqh]' : ''} max-w-[88cqw] font-serif text-[length:min(3.6cqw,76px)] leading-[1.2] font-bold text-gold ${LEGIBLE}`}>
+            <p data-slide-words className={`apcc-prose ${showSlotTitle ? 'mt-[1.5cqh]' : ''} max-w-[88cqw] font-serif text-[length:min(3.6cqw,76px)] leading-[1.2] font-bold text-gold ${LEGIBLE}`}>
               <span className="mr-[0.4em]">℟</span>
               {slideLine(frame.response, charsPerLine(0.86, 3.6 * 19.2))}
             </p>
           </div>
-          <div className="absolute inset-x-0 top-[34cqh] bottom-0 flex items-center justify-center px-[6cqw]">
+          <div className="absolute inset-x-0 top-[34cqh] bottom-0 flex items-center-safe justify-center px-[6cqw]">
             <TextLines safe inset={false} serif lines={(frame.pages[frame.index] ?? '').split('\n')} style={frame.style} />
           </div>
           {frame.pages.length > 1 && (
-            <div className="pointer-events-none absolute right-[4cqw] bottom-[3cqh] z-20 font-mono text-[1cqw] text-white/40">
+            <div data-slide-counter className="pointer-events-none absolute right-[4cqw] bottom-[3cqh] z-20 font-mono text-[1cqw] text-white/40">
               {frame.index + 1} / {frame.pages.length}
             </div>
           )}
@@ -452,7 +458,7 @@ function FrameView({ frame: given, sharedBackground = false }: { frame: Frame; s
           )}
           {/* A prayer split into slides shows its place, as the psalm pages do. */}
           {frame.page && frame.page.total > 1 && (
-            <div className="pointer-events-none absolute right-[4cqw] bottom-[3cqh] z-20 font-mono text-[1cqw] text-white/40">
+            <div data-slide-counter className="pointer-events-none absolute right-[4cqw] bottom-[3cqh] z-20 font-mono text-[1cqw] text-white/40">
               {frame.page.index + 1} / {frame.page.total}
             </div>
           )}
@@ -523,7 +529,7 @@ function FrameView({ frame: given, sharedBackground = false }: { frame: Frame; s
           {showSlotTitle && <div className={`absolute top-[4cqh] right-[12cqw] left-[4cqw] truncate ${SLOT_TITLE} text-white/45`}>{frame.labels?.[frame.index] ?? frame.title}</div>}
           <Slide safe header={showSlotTitle} lines={lines} style={frame.style} />
           {frame.slides.length > 1 && (
-            <div className="pointer-events-none absolute right-[4cqw] bottom-[4cqh] z-20 font-mono text-[1cqw] text-white/40">
+            <div data-slide-counter className="pointer-events-none absolute right-[4cqw] bottom-[4cqh] z-20 font-mono text-[1cqw] text-white/40">
               {frame.index + 1} / {frame.slides.length}
             </div>
           )}
@@ -626,7 +632,7 @@ function SongLyricsSlide({ label, text, style, slideFont, slideScale, fontScale 
     <div
       ref={boxRef}
       data-edge-to-edge={edgeToEdge || undefined}
-      className={`absolute inset-0 flex flex-col items-center justify-center overflow-hidden text-center ${edgeToEdge ? '' : 'px-[6cqw] py-[4cqh]'}`}
+      className={`absolute inset-0 flex flex-col items-center justify-center-safe overflow-hidden text-center ${edgeToEdge ? '' : 'px-[6cqw] py-[4cqh]'}`}
       style={{ textAlign: slideTextAlign(style?.textAlign), ...(edgeToEdge ? edgeToEdgePadding(bandOn) : {}) }}
     >
       {label && <div ref={labelRef} className={`${edgeToEdge ? 'mb-[1.5cqh]' : 'mb-[3cqh]'} shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase`}>{label}</div>}
@@ -908,7 +914,7 @@ export function FramePreview({ frame, counter, background, look }: { frame: Fram
           <FrameView frame={shown} />
         </div>
         {counter && (
-          <span className="pointer-events-none absolute right-[4cqw] bottom-[2cqh] z-20 rounded-full bg-black/75 px-[1.2cqw] font-mono text-[length:max(7px,1.4cqw)] font-bold tracking-wider text-white shadow">
+          <span data-slide-counter className="pointer-events-none absolute right-[4cqw] bottom-[2cqh] z-20 rounded-full bg-black/75 px-[1.2cqw] font-mono text-[length:max(7px,1.4cqw)] font-bold tracking-wider text-white shadow">
             {counter}
           </span>
         )}

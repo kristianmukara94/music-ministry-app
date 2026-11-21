@@ -71,6 +71,8 @@ export function lyricsStanzaFrame(hymn, index) {
     key: `song:${hymn.id}`,
     song: { hymnId: hymn.id, position: index, count: hymn.stanzas.length },
     ...(fontScale !== 1 ? { fontScale } : {}),
+    // A slide saved with its own formatting in the song's default arrangement brings it (shared/song-slides.js, frameOwnLook).
+    ...(stanza.look ? { look: stanza.look } : {}),
   };
 }
 

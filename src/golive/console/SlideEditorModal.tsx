@@ -7,7 +7,7 @@ import { NO_DRAG } from '../../components/appRegion';
 import { SLIDE_FONT_SCALES } from '../../../shared/projector-settings.js';
 import { applyTextCase, type TextCase } from '../../../shared/text-fit.js';
 import { BACKDROP_THEMES, backdropThemeOf, balanceLines, lineStats, pad2, toTitleCase, withBackdropTheme, type BackdropThemeId } from '../../../shared/stage-cue.js';
-import { stageWordsBox, stageWordsWhiteSpace } from '../../../shared/stage-words-box.js';
+import { stageWordsBounds, stageWordsBox, stageWordsRows, stageWordsWhiteSpace } from '../../../shared/stage-words-box.js';
 import { editorDraftChanged as draftChanged, lookChange, resolveSlideLook, sanitizeSlideLook, stepScale, SLIDE_ALIGNS, type SlideAlign, type SlideLook, type SlideLookKey } from '../../../shared/slide-look.js';
 import { useGoLiveT } from '../strings';
 import { setCueMeta, useCueMetaOf } from './cueMeta';
@@ -23,6 +23,9 @@ export interface EditorCue {
   lookKey: string | null;
   /** The words, the Section Tag, Add After, Duplicate and Delete, through the console's copy-on-write paths. Null: words not editable here. */
   target: SlideEditTarget | null;
+  /** The look and booth notes the slide brings from its song's default arrangement, used while none is set on air. */
+  ownLook?: SlideLook | null;
+  ownNotes?: string;
   /** The slide's tag and words as shown, for a slide with no target. */
   tag: string;
   text: string;
@@ -95,7 +98,7 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
   const cue = cueAt(index);
   const settings = useLive((s) => s.state.settings);
   const slideBackground = useLive((s) => s.state.welcome.slideBackground);
-  const savedLook = useLive((s) => (cue?.lookKey ? s.state.slideLooks?.[cue.lookKey] ?? null : null));
+  const savedLook = useLive((s) => (cue?.lookKey ? s.state.slideLooks?.[cue.lookKey] ?? null : null)) ?? cue?.ownLook ?? null;
   const meta = useCueMetaOf(cue?.lookKey);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [scope, setScope] = useState<'slide' | 'global'>('slide');
@@ -112,7 +115,7 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
   // A new slide (the stepper, Add After) starts a new draft. So does a save made elsewhere, as long as this draft has no change of its own.
   const slideId = cue ? `${cue.index}|${cue.target?.key ?? cue.lookKey ?? ''}` : '';
   const saved: Fields | null = cue
-    ? { text: cue.target?.text ?? cue.text, tag: cue.target?.tag ?? cue.tag, label: meta.label ?? '', notes: meta.notes ?? '', look: savedLook }
+    ? { text: cue.target?.text ?? cue.text, tag: cue.target?.tag ?? cue.tag, label: meta.label ?? '', notes: meta.notes ?? cue.ownNotes ?? '', look: savedLook }
     : null;
   const savedId = saved ? JSON.stringify(saved) : '';
   useEffect(() => {
@@ -158,7 +161,12 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
 
   const save = (goLive: boolean) =>
     run(async () => {
-      if (target && (draft.text !== target.text || draft.tag !== target.tag)) await target.apply(draft.text, draft.tag);
+      // A song's slide keeps its look and notes in the song's default arrangement too, saved with its words in one write.
+      const details = target?.song ? { look: sanitizeSlideLook(draft.look), notes: draft.notes } : undefined;
+      if (target && (draft.text !== target.text || draft.tag !== target.tag)) await target.apply(draft.text, draft.tag, details);
+      else if (target?.song && details && (JSON.stringify(details.look) !== JSON.stringify(sanitizeSlideLook(draft.from.look)) || draft.notes !== draft.from.notes)) {
+        await target.song.saveDetails(details);
+      }
       if (cue.lookKey) {
         dispatch({ type: 'slideLook/set', key: cue.lookKey, look: sanitizeSlideLook(draft.look) });
         setCueMeta(cue.lookKey, { label: draft.label, notes: draft.notes });
@@ -211,18 +219,19 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
         }}
         className="flex max-h-[92vh] w-full max-w-[1120px] min-w-0 flex-col overflow-hidden rounded-xl border border-line-strong bg-surface shadow-2xl outline-none"
       >
-        {/* Header: the slide, where it is, and the stepper through the item's slides. */}
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface-2 px-5 py-3.5">
-          <div className="min-w-0">
-            <h2 id="slide-editor-modal-title" className="text-[15px] font-bold text-fg">{t('consoleEdTitle', { n: pad2(cue.index + 1) })}</h2>
+        {/* Header: the slide, where it is, and the stepper through the item's slides. One row always: the title side takes what the stepper and
+            the close button leave and a long name ends in an ellipsis (the whole name on hover), so the controls never drop to a second row. */}
+        <header data-editor-header className="flex flex-nowrap items-center justify-between gap-3 border-b border-line bg-surface-2 px-5 py-3.5">
+          <div data-editor-heading className="min-w-0 flex-1">
+            <h2 id="slide-editor-modal-title" className="truncate text-[15px] font-bold text-fg">{t('consoleEdTitle', { n: pad2(cue.index + 1) })}</h2>
             <p className="flex min-w-0 items-center gap-2 text-xs text-muted">
-              <span className="truncate">{title}</span>
+              <span data-editor-subtitle className="min-w-0 truncate" title={title}>{title}</span>
               <span className={`shrink-0 rounded-full border px-2 py-px text-[10px] font-bold tracking-wide uppercase ${cue.onAir ? 'border-ok/50 bg-ok/10 text-ok' : 'border-line text-muted'}`}>
                 {cue.onAir ? t('consoleEdOnAir') : t('consoleEdStaged')}
               </span>
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div data-editor-header-controls className="flex shrink-0 items-center gap-2">
             <div role="group" aria-label={t('consoleEdStepper')} className="flex items-center gap-0.5 rounded-lg border border-line bg-canvas/60 p-0.5">
               <button type="button" style={NO_DRAG} disabled={busy || cue.index <= 0} onClick={() => onIndex(cue.index - 1)} className={`${BTN} ${SM} border-transparent bg-transparent`}>
                 {t('consoleEdPrev')}
@@ -456,6 +465,34 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
                 </div>
               )}
             </section>
+            {target?.song && (
+              // A song's slides are its default: every save above keeps them for the next time the song is used.
+              <div data-song-default className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
+                {target.song.layout === 'default' ? (
+                  <span role="status" className="rounded-full border border-ok/50 bg-ok/10 px-2 py-px text-[10px] font-bold tracking-wide text-ok uppercase">
+                    {t('consoleEdSongDefault')}
+                  </span>
+                ) : (
+                  <span className="min-w-0 text-[11px] text-muted">{t('consoleEdSongAuto')}</span>
+                )}
+                <button
+                  type="button"
+                  style={NO_DRAG}
+                  disabled={busy || target.song.layout !== 'default'}
+                  title={t('consoleEdResetLayoutHint')}
+                  // The song is paged afresh, so its slide count can change: the editor closes rather than hold a slide that moved.
+                  onClick={() =>
+                    void run(async () => {
+                      await target.song!.reset();
+                      onClose();
+                    })
+                  }
+                  className={`${BTN} ${SM}`}
+                >
+                  {t('consoleEdResetLayout')}
+                </button>
+              </div>
+            )}
             {error && (
               <p role="alert" className="text-xs text-danger">
                 {error}
@@ -515,6 +552,8 @@ interface StageType {
   top: number;
   width: number;
   height: number;
+  /** The most the box may grow to as lines are typed: down to the footer, never past it. */
+  maxHeight: number;
   font: CSSProperties;
 }
 
@@ -527,7 +566,10 @@ interface StageType {
 function stageTypeOf(monitor: HTMLElement, stage: HTMLElement): StageType | null {
   const words = [...stage.querySelectorAll<HTMLElement>('[data-slide-words]')];
   if (words.length === 0) return null;
-  const box = monitor.getBoundingClientRect();
+  // The box is placed from the monitor's padding edge (inside its 1px border), so every place is measured from there too: measured from the
+  // border's outer edge, the box sat 1px right of and below the words it covers.
+  const outer = monitor.getBoundingClientRect();
+  const box = { left: outer.left + monitor.clientLeft, top: outer.top + monitor.clientTop, width: monitor.clientWidth, height: monitor.clientHeight };
   const rects = words.map((w) => w.getBoundingClientRect());
   // The largest block sets the type: a psalm's verse rather than its response.
   let main = 0;
@@ -547,8 +589,16 @@ function stageTypeOf(monitor: HTMLElement, stage: HTMLElement): StageType | null
   // its whole-line size) wrap at exactly the slide's width, balanced as the slide balances them, with the spaces typed kept (pre-wrap).
   const whiteSpace = stageWordsWhiteSpace(type.whiteSpace);
   const textWrap = type.getPropertyValue('text-wrap') || undefined;
-  const top = Math.min(...rects.map((r) => r.top)) - box.top;
-  const bottom = Math.max(...rects.map((r) => r.bottom)) - box.top;
+  // The room the box is kept in: Title Safe (1.5% to 98.5% across for edge-to-edge lyrics), above the slide's footer and page count, with its
+  // gold ring inside it too. Words drawn inside that room keep their exact place; the box is never placed above it or past the footer.
+  const marks = [...stage.querySelectorAll<HTMLElement>('[data-slide-footer], [data-slide-counter]')].map((m) => m.getBoundingClientRect()).filter((r) => r.height > 0);
+  const bounds = stageWordsBounds({
+    monitorWidth: box.width,
+    monitorHeight: box.height,
+    edge: stage.querySelector('[data-edge-to-edge]') !== null,
+    floor: Math.min(Infinity, ...marks.map((r) => r.top - box.top)),
+  });
+  const rows = stageWordsRows({ top: Math.min(...rects.map((r) => r.top)) - box.top, bottom: Math.max(...rects.map((r) => r.bottom)) - box.top, pitch, bounds });
   const { left, width } = stageWordsBox({
     left: Math.min(...rects.map((r) => r.left)) - box.left,
     right: Math.max(...rects.map((r) => r.right)) - box.left,
@@ -556,12 +606,15 @@ function stageTypeOf(monitor: HTMLElement, stage: HTMLElement): StageType | null
     align,
     whole: whiteSpace === 'pre',
     monitorWidth: box.width,
+    minLeft: bounds.left,
+    maxRight: bounds.right,
   });
   return {
     left,
-    top,
+    top: rows.top,
     width,
-    height: Math.max(pitch, bottom - top),
+    height: rows.height,
+    maxHeight: rows.maxHeight,
     font: {
       fontFamily: type.fontFamily,
       fontSize: type.fontSize,
@@ -636,20 +689,22 @@ function StageWordsEditor({
       if (frame) cancelAnimationFrame(frame);
     };
   }, [monitorRef, stageRef]);
-  // Grows with its lines when the words run past the slide's own block.
+  // Grows with its lines when the words run past the slide's own block, down to the footer at most; past that it scrolls instead.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || !type) return;
     el.style.height = `${type.height}px`;
-    if (el.scrollHeight > el.clientHeight) el.style.height = `${el.scrollHeight}px`;
+    if (el.scrollHeight > el.clientHeight) el.style.height = `${Math.min(el.scrollHeight, type.maxHeight)}px`;
+    el.style.overflowY = el.scrollHeight > el.clientHeight + 1 ? 'auto' : '';
   }, [value, type]);
   useEffect(() => {
     ref.current?.focus();
   }, []);
   // A slide with no words of its own drawn (none marked): the box sits in the title-safe area, in the slide's usual type.
+  // Its outline is drawn inside its edges (STAGE_BOX), so Title Safe holds the box, outline included.
   const place: CSSProperties = type
-    ? { left: type.left, top: type.top, width: type.width, height: type.height, ...type.font }
-    : { left: '5%', top: '5%', width: '90%', fontSize: '4.2cqw', lineHeight: 1.15, fontWeight: 800, color: '#fff', textAlign: 'center' };
+    ? { left: type.left, top: type.top, width: type.width, height: type.height, maxHeight: type.maxHeight, ...type.font }
+    : { left: '5%', top: '5%', width: '90%', maxHeight: '90%', fontSize: '4.2cqw', lineHeight: 1.15, fontWeight: 800, color: '#fff', textAlign: 'center' };
   const transform = type?.font.textTransform && type.font.textTransform !== 'none' ? type.font.textTransform : CSS_CASE[textCase];
   return (
     <textarea
@@ -691,8 +746,12 @@ function BandWordsEditor({ value, label, textCase, onChange, onDone }: { value: 
   );
 }
 
-/** A text box on the stage: no box of its own (no fill, no padding, no shade over the slide), only a thin gold outline. */
-const STAGE_BOX = 'm-0 resize-none overflow-hidden rounded-[2px] border-0 bg-transparent p-0 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-gold)_75%,transparent)] outline-none';
+/**
+ * A text box on the stage: no box of its own (no fill, no padding, no shade over the slide), only a thin gold outline. The outline is drawn
+ * inside the box's edges (an inset ring), so a box laid exactly on the words is inside Title Safe with its outline, and never has to be made
+ * narrower than the words to keep the outline in (which would re-wrap a line).
+ */
+const STAGE_BOX = 'm-0 resize-none overflow-hidden rounded-[2px] border-0 bg-transparent p-0 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-gold)_75%,transparent)] outline-none';
 
 /** Escape in a text box on the preview puts the preview back and goes no further: the dialog stays open. */
 function doneKeys(e: KeyboardEvent, onDone: () => void) {

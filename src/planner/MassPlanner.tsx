@@ -8,6 +8,7 @@ import { MASS_LANGUAGES, bibleOf, massLanguageOf, otherBibles, slotLabel, uiLang
 import type { Lang } from '../../shared/live.js';
 import { SHOW_STAGED_UI, activeRowIndex, canStageRow, songRowActions, textRowActions } from '../../shared/stage-plan-row.js';
 import { bridge } from '../live/bridge';
+import { liveLyrics } from '../live/liveSongEdits';
 import { dispatch, useLive } from '../live/store';
 import { setUi, useUi } from '../state/ui';
 import { formatIsoDay } from '../state/region';
@@ -783,7 +784,8 @@ export function MassPlanner({ planId, onPlanChange, onShowCalendar, onAddSchedul
         // An operator note: it is never shown, so there is nothing to stage.
       } else if (row.module === 'lyrics') {
         // A song: its title and first stanza are read from the library and staged here, with the rest a click away. The planner is not left for the song deck.
-        const actions = songRowActions(row, index, await bridge.lyrics.getHymn(Number(row.sourceId)));
+        // Read as Go Live plays it, so a song with a default slide arrangement stages its first saved slide.
+        const actions = songRowActions(row, index, await liveLyrics.getHymn(Number(row.sourceId)));
         if (!actions) throw new Error(t('stale'));
         for (const action of actions) dispatch(action);
         showStaged();

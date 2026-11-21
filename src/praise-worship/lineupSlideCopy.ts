@@ -1,6 +1,6 @@
 import { MAX_NOTE_BODY, MAX_NOTE_TITLE, exactSlidesNote } from '../../shared/notes.js';
 import { prayerSlidesFor } from '../../shared/prayer-slides.js';
-import { removeChainItem, slideOriginsFor, withChain, type PwChainItem, type PwContent, type PwSegment, type PwSlideOrigin } from '../../shared/pw.js';
+import { cardNameOf, removeChainItem, slideOriginsFor, withChain, type PwChainItem, type PwContent, type PwSegment, type PwSlideOrigin } from '../../shared/pw.js';
 import { arrangementWithout, itemPages, liveStepAfterDelete, lyricAt, occurrenceOf, pagesWithout, type CardTextTarget } from '../../shared/pw-hot-edit.js';
 import { bridge } from '../live/bridge';
 import { useLive } from '../live/store';
@@ -255,7 +255,7 @@ export async function deleteCardStep(segmentIndex: number, steps: LiveStep[], st
 
 /** Renames the card: its title slide shows the new name at once. The card belongs to this lineup, so nothing else changes. */
 export function renameCard(segmentIndex: number, name: string) {
-  const clean = name.replace(/\s+/g, ' ').trim().slice(0, 120);
+  const clean = cardNameOf(name);
   if (!clean) throw new Error('A title needs some words.');
   updateSegment(segmentIndex, { name: clean });
   const live = useLive.getState().state.pw;

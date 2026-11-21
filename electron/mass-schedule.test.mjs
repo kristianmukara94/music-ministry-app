@@ -6,7 +6,7 @@ import { register } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 
 register(new URL('./test-support/electron-hook.mjs', import.meta.url));
-const { HYMN_DELETE_MIGRATIONS, HYMN_FILING_MIGRATIONS, HYMN_FONT_SCALE_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } = await import('./lyrics.js');
+const { HYMN_DELETE_MIGRATIONS, HYMN_FILING_MIGRATIONS, HYMN_FONT_SCALE_MIGRATIONS, HYMN_DEFAULT_SLIDES_MIGRATIONS, LYRICS_MIGRATIONS, LYRICS_STYLE_MIGRATIONS } = await import('./lyrics.js');
 const { MASS_PLAN_MIGRATIONS, MASS_SCHEDULE_MIGRATIONS, MASS_SLOT_MIGRATIONS, PLAN_BIBLE_MIGRATIONS, PLAN_COMMUNION_MIGRATIONS, PLAN_CUSTOM_MIGRATIONS, PLAN_LANGUAGE_MIGRATIONS, PLAN_NOTES_MIGRATIONS, PLAN_SLOT_TITLE_MIGRATIONS, createMassPlanService } = await import('./mass-plans.js');
 const { PW_MIGRATIONS } = await import('./pw-sessions.js');
 const { SONG_CATEGORY_MIGRATIONS, SONG_CATEGORY_MODE_MIGRATIONS, SONG_SCOPE_MIGRATIONS } = await import('./song-categories.js');
@@ -34,7 +34,7 @@ function open({ withSchedule = true } = {}) {
       throw err;
     }
   };
-  for (const sql of [...LYRICS_MIGRATIONS, ...LYRICS_STYLE_MIGRATIONS, ...HYMN_DELETE_MIGRATIONS, ...HYMN_FILING_MIGRATIONS, ...HYMN_FONT_SCALE_MIGRATIONS, ...MASS_PLAN_MIGRATIONS, ...PLAN_LANGUAGE_MIGRATIONS, ...PLAN_BIBLE_MIGRATIONS,
+  for (const sql of [...LYRICS_MIGRATIONS, ...LYRICS_STYLE_MIGRATIONS, ...HYMN_DELETE_MIGRATIONS, ...HYMN_FILING_MIGRATIONS, ...HYMN_FONT_SCALE_MIGRATIONS, ...HYMN_DEFAULT_SLIDES_MIGRATIONS, ...MASS_PLAN_MIGRATIONS, ...PLAN_LANGUAGE_MIGRATIONS, ...PLAN_BIBLE_MIGRATIONS,
     ...PLAN_CUSTOM_MIGRATIONS, ...PLAN_NOTES_MIGRATIONS, ...PW_MIGRATIONS, ...PLAN_COMMUNION_MIGRATIONS, ...SONG_CATEGORY_MIGRATIONS, ...SONG_SCOPE_MIGRATIONS, ...SONG_CATEGORY_MODE_MIGRATIONS,
     ...MASS_SLOT_MIGRATIONS, ...TRANSFER_MIGRATIONS, ...PLAN_SYNC_MIGRATIONS, ...LECTIONARY_MIGRATIONS, ...MEDIA_MIGRATIONS, ...BIBLE_MIGRATIONS, ...PRAYER_NOTES_MIGRATIONS,
     ...PLAN_SLOT_TITLE_MIGRATIONS, ...(withSchedule ? MASS_SCHEDULE_MIGRATIONS : [])]) {
@@ -48,7 +48,7 @@ const onDay = (plans, iso = DAY) => plans.listPlans().filter((p) => p.liturgical
 
 test('the schedule columns are appended to the end of the migration list, additive and defaulting to blank', () => {
   const list = readFileSync(new URL('./announcements.js', import.meta.url), 'utf8');
-  assert.match(list, /\.\.\.HYMN_FONT_SCALE_MIGRATIONS,\s*\.\.\.MASS_SCHEDULE_MIGRATIONS,\s*\];/);
+  assert.match(list, /\.\.\.HYMN_FONT_SCALE_MIGRATIONS,\s*\.\.\.MASS_SCHEDULE_MIGRATIONS,\s*\.\.\.HYMN_DEFAULT_SLIDES_MIGRATIONS,\s*\];/);
   for (const sql of MASS_SCHEDULE_MIGRATIONS) assert.match(sql, /^ALTER TABLE mass_plans ADD COLUMN mass_(time|language) TEXT DEFAULT '';$/);
 });
 

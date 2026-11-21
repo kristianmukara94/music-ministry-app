@@ -138,5 +138,5 @@ test('the Studio IPC channels are registered, exposed to the renderer, and resty
 
 test('the migration is appended at the end of the shared schema', () => {
   const source = read('./announcements.js');
-  assert.match(source, /\.\.\.HYMN_FILING_MIGRATIONS,\s*\.\.\.MEDIA_EDITOR_MIGRATIONS,\s*\.\.\.HYMN_FONT_SCALE_MIGRATIONS,\s*\.\.\.MASS_SCHEDULE_MIGRATIONS,\s*\];/);
+  assert.match(source, /\.\.\.HYMN_FILING_MIGRATIONS,\s*\.\.\.MEDIA_EDITOR_MIGRATIONS,\s*\.\.\.HYMN_FONT_SCALE_MIGRATIONS,\s*\.\.\.MASS_SCHEDULE_MIGRATIONS,\s*\.\.\.HYMN_DEFAULT_SLIDES_MIGRATIONS,\s*\];/);
 });

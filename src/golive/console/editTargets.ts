@@ -1,13 +1,16 @@
 // What the console's slide editor (SlideEditorCard) can change, for each kind of slide, and the copy-on-write path each change takes. Nothing
-// here writes Song Lyrics, the Lectionary or a Liturgical Content Hub entry:
-// - a song's stanza is kept for this run of the app only (live/liveSongEdits.setLiveStanzas), as the old on-air editors did;
+// here writes the words of Song Lyrics, the Lectionary or a Liturgical Content Hub entry:
+// - a song's slides go on screen at once (live/liveSongEdits.setLiveStanzas) and are then saved as the song's default slide arrangement
+//   (saveSongDefault, shared/song-slides.js), so every later use of the song plays them; the song's words in Song Lyrics stay as they are;
 // - a Holy Mass item's slides go to this plan's own copy of the item (massSlideCopy.saveItemSlides);
 // - a Praise & Worship song's slide is taken out of the card's own order of the song (lineupSlideCopy.deleteSongStep);
 // - a Praise & Worship card's prayer or reading page goes to the card's own copy, and its title slide renames the card (lineupSlideCopy).
 import type { Frame, QueueItem } from '../../../shared/live.js';
 import { arrangementWithInsert, arrangementWithout, cardAddSave, cardEditSave, cardSlidePlan, occurrenceOf, pagesWithout, slideAfterDelete, type CardSave } from '../../../shared/pw-hot-edit.js';
 import { canDeleteSlide } from '../../../shared/stage-cue.js';
-import { setLiveStanzas, type LiveStanza } from '../../live/liveSongEdits';
+import { liveLyrics, resetSongDefault, saveSongDefault, setLiveStanzas, type LiveStanza } from '../../live/liveSongEdits';
+import { songSlidesOf, withSlideDetails, type SongSlide } from '../../../shared/song-slides.js';
+import { sectionOrder } from '../../../shared/pw.js';
 import type { Hymn } from '../../lyrics/types';
 import type { Note } from '../../notes/types';
 import { ADD_LABELS, labelFor } from '../../praise-worship/useLiveHotEditor';
@@ -16,7 +19,7 @@ import { updateSegment, usePw } from '../../praise-worship/store';
 import type { LiveStep } from '../../praise-worship/live';
 import type { PwT } from '../../praise-worship/strings';
 import { MAX_NOTE_BODY, saveItemSlides, slideIndexOf, slidePagesOf, slidesTooLong } from '../massSlideCopy';
-import type { SlideEditTarget } from './SlideEditorCard';
+import type { SlideEditTarget, SongSlideDetails } from './SlideEditorCard';
 
 /** Lines that would start a new section, which an edit must not slip into a stanza's words. */
 const SECTION_LINE = /^\s*\[[^\]]+\]\s*$/m;
@@ -33,7 +36,30 @@ export function songTags(hymn: Hymn): string[] {
   return [...new Set([...hymn.stanzas.map((s) => s.stanzaType), ...ADD_LABELS.map((label) => labelFor(label, hymn.stanzas))])];
 }
 
-const stanzaOf = (s: Hymn['stanzas'][number]): LiveStanza => ({ id: s.id, stanzaType: s.stanzaType, lyricsText: s.lyricsText, ...(s.pages ? { pages: s.pages } : {}) });
+const stanzaOf = (s: Hymn['stanzas'][number]): LiveStanza => ({
+  id: s.id,
+  stanzaType: s.stanzaType,
+  lyricsText: s.lyricsText,
+  ...(s.pages ? { pages: s.pages } : {}),
+  ...(s.look ? { look: s.look } : {}),
+  ...(s.notes ? { notes: s.notes } : {}),
+});
+
+/** How a console lays a song out as slides, for the default arrangement it saves: the song's slides in its order, and this slide's place. */
+export interface SongLayout {
+  slidesOf: (hymn: Hymn) => SongSlide[];
+  /** This slide's place among slidesOf's slides (0-based). */
+  index: number;
+}
+
+/** Saves the song's slides, as the console now lays them out, as its default arrangement. `details` sets this slide's look and notes. */
+async function saveLayout(hymn: Hymn, layout: SongLayout, details?: SongSlideDetails, at = layout.index) {
+  const slides = layout.slidesOf(hymn);
+  await saveSongDefault(hymn.id, details ? withSlideDetails(slides, at, details) : slides);
+}
+
+/** The song as Go Live plays it now (after an edit), or the one given when it can no longer be read. */
+const fresh = async (hymn: Hymn) => (await liveLyrics.getHymn(hymn.id)) ?? hymn;
 
 interface SongTargetOptions {
   hymn: Hymn;
@@ -47,6 +73,8 @@ interface SongTargetOptions {
   onAdded?: (added: { id: number }) => void;
   /** Delete Slide for this slide, or null when it cannot be deleted. */
   remove: (() => Promise<void>) | null;
+  /** How this console lays the song out, so each change is saved as the song's default arrangement. Left out, nothing is saved past this run. */
+  layout?: SongLayout;
   /**
    * The stanza's slides as the console shows them, and which one this is (a long stanza on a Praise & Worship card can take more than one).
    * Left out, the stanza is one slide. Either way an edit changes this slide's words only and keeps every slide as it is (Stanza.pages).
@@ -55,20 +83,21 @@ interface SongTargetOptions {
 }
 
 /** A song's slide: its stanza's words and section, a new stanza after it, and Delete Slide, all for this service only. */
-export function songTarget({ hymn, stanza, number, key, onAdded, remove, page }: SongTargetOptions): SlideEditTarget | null {
+export function songTarget({ hymn, stanza, number, key, onAdded, remove, page, layout }: SongTargetOptions): SlideEditTarget | null {
   const own = hymn.stanzas[stanza];
   const add = async (text: string, tag: string | null) => {
     const problem = stanzaProblem(text);
     if (problem) throw new Error(problem);
     const at = Math.min(stanza + 1, hymn.stanzas.length);
-    const fresh = await setLiveStanzas(hymn, [
+    const next = await setLiveStanzas(hymn, [
       ...hymn.stanzas.slice(0, at).map(stanzaOf),
       // The new slide is one slide, exactly as typed.
       { stanzaType: tag || labelFor('Verse', hymn.stanzas), lyricsText: text, pages: [text] },
       ...hymn.stanzas.slice(at).map(stanzaOf),
     ]);
-    const added = fresh.stanzas[at];
+    const added = next.stanzas[at];
     if (added) onAdded?.(added);
+    if (layout) await saveLayout(await fresh(next), layout);
   };
   if (!own) return null;
   const shown = page && page.pages[page.index] !== undefined ? page : { pages: [own.lyricsText], index: 0 };
@@ -78,21 +107,49 @@ export function songTarget({ hymn, stanza, number, key, onAdded, remove, page }:
     text: shown.pages[shown.index],
     tag: own.stanzaType,
     tagOptions: songTags(hymn),
-    apply: async (text, tag) => {
+    apply: async (text, tag, details) => {
       const problem = stanzaProblem(text);
       if (problem) throw new Error(problem);
       const type = tag || own.stanzaType;
-      if (text === shown.pages[shown.index] && type === own.stanzaType) return;
+      if (text === shown.pages[shown.index] && type === own.stanzaType) {
+        if (details && layout) await saveLayout(hymn, layout, details);
+        return;
+      }
       // Only this slide's words change, and the stanza keeps exactly its slides: an edit is never paged into more slides (Stanza.pages).
       const pages = shown.pages.map((p, i) => (i === shown.index ? text : p));
-      await setLiveStanzas(hymn, hymn.stanzas.map((s, i) => (i === stanza ? { id: s.id, stanzaType: type, lyricsText: pages.join('\n'), pages } : stanzaOf(s))));
+      const next = await setLiveStanzas(hymn, hymn.stanzas.map((s, i) => (i === stanza ? { ...stanzaOf(s), stanzaType: type, lyricsText: pages.join('\n'), pages } : stanzaOf(s))));
+      if (layout) await saveLayout(next, layout, details);
     },
     add,
-    remove,
+    remove:
+      remove && layout
+        ? async () => {
+            await remove();
+            // The slide is out of the song as this console shows it; the rest is saved as the song's default.
+            await saveLayout(await fresh(hymn), layout);
+          }
+        : remove,
+    ...(layout
+      ? {
+          song: {
+            layout: hymn.slideLayout === 'default' ? 'default' : 'auto',
+            saveDetails: (details: SongSlideDetails) => saveLayout(hymn, layout, details),
+            reset: () => resetSongDefault(hymn.id),
+          },
+        }
+      : {}),
   };
 }
 
-/** Delete Slide on a Holy Mass song's stanza: it leaves the song for this service only. The song's only stanza stays. */
+/**
+ * How the Holy Mass console lays a song out: one slide per stanza, in the song's order (a stanza's fixed pages show together on its one slide).
+ * `stanza` is the slide's stanza.
+ */
+export function massSongLayout(stanza: number): SongLayout {
+  return { slidesOf: (hymn) => songSlidesOf(hymn, { pagesOf: (s) => [s.lyricsText] }), index: stanza };
+}
+
+/** Delete Slide on a Holy Mass song's stanza. The song's only stanza stays. */
 export function massSongRemove(hymn: Hymn, stanza: number): (() => Promise<void>) | null {
   if (!hymn.stanzas[stanza] || !canDeleteSlide(hymn.stanzas.length)) return null;
   return async () => {
@@ -132,7 +189,38 @@ export function pwSongTarget({ t, segmentIndex, steps, onAir, hymn }: { t: PwT; 
       const refusal = deleteSongStep(segmentIndex, steps, onAir);
       if (refusal) throw new Error(t(refusal));
     },
+    layout: pwSongLayout(segmentIndex, steps, onAir, hymn.id),
   });
+}
+
+/**
+ * How a Praise & Worship card lays a song out: the card's own order of the song's stanzas (repeats and deletions included), each stanza paged
+ * as the card shows it now (`steps`) unless it has fixed pages. `onAir` is the slide's step; its place in the song counts from the song's first
+ * slide on the card.
+ */
+export function pwSongLayout(segmentIndex: number, steps: LiveStep[], onAir: number, hymnId: number): SongLayout {
+  const isSong = (x: LiveStep | undefined) => x?.kind === 'slide' && x.slide.kind === 'lyrics' && x.slide.hymnId === hymnId;
+  let first = onAir;
+  while (first > 0 && isSong(steps[first - 1])) first -= 1;
+  // Each stanza's pages at its first appearance on the card.
+  const shown = new Map<string, string[]>();
+  let open: string[] | null = null;
+  for (const x of steps) {
+    if (x.kind !== 'slide' || x.slide.kind !== 'lyrics' || x.slide.hymnId !== hymnId) continue;
+    if ((x.slide.part ?? 0) === 0) {
+      open = shown.has(x.slide.sectionId) ? null : [];
+      if (open) shown.set(x.slide.sectionId, open);
+    }
+    open?.push(x.slide.text);
+  }
+  return {
+    slidesOf: (hymn) => {
+      // Read at save time: an Add After or a Delete has just changed the card's order.
+      const arrangement = usePw.getState().session?.segments[segmentIndex]?.arrangement ?? undefined;
+      return songSlidesOf(hymn, { order: sectionOrder(hymn, arrangement), pagesOf: (s) => (s.pages?.length ? s.pages : shown.get(String(s.id)) ?? null) });
+    },
+    index: onAir - first,
+  };
 }
 
 /**

@@ -7,7 +7,7 @@ import type { PwSlide, PwType } from '../../shared/pw.js';
 import { useLive } from '../live/store';
 import { slotTitleShown } from '../../shared/live.js';
 import { welcomeBackground, type WelcomeBackground } from '../../shared/welcome-settings.js';
-import { frameWithAlign, slideLookAt, type SlideLook } from '../../shared/slide-look.js';
+import { frameOwnLook, frameWithAlign, slideLookAt, type SlideLook } from '../../shared/slide-look.js';
 import { withBackdropTheme } from '../../shared/stage-cue.js';
 import { slideFontCss } from '../../shared/text-style.js';
 import { applyPwSlideTextCase, applyTextCase, textCaseOf } from '../../shared/text-fit.js';
@@ -33,7 +33,7 @@ const STAGE = 'relative aspect-video w-full overflow-hidden rounded-lg border bo
 function Face({ shown, blackLabel, background, look: given }: { shown: Shown; blackLabel: string; background: WelcomeBackground; look?: SlideLook | null }) {
   const t = usePwT();
   // The slide's own look: the one given (the editor's draft), else the one saved for its key. Each of its settings replaces the projector's.
-  const saved = useLive((s) => slideLookAt(s.state, shown.lookKey));
+  const saved = useLive((s) => slideLookAt(s.state, shown.lookKey)) ?? frameOwnLook(shown);
   const look = given === undefined ? saved : given;
   // The thumbnails follow the font and size the operator picks, so the change shows in the preview as it is made.
   const slideFont = useLive((s) => slideFontCss(s.state.settings.slideFont));

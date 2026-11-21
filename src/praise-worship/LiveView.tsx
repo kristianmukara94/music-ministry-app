@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Check, Maximize2, Music, Play, X } from 'lucide-react';
-import { lineupSongs, livePosition, readiness, runtimeOf, segmentStatus, step } from '../../shared/pw.js';
+import { cardNameOf, lineupSongs, livePosition, readiness, runtimeOf, segmentStatus, step } from '../../shared/pw.js';
 import { blackoutOverPw, welcomeOverPw } from '../../shared/live.js';
 import { useLive } from '../live/store';
 import { textCaseOf } from '../../shared/text-fit.js';
@@ -26,7 +26,7 @@ import { SlideEditorModal, type EditorCue } from '../golive/console/SlideEditorM
 import { FloatingProgram } from '../golive/console/FloatingProgram';
 import { OutputsCard } from '../golive/console/OutputsCard';
 import { useCueMeta } from '../golive/console/cueMeta';
-import { pwLookKey } from '../../shared/slide-look.js';
+import { frameOwnLook, pwLookKey } from '../../shared/slide-look.js';
 import { useConsoleKeys, useSegmentTimer } from '../golive/console/hooks';
 import { setPwState, usePw } from './store';
 import { setGoLiveFocused, useFocusEscape } from './useGoLiveFocus';
@@ -51,6 +51,8 @@ function withWords(shown: Shown, text: string): Shown {
   if (slide?.kind === 'lyrics') return { ...shown, slide: { ...slide, text } };
   // An empty prayer slot's words are drawn as words once typed, not in the placeholder's muted italic.
   if (slide?.kind === 'prayer') return { ...shown, slide: { ...slide, text, placeholder: Boolean(slide.placeholder) && !text.trim() } };
+  // A title slide's words are the card's name: drawn as Save will keep them (one line, trimmed, capped). Cleared, the name it has stays drawn.
+  if (slide?.kind === 'title') return { ...shown, slide: { ...slide, label: cardNameOf(text) || slide.label } };
   return shown;
 }
 
@@ -140,7 +142,10 @@ function LiveLineup({
                   {done ? <Check size={14} aria-label={t('done')} /> : pad2(i + 1)}
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className={`flex min-h-8 items-center text-[15px] leading-tight ${done ? 'text-muted' : 'font-semibold'}`}>{s.name}</span>
+                  {/* The name sits in its own span so it can shrink: a long unbroken word breaks inside the row, at most two lines, never past it. */}
+                  <span className={`flex min-h-8 min-w-0 items-center text-[15px] leading-tight ${done ? 'text-muted' : 'font-semibold'}`}>
+                    <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]" title={s.name}>{s.name}</span>
+                  </span>
                   {/* Under the name, not beside it, so a short column never squeezes the segment's name onto two lines. */}
                   {noSong && <span className="mt-0.5 self-start rounded-full border border-accent/40 bg-accent/10 px-2 py-px text-[10px] font-extrabold tracking-wide text-accent uppercase">{t('noSongBadge')}</span>}
                   {/* Spans, not a list: a button may only hold phrasing content. The button's name still reads every title. */}
@@ -302,6 +307,8 @@ export function LiveView() {
         index: i,
         count: segSteps.length,
         lookKey: pwLookKey(own.key, s.index),
+        ownLook: frameOwnLook(s),
+        ownNotes: s.slide.kind === 'lyrics' ? hymn?.stanzas.find((x) => String(x.id) === (s.slide as { sectionId: string }).sectionId)?.notes : undefined,
         target: hymn
           ? pwSongTarget({ t, segmentIndex: seg, steps: segSteps, onAir: i, hymn })
           : pwCardTarget({ t, segmentIndex: seg, steps: segSteps, step: i, onAir: seg === segmentIndex ? at.slide : null }),

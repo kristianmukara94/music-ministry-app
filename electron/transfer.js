@@ -9,6 +9,7 @@ import { isPrimaryCategory, scopeForLegacy } from '../shared/song-taxonomy.js';
 import { MASS_ORDER_ID, MASS_ORDER_LANGS, MAX_MASS_ORDER_ID, checkMassOrderText, cleanTitle, isCustomId } from '../shared/mass-order-text.js';
 import { MASS_PARTS } from '../shared/mass-parts.js';
 import { normalizeMassLanguage, normalizeMassTime } from '../shared/mass-schedule.js';
+import { lyricsHash, sanitizeSongSlides } from '../shared/song-slides.js';
 
 export const TRANSFER_FORMAT = 'apccmma-library';
 export const TRANSFER_FORMAT_VERSION = 1;
@@ -221,7 +222,7 @@ export function collectLibrary(db, options, { laptop, exportedAt = new Date().to
   const hymns = db
     .prepare(
       `SELECT id, uuid, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory, primary_category AS primaryCategory,
-              updated_at AS updatedAt FROM hymns WHERE deleted_at IS NULL ORDER BY id`,
+              default_slides_json AS defaultSlidesJson, updated_at AS updatedAt FROM hymns WHERE deleted_at IS NULL ORDER BY id`,
     )
     .all();
   const hymnById = new Map(hymns.map((h) => [h.id, h]));
@@ -261,6 +262,9 @@ export function collectLibrary(db, options, { laptop, exportedAt = new Date().to
         song.lyrics = stanzaRows
           .filter((s) => s.hymnId === h.id)
           .map((s) => ({ stanzaType: s.stanzaType, lyricsText: s.lyricsText, displayOrder: s.displayOrder }));
+        // The song's default slide arrangement is made of its words, so it travels only with the lyrics.
+        const defaultSlides = sanitizeSongSlides(h.defaultSlidesJson);
+        if (defaultSlides) song.defaultSlides = defaultSlides;
       }
       return song;
     });
@@ -506,6 +510,12 @@ function writeSongDetails(db, hymnId, record) {
     db.prepare('DELETE FROM hymn_stanzas WHERE hymn_id = ?').run(hymnId);
     const stanza = db.prepare('INSERT INTO hymn_stanzas (hymn_id, stanza_type, lyrics_text, display_order) VALUES (?, ?, ?, ?)');
     record.lyrics.forEach((s, i) => stanza.run(hymnId, s.stanzaType, s.lyricsText, s.displayOrder ?? i));
+    // The file's default slide arrangement comes with its words, and only while it was made from exactly those words. Any other arrangement
+    // (none in the file, or one for other words) is cleared, so the song never plays slides that do not match its lyrics.
+    const arrangement = sanitizeSongSlides(record.defaultSlides);
+    const sorted = [...record.lyrics].map((s, i) => ({ ...s, at: s.displayOrder ?? i })).sort((a, b) => a.at - b.at);
+    const fits = arrangement && arrangement.lyricsHash === lyricsHash(sorted);
+    db.prepare('UPDATE hymns SET default_slides_json = ? WHERE id = ?').run(fits ? JSON.stringify(arrangement) : null, hymnId);
   }
 }
 

@@ -855,6 +855,7 @@ const offlineLyrics: LyricsApi = {
   getSetlist: async () => [],
   saveSetlist: async () => offlineError(),
   setStyle: async () => offlineError(),
+  saveDefaultSlides: async () => offlineError(),
   importFile: async () => offlineError(),
   pickBatchFile: async () => offlineError(),
   readBatchFile: async () => offlineError(),

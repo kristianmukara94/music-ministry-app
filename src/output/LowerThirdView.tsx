@@ -47,7 +47,7 @@ export function SegmentLowerThird({ value, sizes }: { value: LowerThird; sizes?:
   const titlePx = sizes?.titlePx ?? LOWER_THIRD_BAND.titlePx;
   const composerPx = sizes?.composerPx ?? composerFor(LOWER_THIRD_BAND.titlePx);
   return (
-    <div data-theme="default" className="flex w-full min-w-0 flex-col items-start">
+    <div data-theme="default" className="flex w-full min-w-0 flex-col items-start [overflow-wrap:anywhere]">
       {value.tag && (
         <div
           className="font-sans font-extrabold tracking-[0.18em] uppercase"
@@ -98,7 +98,7 @@ export function LowerThirdCard({ value, style }: { value: LowerThird; style: Low
   if (template === 'response') {
     // A liturgical response on a white pill, for example "R: And with your spirit".
     return (
-      <div className="inline-flex max-w-[80cqw] items-center rounded-full bg-white px-[2.6cqw] py-[1.1cqw] text-[2.2cqw] font-extrabold text-black shadow-2xl">
+      <div className="inline-flex max-w-[80cqw] items-center rounded-full bg-white [overflow-wrap:anywhere] px-[2.6cqw] py-[1.1cqw] text-[2.2cqw] font-extrabold text-black shadow-2xl">
         {value.line1}
       </div>
     );
@@ -126,7 +126,7 @@ export function LowerThirdCard({ value, style }: { value: LowerThird; style: Low
   };
 
   const text = (
-    <div className="flex min-w-0 flex-col" style={{ gap: cq(style.fontSize * 0.2) }}>
+    <div className="flex min-w-0 flex-col [overflow-wrap:anywhere]" style={{ gap: cq(style.fontSize * 0.2) }}>
       {template === 'intention' && (
         <div className="font-bold tracking-[0.25em] uppercase opacity-70" style={{ fontSize: cq(style.fontSize * 0.45), color: style.textColor }}>
           Holy Mass intention

@@ -58,3 +58,4 @@ export function massLookKey(planId: number | string | null | undefined, row: num
 export function framePageOf(frame: Frame | null | undefined): number;
 export function slideLookKeyOf(state: LiveState | null | undefined, frame: Frame | null | undefined): string | null;
 export function slideLookAt(state: LiveState | null | undefined, key: string | null | undefined): SlideLook | null;
+export function frameOwnLook(frame: unknown): SlideLook | null;

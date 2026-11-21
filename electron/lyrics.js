@@ -6,6 +6,7 @@ import { SONG_CATEGORY_REQUIRED_EN, isSongCategoryMissing } from '../shared/hymn
 import { createSongCategoryService, resolveSongCategories } from './song-categories.js';
 import { categoriesOf, clampFontScale, fontScaleColumns, normalizeCategories } from '../shared/song-filing.js';
 import { matchStanzaIds } from '../shared/stanza-ids.js';
+import { lyricsHash, sanitizeSongSlides, songSlidesFor } from '../shared/song-slides.js';
 import { isPrimaryCategory, legacyCategoryFor, normalizePrimary, scopesShownBy, DEFAULT_PRIMARY } from '../shared/song-taxonomy.js';
 
 const MAX_TITLE = 120;
@@ -105,6 +106,13 @@ export const HYMN_FONT_SCALE_MIGRATIONS = [
   `ALTER TABLE hymns ADD COLUMN font_scale_wide REAL CHECK (font_scale_wide IS NULL OR (font_scale_wide > 1.5 AND font_scale_wide <= 2.5));`,
 ];
 
+/**
+ * A song's default slide arrangement: the slides an operator left it in on air, so the next time it is used it plays exactly those slides
+ * (shared/song-slides.js). JSON, null when there is none. The words in hymn_stanzas are never changed by it. Appended to the end of the
+ * migration list only.
+ */
+export const HYMN_DEFAULT_SLIDES_MIGRATIONS = [`ALTER TABLE hymns ADD COLUMN default_slides_json TEXT;`];
+
 /** A hymn row with its two filing columns read into `categories` (primary first) and `fontScale`. */
 const withFiling = ({ categoriesJson, fontScale, ...row }) => ({ ...row, categories: categoriesOf(row.songCategory, categoriesJson), fontScale: clampFontScale(fontScale) });
 
@@ -183,7 +191,7 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
              OR h.musical_key LIKE @term ESCAPE '\\'
              OR EXISTS (SELECT 1 FROM hymn_stanzas s WHERE s.hymn_id = h.id AND s.lyrics_text LIKE @term ESCAPE '\\'))
       ORDER BY h.title COLLATE NOCASE`),
-    hymn: db.prepare('SELECT id, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory, primary_category AS primaryCategory, categories_json AS categoriesJson, COALESCE(font_scale_wide, font_scale) AS fontScale, style AS styleJson, deleted_at AS deletedAt FROM hymns WHERE id = ?'),
+    hymn: db.prepare('SELECT id, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory, primary_category AS primaryCategory, categories_json AS categoriesJson, COALESCE(font_scale_wide, font_scale) AS fontScale, style AS styleJson, default_slides_json AS defaultSlidesJson, deleted_at AS deletedAt FROM hymns WHERE id = ?'),
     // A hymn in the library: not deleted. Used by the plans, so a deleted hymn is shown as deleted rather than as present.
     liveHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NULL'),
     deletedHymn: db.prepare('SELECT 1 FROM hymns WHERE id = ? AND deleted_at IS NOT NULL'),
@@ -195,6 +203,8 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
     undoDelete: db.prepare('UPDATE hymns SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL'),
     purgeOld: db.prepare('DELETE FROM hymns WHERE deleted_at IS NOT NULL AND deleted_at < ?'),
     setStyle: db.prepare('UPDATE hymns SET style = ? WHERE id = ?'),
+    defaultSlides: db.prepare('SELECT default_slides_json AS json FROM hymns WHERE id = ?'),
+    setDefaultSlides: db.prepare('UPDATE hymns SET default_slides_json = ? WHERE id = ?'),
     stanzas: db.prepare(`
       SELECT id, stanza_type AS stanzaType, lyrics_text AS lyricsText, display_order AS "order"
       FROM hymn_stanzas WHERE hymn_id = ? ORDER BY display_order, id`),
@@ -300,6 +310,9 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
       const result = q.insertStanzaWithId.run(ids[i], id, s.stanzaType, s.lyricsText, i + 1);
       return ids[i] ?? Number(result.lastInsertRowid);
     });
+    // An arrangement made from the words as they were no longer fits rewritten words: the song goes back to automatic slides.
+    const arrangement = sanitizeSongSlides(q.defaultSlides.get(id)?.json ?? null);
+    if (arrangement && arrangement.lyricsHash !== lyricsHash(hymn.stanzas)) q.setDefaultSlides.run(null, id);
     const lineupsChanged = dropped.length ? dropStanzaIdsFromLineups(id, dropped.map((d) => d.id)) : 0;
     let lineupsFollowed = 0;
     hymn.stanzas.forEach((s, i) => {
@@ -344,8 +357,9 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
       const hymn = q.hymn.get(id);
       if (!hymn) return null;
       // The style is stored as JSON. It is checked on the way out, as it is on the way in.
-      const { styleJson, ...details } = withFiling(hymn);
-      return { ...details, style: parseTextStyle(styleJson), stanzas: q.stanzas.all(id) };
+      const { styleJson, defaultSlidesJson, ...details } = withFiling(hymn);
+      // The default slide arrangement as saved. Whether it still fits the words is the reader's check (resolveSongSlides).
+      return { ...details, style: parseTextStyle(styleJson), stanzas: q.stanzas.all(id), defaultSlides: sanitizeSongSlides(defaultSlidesJson) };
     },
 
     /** Parses the pasted lyrics and stores the hymn with its stanzas in one transaction. */
@@ -466,6 +480,24 @@ export function createLyricsService(db, { onHymnChanged = () => {}, onLyricsChan
       return { ...result, firstId, secondId, lineupsChanged };
     },
 
+    /**
+     * Saves the song's default slide arrangement: `slides` exactly as an operator left them on air, stamped with the hash of the song's words as
+     * stored now, so the arrangement is dropped once those words are rewritten. Null (or an empty list) clears it, and the song is paged
+     * automatically again (Reset Default Layout). The song's words, details and filing are not touched. Resolves to the arrangement saved, or
+     * null when it was cleared.
+     */
+    saveDefaultSlides(id, slides) {
+      const row = q.hymn.get(id);
+      if (!row) throw new Error('That hymn no longer exists.');
+      if (row.deletedAt) throw new Error('That hymn was deleted. Undo the delete to change it.');
+      const list = Array.isArray(slides) ? slides : Array.isArray(slides?.slides) ? slides.slides : null;
+      const arrangement = list?.length ? songSlidesFor(q.stanzas.all(id), list) : null;
+      if (list?.length && !arrangement) throw new Error('A song slide needs some words.');
+      q.setDefaultSlides.run(arrangement ? JSON.stringify(arrangement) : null, id);
+      notifyLyrics(id);
+      return arrangement;
+    },
+
     /** Saves how this song is set on the projector. Null returns it to the default look. */
     setStyle(id, style) {
       if (!q.hymn.get(id)) throw new Error('That hymn no longer exists.');
@@ -561,6 +593,7 @@ export function setupLyrics(db, options = {}) {
   handle('editLyrics', (id, raw) => service.editLyrics(Number(id), String(raw ?? '')));
   handle('splitStanza', (id, index, parts) => service.splitStanza(Number(id), Number(index), parts));
   handle('setStyle', (id, style) => service.setStyle(Number(id), style));
+  handle('saveDefaultSlides', (id, slides) => service.saveDefaultSlides(Number(id), slides ?? null));
   handle('listSetlists', () => service.listSetlists());
   handle('createSetlist', (input) => service.createSetlist(input));
   handle('deleteSetlist', (id) => service.deleteSetlist(Number(id)));

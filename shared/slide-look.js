@@ -162,3 +162,10 @@ function sameFrame(a, b) {
 
 /** The look stored for `key` in the live state's `slideLooks`, or null. */
 export const slideLookAt = (state, key) => (key ? state?.slideLooks?.[key] ?? null : null);
+
+/**
+ * The look a frame brings with it: a song slide saved with its own formatting in the song's default arrangement (shared/song-slides.js)
+ * carries it as `look` (a Holy Mass stanza) or `slide.look` (a Praise & Worship slide). A look set on air for the slide (slideLookAt) goes
+ * over it. Null when the frame brings none.
+ */
+export const frameOwnLook = (frame) => (frame && typeof frame === 'object' ? frame.look ?? frame.slide?.look ?? null : null);
