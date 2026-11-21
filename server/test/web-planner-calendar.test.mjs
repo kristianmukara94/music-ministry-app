@@ -19,6 +19,7 @@ const model = await load('web', 'js', 'plan-model.js');
 const form = await load('web', 'js', 'new-plan-form.js');
 const schedule = await load('web', 'js', 'schedule-ui.js');
 const webSlots = await load('web', 'js', 'mass-slots.js');
+const workspace = await load('web', 'js', 'mass-workspace.js');
 const webCalendar = await load('web', 'js', 'liturgical-calendar.js');
 const laptopCalendar = await load('shared', 'liturgical-calendar.js');
 const laptopSlots = await load('shared', 'mass-slots.js');
@@ -396,7 +397,9 @@ test('the Planner page: the header slot, the New Plan modal, the memo dialog and
   assert.match(readWeb('js/new-plan.js'), /mountNewPlanForm\(layout,/);
   for (const editor of ['plan/mass.html', 'plan/praise.html']) {
     const html = readWeb(editor);
-    for (const id of ['plan-title', 'date-badge', 'fill-badge', 'duplicate', 'delete', 'delete-dialog', 'save']) assert.match(html, new RegExp(`id="${id}"`), `${editor} has #${id}`);
+    // The Holy Mass editor draws Duplicate and Save plan into the header (headerActionsHtml); the rest is in the page.
+    const own = editor === 'plan/mass.html' ? html + workspace.headerActionsHtml() : html;
+    for (const id of ['plan-title', 'date-badge', 'fill-badge', 'duplicate', 'delete', 'delete-dialog', 'save']) assert.match(own, new RegExp(`id="${id}"`), `${editor} has #${id}`);
     assert.match(html, /<div data-planner-header><\/div>/);
   }
 });
@@ -430,4 +433,301 @@ test('the title is checked as the server checks it, and sent only when it change
   assert.equal('name' in model.savePayload(plan, [], { name: 'Sample Plan Title' }), false);
   assert.equal(model.savePayload(plan, [], { name: '  Sample Renamed Title ' }).name, 'Sample Renamed Title');
   assert.equal('name' in model.savePayload(plan, []), false, 'an editor that sends no name leaves it');
+});
+
+// ---- The Holy Mass Plan Editor as the laptop's Liturgical Plan ----
+
+const { MASS_PLAN } = await load('web', 'js', 'sample-data.js');
+const { requiredSlotsFor } = webCalendar;
+const ROWS = model.massRows(MASS_PLAN);
+const rowOfSlot = (n) => ROWS.find((r) => r.slot === n);
+const SONG_ENTRANCE = '50000000-0000-4000-8000-000000000001';
+const SONG_KYRIE = '50000000-0000-4000-8000-000000000002';
+const SONG_PRAISE = '50000000-0000-4000-8000-000000000003';
+const SONG_GENERAL = '50000000-0000-4000-8000-000000000004';
+const LIBRARY = [
+  { id: SONG_ENTRANCE, title: 'Sample Song Title', category: 'Entrance Procession', scope: 'MASS', language: 'English', key: 'D' },
+  { id: SONG_KYRIE, title: 'Sample Kyrie Setting', category: 'Kyrie', scope: 'MASS', language: 'Tagalog', key: '' },
+  { id: SONG_PRAISE, title: 'Sample Praise Song', category: 'Joyful Song', scope: 'PRAISE_AND_WORSHIP', language: 'Cebuano', key: 'G' },
+  { id: SONG_GENERAL, title: 'Sample General Hymn', category: 'Communion Procession', scope: 'GENERAL', language: 'English', key: 'C' },
+];
+
+test('the header says SERVICE PLANNING → Liturgical Plan with the laptop\'s line, Plan Editor on, and Duplicate and Save plan (Ctrl + S)', () => {
+  const html = header.plannerHeaderHtml({ tab: 'editor', title: workspace.PAGE_TITLE, subtitle: workspace.PAGE_SUBTITLE, actions: workspace.headerActionsHtml() });
+  assert.match(html, /<span class="ph-eyebrow">Service Planning<\/span>/);
+  assert.match(html, /<h1 class="ph-title">Liturgical Plan<\/h1>/);
+  assert.match(html, /Build the Holy Mass block by block\. Load it to the Service Queue when it is ready\./);
+  assert.match(html, /<span class="ph-tab is-on" aria-current="page" data-planner-tab="editor">Plan Editor<\/span>/);
+  assert.match(html, /data-planner-tab="mass">Liturgical Calendar</);
+  assert.match(html, /data-planner-tab="pw">Praise &amp; Worship Calendar</);
+  assert.match(html, /<div class="ph-page-actions">[\s\S]*id="status"[\s\S]*id="duplicate"[^>]*>Duplicate<[\s\S]*id="save"[^>]*aria-keyshortcuts="Control\+S Meta\+S"[^>]*>Save plan</);
+  assert.doesNotMatch(html, /New Plan/, 'the editor shows no + New Plan beside Save');
+  // The calendars keep their heading, and a title is escaped.
+  assert.match(header.plannerHeaderHtml({ tab: 'mass' }), /<h1 class="ph-title">Planner<\/h1>/);
+  assert.doesNotMatch(header.plannerHeaderHtml({ tab: 'mass' }), /ph-page-actions/);
+  assert.match(header.plannerHeaderHtml({ title: 'Sample <b>' }), /Sample &lt;b&gt;/);
+  // The page wires Ctrl + S and Save plan to the same save.
+  const page = readWeb('js/mass.js');
+  assert.match(page, /\(event\.ctrlKey \|\| event\.metaKey\) && !event\.altKey && event\.key\.toLowerCase\(\) === 's'/);
+  assert.match(page, /title: PAGE_TITLE,\s*subtitle: PAGE_SUBTITLE,/);
+});
+
+test('the readiness banner counts songs and readings/notes, lists what the day still needs, and turns green when it is ready', () => {
+  const nameOf = (row) => row.name;
+  const empty = workspace.readiness({ rows: ROWS, segments: {}, notes: {}, date: SUNDAY, nameOf });
+  assert.deepEqual([empty.songs, empty.texts, empty.slots], [{ done: 0, total: 13 }, { done: 0, total: 15 }, { done: 0, total: 28 }]);
+  assert.equal(empty.missing.length, requiredSlotsFor(SUNDAY).length);
+  assert.equal(empty.missing[0].name, 'Entrance Hymn', 'in Holy Mass order');
+  assert.equal(empty.ready, false);
+  const html = workspace.readinessBannerHtml(empty, { dateText: 'Sample Liturgical Day', max: 3 });
+  assert.match(html, /Songs: 0 of 13 chosen · Readings\/Notes: 0 of 15 entered/);
+  assert.match(html, new RegExp(`Still empty for Sample Liturgical Day \\(${empty.missing.length} of ${empty.needed.total}\\)`));
+  assert.equal(html.match(/data-jump-row=/g).length, 3, 'three slot names, then the rest counted');
+  assert.match(html, new RegExp(`and ${empty.missing.length - 3} more\\.`));
+
+  // It updates as items are added and removed: a song, a cue on a spoken part.
+  let segments = model.withEntry({}, rowOfSlot(1).id, { songId: SONG_ENTRANCE, contentType: 'song' });
+  const notes = { [rowOfSlot(2).id]: 'Sample Musician Cue' };
+  const some = workspace.readiness({ rows: ROWS, segments, notes, date: SUNDAY, nameOf });
+  assert.deepEqual([some.songs.done, some.texts.done], [1, 1]);
+  assert.equal(some.missing.length, empty.missing.length - 2);
+  segments = model.withoutEntry(segments, rowOfSlot(1).id, 0);
+  assert.equal(workspace.readiness({ rows: ROWS, segments, notes, date: SUNDAY }).songs.done, 0);
+
+  // Every slot the weekday needs filled: ready, though the Sunday-only parts and optional ones are empty.
+  const filled = Object.fromEntries(ROWS.filter((r) => r.slot && requiredSlotsFor(WEEKDAY).includes(webSlots.MASS_SLOTS.find((s) => s.number === r.slot).id)).map((r) => [r.id, 'Sample Musician Cue']));
+  const ready = workspace.readiness({ rows: ROWS, segments: {}, notes: filled, date: WEEKDAY });
+  assert.equal(ready.ready, true);
+  assert.equal(ready.missing.length, 0);
+  assert.match(workspace.readinessBannerHtml(ready), /Every slot this day needs is filled\./);
+  // A slot name is escaped like everything else.
+  assert.match(workspace.readinessBannerHtml({ ...empty, missing: [{ id: 's1', n: 1, name: '<b>x</b>' }] }), /&lt;b&gt;x&lt;\/b&gt;/);
+});
+
+test('the control strip: Back to Calendar, the plan switcher, EN / TL / CEB / Other, PRINT LINEUP, TEMPLATES, HOLY MASSES ON THIS DAY, the progress and COLLAPSE ALL', () => {
+  const html = readWeb('plan/mass.html');
+  assert.match(html, /<section class="lp-strip" aria-label="Holy Mass time and language">/);
+  assert.match(html, /<a id="back-to-calendar" class="lp-back" href="\.\.\/index\.html\?cal=mass"><span aria-hidden="true">←<\/span> Back to Calendar<\/a>/);
+  assert.match(html, /<select id="plan-switch"/);
+  assert.match(html, /<div id="language" class="lp-lang-group" role="radiogroup"/);
+  assert.match(html, /id="lang-other"[^>]*>Other</);
+  assert.match(html, /id="print-lineup"[\s\S]*?Print lineup/);
+  assert.match(html, /id="open-templates"[^>]*>Templates</);
+  assert.match(html, /<nav id="schedule-switcher" class="bc-switcher" aria-label="Holy Masses on this day">/);
+  assert.match(html, /id="collapse-all"[^>]*>Collapse all</);
+  assert.match(html, /<section id="setlist-print" class="setlist-print" aria-hidden="true">/, 'the printed lineup');
+  assert.match(html, /id="browse-songs"[^>]*>Browse songs</, 'phones and tablets jump to the library');
+  assert.doesNotMatch(html, /<script(?![^>]*\bsrc=)/);
+  assert.doesNotMatch(html, /\son[a-z]+=/);
+  // The language pills read EN, TL and CEB, as on the laptop.
+  assert.match(readWeb('js/mass.js'), />\$\{esc\(l\.code\)\}<\/button>/);
+
+  assert.equal(workspace.mdyDate('2026-11-07'), '11/07/2026');
+  assert.equal(workspace.mdyDate('not a date'), '');
+  assert.equal(workspace.stripSubtitle(SUNDAY, 8), '32nd Sunday in Ordinary Time · Sunday Cycle A · 8 items');
+  assert.match(workspace.stripSubtitle(WEEKDAY, 1), / · Weekday Cycle II · 1 item$/);
+  assert.equal(workspace.collapseLabel(0, 4), 'Collapse all');
+  assert.equal(workspace.collapseLabel(2, 4), 'Collapse all');
+  assert.equal(workspace.collapseLabel(4, 4), 'Expand all');
+
+  // The plan switcher: "MM/DD/YYYY · title · time", newest first, the open plan selected with its title as being edited.
+  const current = schedule.asSchedulePlan({ id: ids(2), name: 'Sample <Renamed> Title', date: SUNDAY, massTime: '9:30 AM', kind: 'mass' });
+  const options = workspace.planSwitchOptionsHtml([mass(1, SOLEMNITY), mass(2, SUNDAY), mass(3, WEEKDAY, { massTime: '6:00 AM' }), pw(4, SUNDAY)].map(schedule.asSchedulePlan), current);
+  assert.deepEqual([...options.matchAll(/<option value="([^"]+)"( selected)?>([^<]*)</g)].map((m) => [m[1], Boolean(m[2]), m[3]]), [
+    [ids(3), false, '11/10/2026 · Sample Plan Title · 6:00 AM'],
+    [ids(2), true, '11/08/2026 · Sample &lt;Renamed&gt; Title · 9:30 AM'],
+    [ids(1), false, '11/01/2026 · Sample Plan Title'],
+  ], 'no Praise & Worship plans');
+});
+
+test('HOLY MASSES ON THIS DAY: the open one opens the time popover, the others open their plan, then Edit Time and + Add Time', () => {
+  const six = schedule.asSchedulePlan(mass(1, SUNDAY, { massTime: '6:00 AM', massLanguage: 'Cebuano' }));
+  const nine = schedule.asSchedulePlan(mass(2, SUNDAY, { massTime: '9:30 AM', massLanguage: 'English' }));
+  const html = workspace.scheduleRowHtml([six, nine], ids(2), { pathOf: (p) => `plan/mass.html?id=${p.id}`, addHref: 'index.html?cal=mass&new=mass', popoverOpen: true });
+  assert.match(html, /<span class="bc-switch-label">Holy Masses on this day<\/span>/);
+  assert.match(html, new RegExp(`<a class="bc-switch" href="plan/mass\\.html\\?id=${ids(1)}"[^>]*>6:00 AM · Cebuano</a>`));
+  assert.match(html, /<button type="button" class="bc-switch is-on" aria-current="page" data-edit-time aria-expanded="true"[^>]*>9:30 AM · English<\/button>/);
+  assert.match(html, /data-edit-time aria-expanded="true" aria-controls="time-popover">Edit Time<\/button>/);
+  assert.match(html, /<a class="bc-switch is-add" href="index\.html\?cal=mass&amp;new=mass"><span aria-hidden="true">\+<\/span> Add Time<\/a>/);
+  // A viewer sees the pills only.
+  const viewer = workspace.scheduleRowHtml([{ ...nine, massTime: '', massLanguage: '' }], ids(2), { pathOf: () => '', canEdit: false });
+  assert.match(viewer, /<span class="bc-switch is-on" aria-current="page">No time set<\/span>/);
+  assert.doesNotMatch(viewer, /data-edit-time|Add Time/);
+
+  // The popover: the four quick times, and a taken time holds Set time back with the laptop's words.
+  const free = workspace.timePopoverHtml({ value: '8:00 AM' });
+  assert.deepEqual([...free.matchAll(/data-tp-preset="([^"]+)" aria-pressed="(true|false)"/g)].map((m) => `${m[1]}=${m[2]}`), ['6:00 AM=false', '8:00 AM=true', '9:30 AM=false', '5:00 PM=false']);
+  assert.match(free, /<button type="button" class="btn-primary" data-tp="apply">Set time<\/button>/);
+  const conflict = schedule.conflictIn([six, nine], SUNDAY, '06:00', ids(2));
+  assert.equal(conflict.id, ids(1), '6:00 AM and 06:00 are one time');
+  const taken = workspace.timePopoverHtml({ value: '06:00', conflict });
+  assert.match(taken, /A Holy Mass at 6:00 AM[\s\S]*already exists on this date\./);
+  assert.match(taken, /data-tp="apply" disabled>Set time/);
+  assert.equal(schedule.conflictIn([six, nine], SUNDAY, '9:30 AM', ids(2)), null, 'its own time is not a clash');
+  assert.match(workspace.timePopoverHtml({ value: '"><b>' }), /value="&quot;&gt;&lt;b&gt;"/);
+});
+
+test('the library: Search, Holy Mass / Praise & Worship / All, SONG CATEGORY, and song cards with title, category and language only', () => {
+  const titles = (list) => list.map((s) => s.title);
+  // Holy Mass is the default: its own songs and General ones.
+  assert.deepEqual(titles(workspace.librarySongs(LIBRARY)), ['Sample Song Title', 'Sample Kyrie Setting', 'Sample General Hymn']);
+  assert.deepEqual(titles(workspace.librarySongs(LIBRARY, { service: 'praise_worship' })), ['Sample Praise Song', 'Sample General Hymn']);
+  assert.equal(workspace.librarySongs(LIBRARY, { service: 'all' }).length, 4);
+  assert.deepEqual(titles(workspace.librarySongs(LIBRARY, { category: 'entrance' })), ['Sample Song Title']);
+  assert.deepEqual(titles(workspace.librarySongs(LIBRARY, { category: 'kyrie' })), ['Sample Kyrie Setting']);
+  assert.deepEqual(titles(workspace.librarySongs(LIBRARY, { service: 'all', category: 'Joyful Song' })), ['Sample Praise Song']);
+  // Search matches the title, the category and the language.
+  assert.deepEqual(titles(workspace.librarySongs(LIBRARY, { query: 'kyrie' })), ['Sample Kyrie Setting']);
+  assert.deepEqual(titles(workspace.librarySongs(LIBRARY, { query: 'communion' })), ['Sample General Hymn']);
+  assert.deepEqual(titles(workspace.librarySongs(LIBRARY, { query: 'tagalog' })), ['Sample Kyrie Setting']);
+  assert.deepEqual(workspace.librarySongs(LIBRARY, { query: 'nothing like this' }), []);
+
+  const categories = workspace.libraryCategories(LIBRARY, 'mass');
+  assert.deepEqual(categories[0], { id: 'all', label: 'All categories', count: 3 });
+  assert.deepEqual(categories.slice(1, 4).map((c) => [c.label, c.count]), [['Entrance', 1], ['Kyrie', 1], ['Gloria', 0]]);
+  assert.ok(categories.some((c) => c.label === 'Recessional'));
+  assert.deepEqual(workspace.libraryCategories(LIBRARY, 'all').map((c) => c.label), ['All categories', 'Communion Procession', 'Entrance Procession', 'Joyful Song', 'Kyrie']);
+
+  const controls = workspace.songControlsHtml({ service: 'mass', category: 'kyrie', query: 'Sample "q"' }, LIBRARY);
+  assert.match(controls, /placeholder="Search" value="Sample &quot;q&quot;"/);
+  assert.deepEqual([...controls.matchAll(/data-lib-service="([^"]+)" aria-pressed="(true|false)">([^<]+)</g)].map((m) => `${m[3]}=${m[2]}`), ['Holy Mass=true', 'Praise &amp; Worship=false', 'All=false']);
+  assert.match(controls, /<span>Song category<\/span>\s*<select data-lib-category><option value="all">All categories \(3\)<\/option>/);
+  assert.match(controls, /<option value="kyrie" selected>Kyrie \(1\)<\/option>/);
+
+  assert.equal(workspace.songMeta(LIBRARY[0]), 'Entrance · EN · Key D');
+  assert.equal(workspace.songMeta(LIBRARY[2]), 'Joyful / Fast Praise · CEB · Key G');
+  const cards = workspace.songListHtml([{ ...LIBRARY[0], title: 'Sample <i>Song</i> Title' }], { chosen: new Set([SONG_ENTRANCE]), hasTarget: true });
+  assert.match(cards, /<strong>Sample &lt;i&gt;Song&lt;\/i&gt; Title<\/strong><span>Entrance · EN · Key D<\/span>/);
+  assert.match(cards, new RegExp(`data-lib-add="${SONG_ENTRANCE}" aria-pressed="true" aria-label="Remove Sample &lt;i&gt;Song&lt;/i&gt; Title"[^>]*>✓</button>`));
+  assert.match(workspace.songListHtml(LIBRARY.slice(0, 1)), /aria-pressed="false" aria-label="Add Sample Song Title"[^>]*>\+<\/button>/);
+  assert.match(workspace.songListHtml(LIBRARY.slice(0, 1), { canEdit: false }), / disabled>\+<\/button>/);
+  assert.match(workspace.songListHtml([], { songs: [] }), /Songs are added on the church laptop/);
+  assert.match(workspace.songListHtml([], { songs: LIBRARY }), /No songs match/);
+  // Titles and metadata only: nothing of a song's words reaches the library.
+  assert.doesNotMatch(readWeb('js/mass-workspace.js'), /lyrics?\s*[:=]|\.words\b|\.lyrics\b/i);
+});
+
+test('+ on a library song goes into the active target slot, otherwise the slot of its category, and the target shows ✓ to take it out', () => {
+  const entrance = rowOfSlot(1);
+  const kyrie = rowOfSlot(3);
+  const communion = rowOfSlot(16);
+  // No target: the song's own category picks the slot.
+  assert.equal(workspace.slotForSong(LIBRARY[0], ROWS, {}), entrance.id);
+  assert.equal(workspace.slotForSong(LIBRARY[1], ROWS, {}), kyrie.id);
+  assert.equal(workspace.slotForSong(LIBRARY[3], ROWS, {}), communion.id);
+  assert.equal(workspace.slotForSong(LIBRARY[2], ROWS, {}), null, 'a praise song has no Holy Mass slot of its own: pick one first');
+  // The active target wins, whatever the song's category.
+  assert.equal(workspace.slotForSong(LIBRARY[2], ROWS, {}, kyrie.id), kyrie.id);
+  assert.equal(workspace.slotForSong(LIBRARY[0], ROWS, {}, rowOfSlot(17).id), rowOfSlot(17).id);
+  assert.equal(workspace.slotForSong(LIBRARY[0], ROWS, {}, 'not-a-row'), entrance.id);
+
+  // One click puts it in, as the page does it (withEntry), and a second song in the same slot comes after it.
+  let segments = model.withEntry({}, workspace.slotForSong(LIBRARY[0], ROWS, {}, entrance.id), { songId: SONG_ENTRANCE, contentType: 'song' });
+  segments = model.withEntry(segments, workspace.slotForSong(LIBRARY[3], ROWS, segments, entrance.id), { songId: SONG_GENERAL, contentType: 'song' });
+  assert.deepEqual(model.slotEntries(segments[entrance.id]).map((e) => e.songId), [SONG_ENTRANCE, SONG_GENERAL]);
+
+  assert.match(workspace.targetLineHtml({ n: 1, name: 'Entrance Hymn' }), /Adding to<\/span><strong class="lp-target-name">1 · Entrance Hymn<\/strong><button[^>]*data-clear-target/);
+  assert.match(workspace.targetLineHtml(null), /\+ puts a song in the slot of its category\. Click a slot to choose it instead\./);
+  const page = readWeb('js/mass.js');
+  assert.match(page, /const target = slotForSong\(song, ROWS, state\.segments, state\.sel\);/);
+  assert.match(page, /flashRow\(target\);/, 'the slot that changed is highlighted');
+});
+
+test('the four parts with numbered slot rows: song pills with keys, cues, Move up / Move down, ×, and + ADD HYMN / ITEM or + ADD ITEM', () => {
+  const sections = model.massSections(MASS_PLAN);
+  assert.deepEqual(sections.map((s) => `${s.number}. ${s.title}`), ['1. Introductory Rites', '2. Liturgy of the Word', '3. Liturgy of the Eucharist', '4. Concluding Rites']);
+  assert.deepEqual(sections.map((s) => s.rows.filter((r) => r.slot).map((r) => r.n)), [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10, 11, 12, 13], [14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25], [26, 27, 28]], 'numbered 1 to 28 in Holy Mass order');
+
+  const card = workspace.sectionCardHtml(sections[0], { title: 'Introductory Rites', open: true, filled: 1, total: 5, rowsHtml: '<p>rows</p>' });
+  assert.match(card, /data-toggle="introductory" aria-expanded="true" aria-controls="section-introductory"/);
+  assert.match(card, /<span>1\. Introductory Rites<\/span>/);
+  assert.match(card, /<span class="lp-section-count">1 of 5<\/span>/);
+  const closed = workspace.sectionCardHtml(sections[3], { title: 'Concluding Rites', open: false, filled: 3, total: 3 });
+  assert.match(closed, /class="lp-section is-closed"/);
+  assert.match(closed, /aria-expanded="false"/);
+  assert.match(closed, /class="lp-section-body" hidden>/);
+  assert.match(closed, /lp-section-count is-done/);
+
+  const entries = [
+    { index: 0, songId: SONG_ENTRANCE, title: 'Sample Song Title', source: 'list', key: 'E' },
+    { index: 1, songId: null, title: 'Sample <Typed> Note', source: 'text', key: '' },
+  ];
+  const row = { ...rowOfSlot(1), name: 'Entrance Hymn', english: 'Entrance Hymn', entries };
+  const html = workspace.slotRowHtml(row, { active: true, note: 'Sample Musician Cue' });
+  assert.match(html, /class="lp-slot is-active" data-row="s1" data-slot="1"/);
+  assert.match(html, /data-select-row="s1" aria-pressed="true"/);
+  assert.match(html, /<span class="lp-slot-num"><span class="sr-only">Slot <\/span>1<\/span>/);
+  assert.match(html, /<span class="lp-slot-name">Entrance Hymn<\/span>/);
+  assert.match(html, /<li class="lp-pill is-list"><span class="lp-pill-icon" aria-hidden="true">♪<\/span><span class="lp-pill-title">Sample Song Title<\/span><span class="lp-pill-key">E<\/span>/);
+  assert.match(html, /<span class="lp-pill-title">Sample &lt;Typed&gt; Note<\/span>/);
+  assert.match(html, /data-move-entry="0" data-delta="-1" data-for="s1" aria-label="Move up: Sample Song Title" disabled>↑/);
+  assert.match(html, /data-move-entry="0" data-delta="1" data-for="s1" aria-label="Move down: Sample Song Title">↓/);
+  assert.match(html, /data-move-entry="1" data-delta="1"[^>]* disabled>↓/);
+  assert.match(html, /data-remove-entry="1" data-for="s1" aria-label="Remove Sample &lt;Typed&gt; Note">×/);
+  assert.match(html, /<li class="lp-cue"[^>]*><span aria-hidden="true">✎<\/span><span class="sr-only">Note: <\/span>Sample Musician Cue<\/li>/);
+  assert.match(html, /data-open-row="s1" aria-expanded="false"><span aria-hidden="true">\+<\/span> Add hymn \/ item<\/button>/);
+  // A spoken part says ADD ITEM; one item has no Move buttons; the open slot carries its quick-assign panel.
+  const confiteor = workspace.slotRowHtml({ ...rowOfSlot(2), name: 'I Confess (Confiteor)', entries: [entries[1]] }, { open: true, panelHtml: '<div data-inline-picker="s2"></div>' });
+  assert.match(confiteor, /\+<\/span> Add item<\/button>/);
+  assert.doesNotMatch(confiteor, /data-move-entry/);
+  assert.match(confiteor, /<div class="lp-slot-panel" data-panel="s2"><div data-inline-picker="s2"><\/div><\/div>/);
+  // A viewer: nothing to press but the slot itself.
+  const viewer = workspace.slotRowHtml(row, { canEdit: false });
+  assert.doesNotMatch(viewer, /data-move-entry/);
+  assert.match(viewer, /aria-label="Remove Sample Song Title" disabled>×/);
+  assert.match(viewer, /data-open-row="s1" aria-expanded="false" disabled>/);
+  // The slot's name is shown in the plan's language with the English beneath.
+  assert.match(workspace.slotRowHtml({ ...row, name: 'Sample Liturgical Day', english: 'Entrance Hymn', entries: [] }), /<span class="lp-slot-english">Entrance Hymn<\/span>/);
+});
+
+test('Notes & Cues add to the target slot\'s note, and Templates replace what the plan holds as the laptop\'s Standard and Weekday do', () => {
+  assert.equal(workspace.withCue('', 'Sample Musician Cue'), 'Sample Musician Cue');
+  assert.equal(workspace.withCue('Capo 2', 'Sample Musician Cue'), 'Capo 2\nSample Musician Cue');
+  assert.equal(workspace.withCue('Capo 2\nsample musician cue', 'Sample Musician Cue'), 'Capo 2\nsample musician cue', 'not twice');
+  assert.equal(workspace.withCue('x'.repeat(999), 'Sample Musician Cue').length, workspace.MAX_NOTE);
+  assert.match(workspace.cuesPanelHtml({ target: { n: 1, name: 'Entrance Hymn' } }), /added to the note of <strong>1 · Entrance Hymn<\/strong>/);
+  assert.match(workspace.cuesPanelHtml({ target: null }), /Click a slot on the right first/);
+  assert.match(workspace.cuesPanelHtml({ target: null }), /data-action="add-cue" disabled/);
+  assert.equal([...workspace.cuesPanelHtml({ target: { n: 1, name: 'x' } }).matchAll(/data-cue="/g)].length, workspace.CUE_PRESETS.length);
+
+  let segments = model.withEntry({ s1: { minutes: 4 } }, 's1', { songId: SONG_ENTRANCE, contentType: 'song' });
+  segments = model.withEntry(segments, 's3', { text: 'Sample Slot Note' });
+  const standard = workspace.templateState('standard', ROWS, segments);
+  assert.ok(ROWS.every((r) => model.slotEntries(standard.segments[r.id]).length === 0), 'every slot empty');
+  assert.equal(standard.segments.s1.minutes, 4, 'a row keeps its other fields');
+  assert.deepEqual(standard.notes, {});
+  const weekday = workspace.templateState('weekday', ROWS, segments);
+  assert.deepEqual(Object.keys(weekday.notes).sort(), ['s12', 's14', 's3', 's9', 's10'].sort());
+  assert.ok(Object.values(weekday.notes).every((note) => note === workspace.WEEKDAY_CUE));
+  // The laptop's Weekday template fills the same slots (shared/mass-slots.js).
+  const laptopWeekday = laptopSlots.BUILT_IN_TEMPLATES.find((t) => t.id === 'weekday').fills.map((f) => laptopSlots.slotNumberOf(f.slot)).sort((a, b) => a - b);
+  assert.deepEqual([...workspace.WEEKDAY_SAID_SLOTS].sort((a, b) => a - b), laptopWeekday);
+  // A template's state saves like any other: no item, only the cues.
+  const items = model.massToItems({ ...weekday, extra: [], contentHubItems: [] }, ROWS);
+  assert.deepEqual(items.filter((i) => i.songId || i.text).length, 0);
+
+  const panel = workspace.templatesPanelHtml({ otherPlans: [schedule.asSchedulePlan(mass(5, SUNDAY, { name: 'Sample <Other> Plan', massTime: '6:00 AM' }))] });
+  assert.match(panel, /Standard Sunday \/ Solemnity[\s\S]*Weekday Holy Mass[\s\S]*Clear All Slots/);
+  assert.match(panel, /data-template="clear"[^>]*>Clear</);
+  assert.match(panel, new RegExp(`<option value="${ids(5)}">11/08/2026 · Sample &lt;Other&gt; Plan · 6:00 AM</option>`));
+  assert.match(workspace.templatesPanelHtml({ otherPlans: [] }), /No other Holy Mass plans to copy from yet\./);
+  // Clear All Slots asks first.
+  assert.match(readWeb('js/mass.js'), /if \(\(id === 'clear' \|\| holdsAnything\(\)\) && !window\.confirm\(question\)\) return;/);
+});
+
+test('PRINT LINEUP prints every part with its numbered slots, titles, keys and cues, and nothing more', () => {
+  const html = workspace.printLineupHtml({
+    eyebrow: 'Holy Mass lineup',
+    name: 'Sample <Plan> Title',
+    when: 'Sample Liturgical Day · 9:30 AM',
+    sections: [{ title: '1. Introductory Rites', rows: [
+      { n: 1, name: 'Entrance Hymn', entries: [{ songId: SONG_ENTRANCE, title: 'Sample Song Title', key: 'D' }], note: 'Sample Musician Cue' },
+      { n: 2, name: 'I Confess (Confiteor)', entries: [], note: '' },
+    ] }],
+  });
+  assert.match(html, /<h1>Sample &lt;Plan&gt; Title<\/h1>/);
+  assert.match(html, /<tr class="lineup-part"><th colspan="4" scope="colgroup">1\. Introductory Rites<\/th><\/tr>/);
+  assert.match(html, /<tr><td>1<\/td><td>Entrance Hymn<\/td><td>Sample Song Title <em>\(Key D\)<\/em><\/td><td>Sample Musician Cue<\/td><\/tr>/);
+  assert.match(html, /<tr><td>2<\/td><td>I Confess \(Confiteor\)<\/td><td>—<\/td><td><\/td><\/tr>/);
+  assert.match(readWeb('js/mass.js'), /document\.body\.classList\.add\('is-printing-setlist'\);\s*[\s\S]*?window\.print\(\);/);
 });

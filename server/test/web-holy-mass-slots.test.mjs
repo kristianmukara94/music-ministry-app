@@ -149,10 +149,11 @@ test('a change on the web keeps the other items\' slots: choosing a song for one
 
 // ---- The page ----
 
-test('the editor draws the five sections as collapsible, slots first, and remembers which are closed', () => {
+test('the editor draws the four parts as collapsible, slots first, and remembers which are closed', () => {
   const page = readWeb('js/mass.js');
-  assert.match(page, /aria-expanded="\$\{open\}"/);
-  assert.match(page, /data-toggle="\$\{section\.group\}"/);
+  const workspace = readWeb('js/mass-workspace.js');
+  assert.match(workspace, /aria-expanded="\$\{open\}"/);
+  assert.match(workspace, /data-toggle="\$\{esc\(section\.group\)\}"/);
   assert.match(page, /const slotRows = section\.rows\.filter\(\(r\) => r\.slot\);/);
   assert.match(page, /OTHER STEPS/);
   assert.match(page, /localStorage\.setItem\(COLLAPSED_KEY/);

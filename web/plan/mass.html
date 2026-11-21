@@ -20,55 +20,83 @@
 
   <div data-sidebar="plans"></div>
 
-  <main class="main planner-main">
+  <main class="main planner-main lp-page">
 
+    <!-- SERVICE PLANNING → Liturgical Plan, the three tabs, and Duplicate / Save plan. -->
     <div data-planner-header></div>
 
-    <header class="pe-head" style="display: flex; flex-direction: column; gap: 16px">
-      <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px">
-        <div class="pe-title-block">
-          <span id="eyebrow" class="eyebrow"></span>
-          <input id="plan-title" class="pe-title-input" type="text" maxlength="120" autocomplete="off" spellcheck="false" aria-label="Plan title" disabled>
-          <div class="pe-badges">
-            <span id="date-badge" class="pe-badge"></span>
-            <span class="pe-badge is-kind">Holy Mass</span>
-            <span id="fill-badge" class="pe-badge is-progress" aria-live="polite"></span>
+    <p id="view-only" class="lp-view-only" hidden></p>
+
+    <!-- What is chosen and what the day still needs. -->
+    <div id="readiness" class="lp-banner" role="status" aria-live="polite" hidden></div>
+
+    <div class="lp-workspace">
+
+      <!-- Left: the church's songs (titles and categories only), cues and templates. -->
+      <aside id="library" class="lp-library" aria-label="Song and resource library">
+        <div class="lp-lib-tabs" role="tablist" aria-label="Library" id="lib-tabs"></div>
+        <div class="lp-target" id="lib-target" aria-live="polite"></div>
+        <div id="lib-panel" class="lp-lib-panel" role="tabpanel"></div>
+        <p id="lib-status" class="lp-lib-status" aria-live="polite"></p>
+      </aside>
+
+      <!-- Right: the control strip, then the four parts of the Holy Mass. -->
+      <div class="lp-builder">
+        <section class="lp-strip" aria-label="Holy Mass time and language">
+          <div class="lp-strip-row">
+            <a id="back-to-calendar" class="lp-back" href="../index.html?cal=mass"><span aria-hidden="true">←</span> Back to Calendar</a>
+            <label class="lp-switch">
+              <span class="sr-only">Open another Holy Mass plan</span>
+              <select id="plan-switch" disabled></select>
+            </label>
+            <div class="lp-langs">
+              <div id="language" class="lp-lang-group" role="radiogroup" aria-label="Readings and responses language"></div>
+              <button type="button" id="lang-other" class="lp-lang" aria-pressed="false" title="A Holy Mass in another language">Other</button>
+              <input id="lang-other-input" class="lp-lang-input" type="text" maxlength="30" autocomplete="off" aria-label="Custom Holy Mass language" placeholder="Language" hidden>
+            </div>
+            <button id="delete" type="button" class="lp-icon-btn is-danger" aria-label="Delete Plan" title="Delete Plan">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+            </button>
           </div>
-        </div>
-        <div class="plan-actions" style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
-          <span class="plan-status" style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--pill-text); font-weight: 600"><span style="width: 7px; height: 7px; border-radius: 50%; background: var(--pill-text)"></span><span id="status" aria-live="polite"></span></span>
-          <button id="duplicate" type="button" class="btn-quiet pe-action">Duplicate Plan</button>
-          <button id="delete" type="button" class="btn-quiet pe-action is-danger">Delete Plan</button>
-          <button id="discard" type="button" class="btn-quiet" style="height: 44px; padding: 0 18px; font-size: 14px; font-weight: 600">Discard changes</button>
-          <button id="save" type="button" class="btn-primary" title="Ctrl + S, or Cmd + S on a Mac" aria-keyshortcuts="Control+S Meta+S" style="height: 44px; padding: 0 22px; font-size: 14px; font-weight: 700">Save plan</button>
-        </div>
-      </div>
-      <p id="view-only" hidden style="margin: 0; font-size: 13px; color: var(--muted)"></p>
-      <nav id="schedule-switcher" class="bc-switcher" aria-label="Holy Masses on this day"></nav>
-      <div style="display: flex; flex-wrap: wrap; gap: 10px">
-        <span style="display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 99px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; font-weight: 600">Songs <span id="songs-label" style="font-family: 'JetBrains Mono', monospace; margin-left: 8px; color: var(--eyebrow)"></span></span>
-        <span style="display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 99px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; font-weight: 600">Readings <span id="readings-label" style="font-family: 'JetBrains Mono', monospace; margin-left: 8px; color: var(--eyebrow)"></span></span>
-        <span id="steps-label" style="display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 99px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; font-weight: 600"></span>
-      </div>
 
-      <section class="plan-details bc-panel" aria-label="Holy Mass time and language" style="flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 16px 28px">
-        <p class="bc-eyebrow" style="flex: 1 1 100%">Holy Mass schedule</p>
-        <div id="schedule-fields" style="flex: 2 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 16px"></div>
-        <div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 8px">
-          <span id="language-label" class="bc-label">Readings &amp; responses</span>
-          <div id="language" class="segmented" role="radiogroup" aria-labelledby="language-label" style="display: flex; gap: 6px; padding: 4px; border: 1px solid var(--bc-border-hover); border-radius: 12px; background: var(--bc-cell)"></div>
-        </div>
-        <div id="schedule-conflict" style="flex: 1 1 100%" hidden></div>
-        <p id="details-note" style="flex: 1 1 100%; margin: 0; font-size: 12px; line-height: 1.5; color: var(--bc-muted)"></p>
-      </section>
-    </header>
+          <div class="lp-title-row">
+            <span id="eyebrow" class="lp-eyebrow"></span>
+            <div class="lp-title-line">
+              <span id="date-badge" class="lp-date"></span>
+              <input id="plan-title" class="lp-title-input" type="text" maxlength="120" autocomplete="off" spellcheck="false" aria-label="Plan title" disabled>
+            </div>
+          </div>
 
-    <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px">
-      <section id="steps" aria-label="Holy Mass slots and steps" style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 22px"></section>
-      <aside id="drawer" class="drawer" aria-label="Choose for this row" style="flex: 1 1 360px; min-width: 0; position: sticky; top: 16px; display: flex; flex-direction: column; gap: 16px; padding: 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface)"></aside>
+          <div class="lp-strip-row">
+            <button type="button" id="print-lineup" class="lp-tool" disabled>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
+              Print lineup
+            </button>
+            <button type="button" id="open-templates" class="lp-tool">Templates</button>
+            <button type="button" id="browse-songs" class="lp-tool lp-browse">Browse songs</button>
+            <button type="button" id="discard" class="lp-tool is-quiet" hidden>Discard changes</button>
+          </div>
+
+          <div class="lp-strip-row lp-schedule">
+            <nav id="schedule-switcher" class="bc-switcher" aria-label="Holy Masses on this day"></nav>
+            <div id="time-popover" class="lp-popover" role="dialog" aria-label="Holy Mass time" hidden></div>
+          </div>
+          <div id="schedule-conflict" hidden></div>
+
+          <div class="lp-strip-row lp-progress">
+            <span id="strip-subtitle" class="lp-strip-subtitle"></span>
+            <span id="fill-badge" class="lp-fill" aria-live="polite"></span>
+            <button type="button" id="collapse-all" class="lp-tool">Collapse all</button>
+          </div>
+        </section>
+
+        <div id="steps" class="lp-steps" aria-label="Holy Mass slots"></div>
+      </div>
     </div>
   </main>
 </div>
+
+<section id="setlist-print" class="setlist-print" aria-hidden="true"></section>
 
 <dialog id="delete-dialog" class="modal" aria-labelledby="delete-title">
   <div class="dialog-body">

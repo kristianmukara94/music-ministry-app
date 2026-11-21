@@ -67,7 +67,10 @@ test('the save sends the language and Mass time when given, and only then', () =
 test('the Holy Mass editor has the readings language switch and the Holy Mass schedule fields, and saves them', () => {
   const html = readWeb('plan/mass.html');
   assert.match(html, /id="language"[^>]*role="radiogroup"/);
-  assert.match(html, /<div id="schedule-fields"/);
+  // The schedule is the control strip's: EN / TL / CEB, Other with its own box, and the time in the popover of HOLY MASSES ON THIS DAY.
+  assert.match(html, /<button type="button" id="lang-other"/);
+  assert.match(html, /<input id="lang-other-input"[^>]*maxlength="30"/);
+  assert.match(html, /<div id="time-popover"[^>]*role="dialog"/);
   assert.match(html, /<div id="schedule-conflict"/);
   assert.match(html, /<nav id="schedule-switcher" class="bc-switcher"/);
   const js = readWeb('js/mass.js');

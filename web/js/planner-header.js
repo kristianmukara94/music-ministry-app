@@ -65,9 +65,11 @@ export function forgetPlan(id, storage = globalThis.localStorage) {
 /**
  * The header. `tab` is 'mass', 'pw' or 'editor'. `subtitle` replaces the tab's own line (the Plan Editor shows the plan's title and date).
  * `editorPlan` is the plan the Plan Editor tab opens (null locks it). `canCreate` shows + New Plan; `newPlan` is its href, or null for a
- * button the page handles itself (the calendars open the New Plan modal).
+ * button the page handles itself (the calendars open the New Plan modal). `title` replaces the "Planner" heading (the Holy Mass editor says
+ * "Liturgical Plan", as the laptop does), and `actions` is the page's own markup for the right-hand actions (Duplicate, Save plan), drawn
+ * after + New Plan. It is the page's markup, not user text: values in it must already be escaped.
  */
-export function plannerHeaderHtml({ tab = 'mass', subtitle = '', root = '', editorPlan = null, canCreate = false, newPlan = null } = {}) {
+export function plannerHeaderHtml({ tab = 'mass', subtitle = '', root = '', editorPlan = null, canCreate = false, newPlan = null, title = 'Planner', actions = '' } = {}) {
   const line = subtitle || PLANNER_TABS.find((t) => t.key === tab)?.subtitle || '';
   const pills = PLANNER_TABS.map((t) => {
     const on = t.key === tab;
@@ -91,12 +93,12 @@ export function plannerHeaderHtml({ tab = 'mass', subtitle = '', root = '', edit
     <header class="ph">
       <div class="ph-text">
         <span class="ph-eyebrow">Service Planning</span>
-        <h1 class="ph-title">Planner</h1>
+        <h1 class="ph-title">${esc(title)}</h1>
         <p class="ph-subtitle" data-planner-subtitle>${esc(line)}</p>
       </div>
       <div class="ph-actions">
         <nav class="ph-tabs" aria-label="Planner views">${pills}</nav>
-        ${action}
+        ${action}${actions ? `<div class="ph-page-actions">${actions}</div>` : ''}
       </div>
     </header>`;
 }

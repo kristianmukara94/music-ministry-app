@@ -360,3 +360,118 @@ test('a database without the memo table still shows the calendar: no memos, and 
   }
   assert.equal((await memoPost(planner, { date: DAY, note: 'Sample memo' })).statusCode, 200);
 });
+
+// ---- The Liturgical Plan workspace, end to end ----
+
+const workspace = await web('mass-workspace.js');
+
+test('the Liturgical Plan workspace: library + into the target and by category, cues, reorder and a template, saved and round-tripped with the laptop', async () => {
+  const cookie = await cookieFor('planner');
+  const second = randomUUID();
+  await pg.query(
+    `INSERT INTO songs (id, church_id, title, category, language, musical_key, updated_at) VALUES ($1, $2, 'Sample Kyrie Setting', 'Kyrie', 'Tagalog', 'G', now())`,
+    [second, CHURCH_A],
+  );
+  const created = await createFromDay(cookie, { massTime: '9:30 AM', massLanguage: 'English' });
+  const { plan, songs } = await getPlan(cookie, created.id);
+  const library = body(await editing().listSongs({ httpMethod: 'GET', headers: { cookie }, queryStringParameters: null })).songs;
+  // The library gets titles and metadata, never words.
+  assert.deepEqual(Object.keys(library[0]).sort(), Object.keys(library[0]).filter((k) => !/lyric|words|body|slides/i.test(k)).sort());
+  assert.deepEqual(workspace.librarySongs(library, { category: 'kyrie' }).map((s) => s.title), ['Sample Kyrie Setting']);
+
+  const state = { ...model.massFromItems(plan.items, ROWS), contentHubItems: [] };
+  const entrance = rowOfSlot(1);
+  const kyrie = rowOfSlot(3);
+  // + with no target: each song goes to the slot of its category.
+  for (const id of [SONG, second]) {
+    const song = library.find((s) => s.id === id);
+    state.segments = model.withEntry(state.segments, workspace.slotForSong(song, ROWS, state.segments), { songId: id, contentType: 'song' });
+  }
+  // The Entrance Hymn made the target: the Kyrie setting goes there too, then is moved up to come first.
+  state.segments = model.withEntry(state.segments, workspace.slotForSong(library.find((s) => s.id === second), ROWS, state.segments, entrance.id), { songId: second, contentType: 'song' });
+  state.segments = model.withEntryMoved(state.segments, entrance.id, 1, 0);
+  assert.deepEqual(model.slotEntries(state.segments[entrance.id]).map((e) => e.songId), [second, SONG]);
+  // Notes & Cues on the target.
+  state.notes[entrance.id] = workspace.withCue(state.notes[entrance.id], 'Sample Musician Cue');
+  state.notes[entrance.id] = workspace.withCue(state.notes[entrance.id], 'Choir only');
+  const ready = workspace.readiness({ rows: ROWS, segments: state.segments, notes: state.notes, date: DAY });
+  assert.deepEqual([ready.songs.done, ready.texts.done], [2, 0]);
+
+  // Save plan (Ctrl + S runs the same save): one request with the whole plan.
+  clock = new Date('2026-11-02T12:05:00Z');
+  const saved = await savePlan(cookie, model.savePayload(plan, model.massToItems(state, ROWS), { name: 'Sample Plan Title', language: 'EN', massTime: '9:30 AM', massLanguage: 'English' }));
+  assert.equal(saved.statusCode, 200, saved.body);
+  const listed = (await listPlans(cookie)).find((p) => p.id === created.id);
+  assert.deepEqual(listed.filledSlots, [1, 3]);
+
+  // The editor reads back what it saved: the order, both slots and the cues.
+  const back = model.massFromItems((await getPlan(cookie, created.id)).plan.items, ROWS);
+  assert.deepEqual(model.slotEntries(back.segments[entrance.id]).map((e) => e.songId), [second, SONG]);
+  assert.deepEqual(model.slotEntries(back.segments[kyrie.id]).map((e) => e.songId), [second]);
+  assert.equal(back.notes[entrance.id], 'Sample Musician Cue\nChoir only');
+
+  // The laptop pulls slot 1 (the first item fills it, with the cue), the Kyrie, and the second Entrance song as one more item.
+  const pulled = (await pull()).plans.find((p) => p.id === created.id);
+  assert.equal(pulled.name, 'Sample Plan Title');
+  const inSlot = (n) => pulled.items.filter((i) => i.slot === n);
+  assert.equal(inSlot(1)[0].songId, second);
+  assert.equal(inSlot(1)[0].note, 'Sample Musician Cue\nChoir only');
+  assert.ok(pulled.items.some((i) => i.songId === SONG), 'the second song is in the plan');
+  assert.equal(inSlot(3)[0].songId, second);
+
+  // The laptop pushes it back unchanged in its own shape: the web keeps the order and the cues.
+  clock = new Date('2026-11-02T12:10:00Z');
+  const pushed = await sync().pushPlans({
+    httpMethod: 'POST',
+    headers: { authorization: `Bearer ${laptop}` },
+    body: JSON.stringify({ plans: [{ id: created.id, name: pulled.name, date: DAY, kind: 'mass', baseUpdatedAt: pulled.updatedAt, massTime: '9:30 AM', massLanguage: 'English', items: pulled.items.map(({ note: _note, ...item }) => item) }] }),
+  });
+  assert.equal(body(pushed).results[0].status, 'accepted', pushed.body);
+  const after = model.massFromItems((await getPlan(cookie, created.id)).plan.items, ROWS);
+  assert.deepEqual(model.slotEntries(after.segments[entrance.id]).map((e) => e.songId), [second, SONG]);
+  assert.equal(after.notes[entrance.id], 'Sample Musician Cue\nChoir only');
+
+  // The Weekday template replaces it all with its cues; saved, the songs are gone and the said slots count as filled.
+  const { plan: fresh } = await getPlan(cookie, created.id);
+  const weekday = workspace.templateState('weekday', ROWS, after.segments);
+  clock = new Date('2026-11-02T12:15:00Z');
+  const reset = await savePlan(cookie, model.savePayload(fresh, model.massToItems({ ...after, ...weekday, contentHubItems: [] }, ROWS), {}));
+  assert.equal(reset.statusCode, 200, reset.body);
+  const relisted = (await listPlans(cookie)).find((p) => p.id === created.id);
+  assert.deepEqual(relisted.filledSlots, [...workspace.WEEKDAY_SAID_SLOTS].sort((a, b) => a - b));
+  const cleared = (await pull()).plans.find((p) => p.id === created.id);
+  assert.equal(cleared.items.filter((i) => i.songId).length, 0);
+  assert.ok(cleared.items.filter((i) => i.note).every((i) => i.note === workspace.WEEKDAY_CUE));
+});
+
+test('Copy from another Holy Mass: the second Holy Mass of the day takes the first one\'s songs and cues, and a viewer cannot save it', async () => {
+  const cookie = await cookieFor('planner');
+  const first = await createFromDay(cookie, { massTime: '6:00 AM', massLanguage: 'Cebuano' });
+  const other = await createFromDay(cookie, { massTime: '9:30 AM', massLanguage: 'English' });
+  const { plan: source } = await getPlan(cookie, first.id);
+  const filled = { ...model.massFromItems(source.items, ROWS), contentHubItems: [] };
+  filled.segments = model.withEntry(filled.segments, rowOfSlot(16).id, { songId: SONG, contentType: 'song' });
+  filled.notes[rowOfSlot(16).id] = 'Sample Musician Cue';
+  clock = new Date('2026-11-02T12:05:00Z');
+  assert.equal((await savePlan(cookie, model.savePayload(source, model.massToItems(filled, ROWS), {}))).statusCode, 200);
+
+  // What the Templates tab's Copy does: read the other plan and take its slots and notes.
+  const copied = model.massFromItems((await getPlan(cookie, first.id)).plan.items, ROWS);
+  const { plan: target } = await getPlan(cookie, other.id);
+  clock = new Date('2026-11-02T12:10:00Z');
+  const saved = await savePlan(cookie, model.savePayload(target, model.massToItems({ ...copied, extra: [], contentHubItems: [] }, ROWS), {}));
+  assert.equal(saved.statusCode, 200, saved.body);
+  const back = model.massFromItems((await getPlan(cookie, other.id)).plan.items, ROWS);
+  assert.equal(model.slotEntries(back.segments[rowOfSlot(16).id])[0].songId, SONG);
+  assert.equal(back.notes[rowOfSlot(16).id], 'Sample Musician Cue');
+  // Each keeps its own Holy Mass time.
+  const plans = await listPlans(cookie);
+  assert.deepEqual(plans.filter((p) => p.liturgical_date === DAY).map((p) => p.massTime).sort(), ['6:00 AM', '9:30 AM']);
+
+  // A viewer opens it read-only, and a save is refused.
+  const viewer = await cookieFor('viewer');
+  const read = await getPlan(viewer, other.id);
+  assert.equal(read.canEdit, false);
+  const refused = await savePlan(viewer, model.savePayload(read.plan, [], {}));
+  assert.equal(refused.statusCode, 403);
+});

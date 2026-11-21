@@ -1,17 +1,17 @@
-// Holy Mass plan editor: the 17 numbered slots of the Holy Mass in five collapsible sections, then the other steps of each section, and the
-// drawer that fills the selected row. The structure comes from the template and mass-slots.js. What
-// is chosen, typed and noted comes from the saved plan on the server, and Save sends the whole plan in one request. Any row can hold any song
-// from the church's list, typed text and Content Hub entries, and more than one of them. A rite also takes an optional note for the operator.
-// Songs are chosen in the song picker, which opens on Holy Mass and on the row's own category. Every row also takes a note for the musicians and
-// the operator (key, capo, choir cue), can be cleared in one press, and has its items put in order with Move up and Move down.
+// Holy Mass plan editor, laid out as the church laptop's SERVICE PLANNING → Liturgical Plan: the readiness banner under the header, the song
+// and resource library on the left, and on the right the control strip above the four parts of the Holy Mass with their numbered slots. The
+// markup and the rules are in mass-workspace.js; this file keeps the plan's state and wires the page.
 //
-// The page is the Planner's Plan Editor tab: the Planner header sits above it, the title is edited in place, the badges show the date, the
-// template and how many of the slots the day needs are filled, and Duplicate Plan and Delete Plan sit beside Save.
+// The structure comes from mass-slots.js. What is chosen, typed and noted comes from the saved plan on the server, and Save plan (or Ctrl + S)
+// sends the whole plan in one request, exactly as before. Any slot can hold songs from the church's list, typed text and Content Hub entries,
+// more than one of them, and a note for the musicians and the operator. A slot clicked becomes the active target: + on a library song puts the
+// song there (with no target, in the slot of the song's own category). + ADD HYMN / ITEM opens the quick-assign panel inside the slot.
+//
+// The library shows song titles, categories, languages and keys. Lyrics, Bible text, announcements and media stay on the booth laptop.
 import { MASS_PLAN } from './sample-data.js';
-import { SLOT_COUNT } from './mass-slots.js';
 import { MASS_LANGUAGES, languageName, massLanguageOf, sectionName, slotName } from './mass-language.js';
-import { isScheduleLanguage, normalizeMassLanguage, planLanguageForSchedule, scheduleLanguageForPlan, schedulesOn } from './holy-mass-schedule.js';
-import { asSchedulePlan, conflictIn, mountScheduleFields, onOpenExisting, openExistingHref, showConflict, switcherHtml } from './schedule-ui.js';
+import { isScheduleLanguage, normalizeMassLanguage, scheduleLanguageForPlan, schedulesOn } from './holy-mass-schedule.js';
+import { asSchedulePlan, conflictIn, onOpenExisting, openExistingHref, showConflict } from './schedule-ui.js';
 import { esc, mountSidebar } from './shell.js';
 import { guard } from './auth.js';
 import { getPlan, listPlans, listSongs, savePlan, watchSongList } from './plan-api.js';
@@ -19,8 +19,39 @@ import { calendarHref, lastPlan, mountPlannerHeader, newPlanFlowHref, rememberPl
 import { massProgress } from './planner-calendar.js';
 import { deletePlanById, deleteWarning, duplicatePlanById } from './plan-actions.js';
 import { usedHubIds } from './content-hub.js';
-import { entryListHtml, entrySummaryHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
+import { entryListHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
 import { mountSongPicker, resetSongPickers } from './song-picker.js';
+import {
+  PAGE_SUBTITLE,
+  PAGE_TITLE,
+  collapseLabel,
+  cuesPanelHtml,
+  headerActionsHtml,
+  itemCount,
+  libraryTabOf,
+  libraryTabsHtml,
+  librarySongs,
+  mdyDate,
+  planSwitchOptionsHtml,
+  printLineupHtml,
+  readiness,
+  readinessBannerHtml,
+  rowFilled,
+  scheduleRowHtml,
+  sectionCardHtml,
+  serviceFilterOf,
+  slotForSong,
+  slotRowHtml,
+  songControlsHtml,
+  songListHtml,
+  stripSubtitle,
+  targetLineHtml,
+  templateState,
+  templatesPanelHtml,
+  timePopoverHtml,
+  withCue,
+  MASS_TEMPLATES,
+} from './mass-workspace.js';
 import {
   describeEntries,
   VIEW_ONLY,
@@ -46,23 +77,33 @@ import {
 mountSidebar();
 
 const ROOT = document.documentElement.dataset.base ?? '';
-const header = { setSubtitle() {} };
 const titleInput = document.getElementById('plan-title');
 const planId = new URLSearchParams(location.search).get('id');
 const SECTIONS = massSections(MASS_PLAN);
 const ROWS = SECTIONS.flatMap((section) => section.rows);
-const OTHER = ROWS.filter((r) => !r.slot).length;
-const FIRST_ROW = 's1';
+const WIDE = '(min-width: 1024px)';
 
-// The sections the planner has closed, kept in this browser between visits. A blocked store just starts with every section open.
+// The sections the planner has closed, and the library tab, kept in this browser between visits. A blocked store starts with every section
+// open and the Songs tab.
 const COLLAPSED_KEY = 'apcc.web.holyMassCollapsed';
-function readCollapsed() {
+const LIBRARY_TAB_KEY = 'apcc.web.holyMassLibraryTab';
+function readStored(key, fallback) {
   try {
-    const parsed = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]');
-    return Array.isArray(parsed) ? parsed.filter((g) => SECTIONS.some((section) => section.group === g)) : [];
+    return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback;
   } catch {
-    return [];
+    return fallback;
   }
+}
+function writeStored(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Not kept.
+  }
+}
+function readCollapsed() {
+  const parsed = readStored(COLLAPSED_KEY, []);
+  return Array.isArray(parsed) ? parsed.filter((g) => SECTIONS.some((section) => section.group === g)) : [];
 }
 function writeCollapsed(groups) {
   try {
@@ -75,38 +116,33 @@ function writeCollapsed(groups) {
 let plan = null;
 let canEdit = false;
 let songs = [];
-// The songs the saved plan refers to, removed ones included, so a fresh song list still names them.
+// The church's song list as last read, and the songs the saved plan refers to (removed ones included), so a fresh list still names them.
+let listed = [];
 let planSongs = [];
 // A song saved on the church laptop while this plan is open shows here when the page is next looked at, without a reload.
 const songWatch = watchSongList((list) => {
   if (!plan) return;
+  listed = list.songs;
   songs = songsForEditor(list.songs, planSongs);
-  renderKeepingDraft();
+  renderSteps();
+  renderLibrary();
 });
 let collapsed = readCollapsed();
 let state = fresh(null);
-// The church's other Holy Mass plans on this plan's day (from the plan list), for the switcher and the taken-time warning.
+// The church's other Holy Mass plans on this plan's day (for the switcher and the taken-time warning), and all of its Holy Mass plans (for
+// the plan switcher and Copy from another Holy Mass).
 let dayPlans = [];
-
-// The Holy Mass time and language, as the laptop asks for them. English, Tagalog and Cebuano also set the readings and responses language,
-// as they do on the laptop; another language leaves it as chosen.
-const scheduleFields = mountScheduleFields(document.getElementById('schedule-fields'), {
-  id: 'plan-schedule',
-  disabled: true,
-  onChange: ({ massTime, massLanguage }) => {
-    if (!plan || !canEdit) return;
-    const texts = planLanguageForSchedule(massLanguage);
-    const relabel = texts && texts !== state.language;
-    setDetail({ massTime, massLanguage, ...(relabel ? { language: texts } : {}) });
-    if (relabel) renderKeepingDraft();
-    else renderHeader();
-  },
-});
+let massPlans = [];
+// The library: its tab, the service filter, the song category and the search.
+const lib = { tab: libraryTabOf(readStored(LIBRARY_TAB_KEY, 'songs')), service: 'mass', category: 'all', query: '' };
 
 function fresh(saved) {
   return {
-    sel: FIRST_ROW,
+    // The active target slot (library songs and cues go here), and the slot whose quick-assign panel is open.
+    sel: null,
+    open: null,
     mode: 'list',
+    flash: null,
     segments: saved?.segments ?? {},
     notes: saved?.notes ?? {},
     extra: saved?.extra ?? [],
@@ -119,6 +155,8 @@ function fresh(saved) {
     name: saved?.name ?? plan?.name ?? '',
     massTime: saved?.massTime ?? '',
     massLanguage: saved?.massLanguage ?? '',
+    otherOpen: false,
+    popover: { open: false, value: '' },
     dirty: false,
     noteSaved: false,
     saving: false,
@@ -141,55 +179,73 @@ function stepOf(id) {
   };
 }
 
-const subOf = (r) => {
-  const kind = r.kind === 'song' ? 'Song · ' + r.category : r.kind === 'reading' ? 'Reading' : r.kind === 'slot-text' ? 'Text' : 'Rite';
-  const withHint = r.hint ? kind + ' · ' + r.hint : kind;
-  return r.english && r.english !== r.name ? r.english + ' · ' + withHint : withHint;
-};
+/** The rows a part shows: its numbered slots, then any step of the earlier web editor that still holds something (an older plan's). */
+function visibleRows(section) {
+  return section.rows.filter((r) => r.slot || rowFilled(r, state.segments, state.notes) || r.id === state.open);
+}
 
 /** The HTML lang of the plan's language, so a screen reader reads the Tagalog and Cebuano names in their own voice. */
 const HTML_LANG = { EN: 'en', TL: 'tl', CEB: 'ceb' };
 
-const BTN_PRIMARY = 'btn-primary';
-const BTN_QUIET = 'btn-quiet';
-const TAB_ON = 'flex:1;height:40px;border-radius:8px;border:1px solid var(--primary);background:var(--primary);color:var(--on-primary);font-size:14px;font-weight:700;cursor:pointer';
-const TAB_OFF = 'flex:1;height:40px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:14px;font-weight:600;cursor:pointer';
-const DISABLED = canEditAttr => (canEditAttr ? '' : 'disabled');
+/** A schedule language the parish typed itself (not English, Tagalog or Cebuano), or Other opened to type one. */
+const isCustomLanguage = () => state.otherOpen || (state.massLanguage.trim() !== '' && !isScheduleLanguage(normalizeMassLanguage(state.massLanguage)));
 
 function renderHeader() {
-  const steps = ROWS.map((r) => stepOf(r.id));
-  const songSteps = steps.filter((s) => s.kind === 'song');
-  const readings = steps.filter((s) => s.kind === 'reading');
   const when = plan ? [dateLabel(plan.date), state.massTime].filter(Boolean).join(' · ') : '';
-  document.getElementById('eyebrow').textContent = plan ? `HOLY MASS PLAN · ${when} · ${languageName(state.language).toUpperCase()}` : 'HOLY MASS PLAN';
+  const languageLabel = (isCustomLanguage() && state.massLanguage.trim()) || languageName(state.language);
+  document.getElementById('eyebrow').textContent = plan ? `HOLY MASS PLAN · ${when} · ${languageLabel.toUpperCase()}` : 'HOLY MASS PLAN';
   // The title is edited in place; it is not redrawn while it is being typed in.
   if (document.activeElement !== titleInput) titleInput.value = plan ? state.name : 'No plan open';
   titleInput.disabled = !plan || !canEdit;
-  document.getElementById('date-badge').textContent = plan ? shortDate(plan.date) : '';
+  document.getElementById('date-badge').textContent = plan ? mdyDate(plan.date) : '';
   const progress = plan ? massProgress({ filledSlots: filledSlotNumbers() }, plan.date) : null;
   const fill = document.getElementById('fill-badge');
-  fill.textContent = progress ? `${progress.done} / ${progress.total} slots filled` : '';
+  fill.textContent = progress ? `${progress.done} / ${progress.total}` : '';
   fill.classList.toggle('is-ready', Boolean(progress?.ready));
   fill.title = 'The slots this day needs, as the laptop counts them: every slot that is not optional, and on a weekday not the parts said only on Sundays and solemnities.';
-  document.getElementById('duplicate').disabled = !plan || !canEdit || state.saving;
-  document.getElementById('delete').disabled = !plan || !canEdit || state.saving;
-  header.setSubtitle(plan ? [state.name || plan.name, shortDate(plan.date), state.massTime].filter(Boolean).join(' · ') : 'Open a plan from a calendar to edit it.');
+  document.getElementById('strip-subtitle').textContent = plan ? stripSubtitle(plan.date, itemCount(ROWS, state.segments)) : '';
   document.title = `${plan ? state.name || plan.name : 'Holy Mass plan'} · APCCMMA Web Planner`;
-  document.getElementById('status').textContent = plan ? statusText({ dirty: state.dirty, error: state.error }) : state.error || 'Not loaded';
-  document.getElementById('songs-label').textContent = `${songSteps.filter((s) => s.value).length} of ${songSteps.length} chosen`;
-  document.getElementById('readings-label').textContent = `${readings.filter((s) => s.value).length} of ${readings.length} entered`;
-  const slotsFilled = steps.filter((r) => r.slot && (r.value || state.notes[r.id])).length;
-  document.getElementById('steps-label').textContent = `${slotsFilled} of ${SLOT_COUNT} slots · ${OTHER} other steps`;
+
+  const status = document.getElementById('status');
+  if (status) {
+    status.textContent = plan ? statusText({ dirty: state.dirty, error: state.error }) : state.error || 'Not loaded';
+    status.parentElement.dataset.state = state.error ? 'error' : state.dirty ? 'dirty' : 'saved';
+  }
+  const duplicateEl = document.getElementById('duplicate');
+  if (duplicateEl) duplicateEl.disabled = !plan || !canEdit || state.saving;
+  document.getElementById('delete').disabled = !plan || !canEdit || state.saving;
   const save = saveButton(state.saving);
   const saveEl = document.getElementById('save');
-  // A Holy Mass time another plan on the day already has is not saved: the warning beside the schedule offers Open Existing.
-  saveEl.disabled = !plan || !canEdit || save.disabled || takenBy() !== null;
-  saveEl.textContent = save.label;
-  document.getElementById('discard').disabled = !plan || state.saving;
+  if (saveEl) {
+    // A Holy Mass time another plan on the day already has is not saved: the warning beside the schedule offers Open Existing.
+    saveEl.disabled = !plan || !canEdit || save.disabled || takenBy() !== null;
+    saveEl.textContent = save.label;
+  }
+  const discard = document.getElementById('discard');
+  discard.hidden = !plan || !state.dirty;
+  discard.disabled = !plan || state.saving;
+  document.getElementById('print-lineup').disabled = !plan;
+  document.getElementById('open-templates').disabled = !plan;
   const note = document.getElementById('view-only');
   note.textContent = VIEW_ONLY;
   note.hidden = !plan || canEdit;
+  const back = document.getElementById('back-to-calendar');
+  back.href = calendarHref('mass', ROOT, plan?.date?.slice(0, 7) ?? '');
+  const collapseAll = document.getElementById('collapse-all');
+  collapseAll.textContent = collapseLabel(collapsed.length, SECTIONS.length);
+  collapseAll.setAttribute('aria-expanded', String(collapsed.length < SECTIONS.length));
+  renderBanner();
   renderDetails();
+}
+
+/** The readiness banner: songs and readings/notes chosen, and what the day still needs. */
+function renderBanner() {
+  const box = document.getElementById('readiness');
+  box.hidden = !plan;
+  if (!plan) return;
+  const ready = readiness({ rows: ROWS, segments: state.segments, notes: state.notes, date: plan.date, nameOf: (row) => slotName(row, state.language) });
+  box.classList.toggle('is-ready', ready.ready);
+  box.innerHTML = readinessBannerHtml(ready, { dateText: shortDate(plan.date) });
 }
 
 /** The slot numbers this plan has an item in, as the server and the laptop count them: a slot with a song, text or a note. */
@@ -198,11 +254,14 @@ function filledSlotNumbers() {
 }
 
 /** The Holy Mass already at this plan's typed time on its day, or null. */
-function takenBy() {
-  return plan ? conflictIn(dayPlans, plan.date, state.massTime, plan.id) : null;
+function takenBy(massTime = state.massTime) {
+  return plan ? conflictIn(dayPlans, plan.date, massTime, plan.id) : null;
 }
 
-/** The header's switcher: the day's Holy Masses in the order they are celebrated, this one marked with its time as typed, then + Add Time. */
+/** This plan as the schedule rules and the plan switcher read it, with its title, time and language as being edited. */
+const currentAsSchedule = () => asSchedulePlan({ ...plan, name: state.name || plan.name, massTime: state.massTime, massLanguage: state.massLanguage });
+
+/** HOLY MASSES ON THIS DAY: the day's Holy Masses in the order they are celebrated, this one a button for its time, then + Add Time. */
 function renderSwitcher() {
   const nav = document.getElementById('schedule-switcher');
   if (!plan) {
@@ -210,40 +269,48 @@ function renderSwitcher() {
     return;
   }
   const others = dayPlans.filter((p) => p.id !== plan.id);
-  const day = schedulesOn([...others, asSchedulePlan({ ...plan, massTime: state.massTime, massLanguage: state.massLanguage })], plan.date);
-  const root = document.documentElement.dataset.base ?? '';
-  nav.innerHTML = switcherHtml(day, plan.id, {
-    pathOf: (p) => `${root}${editorPathFor({ id: p.id, kind: 'mass' })}`,
-    addHref: canEdit ? newPlanFlowHref({ kind: 'mass', date: plan.date }, root) : null,
+  const day = schedulesOn([...others, currentAsSchedule()], plan.date);
+  nav.innerHTML = scheduleRowHtml(day, plan.id, {
+    pathOf: (p) => `${ROOT}${editorPathFor({ id: p.id, kind: 'mass' })}`,
+    addHref: canEdit ? newPlanFlowHref({ kind: 'mass', date: plan.date }, ROOT) : null,
+    canEdit,
+    popoverOpen: state.popover.open,
   });
 }
 
-/** The plan's details card: the schedule (time and language), the taken-time warning, and the readings language switch. */
+/** The plan switcher, the EN / TL / CEB / Other pills, the taken-time warning and the day's Holy Masses. */
 function renderDetails() {
   const locked = !plan || !canEdit;
+  const select = document.getElementById('plan-switch');
+  if (plan && document.activeElement !== select) {
+    select.innerHTML = planSwitchOptionsHtml(massPlans, currentAsSchedule());
+  }
+  select.disabled = !plan;
+  const custom = isCustomLanguage();
   document.getElementById('language').innerHTML = MASS_LANGUAGES.map((l) => {
     const on = l.code === state.language;
-    return `<button type="button" role="radio" data-lang="${l.code}" aria-checked="${on}" tabindex="${on ? 0 : -1}" ${locked ? 'disabled' : ''} style="flex:1;min-width:0;height:40px;padding:0 10px;border-radius:8px;font-size:14px;cursor:pointer;${on ? 'border:1px solid var(--bc-gold);background:var(--bc-gold);color:var(--bc-on-gold);font-weight:800' : 'border:1px solid transparent;background:transparent;color:var(--bc-text);font-weight:600'}">${esc(l.name)}</button>`;
+    return `<button type="button" class="lp-lang${on ? ' is-on' : ''}${on && custom ? ' is-texts' : ''}" role="radio" data-lang="${l.code}" aria-checked="${on}" tabindex="${on ? 0 : -1}" title="${esc(custom ? `Readings and responses in ${l.name}` : l.name)}" ${locked ? 'disabled' : ''}>${esc(l.code)}</button>`;
   }).join('');
+  const other = document.getElementById('lang-other');
+  other.setAttribute('aria-pressed', String(custom));
+  other.classList.toggle('is-on', custom);
+  other.disabled = locked;
+  const otherInput = document.getElementById('lang-other-input');
+  otherInput.hidden = !custom;
+  otherInput.disabled = locked;
+  if (document.activeElement !== otherInput) otherInput.value = custom ? state.massLanguage : '';
   showConflict(document.getElementById('schedule-conflict'), takenBy());
   renderSwitcher();
-
-  document.getElementById('details-note').textContent = plan
-    ? `Slot names are shown in ${languageName(state.language)}${state.language === 'EN' ? '' : ', with the English name beneath'}. Song titles and typed text are not translated.`
-    : '';
   document.getElementById('steps').setAttribute('lang', HTML_LANG[state.language]);
-  document.getElementById('drawer').setAttribute('lang', HTML_LANG[state.language]);
 }
 
 /**
- * Sets the readings and responses language. A Holy Mass whose schedule language is English, Tagalog or Cebuano is relabelled to match, as on
- * the laptop; the parish's own language is left as typed.
+ * Sets the readings and responses language. Unless the parish typed its own Holy Mass language, the schedule language follows, as on the
+ * laptop (EN is an English Holy Mass).
  */
 function chooseTextsLanguage(code) {
-  const relabel = isScheduleLanguage(normalizeMassLanguage(state.massLanguage)) ? scheduleLanguageForPlan(code) : '';
-  setDetail({ language: code, ...(relabel ? { massLanguage: relabel } : {}) });
-  if (relabel) scheduleFields.set({ massTime: state.massTime, massLanguage: relabel });
-  renderKeepingDraft();
+  setDetail(isCustomLanguage() ? { language: code } : { language: code, massLanguage: scheduleLanguageForPlan(code) });
+  renderAll();
 }
 
 /** Changes a plan detail in this session. Nothing is saved until Save plan. */
@@ -253,136 +320,105 @@ function setDetail(patch) {
   state.error = '';
 }
 
-/** One row: its number (a slot's number, 1 to 17, or a dot for another step), its name, what is chosen, and the button that opens the drawer. */
-function rowHtml(r) {
-  const selected = r.id === state.sel;
-  const isText = r.kind === 'slot-text';
-  let chip = '';
-  if (r.kind !== 'rite' || r.value) {
-    let label; let fg; let bg; let edge = 'transparent';
-    if (r.value) {
-      label = r.entries.length > 1 ? `${r.entries.length} items` : r.src === 'list' ? 'From list' : r.src === 'hub' ? 'Content Hub' : 'Typed note';
-      fg = r.src === 'list' ? 'var(--pill-text)' : 'var(--eyebrow)';
-      bg = r.src === 'list' ? 'var(--pill-bg)' : 'var(--gold-wash)';
-      if (r.src === 'list') edge = 'var(--pill-border)';
-    } else if (r.optional) {
-      label = 'Optional'; fg = 'var(--text)'; bg = 'var(--border)';
-    } else {
-      label = r.kind === 'song' ? 'Needs a song' : isText ? 'Needs text' : 'Needs a reading'; fg = 'var(--warn-text)'; bg = 'var(--warn-bg)';
-    }
-    chip = `<span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap;border:1px solid ${edge};color:${fg};background:${bg}">${label}</span>`;
-  }
-  const needs = r.kind !== 'rite' && !r.value && !r.optional;
-  const btnLabel = r.value ? 'Change' : r.kind === 'rite' ? 'Add' : isText ? 'Type text' : 'Choose';
-  const number = r.slot ? String(r.slot).padStart(2, '0') : '•';
-  return `
-              <div class="plan-row editor-row" data-row="${esc(r.id)}" ${r.slot ? `data-slot="${r.slot}"` : ''} style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:12px 18px;border-bottom:1px solid var(--border);${selected ? 'background:var(--primary-wash);box-shadow:inset 0 0 0 1px var(--primary)' : 'background:transparent'}">
-                <span style="flex: none; width: 28px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: ${r.slot ? 'var(--eyebrow)' : 'var(--muted)'}"><span class="sr-only">${r.slot ? 'Slot ' : 'Step '}</span>${number}</span>
-                <span style="flex: 1 1 190px; min-width: 0; display: flex; flex-direction: column; gap: 3px">
-                  <span style="font-size: 15px; font-weight: 700">${esc(r.name)}</span>
-                  <span style="font-size: 12px; color: var(--muted)">${esc(subOf(r))}</span>
-                </span>
-                <span style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 3px">
-                  <span style="font-size:14px;line-height:1.4;${r.value ? 'color:var(--text);font-weight:600' : 'color:var(--muted)'}">${r.value ? entrySummaryHtml(r.entries, { tags: r.entries.length > 1 }) : r.kind === 'rite' ? '' : 'Nothing chosen yet'}</span>
-                  ${state.notes[r.id] ? `<span class="slot-note-line"><span class="sr-only">Note: </span>${esc(state.notes[r.id])}</span>` : ''}
-                </span>
-                <span class="editor-item-actions" style="flex: 0 0 auto; display: inline-flex">${chip}</span>
-                <button type="button" data-pick="${esc(r.id)}" aria-pressed="${selected}" ${DISABLED(canEdit)} class="btn-choose ${needs ? BTN_PRIMARY : BTN_QUIET}" style="height:36px;padding:0 14px;font-size:13px;font-weight:700">${btnLabel}</button>
-              </div>`;
-}
+// ---- The slots ----
 
-/** The five collapsible sections: each one's slots in number order, then its other steps. */
-function renderSteps() {
-  document.getElementById('steps').innerHTML = SECTIONS.map((section) => {
-    const open = !collapsed.includes(section.group);
-    const slotRows = section.rows.filter((r) => r.slot);
-    const otherRows = section.rows.filter((r) => !r.slot);
-    const filled = slotRows.filter((r) => stepOf(r.id).value || state.notes[r.id]).length;
-    const body = open
-      ? slotRows.map((r) => rowHtml(stepOf(r.id))).join('') +
-        (otherRows.length
-          ? `<div class="eyebrow" style="padding: 10px 18px 6px; background: var(--input-bg)">OTHER STEPS</div>` + otherRows.map((r) => rowHtml(stepOf(r.id))).join('')
-          : '')
-      : '';
-    return `
-          <div data-section="${section.group}" style="border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden">
-            <h2 style="margin: 0; background: var(--input-bg); border-bottom: ${open ? '1px solid var(--border)' : '0'}">
-              <button type="button" data-toggle="${section.group}" aria-expanded="${open}" aria-controls="section-${section.group}" style="display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border: 0; background: transparent; cursor: pointer; text-align: left">
-                <span class="section-title" style="display: inline-flex; align-items: center; gap: 10px">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform: rotate(${open ? 90 : 0}deg)"><path d="m9 6 6 6-6 6"/></svg>
-                  ${section.number} · ${esc(sectionName(section, state.language))}
-                </span>
-                <span style="font-size: 12px; font-weight: 600; color: var(--muted)">${filled} of ${slotRows.length} slots${otherRows.length ? ' · ' + otherRows.length + ' other' : ''}</span>
-              </button>
-            </h2>
-            <div id="section-${section.group}" ${open ? '' : 'hidden'}>${body}</div>
-          </div>`;
-  }).join('');
+/** The quick-assign panel inside an open slot: what it holds (with keys), the song list or typed text, the Hub, and its note. */
+function panelHtml(cur) {
+  return `
+              <div class="lp-panel-head">
+                <span class="lp-panel-title">${cur.slot ? `Slot ${cur.n}` : 'Step'} · ${esc(cur.name)}</span>
+                <button type="button" class="lp-panel-close" data-open-row="${esc(cur.id)}" aria-label="Close ${esc(cur.name)}">×</button>
+              </div>
+              ${entryListHtml(cur.entries, cur.id, canEdit)}${addBody(cur)}${slotNoteBody(cur)}`;
 }
 
 /** Everything that adds to a row: the song list or typed text, and the two ways into the Content Hub. Any row takes any of them. */
 function addBody(cur) {
   const list = state.mode === 'list';
   const reading = cur.kind === 'reading';
+  const lock = canEdit ? '' : 'disabled';
   const tabs = `
-            <div role="tablist" aria-label="How to fill this row" style="display: flex; gap: 8px">
-              <button type="button" role="tab" data-mode="list" aria-selected="${list}" style="${list ? TAB_ON : TAB_OFF}">Song list</button>
-              <button type="button" role="tab" data-mode="text" aria-selected="${!list}" style="${list ? TAB_OFF : TAB_ON}">Type text</button>
+            <div role="tablist" aria-label="How to fill this slot" class="lp-panel-tabs">
+              <button type="button" role="tab" data-mode="list" aria-selected="${list}" class="${list ? 'is-on' : ''}">Song list</button>
+              <button type="button" role="tab" data-mode="text" aria-selected="${!list}" class="${list ? '' : 'is-on'}">Type text</button>
             </div>`;
   const panel = list
     ? `
               <div data-inline-picker="${esc(cur.id)}"></div>`
     : `
-              <div style="display: flex; flex-direction: column; gap: 12px">
-                <label style="display: flex; flex-direction: column; gap: 8px">
-                  <span style="font-size: 13px; font-weight: 600; color: var(--text)">${reading ? 'Reading reference' : 'Words or a short note'}</span>
-                  <textarea id="typed-text" rows="4" maxlength="500" placeholder="${reading ? 'e.g. Matthew 5:1-12a' : 'e.g. Psalm 24 setting, sung by the cantor'}" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; line-height: 1.5; resize: vertical; outline: 0"></textarea>
+              <div class="lp-panel-text">
+                <label class="lp-field">
+                  <span>${reading ? 'Reading reference' : 'Words or a short note'}</span>
+                  <textarea id="typed-text" rows="3" maxlength="500" placeholder="${reading ? 'e.g. the reading reference' : 'e.g. sung by the cantor'}" ${lock}></textarea>
                 </label>
-                <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">Typed text is a note for the operator on the church laptop. It does not appear on the projector.${reading ? ' To show the Bible text, pick the verses in the desktop app.' : ''}</p>
-                <button type="button" data-action="use-text" ${DISABLED(canEdit)} class="btn-primary" style="height: 44px; font-size: 14px; font-weight: 700">Add this text</button>
+                <p class="lp-lib-hint">Typed text is a note for the operator on the church laptop. It does not appear on the projector.${reading ? ' To show the Bible text, pick the verses in the desktop app.' : ''}</p>
+                <button type="button" data-action="use-text" ${lock} class="btn-primary">Add this text</button>
               </div>`;
-  return `<div style="display: flex; flex-direction: column; gap: 14px">${tabs}${panel}${hubButtonsHtml(canEdit)}</div>`;
+  return `<div class="lp-panel-add">${tabs}${panel}${hubButtonsHtml(canEdit)}</div>`;
 }
 
 /** The row's note for the musicians and the operator (key, capo, choir cue), then Clear slot when the row holds anything. */
 function slotNoteBody(cur) {
   const holds = cur.entries.length > 0 || Boolean((state.notes[cur.id] ?? '').trim());
-  const placeholder = cur.kind === 'song' ? 'e.g. Capo 2, choir sings the second verse' : cur.kind === 'rite' ? 'e.g. Incense at the Gospel' : 'e.g. Read by the youth lector';
+  const placeholder = cur.kind === 'song' ? 'e.g. Capo 2, choir sings the second verse' : 'e.g. Read by the youth lector';
+  const lock = canEdit ? '' : 'disabled';
   return `
-          <div style="display: flex; flex-direction: column; gap: 14px; padding-top: 14px; border-top: 1px solid var(--border)">
-            <label style="display: flex; flex-direction: column; gap: 8px">
-              <span style="font-size: 13px; font-weight: 600; color: var(--text)">Slot note / musician cue (optional)</span>
-              <textarea id="rite-note" rows="3" maxlength="1000" placeholder="${esc(placeholder)}" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(state.notes[cur.id] ?? '')}</textarea>
+          <div class="lp-panel-note">
+            <label class="lp-field">
+              <span>Slot note / musician cue (optional)</span>
+              <textarea id="rite-note" rows="2" maxlength="1000" placeholder="${esc(placeholder)}" ${lock}>${esc(state.notes[cur.id] ?? '')}</textarea>
             </label>
-            <div style="display: flex; flex-wrap: wrap; gap: 10px">
-              <button type="button" data-action="save-note" ${DISABLED(canEdit)} class="btn-quiet" style="flex: 1 1 140px; height: 44px; font-size: 14px; font-weight: 600">${state.noteSaved ? 'Note saved' : 'Save note'}</button>
-              ${holds ? `<button type="button" data-action="clear-slot" ${DISABLED(canEdit)} class="btn-quiet is-danger" style="flex: 1 1 140px; height: 44px; font-size: 14px; font-weight: 600">${cur.slot ? 'Clear slot' : 'Clear step'}</button>` : ''}
+            <div class="lp-panel-actions">
+              <button type="button" data-action="save-note" ${lock} class="btn-quiet">${state.noteSaved ? 'Note saved' : 'Save note'}</button>
+              ${holds ? `<button type="button" data-action="clear-slot" ${lock} class="btn-quiet is-danger">${cur.slot ? 'Clear slot' : 'Clear step'}</button>` : ''}
             </div>
           </div>`;
 }
 
-function renderDrawer() {
-  const drawer = document.getElementById('drawer');
+/** The four parts: each one's numbered slots, then any earlier-editor step that still holds something. */
+function renderSteps() {
+  const steps = document.getElementById('steps');
   if (!plan) {
-    drawer.innerHTML = `<p style="margin: 0; font-size: 14px; line-height: 1.5; color: var(--text)">${esc(state.error || 'Open a plan from your plan list to see its slots and steps.')}</p>`;
+    steps.innerHTML = `<p class="lp-empty">${esc(state.error || 'Open a plan from a calendar to see its slots.')}</p>`;
     return;
   }
-  const cur = stepOf(state.sel);
-  drawer.innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 6px">
-          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted)">${cur.slot ? `SLOT ${cur.n} OF ${SLOT_COUNT}` : 'OTHER STEP'}</span>
-          <h2 class="section-title" style="font-size: 24px">${esc(cur.name)}</h2>
-          <span style="font-size: 13px; color: var(--text)">${esc(subOf(cur))}</span>
-        </div>${entryListHtml(cur.entries, cur.id, canEdit)}${addBody(cur)}${slotNoteBody(cur)}`;
+  // A redraw keeps anything half-typed in the open panel.
+  const typed = document.getElementById('typed-text')?.value;
+  const note = document.getElementById('rite-note')?.value;
+  steps.innerHTML = SECTIONS.map((section) => {
+    const open = !collapsed.includes(section.group);
+    const slotRows = section.rows.filter((r) => r.slot);
+    const otherRows = visibleRows(section).filter((r) => !r.slot);
+    const filled = slotRows.filter((r) => rowFilled(r, state.segments, state.notes)).length;
+    const rowOf = (r) => {
+      const cur = stepOf(r.id);
+      return slotRowHtml(cur, {
+        active: r.id === state.sel,
+        open: r.id === state.open,
+        flash: r.id === state.flash,
+        canEdit,
+        note: state.notes[r.id],
+        panelHtml: r.id === state.open ? panelHtml(cur) : '',
+      });
+    };
+    const rowsHtml = open
+      ? slotRows.map(rowOf).join('') + (otherRows.length ? `<div class="lp-other-head">OTHER STEPS</div>${otherRows.map(rowOf).join('')}` : '')
+      : '';
+    return sectionCardHtml(section, { title: sectionName(section, state.language), open, filled, total: slotRows.length, rowsHtml });
+  }).join('');
+  const typedBox = document.getElementById('typed-text');
+  if (typedBox && typed !== undefined) typedBox.value = typed;
+  const noteBox = document.getElementById('rite-note');
+  if (noteBox && note !== undefined) noteBox.value = note;
   mountPicker();
 }
 
 /**
- * Draws the song picker into the drawer for the selected row, on the Holy Mass tab and the row's own category (the Kyrie row opens on Kyrie).
- * Add puts a song at the end of the row; pressing Added takes it out again.
+ * Draws the song picker into the open slot's panel, on the Holy Mass tab and the slot's own category (the Kyrie opens on Kyrie). Add puts a
+ * song at the end of the slot; pressing Added takes it out again.
  */
 function mountPicker() {
-  const id = state.sel;
+  const id = state.open;
   const root = id ? document.querySelector(`[data-inline-picker="${CSS.escape(id)}"]`) : null;
   if (!root) return;
   const cur = stepOf(id);
@@ -400,35 +436,251 @@ function mountPicker() {
   });
 }
 
-function render() {
-  renderHeader();
-  renderSteps();
-  renderDrawer();
+// ---- The library ----
+
+/** The active target slot as the library names it, or null. */
+function targetOf() {
+  if (!state.sel) return null;
+  const cur = stepOf(state.sel);
+  return { id: cur.id, n: cur.slot ? cur.n : '•', name: cur.name };
 }
 
-/** Changes what the selected row holds in this session. Nothing is saved until Save plan. */
+function libStatus(text) {
+  document.getElementById('lib-status').textContent = text;
+}
+
+/** The library: its tabs, who + adds to, and the open tab's panel. */
+function renderLibrary() {
+  document.getElementById('lib-tabs').innerHTML = libraryTabsHtml(lib.tab);
+  const target = plan ? targetOf() : null;
+  document.getElementById('lib-target').innerHTML = plan && lib.tab !== 'templates' ? targetLineHtml(target) : '';
+  const panel = document.getElementById('lib-panel');
+  panel.setAttribute('aria-labelledby', `lib-tab-${lib.tab}`);
+  if (!plan) {
+    panel.innerHTML = '';
+    return;
+  }
+  if (lib.tab === 'songs') {
+    const search = document.activeElement?.dataset?.libSearch !== undefined;
+    panel.innerHTML = `<div class="lp-lib-controls">${songControlsHtml(lib, songs.filter((s) => !s.removed))}</div><div data-lib-list class="lp-lib-list"></div>`;
+    refreshSongList();
+    if (search) {
+      const box = panel.querySelector('[data-lib-search]');
+      box.focus();
+      box.setSelectionRange(box.value.length, box.value.length);
+    }
+  } else if (lib.tab === 'cues') {
+    panel.innerHTML = cuesPanelHtml({ target, canEdit });
+  } else {
+    panel.innerHTML = templatesPanelHtml({ canEdit, otherPlans: massPlans.filter((p) => p.id !== plan.id) });
+  }
+}
+
+/** Redraws only the song cards, so typing in Search is never interrupted. */
+function refreshSongList() {
+  const box = document.querySelector('[data-lib-list]');
+  if (!box) return;
+  const available = songs.filter((s) => !s.removed);
+  const list = librarySongs(available, lib);
+  const chosen = new Set(state.sel ? slotEntries(state.segments[state.sel]).map((entry) => entry.songId).filter(Boolean) : []);
+  box.innerHTML = songListHtml(list, { chosen, canEdit, songs: available, hasTarget: Boolean(state.sel) });
+  libStatus(available.length ? `${list.length} of ${available.length} song${available.length === 1 ? '' : 's'} shown` : '');
+}
+
+/** Opens the part a row is in, if it is closed. */
+function openSectionOf(id) {
+  const section = SECTIONS.find((s) => s.rows.some((r) => r.id === id));
+  if (section && collapsed.includes(section.group)) {
+    collapsed = collapsed.filter((g) => g !== section.group);
+    writeCollapsed(collapsed);
+  }
+}
+
+/** Brings a slot into view (on a phone, after a library add, the slots are below or above) and marks it for a moment. */
+function showRow(id, { focus = false } = {}) {
+  const el = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  if (!window.matchMedia(WIDE).matches || rect.top < 0 || rect.bottom > window.innerHeight) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (focus) el.querySelector('[data-select-row]')?.focus({ preventScroll: true });
+}
+
+function flashRow(id) {
+  state.flash = id;
+  setTimeout(() => {
+    if (state.flash !== id) return;
+    state.flash = null;
+    document.querySelector(`[data-row="${CSS.escape(id)}"]`)?.classList.remove('is-flash');
+  }, 1800);
+}
+
+/** + on a library song: into the active target slot, or the slot of the song's category. On the target, ✓ takes it out again. */
+function addFromLibrary(songId) {
+  const song = songs.find((s) => s.id === songId);
+  if (!song || !plan || !canEdit) return;
+  const target = slotForSong(song, ROWS, state.segments, state.sel);
+  if (!target) {
+    libStatus(`Click a slot first: no slot takes ${song.category || 'this category'} on its own.`);
+    return;
+  }
+  const name = stepOf(target).name;
+  const at = slotEntries(state.segments[target]).findIndex((entry) => entry.songId === songId);
+  if (at >= 0 && target !== state.sel) {
+    libStatus(`${song.title} is already in ${name}.`);
+    showRow(target);
+    return;
+  }
+  openSectionOf(target);
+  flashRow(target);
+  changeSegments(at >= 0 ? withoutEntry(state.segments, target, at) : withEntry(state.segments, target, { songId, contentType: 'song' }));
+  libStatus(at >= 0 ? `Took ${song.title} out of ${name}.` : `Added ${song.title} to ${name}.`);
+  document.querySelector(`[data-lib-add="${CSS.escape(songId)}"]`)?.focus({ preventScroll: true });
+  if (!window.matchMedia(WIDE).matches) showRow(target);
+}
+
+/** A cue from Notes & Cues, added to the target slot's note. */
+function addCue(cue) {
+  if (!state.sel || !canEdit) return;
+  const next = withCue(state.notes[state.sel], cue);
+  if (next === (state.notes[state.sel] ?? '').trim()) {
+    libStatus('That cue is already on the slot note.');
+    return;
+  }
+  state.notes = { ...state.notes, [state.sel]: next };
+  state.dirty = true;
+  state.error = '';
+  flashRow(state.sel);
+  libStatus(`Cue added to ${stepOf(state.sel).name}.`);
+  renderAll();
+}
+
+/** Whether the plan holds anything a template would replace. */
+const holdsAnything = () => ROWS.some((r) => rowFilled(r, state.segments, state.notes));
+
+function applyTemplate(id) {
+  const template = MASS_TEMPLATES.find((t) => t.id === id);
+  if (!template || !canEdit) return;
+  const question = id === 'clear'
+    ? 'Clear all slots? Every song, text and note is taken out of this plan. Nothing is saved until Save plan.'
+    : `Use ${template.label}? It replaces what this plan holds. Nothing is saved until Save plan.`;
+  if ((id === 'clear' || holdsAnything()) && !window.confirm(question)) return;
+  const next = templateState(id, ROWS, state.segments);
+  state.segments = next.segments;
+  state.notes = next.notes;
+  state.open = null;
+  state.dirty = true;
+  state.error = '';
+  libStatus(id === 'clear' ? 'Every slot is empty.' : `${template.label} applied.`);
+  renderAll();
+}
+
+/** Copy from another Holy Mass: its songs, text and notes replace this plan's, with the Hub entries they use. */
+async function copyFrom(id) {
+  const source = massPlans.find((p) => p.id === id);
+  if (!source || !canEdit) return;
+  if (holdsAnything() && !window.confirm(`Copy ${source.name} into this plan? It replaces what this plan holds. Nothing is saved until Save plan.`)) return;
+  libStatus(`Copying ${source.name}…`);
+  try {
+    const saved = await getPlan(id);
+    const filled = massFromItems(saved.plan.items, ROWS);
+    planSongs = [...planSongs, ...saved.songs.filter((s) => !planSongs.some((p) => p.id === s.id))];
+    songs = songsForEditor(listed, planSongs);
+    const have = new Set(state.contentHubItems.map((item) => item.id));
+    state.contentHubItems = [...state.contentHubItems, ...(saved.plan.contentHubItems ?? []).filter((item) => !have.has(item.id))];
+    state.segments = filled.segments;
+    state.notes = filled.notes;
+    state.open = null;
+    state.dirty = true;
+    state.error = '';
+    libStatus(`Copied from ${source.name}. Save plan to keep it.`);
+    renderAll();
+  } catch (err) {
+    libStatus(err.message);
+  }
+}
+
+// ---- The time popover ----
+
+function renderPopover() {
+  const box = document.getElementById('time-popover');
+  box.hidden = !state.popover.open;
+  if (!state.popover.open) {
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = timePopoverHtml({ value: state.popover.value, conflict: takenBy(state.popover.value) });
+}
+
+/** Re-checks the typed time without redrawing the box, so the caret stays put. */
+function checkPopover() {
+  const box = document.getElementById('time-popover');
+  const conflict = takenBy(state.popover.value);
+  const fresh = document.createElement('div');
+  fresh.innerHTML = timePopoverHtml({ value: state.popover.value, conflict });
+  box.querySelector('[data-tp-error]').innerHTML = fresh.querySelector('[data-tp-error]').innerHTML;
+  box.querySelector('[data-tp="apply"]').disabled = Boolean(conflict);
+  for (const chip of box.querySelectorAll('[data-tp-preset]')) chip.setAttribute('aria-pressed', String(chip.dataset.tpPreset === state.popover.value.trim()));
+}
+
+function openPopover() {
+  if (!plan || !canEdit) return;
+  state.popover = { open: !state.popover.open, value: state.massTime };
+  renderPopover();
+  renderSwitcher();
+  if (state.popover.open) document.getElementById('tp-time')?.focus();
+}
+
+function closePopover() {
+  state.popover = { open: false, value: '' };
+  renderPopover();
+  renderSwitcher();
+  document.querySelector('#schedule-switcher [data-edit-time]')?.focus();
+}
+
+function applyPopover() {
+  const value = state.popover.value.trim();
+  if (takenBy(value)) return;
+  if (value !== state.massTime) setDetail({ massTime: value });
+  closePopover();
+  renderHeader();
+}
+
+// ---- Drawing ----
+
+function renderAll() {
+  renderHeader();
+  renderSteps();
+  renderLibrary();
+  renderPopover();
+}
+
+/** Changes what the slots hold in this session. Nothing is saved until Save plan. */
 function changeSegments(segments) {
   state.segments = segments;
   state.dirty = true;
   state.error = '';
   renderHeader();
   renderSteps();
-  renderDrawer();
+  if (lib.tab === 'songs') {
+    document.getElementById('lib-target').innerHTML = targetLineHtml(targetOf());
+    refreshSongList();
+  } else {
+    renderLibrary();
+  }
 }
 
-/** Redraws for a new language, keeping anything half-typed in the drawer. */
-function renderKeepingDraft() {
-  const typed = document.getElementById('typed-text')?.value;
-  const note = document.getElementById('rite-note')?.value;
-  render();
-  const typedBox = document.getElementById('typed-text');
-  if (typedBox && typed !== undefined) typedBox.value = typed;
-  const noteBox = document.getElementById('rite-note');
-  if (noteBox && note !== undefined) noteBox.value = note;
+/** Makes a slot the active target, opening its part. */
+function selectRow(id) {
+  state.sel = id;
+  state.noteSaved = false;
+  openSectionOf(id);
+  renderHeader();
+  renderSteps();
+  renderLibrary();
 }
 
 function openHub(mode) {
-  const row = stepOf(state.sel);
+  const row = stepOf(state.open);
   openContentHub({
     items: state.contentHubItems,
     slotName: row.name,
@@ -440,10 +692,38 @@ function openHub(mode) {
       state.contentHubItems = items;
       state.dirty = true;
       state.error = '';
-      render();
+      renderAll();
     },
     onUse: (entry) => changeSegments(withEntry(state.segments, row.id, { contentHubId: entry.id, text: entry.title, contentType: 'hub_item' })),
   });
+}
+
+/** PRINT LINEUP: the lineup as it is on screen, on white paper (or saved as a PDF). Titles, keys and cues only. */
+function printLineup() {
+  if (!plan) return;
+  const sections = SECTIONS.map((section) => ({
+    title: `${section.number}. ${sectionName(section, state.language)}`,
+    rows: visibleRows(section).map((r) => {
+      const cur = stepOf(r.id);
+      return { n: r.slot ? r.n : '•', name: cur.name, entries: cur.entries, note: state.notes[r.id] ?? '' };
+    }),
+  }));
+  const languageLabel = (isCustomLanguage() && state.massLanguage.trim()) || languageName(state.language);
+  document.getElementById('setlist-print').innerHTML = printLineupHtml({
+    eyebrow: 'Holy Mass lineup',
+    name: state.name || plan.name,
+    when: [shortDate(plan.date), state.massTime, languageLabel].filter(Boolean).join(' · '),
+    sections,
+  });
+  document.body.classList.add('is-printing-setlist');
+  const title = document.title;
+  // The browser offers this as the name of the saved PDF.
+  document.title = `Lineup - ${state.name || plan.name}`;
+  window.addEventListener('afterprint', () => {
+    document.body.classList.remove('is-printing-setlist');
+    document.title = title;
+  }, { once: true });
+  window.print();
 }
 
 /** Reads the saved plan and the song list from the server. A failure keeps what was on screen and shows the plain message. */
@@ -451,23 +731,23 @@ async function load() {
   try {
     const [saved, list, all] = await Promise.all([getPlan(planId), listSongs(), listPlans().catch(() => null)]);
     // The other Holy Masses on this plan's day, for the switcher and the taken-time warning. Without the list, the server still checks.
-    dayPlans = all ? all.plans.filter((p) => p.kind !== 'pw' && p.liturgical_date === saved.plan.date).map(asSchedulePlan) : [];
+    massPlans = all ? all.plans.filter((p) => p.kind !== 'pw').map(asSchedulePlan) : [];
+    dayPlans = massPlans.filter((p) => p.liturgical_date === saved.plan.date);
     plan = saved.plan;
     canEdit = saved.canEdit;
+    listed = list.songs;
     songs = songsForEditor(list.songs, saved.songs);
     planSongs = saved.songs;
     songWatch.seen(list);
     state = fresh({ ...massFromItems(plan.items, ROWS), language: plan.language, massTime: plan.massTime, massLanguage: plan.massLanguage });
     rememberPlan({ id: plan.id, kind: 'mass', name: plan.name, date: plan.date });
     mountHeader();
-    scheduleFields.set({ massTime: state.massTime, massLanguage: state.massLanguage });
-    scheduleFields.setDisabled(!canEdit);
     resetSongPickers();
   } catch (err) {
     if (plan) state.error = err.message;
     else state = { ...fresh(null), error: err.message };
   }
-  render();
+  renderAll();
 }
 
 async function save() {
@@ -494,6 +774,8 @@ async function save() {
     state.name = plan.name;
     plan.updatedAt = response.savedAt;
     state.dirty = false;
+    state.otherOpen = false;
+    massPlans = [...massPlans.filter((p) => p.id !== plan.id), currentAsSchedule()];
     rememberPlan({ id: plan.id, kind: 'mass', name: plan.name, date: plan.date });
     mountHeader();
   } catch (err) {
@@ -509,62 +791,176 @@ async function save() {
   }
 }
 
+// ---- Events ----
+
 document.querySelector('main').addEventListener('click', (event) => {
   const target = event.target.closest('button');
-  if (!target || target.disabled) return;
-  if (target.dataset.pick) {
-    state.sel = target.dataset.pick;
-    state.noteSaved = false;
-    const picked = stepOf(state.sel);
-    state.mode = picked.kind === 'song' ? 'list' : 'text';
+  if (!target) {
+    // A click anywhere on a slot row (not on its buttons, pills or panel) makes it the target.
+    const row = event.target.closest('.lp-slot-main')?.closest('[data-row]');
+    if (row && plan && row.dataset.row !== state.sel) selectRow(row.dataset.row);
+    return;
+  }
+  if (target.disabled) return;
+  const data = target.dataset;
+  if (data.selectRow) {
+    selectRow(data.selectRow);
+  } else if (data.openRow) {
+    const id = data.openRow;
+    const closing = state.open === id;
+    state.open = closing ? null : id;
+    if (!closing) {
+      state.sel = id;
+      state.noteSaved = false;
+      state.mode = stepOf(id).kind === 'song' ? 'list' : 'text';
+      void songWatch.check();
+    }
     renderSteps();
-    renderDrawer();
-    // On a phone the drawer sits below the steps, so bring it into view.
-    if (window.matchMedia('(max-width: 820px)').matches) document.getElementById('drawer').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    // A song row's drawer opens on its song list, already on the row's category (see mountPicker).
-    void songWatch.check();
-  } else if (target.dataset.lang) {
-    if (target.dataset.lang === state.language) return;
-    chooseTextsLanguage(target.dataset.lang);
-    document.querySelector(`[data-lang="${target.dataset.lang}"]`)?.focus();
-  } else if (target.dataset.toggle) {
-    collapsed = collapsed.includes(target.dataset.toggle) ? collapsed.filter((g) => g !== target.dataset.toggle) : [...collapsed, target.dataset.toggle];
+    renderLibrary();
+    document.querySelector(`[data-row="${CSS.escape(id)}"] .lp-add`)?.focus({ preventScroll: true });
+  } else if (data.jumpRow) {
+    openSectionOf(data.jumpRow);
+    selectRow(data.jumpRow);
+    showRow(data.jumpRow, { focus: true });
+  } else if (data.lang) {
+    if (data.lang === state.language) return;
+    chooseTextsLanguage(data.lang);
+    document.querySelector(`[data-lang="${data.lang}"]`)?.focus();
+  } else if (target.id === 'lang-other') {
+    if (isCustomLanguage()) {
+      state.otherOpen = false;
+      setDetail({ massLanguage: scheduleLanguageForPlan(state.language) });
+      renderHeader();
+    } else {
+      state.otherOpen = true;
+      setDetail({ massLanguage: '' });
+      renderHeader();
+      document.getElementById('lang-other-input').focus();
+    }
+  } else if (data.toggle) {
+    collapsed = collapsed.includes(data.toggle) ? collapsed.filter((g) => g !== data.toggle) : [...collapsed, data.toggle];
     writeCollapsed(collapsed);
     renderSteps();
-  } else if (target.dataset.mode) {
-    state.mode = target.dataset.mode;
-    renderDrawer();
-  } else if (target.dataset.removeEntry !== undefined) {
-    changeSegments(withoutEntry(state.segments, target.dataset.for, Number(target.dataset.removeEntry)));
-  } else if (target.dataset.moveEntry !== undefined) {
-    const from = Number(target.dataset.moveEntry);
-    const to = from + Number(target.dataset.delta);
-    changeSegments(withEntryMoved(state.segments, target.dataset.for, from, to));
-    document.querySelector(`[data-move-entry="${to}"][data-delta="${target.dataset.delta}"]:not(:disabled), [data-move-entry="${to}"]:not(:disabled)`)?.focus();
-  } else if (target.dataset.action === 'clear-slot') {
-    const row = stepOf(state.sel);
+    renderHeader();
+    document.querySelector(`[data-toggle="${CSS.escape(data.toggle)}"]`)?.focus();
+  } else if (target.id === 'collapse-all') {
+    collapsed = collapsed.length >= SECTIONS.length ? [] : SECTIONS.map((s) => s.group);
+    writeCollapsed(collapsed);
+    renderSteps();
+    renderHeader();
+  } else if (data.mode) {
+    state.mode = data.mode;
+    renderSteps();
+  } else if (data.removeEntry !== undefined) {
+    changeSegments(withoutEntry(state.segments, data.for, Number(data.removeEntry)));
+  } else if (data.moveEntry !== undefined) {
+    const from = Number(data.moveEntry);
+    const to = from + Number(data.delta);
+    changeSegments(withEntryMoved(state.segments, data.for, from, to));
+    document.querySelector(`[data-for="${CSS.escape(data.for)}"][data-move-entry="${to}"][data-delta="${data.delta}"]:not(:disabled), [data-for="${CSS.escape(data.for)}"][data-move-entry="${to}"]:not(:disabled)`)?.focus();
+  } else if (data.action === 'clear-slot') {
+    const row = stepOf(state.open);
     if (!window.confirm(`Clear ${row.name}? Its songs, text and note are taken out of this plan.`)) return;
-    delete state.notes[state.sel];
-    changeSegments(withoutEntries(state.segments, state.sel));
-  } else if (target.dataset.hub) {
-    openHub(target.dataset.hub);
-  } else if (target.dataset.action === 'use-text') {
+    delete state.notes[state.open];
+    changeSegments(withoutEntries(state.segments, state.open));
+  } else if (data.hub) {
+    openHub(data.hub);
+  } else if (data.action === 'use-text') {
     const text = document.getElementById('typed-text').value.trim();
-    if (text) changeSegments(withEntry(state.segments, state.sel, { text }));
-  } else if (target.dataset.action === 'save-note') {
-    state.notes[state.sel] = document.getElementById('rite-note').value.trim();
+    if (!text) return;
+    document.getElementById('typed-text').value = '';
+    changeSegments(withEntry(state.segments, state.open, { text }));
+  } else if (data.action === 'save-note') {
+    state.notes[state.open] = document.getElementById('rite-note').value.trim();
     state.noteSaved = true;
     state.dirty = true;
     renderHeader();
-    renderDrawer();
+    renderSteps();
+  } else if (data.editTime !== undefined) {
+    openPopover();
+  } else if (data.tpPreset) {
+    state.popover.value = data.tpPreset;
+    renderPopover();
+    document.querySelector(`[data-tp-preset="${CSS.escape(data.tpPreset)}"]`)?.focus();
+  } else if (data.tp === 'apply') {
+    applyPopover();
+  } else if (data.tp === 'cancel') {
+    closePopover();
+  } else if (data.libTab) {
+    lib.tab = libraryTabOf(data.libTab);
+    writeStored(LIBRARY_TAB_KEY, lib.tab);
+    renderLibrary();
+    document.getElementById(`lib-tab-${lib.tab}`)?.focus();
+  } else if (data.libService) {
+    lib.service = serviceFilterOf(data.libService);
+    lib.category = 'all';
+    renderLibrary();
+    document.querySelector(`[data-lib-service="${lib.service}"]`)?.focus();
+  } else if (data.libAdd) {
+    addFromLibrary(data.libAdd);
+  } else if (data.clearTarget !== undefined) {
+    state.sel = null;
+    renderSteps();
+    renderLibrary();
+  } else if (data.cue) {
+    addCue(data.cue);
+  } else if (data.action === 'add-cue') {
+    const box = document.getElementById('lib-cue');
+    const cue = box?.value.trim();
+    if (cue) addCue(cue);
+  } else if (data.template) {
+    applyTemplate(data.template);
+  } else if (data.action === 'copy-plan') {
+    void copyFrom(document.getElementById('copy-from')?.value);
+  } else if (target.id === 'print-lineup') {
+    printLineup();
+  } else if (target.id === 'open-templates' || target.id === 'browse-songs') {
+    lib.tab = target.id === 'open-templates' ? 'templates' : 'songs';
+    writeStored(LIBRARY_TAB_KEY, lib.tab);
+    renderLibrary();
+    document.getElementById('library').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    (lib.tab === 'songs' ? document.querySelector('[data-lib-search]') : document.getElementById(`lib-tab-${lib.tab}`))?.focus({ preventScroll: true });
   } else if (target.id === 'discard') {
-    if (planId) void load();
+    if (planId && window.confirm('Discard your unsaved changes? The plan goes back to how it was last saved.')) void load();
   } else if (target.id === 'save') {
     void save();
   } else if (target.id === 'duplicate') {
     void duplicate();
   } else if (target.id === 'delete') {
     askDelete();
+  }
+});
+
+document.querySelector('main').addEventListener('input', (event) => {
+  const el = event.target;
+  if (el.dataset?.libSearch !== undefined) {
+    lib.query = el.value;
+    refreshSongList();
+  } else if (el.dataset?.tpTime !== undefined) {
+    state.popover.value = el.value;
+    checkPopover();
+  } else if (el.id === 'lang-other-input') {
+    setDetail({ massLanguage: el.value });
+    renderHeader();
+  }
+});
+
+document.querySelector('main').addEventListener('change', (event) => {
+  const el = event.target;
+  if (el.dataset?.libCategory !== undefined) {
+    lib.category = el.value;
+    refreshSongList();
+  } else if (el.dataset?.role === 'entry-key') {
+    // The key a song is sung in for this plan. The song in the church's list keeps its own key.
+    changeSegments(withEntryKey(state.segments, el.dataset.for, Number(el.dataset.index), el.value));
+  } else if (el.id === 'plan-switch') {
+    if (!plan || el.value === plan.id) return;
+    if (state.dirty && !window.confirm('Leave this plan? Your unsaved changes here will be lost.')) {
+      el.value = plan.id;
+      return;
+    }
+    state.dirty = false;
+    location.assign(`${ROOT}${editorPathFor({ id: el.value, kind: 'mass' })}`);
   }
 });
 
@@ -584,11 +980,33 @@ titleInput.addEventListener('keydown', (event) => {
   }
 });
 
-// Ctrl + S (Cmd + S on a Mac) saves the plan, as on the laptop.
+// Enter in the time box sets it.
+document.getElementById('time-popover').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && event.target.dataset?.tpTime !== undefined) {
+    event.preventDefault();
+    applyPopover();
+  }
+});
+
 document.addEventListener('keydown', (event) => {
+  // Ctrl + S (Cmd + S on a Mac) saves the plan, as on the laptop.
   if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 's') {
     event.preventDefault();
     void save();
+    return;
+  }
+  // Escape closes the time popover, then the open slot panel, then clears the target slot.
+  if (event.key !== 'Escape' || document.querySelector('dialog[open]') || event.target === titleInput) return;
+  if (state.popover.open) closePopover();
+  else if (state.open) {
+    const id = state.open;
+    state.open = null;
+    renderSteps();
+    document.querySelector(`[data-row="${CSS.escape(id)}"] .lp-add`)?.focus();
+  } else if (state.sel) {
+    state.sel = null;
+    renderSteps();
+    renderLibrary();
   }
 });
 
@@ -597,19 +1015,20 @@ window.addEventListener('beforeunload', (event) => {
   if (state.dirty) event.preventDefault();
 });
 
-/** The Planner header, with Plan Editor on and this plan's title and date beneath "Planner". */
+/** The header: SERVICE PLANNING → Liturgical Plan, Plan Editor on, and Duplicate and Save plan on the right. */
 function mountHeader() {
-  Object.assign(header, mountPlannerHeader(document.querySelector('[data-planner-header]'), {
+  mountPlannerHeader(document.querySelector('[data-planner-header]'), {
     tab: 'editor',
     root: ROOT,
+    title: PAGE_TITLE,
+    subtitle: PAGE_SUBTITLE,
     editorPlan: plan ? { id: plan.id, kind: 'mass', name: plan.name, date: plan.date } : lastPlan(),
-    canCreate: canEdit,
-    newPlan: newPlanFlowHref({ kind: 'mass', date: plan?.date ?? '' }, ROOT),
-  }));
+    actions: headerActionsHtml(),
+  });
   renderHeader();
 }
 
-/** Duplicate Plan: a copy of the saved plan on the same day, opened in the editor. Unsaved changes here are not in the copy. */
+/** Duplicate: a copy of the saved plan on the same day, opened in the editor. Unsaved changes here are not in the copy. */
 async function duplicate() {
   if (!plan || !canEdit || state.saving) return;
   if (state.dirty && !window.confirm('Your unsaved changes are not in the copy. Duplicate the last saved version?')) return;
@@ -622,7 +1041,7 @@ async function duplicate() {
     location.assign(`${ROOT}${editorPathFor(created)}`);
   } catch (err) {
     state.error = err.message;
-    button.textContent = 'Duplicate Plan';
+    button.textContent = 'Duplicate';
     renderHeader();
   }
 }
@@ -674,15 +1093,18 @@ document.getElementById('language').addEventListener('keydown', (event) => {
   document.querySelector(`[data-lang="${next}"]`)?.focus();
 });
 
-// The key a song is sung in for this plan. The song in the church's list keeps its own key.
-document.getElementById('drawer').addEventListener('change', (event) => {
-  if (event.target.dataset.role !== 'entry-key') return;
-  changeSegments(withEntryKey(state.segments, event.target.dataset.for, Number(event.target.dataset.index), event.target.value));
+// Arrow keys move between the library tabs, as in any tab list.
+document.getElementById('lib-tabs').addEventListener('keydown', (event) => {
+  const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+  if (!step) return;
+  event.preventDefault();
+  const tabs = ['songs', 'cues', 'templates'];
+  document.querySelector(`[data-lib-tab="${tabs[(tabs.indexOf(lib.tab) + step + tabs.length) % tabs.length]}"]`)?.click();
 });
 
 const user = await guard();
 if (user) {
   mountHeader();
   if (planId) await load();
-  else render();
+  else renderAll();
 }
