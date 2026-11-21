@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState, type RefObject } from 'react';
-import { MIN_READABLE_CQW, fitFontSize, fitWholeLines, wrapNeeded } from '../../shared/text-fit.js';
+import { MIN_READABLE_CQW, fitFontSize, fitWholeLines, growByWrapping, wrapNeeded } from '../../shared/text-fit.js';
 
 /** The share of the box's height the text may take, so it never touches the bottom edge. */
 export const FIT_HEIGHT_SHARE = 0.9;
@@ -25,6 +25,11 @@ interface Options {
    * size (MIN_READABLE_CQW) lets the text wrap again, and the balancing then evens out those lines. On by default.
    */
   keepLines?: boolean;
+  /**
+   * The operator asked for the text larger than its layout (A+ above 100%, or MAX). Whole lines would cap the size where the widest line
+   * fills the width, so the lines may wrap (balanced) instead when that draws the stanza clearly larger (see growByWrapping). Off by default.
+   */
+  grow?: boolean;
 }
 
 /**
@@ -39,7 +44,7 @@ interface Options {
  * It returns `isTruncated`: true when the text is still too tall at the floor, so its last lines are clipped. Only the operator's views show
  * it; the state changes only when that answer does, so an ordinary fit never re-renders the slide.
  */
-export function useTextAutoFit({ boxRef, textRef, reservedRef, naturalSize, deps, heightShare = FIT_HEIGHT_SHARE, keepLines = true }: Options): { isTruncated: boolean } {
+export function useTextAutoFit({ boxRef, textRef, reservedRef, naturalSize, deps, heightShare = FIT_HEIGHT_SHARE, keepLines = true, grow = false }: Options): { isTruncated: boolean } {
   const [isTruncated, setTruncated] = useState(false);
   useLayoutEffect(() => {
     const box = boxRef.current;
@@ -50,6 +55,7 @@ export function useTextAutoFit({ boxRef, textRef, reservedRef, naturalSize, deps
       // Back to the size it was set for, so a fit after a shorter verse starts from the top again.
       text.style.fontSize = naturalSize;
       text.style.maxHeight = '';
+      text.style.removeProperty('text-wrap');
       const ceiling = parseFloat(getComputedStyle(text).fontSize);
       const style = getComputedStyle(box);
       const reserved = reservedRef?.current;
@@ -83,6 +89,18 @@ export function useTextAutoFit({ boxRef, textRef, reservedRef, naturalSize, deps
           // Too tall even at the readable size: wrapping would only add lines, so the lines stay whole and the fail-safe below clips.
           size = wrapNeeded(text.scrollWidth, roomWidth + 1) ? wrapFit() : fitFontSize(ceiling, floor, fits);
         }
+        // Asked to grow but held back by the widest line: wrapped, balanced lines take the larger size when it is clearly larger.
+        if (grow && text.style.whiteSpace === 'pre') {
+          const whole = size;
+          text.style.setProperty('text-wrap', 'balance');
+          const wrapped = wrapFit();
+          if (growByWrapping({ requestedPx: ceiling, wholePx: whole, wrappedPx: wrapped })) size = wrapped;
+          else {
+            text.style.whiteSpace = 'pre';
+            text.style.removeProperty('text-wrap');
+            size = whole;
+          }
+        }
       } else size = wrapFit();
       text.style.fontSize = size === ceiling ? naturalSize : `${size}px`;
       // At the floor and still too tall: the clip below hides the last lines.
@@ -103,6 +121,6 @@ export function useTextAutoFit({ boxRef, textRef, reservedRef, naturalSize, deps
       cancelled = true;
       observer?.disconnect();
     };
-  }, [naturalSize, heightShare, keepLines, ...deps]);
+  }, [naturalSize, heightShare, keepLines, grow, ...deps]);
   return { isTruncated };
 }

@@ -44,7 +44,7 @@ test('the Title Card code has no ceiling, the proportional formula, and a 65% he
   assert.match(face, /const titleCqw = \(long \? 3\.6 : 4\.4\) \* \(slideScale \?\? 1\);/);
   assert.match(face, /const titleChars = charsPerLine\(0\.84, titleCqw \* 19\.2\);/, 'the line width follows the scaled size');
   assert.doesNotMatch(face, /Math\.min\(4\.8|Math\.min\(6\.0|5\.8\)|7\.0\)/, 'no ceiling is left on the title');
-  assert.match(face, /<h2 className="max-h-\[36\.563cqw\] leading-\[1\.12\] tracking-\[0\.08em\] uppercase"/);
+  assert.match(face, /<h2 data-slide-words className="max-h-\[36\.563cqw\] leading-\[1\.12\] tracking-\[0\.08em\] uppercase"/);
   assert.match(face, /fontSize: `\$\{titleCqw\}cqw`/);
   assert.doesNotMatch(face, /top-\[14cqh\] bottom-\[12cqh\]/, 'the sub-band box is gone');
 });

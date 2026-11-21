@@ -2,6 +2,8 @@ export function fitFontSize(maxPx: number, minPx: number, fits: (px: number) => 
 export const MIN_READABLE_CQW: number;
 export function fitWholeLines(ceilingPx: number, readablePx: number, fits: (px: number) => boolean): number | null;
 export function wrapNeeded(widestLineAtReadablePx: number, roomWidthPx: number): boolean;
+export const GROW_WRAP_GAIN: number;
+export function growByWrapping(sizes: { requestedPx: number; wholePx: number; wrappedPx: number }): boolean;
 export function layoutLyricLines(
   text: string,
   options: { width: number; height: number; ceilingPx: number; readablePx: number; floorPx?: number; leading: number; measure: (text: string, px: number) => number },

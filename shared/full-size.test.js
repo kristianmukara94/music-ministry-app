@@ -64,11 +64,11 @@ test('with the lower third on, the text stays at full size and the band sits bel
 });
 
 test('the alignment is the same on every surface: the notes preview, the full-screen view, the lineup, the live preview and the projector', () => {
-  assert.match(read('src/praise-worship/PwSlideFace.tsx'), /textAlign: slide\.align \?\? 'center'/, 'the lineup face, the live preview and the projector');
+  assert.match(read('src/praise-worship/PwSlideFace.tsx'), /textAlign: slideTextAlign\(slide\.align\)/, 'the lineup face, the live preview and the projector');
   assert.match(read('src/praise-worship/store.ts'), /align: note\.style\?\.textAlign \?\? 'center'/, 'the note\'s alignment reaches the lineup');
   assert.match(read('src/notes/present.ts'), /style: \{ \.\.\.note\.style, fontSize: page\.fontPx \}/, 'the full-screen view keeps the note\'s alignment');
   assert.match(read('src/notes/NotesPrayersView.tsx'), /style=\{\{ \.\.\.sanitizeTextStyle\(current\.style\), fontSize: screen\[shown\]\?\.fontPx \}\}/, 'the notes preview keeps the note\'s alignment');
-  assert.match(read('src/output/ProjectorView.tsx'), /textAlign: style\?\.textAlign \?\? undefined/, 'the projector text keeps the note\'s alignment');
+  assert.match(read('src/output/ProjectorView.tsx'), /textAlign: slideTextAlign\(style\?\.textAlign\)/, 'the projector text keeps the note\'s alignment, centred when it has none');
 });
 
 test('songs and prayers keep the full size', () => {

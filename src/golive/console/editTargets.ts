@@ -2,15 +2,16 @@
 // here writes Song Lyrics, the Lectionary or a Liturgical Content Hub entry:
 // - a song's stanza is kept for this run of the app only (live/liveSongEdits.setLiveStanzas), as the old on-air editors did;
 // - a Holy Mass item's slides go to this plan's own copy of the item (massSlideCopy.saveItemSlides);
-// - a Praise & Worship song's slide is taken out of the card's own order of the song (lineupSlideCopy.deleteSongStep).
+// - a Praise & Worship song's slide is taken out of the card's own order of the song (lineupSlideCopy.deleteSongStep);
+// - a Praise & Worship card's prayer or reading page goes to the card's own copy, and its title slide renames the card (lineupSlideCopy).
 import type { Frame, QueueItem } from '../../../shared/live.js';
-import { arrangementWithInsert, arrangementWithout, occurrenceOf, pagesWithout, slideAfterDelete } from '../../../shared/pw-hot-edit.js';
+import { arrangementWithInsert, arrangementWithout, cardAddSave, cardEditSave, cardSlidePlan, occurrenceOf, pagesWithout, slideAfterDelete, type CardSave } from '../../../shared/pw-hot-edit.js';
 import { canDeleteSlide } from '../../../shared/stage-cue.js';
 import { setLiveStanzas, type LiveStanza } from '../../live/liveSongEdits';
 import type { Hymn } from '../../lyrics/types';
 import type { Note } from '../../notes/types';
 import { ADD_LABELS, labelFor } from '../../praise-worship/useLiveHotEditor';
-import { deleteSongStep } from '../../praise-worship/lineupSlideCopy';
+import { deleteCardStep, deleteSongStep, originsOf, renameCard, saveCardText } from '../../praise-worship/lineupSlideCopy';
 import { updateSegment, usePw } from '../../praise-worship/store';
 import type { LiveStep } from '../../praise-worship/live';
 import type { PwT } from '../../praise-worship/strings';
@@ -32,7 +33,7 @@ export function songTags(hymn: Hymn): string[] {
   return [...new Set([...hymn.stanzas.map((s) => s.stanzaType), ...ADD_LABELS.map((label) => labelFor(label, hymn.stanzas))])];
 }
 
-const stanzaOf = (s: Hymn['stanzas'][number]): LiveStanza => ({ id: s.id, stanzaType: s.stanzaType, lyricsText: s.lyricsText });
+const stanzaOf = (s: Hymn['stanzas'][number]): LiveStanza => ({ id: s.id, stanzaType: s.stanzaType, lyricsText: s.lyricsText, ...(s.pages ? { pages: s.pages } : {}) });
 
 interface SongTargetOptions {
   hymn: Hymn;
@@ -46,10 +47,15 @@ interface SongTargetOptions {
   onAdded?: (added: { id: number }) => void;
   /** Delete Slide for this slide, or null when it cannot be deleted. */
   remove: (() => Promise<void>) | null;
+  /**
+   * The stanza's slides as the console shows them, and which one this is (a long stanza on a Praise & Worship card can take more than one).
+   * Left out, the stanza is one slide. Either way an edit changes this slide's words only and keeps every slide as it is (Stanza.pages).
+   */
+  page?: { pages: string[]; index: number };
 }
 
 /** A song's slide: its stanza's words and section, a new stanza after it, and Delete Slide, all for this service only. */
-export function songTarget({ hymn, stanza, number, key, onAdded, remove }: SongTargetOptions): SlideEditTarget | null {
+export function songTarget({ hymn, stanza, number, key, onAdded, remove, page }: SongTargetOptions): SlideEditTarget | null {
   const own = hymn.stanzas[stanza];
   const add = async (text: string, tag: string | null) => {
     const problem = stanzaProblem(text);
@@ -57,25 +63,29 @@ export function songTarget({ hymn, stanza, number, key, onAdded, remove }: SongT
     const at = Math.min(stanza + 1, hymn.stanzas.length);
     const fresh = await setLiveStanzas(hymn, [
       ...hymn.stanzas.slice(0, at).map(stanzaOf),
-      { stanzaType: tag || labelFor('Verse', hymn.stanzas), lyricsText: text },
+      // The new slide is one slide, exactly as typed.
+      { stanzaType: tag || labelFor('Verse', hymn.stanzas), lyricsText: text, pages: [text] },
       ...hymn.stanzas.slice(at).map(stanzaOf),
     ]);
     const added = fresh.stanzas[at];
     if (added) onAdded?.(added);
   };
   if (!own) return null;
+  const shown = page && page.pages[page.index] !== undefined ? page : { pages: [own.lyricsText], index: 0 };
   return {
     key,
     number,
-    text: own.lyricsText,
+    text: shown.pages[shown.index],
     tag: own.stanzaType,
     tagOptions: songTags(hymn),
     apply: async (text, tag) => {
       const problem = stanzaProblem(text);
       if (problem) throw new Error(problem);
       const type = tag || own.stanzaType;
-      if (text === own.lyricsText && type === own.stanzaType) return;
-      await setLiveStanzas(hymn, hymn.stanzas.map((s, i) => (i === stanza ? { id: s.id, stanzaType: type, lyricsText: text } : stanzaOf(s))));
+      if (text === shown.pages[shown.index] && type === own.stanzaType) return;
+      // Only this slide's words change, and the stanza keeps exactly its slides: an edit is never paged into more slides (Stanza.pages).
+      const pages = shown.pages.map((p, i) => (i === shown.index ? text : p));
+      await setLiveStanzas(hymn, hymn.stanzas.map((s, i) => (i === stanza ? { id: s.id, stanzaType: type, lyricsText: pages.join('\n'), pages } : stanzaOf(s))));
     },
     add,
     remove,
@@ -101,6 +111,9 @@ export function pwSongTarget({ t, segmentIndex, steps, onAir, hymn }: { t: PwT; 
   const stanza = slide.position ?? hymn.stanzas.findIndex((x) => String(x.id) === slide.sectionId);
   const segment = usePw.getState().session?.segments[segmentIndex];
   const segmentKey = segment?.key ?? String(segmentIndex);
+  // The stanza's slides in this appearance, as the card shows them: an edit changes this one only, and keeps the stanza's slide count.
+  const first = onAir - (slide.part ?? 0);
+  const pages = steps.slice(first, first + (slide.parts ?? 1)).map((x) => (x.kind === 'slide' && x.slide.kind === 'lyrics' ? x.slide.text : ''));
   // The card's only appearance of the song's only stanza stays: the card would sing nothing.
   const deletable = Boolean(segment && arrangementWithout(segment.arrangement, hymn, slide.sectionId, occurrenceOf(steps, onAir)));
   return songTarget({
@@ -108,6 +121,7 @@ export function pwSongTarget({ t, segmentIndex, steps, onAir, hymn }: { t: PwT; 
     stanza,
     number: onAir + 1,
     key: `pw:${segmentKey}:${onAir}:${slide.sectionId}`,
+    page: { pages, index: slide.part ?? 0 },
     onAdded: (added) => {
       const segment = usePw.getState().session?.segments[segmentIndex];
       if (!segment) return;
@@ -119,6 +133,56 @@ export function pwSongTarget({ t, segmentIndex, steps, onAir, hymn }: { t: PwT; 
       if (refusal) throw new Error(t(refusal));
     },
   });
+}
+
+/**
+ * Any other slide of a Praise & Worship card: a page of a prayer or a reading (scripture), or a title slide. A page's words go to the card's
+ * own copy of the item (made the first time; the Hub entry and the Lectionary are only read), and a title slide's words rename the card,
+ * which belongs to this lineup. `onAir` is the card's step on screen, or null when another card is on air: an edit to the slide on screen
+ * keeps it up with its new words, and an edit to any other slide leaves the screen as it is. Null for a picture (no words) and a song's slide.
+ */
+export function pwCardTarget({ t, segmentIndex, steps, step, onAir }: { t: PwT; segmentIndex: number; steps: LiveStep[]; step: number; onAir: number | null }): SlideEditTarget | null {
+  const segment = usePw.getState().session?.segments[segmentIndex];
+  const s = steps[step];
+  if (!segment || s?.kind !== 'slide') return null;
+  const origins = originsOf(segment);
+  const plan = cardSlidePlan(steps, origins, step, segment);
+  const edit = plan?.edit;
+  if (!plan || !edit) return null;
+  const keep = onAir !== null ? origins[onAir] ?? null : null;
+  const text = edit.kind === 'title' ? edit.text : edit.pages[edit.page] ?? '';
+  const save = async ({ target, pages, showPage }: CardSave) => {
+    if (slidesTooLong(pages)) throw new Error(t('slideTooLong', { max: MAX_NOTE_BODY }));
+    await saveCardText({ segmentIndex, target, pages, showPage, keep });
+  };
+  const slides = steps.filter((x) => x.kind === 'slide').length;
+  return {
+    key: `pw:${segment.key}:${step}:card`,
+    number: step + 1,
+    text,
+    tag: s.slide.kind === 'prayer' ? s.slide.label : t('slideTitleName'),
+    tagOptions: null,
+    apply: async (next) => {
+      if (!next.trim()) throw new Error('A slide needs some words. To take one out, use Delete Slide.');
+      if (next === text) return;
+      const change = cardEditSave(plan, next, { onScreen: step === onAir });
+      if (!change) return;
+      if ('rename' in change) return renameCard(segmentIndex, change.rename);
+      await save(change);
+    },
+    // The new slide waits off screen; the slide on screen keeps its place.
+    add: async (next) => {
+      if (!next.trim()) throw new Error('A slide needs some words.');
+      await save(cardAddSave(plan, next));
+    },
+    remove:
+      slides <= 1
+        ? null
+        : async () => {
+            const refusal = await deleteCardStep(segmentIndex, steps, step);
+            if (refusal) throw new Error(t(refusal));
+          },
+  };
 }
 
 /**

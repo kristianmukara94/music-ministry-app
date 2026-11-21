@@ -23,7 +23,7 @@ import { PwSlideFace } from '../praise-worship/PwSlideFace';
 import { lyricBottomOf } from '../../shared/lyric-area.js';
 import { textAreaShare } from '../../shared/text-area.js';
 import { welcomeBackground } from '../../shared/welcome-settings.js';
-import { frameWithAlign, slideLookAt, slideLookKeyOf, type SlideLook } from '../../shared/slide-look.js';
+import { frameWithAlign, slideTextAlign, slideLookAt, slideLookKeyOf, type SlideLook } from '../../shared/slide-look.js';
 
 /** A look drawn in place of the saved one: the Output Preview Editor's draft. Undefined (the default) draws the saved look. */
 const DraftLook = createContext<SlideLook | null | undefined>(undefined);
@@ -135,11 +135,12 @@ function TextLines({ lines, serif = false, style = null, safe = false, inset = t
       <div aria-hidden className={BACKING} />
       <div
         ref={textRef}
+        data-slide-words
         className={`apcc-prose relative flex max-w-[86cqw] flex-col gap-[2.2cqh] leading-[1.22] text-white ${
           sizes ? '' : 'text-center text-[length:min(4.1cqw,88px)]'
         } ${serif ? 'font-serif font-semibold' : 'font-medium'}`}
         style={{
-          textAlign: style?.textAlign ?? undefined,
+          textAlign: slideTextAlign(style?.textAlign),
           color: style?.textColor,
           fontFamily: fontCss(style) ?? slideFont,
           fontSize: naturalSize,
@@ -184,7 +185,7 @@ function HeadedText({ headline, body, style = null, place = null }: { headline: 
   const sizes = customSizes(style);
   const chars = charsPerLine(0.86, sizes ? sizes.body : 3.6 * 19.2);
   const headlineChars = charsPerLine(0.86, sizes ? sizes.headline : 4.6 * 19.2);
-  const look = { color: style?.textColor, fontFamily: fontCss(style) ?? slideFont, textAlign: style?.textAlign ?? undefined };
+  const look = { color: style?.textColor, fontFamily: fontCss(style) ?? slideFont, textAlign: slideTextAlign(style?.textAlign) };
   const titleSize = scaledSize(sizes ? `${sizes.headline / 19.2}cqw` : 'min(4.6cqw,96px)', slideScale);
   const bodySize = scaledSize(sizes ? `${sizes.body / 19.2}cqw` : 'min(3.6cqw,80px)', slideScale);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -205,7 +206,7 @@ function HeadedText({ headline, body, style = null, place = null }: { headline: 
           </h2>
         )}
         {body && (
-          <div ref={bodyRef} className={`apcc-prose relative flex flex-col gap-[2.2cqh] leading-[1.25] font-medium text-white ${sizes ? '' : 'text-[length:min(3.6cqw,80px)]'}`} style={{ ...look, fontSize: bodySize }}>
+          <div ref={bodyRef} data-slide-words className={`apcc-prose relative flex flex-col gap-[2.2cqh] leading-[1.25] font-medium text-white ${sizes ? '' : 'text-[length:min(3.6cqw,80px)]'}`} style={{ ...look, fontSize: bodySize }}>
             {body.split('\n').map((line, i) => (
               <p key={i} className={LEGIBLE}>
                 {slideLine(line, chars) || ' '}
@@ -243,8 +244,9 @@ function Slide({ lines, style = null, safe = false, header = true }: { lines: Sl
       <div aria-hidden className={BACKING} />
       <div
         ref={textRef}
+        data-slide-words
         className={`relative flex max-w-[86cqw] flex-col gap-[2.2cqh] leading-[1.22] ${sizes ? '' : 'text-center text-[length:min(4.1cqw,88px)]'}`}
-        style={{ textAlign: style?.textAlign ?? 'center', fontFamily: fontCss(style) ?? slideFont, fontSize: naturalSize }}
+        style={{ textAlign: slideTextAlign(style?.textAlign), fontFamily: fontCss(style) ?? slideFont, fontSize: naturalSize }}
       >
         {lines.map((line, i) => {
           const color = line.role === 'response' || line.role === 'cite' ? undefined : style?.textColor;
@@ -338,11 +340,11 @@ function FittedPrayer({ label, text, className, style = null }: { label: string;
     return () => observer?.disconnect();
   }, [label, text, style, slideScale]);
 
-  const look = { color: style?.textColor, fontFamily: fontCss(style) ?? slideFont, textAlign: style?.textAlign ?? undefined };
+  const look = { color: style?.textColor, fontFamily: fontCss(style) ?? slideFont, textAlign: slideTextAlign(style?.textAlign) };
   return (
     <div ref={boxRef} className="flex min-h-0 w-full flex-1 flex-col items-center justify-center overflow-hidden">
       {label && <div ref={labelRef} className="shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase">{label}</div>}
-      <p ref={textRef} className={`${label ? 'mt-[1.5cqh]' : ''} ${className}`} style={look}>{slideText(text, charsPerLine(0.84, 4.5 * 19.2))}</p>
+      <p ref={textRef} data-slide-words className={`${label ? 'mt-[1.5cqh]' : ''} ${className}`} style={look}>{slideText(text, charsPerLine(0.84, 4.5 * 19.2))}</p>
     </div>
   );
 }
@@ -410,7 +412,7 @@ function FrameView({ frame: given, sharedBackground = false }: { frame: Frame; s
           {frame.style?.bgColor && <div className="absolute inset-0" style={{ backgroundColor: frame.style.bgColor }} />}
           <div className="absolute inset-x-0 top-0 flex flex-col items-center px-[6cqw] pt-[5cqh] text-center">
             {showSlotTitle && <div className={`${SLOT_TITLE} text-gold/70`}>Congregation response</div>}
-            <p className={`${showSlotTitle ? 'mt-[1.5cqh]' : ''} max-w-[88cqw] font-serif text-[length:min(3.6cqw,76px)] leading-[1.2] font-bold text-gold ${LEGIBLE}`}>
+            <p data-slide-words className={`${showSlotTitle ? 'mt-[1.5cqh]' : ''} max-w-[88cqw] font-serif text-[length:min(3.6cqw,76px)] leading-[1.2] font-bold text-gold ${LEGIBLE}`}>
               <span className="mr-[0.4em]">℟</span>
               {slideLine(frame.response, charsPerLine(0.86, 3.6 * 19.2))}
             </p>
@@ -614,7 +616,9 @@ function SongLyricsSlide({ label, text, style, slideFont, slideScale, fontScale 
   // redraws the same number of lines, evenly, so the fit still holds.
   const balanced = useBalancedText([wrapped], useBalanceLines());
   const shown = balanced.lines[0];
-  const { isTruncated } = useTextAutoFit({ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: [shown, style, slideFont, label, fontScale, bandOn], heightShare: edgeToEdge ? EDGE_TO_EDGE.heightShare : undefined });
+  // A+ above 100% or MAX asks for more than the layout's size: the lines may wrap when whole lines would hold the stanza back (growByWrapping).
+  const grow = edgeToEdge || slideScale * fontScale > 1;
+  const { isTruncated } = useTextAutoFit({ boxRef, textRef, reservedRef: labelRef, naturalSize, deps: [shown, style, slideFont, label, fontScale, bandOn], heightShare: edgeToEdge ? EDGE_TO_EDGE.heightShare : undefined, grow });
   useBalanceAfterFit(balanced, { elementFor: () => textRef.current, boxFor: () => boxRef.current, deps: [naturalSize, style, slideFont, label, bandOn] });
   // True on the congregation's projector, false on the operator's mirror and previews. The warning is for the operator only.
   const audience = useContext(OnAirLook);
@@ -623,11 +627,12 @@ function SongLyricsSlide({ label, text, style, slideFont, slideScale, fontScale 
       ref={boxRef}
       data-edge-to-edge={edgeToEdge || undefined}
       className={`absolute inset-0 flex flex-col items-center justify-center overflow-hidden text-center ${edgeToEdge ? '' : 'px-[6cqw] py-[4cqh]'}`}
-      style={{ textAlign: style?.textAlign ?? 'center', ...(edgeToEdge ? edgeToEdgePadding(bandOn) : {}) }}
+      style={{ textAlign: slideTextAlign(style?.textAlign), ...(edgeToEdge ? edgeToEdgePadding(bandOn) : {}) }}
     >
       {label && <div ref={labelRef} className={`${edgeToEdge ? 'mb-[1.5cqh]' : 'mb-[3cqh]'} shrink-0 font-mono text-[1.1cqw] font-bold tracking-[0.25em] text-white/70 uppercase`}>{label}</div>}
       <p
         ref={textRef}
+        data-slide-words
         className={`apcc-prose apcc-legible-stroke ${edgeToEdge ? 'w-full max-w-none' : 'max-w-[88cqw]'} overflow-hidden font-bold whitespace-pre-line ${sizes ? '' : 'text-white'}`}
         style={{
           textShadow: LEGIBLE_TEXT_SHADOW,
@@ -635,7 +640,7 @@ function SongLyricsSlide({ label, text, style, slideFont, slideScale, fontScale 
           fontFamily: fontCss(style) ?? slideFont,
           fontSize: naturalSize,
           lineHeight: edgeToEdge ? EDGE_TO_EDGE.leading : lineHeightFor(lineCountOf(wrapped)),
-          textAlign: style?.textAlign ?? 'center',
+          textAlign: slideTextAlign(style?.textAlign),
         }}
       >
         {shown}

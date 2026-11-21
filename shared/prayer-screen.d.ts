@@ -1,7 +1,7 @@
 import type { TextStyle } from './text-style';
 
 /** A prayer's split: none (one slide), the fit check's (auto), or the operator's breaks after the given lines (manual). */
-export type PrayerSplit = { mode: 'auto'; of?: string } | { mode: 'manual'; at: number[]; of?: string };
+export type PrayerSplit = { mode: 'auto'; of?: string } | { mode: 'manual'; at: number[]; of?: string; /** Each part is one slide as typed, never split again. */ exact?: true };
 
 export interface ScreenPage {
   text: string;

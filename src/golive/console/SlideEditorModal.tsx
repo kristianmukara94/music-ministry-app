@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { bridge } from '../../live/bridge';
@@ -7,6 +7,7 @@ import { NO_DRAG } from '../../components/appRegion';
 import { SLIDE_FONT_SCALES } from '../../../shared/projector-settings.js';
 import { applyTextCase, type TextCase } from '../../../shared/text-fit.js';
 import { BACKDROP_THEMES, backdropThemeOf, balanceLines, lineStats, pad2, toTitleCase, withBackdropTheme, type BackdropThemeId } from '../../../shared/stage-cue.js';
+import { stageWordsBox, stageWordsWhiteSpace } from '../../../shared/stage-words-box.js';
 import { editorDraftChanged as draftChanged, lookChange, resolveSlideLook, sanitizeSlideLook, stepScale, SLIDE_ALIGNS, type SlideAlign, type SlideLook, type SlideLookKey } from '../../../shared/slide-look.js';
 import { useGoLiveT } from '../strings';
 import { setCueMeta, useCueMetaOf } from './cueMeta';
@@ -105,6 +106,8 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const monitorRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
 
   // A new slide (the stepper, Add After) starts a new draft. So does a save made elsewhere, as long as this draft has no change of its own.
   const slideId = cue ? `${cue.index}|${cue.target?.key ?? cue.lookKey ?? ''}` : '';
@@ -181,6 +184,9 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
     });
 
   const shownText = applyTextCase(draft.text, resolved.textCase);
+  // Typing straight on the preview: one set of words on the stage, never the slide's words with a second copy over them.
+  const typing = editable && inline;
+  const doneTyping = () => setInline(false);
 
   return createPortal(
     <div
@@ -203,7 +209,7 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
             onClose();
           }
         }}
-        className="flex max-h-[92vh] w-full max-w-[1120px] flex-col overflow-hidden rounded-xl border border-line-strong bg-surface shadow-2xl outline-none"
+        className="flex max-h-[92vh] w-full max-w-[1120px] min-w-0 flex-col overflow-hidden rounded-xl border border-line-strong bg-surface shadow-2xl outline-none"
       >
         {/* Header: the slide, where it is, and the stepper through the item's slides. */}
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface-2 px-5 py-3.5">
@@ -234,9 +240,9 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
           </div>
         </header>
 
-        <div className="grid min-h-0 grid-cols-1 items-start gap-5 overflow-y-auto p-5 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+        <div data-editor-body className="grid min-h-0 w-full min-w-0 grid-cols-1 items-start gap-5 overflow-y-auto p-5 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
           {/* Left: the output preview, with the direct-on-preview editor and the safe areas. */}
-          <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex w-full min-w-0 flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className={`${EYEBROW} text-accent`}>{t('consoleEdPreview')}</span>
               <div className="flex items-center gap-2">
@@ -254,17 +260,25 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
               </div>
             </div>
 
-            <div className={`${MONITOR} ${editable ? 'cursor-text' : ''}`} data-editor-preview>
+            <div ref={monitorRef} className={`${MONITOR} ${editable ? 'cursor-text' : ''}`} data-editor-preview>
               {lowerThird ? (
-                // The slide's words as they read in a lower-third band over the stage.
+                // The slide's words as they read in a lower-third band over the stage. Typing on it, the band's own line is the text box.
                 <div className="absolute inset-0 bg-black">
                   <div className="absolute inset-x-[5%] bottom-[8%] rounded-[1.2cqw] border border-white/15 bg-black/80 px-[2.4cqw] py-[1.6cqh] text-left">
                     <div className="truncate text-[1.6cqw] font-semibold text-gold">{`${title} · ${draft.tag ?? cue.tag}`}</div>
-                    <div className="line-clamp-2 text-[2.4cqw] leading-tight font-bold text-white">{shownText.split('\n').join(' ') || '—'}</div>
+                    {typing ? (
+                      <BandWordsEditor value={draft.text} label={t('consoleEdInlineLabel')} textCase={resolved.textCase} onChange={(text) => edit({ text })} onDone={doneTyping} />
+                    ) : (
+                      <div className="line-clamp-2 text-[2.4cqw] leading-tight font-bold text-white">{shownText.split('\n').join(' ') || '—'}</div>
+                    )}
                   </div>
                 </div>
               ) : (
-                <div className="absolute inset-0">{cue.preview({ text: draft.text, look: draft.look })}</div>
+                // The slide as the projector draws it. While the words are typed on it, its own words are hidden (styles.css, data-stage-editing)
+                // and the text box takes their place, size and type.
+                <div ref={stageRef} className="absolute inset-0" data-stage-editing={typing ? '' : undefined}>
+                  {cue.preview({ text: draft.text, look: draft.look })}
+                </div>
               )}
               {guides && (
                 <div aria-hidden className="pointer-events-none absolute inset-0 z-20">
@@ -283,14 +297,15 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
                   className="absolute inset-0 z-10 cursor-text rounded-lg focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
                 />
               )}
-              {editable && inline && (
-                <InlineEditor
+              {typing && !lowerThird && (
+                <StageWordsEditor
+                  monitorRef={monitorRef}
+                  stageRef={stageRef}
                   value={draft.text}
                   label={t('consoleEdInlineLabel')}
-                  align={resolved.align ?? 'center'}
                   textCase={resolved.textCase}
                   onChange={(text) => edit({ text })}
-                  onDone={() => setInline(false)}
+                  onDone={doneTyping}
                 />
               )}
             </div>
@@ -302,8 +317,8 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
             </div>
           </div>
 
-          {/* Right: the cue's details, the text helpers, and the slide's formatting. */}
-          <div className="flex min-w-0 flex-col gap-3">
+          {/* Right: the cue's details, the text helpers, and the slide's formatting. Every row wraps or shrinks, so nothing runs off the right edge. */}
+          <div data-editor-inspector className="flex w-full min-w-0 flex-col gap-3">
             <div className="grid grid-cols-2 gap-2.5">
               <div className="min-w-0">
                 <label htmlFor="ed-label" className="mb-1.5 block text-xs text-muted">{t('consoleEdLabel')}</label>
@@ -338,7 +353,7 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
             <div>
               <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                 <label htmlFor="ed-lines" className="text-xs text-muted">{t('consoleEdLines')}</label>
-                <div role="group" aria-label={t('consoleEdHelpers')} className="flex gap-1">
+                <div role="group" aria-label={t('consoleEdHelpers')} className="flex flex-wrap gap-1">
                   <button type="button" style={NO_DRAG} disabled={!editable || busy} onClick={() => edit({ text: balanceLines(draft.text, 2) })} className={`${BTN} ${SM}`}>
                     {t('consoleEd2Lines')}
                   </button>
@@ -380,7 +395,7 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
             <section aria-labelledby="ed-format" className="flex flex-col gap-2.5 border-t border-line pt-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 id="ed-format" className="text-xs font-bold text-fg">{t('consoleEdFormatting')}</h3>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {resolved.hasOverride && (
                     <button type="button" style={NO_DRAG} onClick={() => edit({ look: null })} className="rounded text-[11px] font-bold text-accent hover:underline focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none">
                       {t('consoleEdReset')}
@@ -398,7 +413,7 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
               </div>
               {scope === 'global' && <p className="text-[11px] text-muted">{t('consoleEdGlobalHint')}</p>}
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div role="radiogroup" aria-label={t('consoleEdCase')} className="flex items-center gap-1">
+                <div role="radiogroup" aria-label={t('consoleEdCase')} className="flex flex-wrap items-center gap-1">
                   <span className="mr-1 text-[11px] text-muted">{t('consoleEdCase')}</span>
                   {CASES.map((c) => (
                     <button key={c.value} type="button" role="radio" style={NO_DRAG} aria-checked={resolved.textCase === c.value} onClick={() => format('textCase', c.value)} className={`${resolved.textCase === c.value ? BTN_ACTIVE : BTN} ${SM}`}>
@@ -406,7 +421,7 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
                     </button>
                   ))}
                 </div>
-                <div role="radiogroup" aria-label={t('consoleEdAlign')} className="flex items-center gap-1">
+                <div role="radiogroup" aria-label={t('consoleEdAlign')} className="flex flex-wrap items-center gap-1">
                   <span className="mr-1 text-[11px] text-muted">{t('consoleEdAlign')}</span>
                   {SLIDE_ALIGNS.map((a) => (
                     <button key={a} type="button" role="radio" style={NO_DRAG} aria-checked={(resolved.align ?? 'center') === a} onClick={() => format('align', a)} className={`${(resolved.align ?? 'center') === a ? BTN_ACTIVE : BTN} ${SM}`}>
@@ -417,7 +432,7 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[11px] text-muted">{t('consoleScale')}</span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <button type="button" style={NO_DRAG} aria-label={t('consoleEdSmaller')} disabled={!resolved.maxFit && resolved.fontScale <= SLIDE_FONT_SCALES[0]} onClick={() => format('fontScale', stepScale(resolved.fontScale, -1))} className={`${BTN} ${SM} w-8 !px-0 font-extrabold`}>
                     A−
                   </button>
@@ -433,9 +448,9 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
               {backdrop && (
                 <div role="radiogroup" aria-label={t('consoleBackdrop')} className="grid grid-cols-2 gap-1.5">
                   {BACKDROP_THEMES.map(({ id }) => (
-                    <button key={id} type="button" role="radio" style={NO_DRAG} aria-checked={resolved.backdrop === id} onClick={() => format('backdrop', id)} className={`${resolved.backdrop === id ? BTN_ACTIVE : BTN} ${SM} justify-start`}>
+                    <button key={id} type="button" role="radio" style={NO_DRAG} aria-checked={resolved.backdrop === id} title={t(`backdrop_${id}`)} onClick={() => format('backdrop', id)} className={`${resolved.backdrop === id ? BTN_ACTIVE : BTN} ${SM} w-full min-w-0 !shrink justify-start`}>
                       <span aria-hidden className="size-3.5 shrink-0 rounded border border-white/15" style={{ background: SWATCH[id] }} />
-                      {t(`backdrop_${id}`)}
+                      <span className="min-w-0 truncate">{t(`backdrop_${id}`)}</span>
                     </button>
                   ))}
                 </div>
@@ -494,40 +509,195 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
 
 const ALIGN_LABEL: Record<SlideAlign, string> = { left: 'consoleAlignLeft', center: 'consoleAlignCenter', right: 'consoleAlignRight' };
 
+/** The words' place and type on the stage, read from the slide as drawn: where the text box goes, and how its words are set. */
+interface StageType {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  font: CSSProperties;
+}
+
 /**
- * The words typed straight on the preview: a box over the slide in the slide's own case and alignment, growing with its lines, and in step
- * with the Slide Lines box. Escape or a click away puts the preview back.
+ * Where the slide's words are drawn on the monitor (every element marked data-slide-words: a lyric page, a prayer's page, a reading's lines, a
+ * title), and the type they are set in once fitted: face, size, weight, line pitch, colour, shadow and alignment. A column of one paragraph
+ * per line (a reading, a Mass text) takes its type from its first line, and the gap between lines joins the line pitch. Null when the slide
+ * draws no words of its own.
  */
-function InlineEditor({ value, label, align, textCase, onChange, onDone }: { value: string; label: string; align: SlideAlign; textCase: TextCase; onChange: (text: string) => void; onDone: () => void }) {
+function stageTypeOf(monitor: HTMLElement, stage: HTMLElement): StageType | null {
+  const words = [...stage.querySelectorAll<HTMLElement>('[data-slide-words]')];
+  if (words.length === 0) return null;
+  const box = monitor.getBoundingClientRect();
+  const rects = words.map((w) => w.getBoundingClientRect());
+  // The largest block sets the type: a psalm's verse rather than its response.
+  let main = 0;
+  rects.forEach((r, i) => {
+    if (r.width * r.height > rects[main].width * rects[main].height) main = i;
+  });
+  const block = words[main];
+  const first = block.firstElementChild;
+  const line = first instanceof HTMLElement && first.tagName === 'P' ? first : block;
+  const type = getComputedStyle(line);
+  const fontSize = parseFloat(type.fontSize) || 16;
+  const leading = parseFloat(type.lineHeight);
+  const gap = line === block ? 0 : parseFloat(getComputedStyle(block).rowGap) || 0;
+  const pitch = (Number.isFinite(leading) ? leading : fontSize * 1.2) + gap;
+  const align = type.textAlign === 'start' ? 'left' : type.textAlign === 'end' ? 'right' : type.textAlign;
+  // Whole lines (a lyric page kept unwrapped, white-space: pre) never wrap in the box either; wrapped words (a prayer, or a lyric enlarged past
+  // its whole-line size) wrap at exactly the slide's width, balanced as the slide balances them, with the spaces typed kept (pre-wrap).
+  const whiteSpace = stageWordsWhiteSpace(type.whiteSpace);
+  const textWrap = type.getPropertyValue('text-wrap') || undefined;
+  const top = Math.min(...rects.map((r) => r.top)) - box.top;
+  const bottom = Math.max(...rects.map((r) => r.bottom)) - box.top;
+  const { left, width } = stageWordsBox({
+    left: Math.min(...rects.map((r) => r.left)) - box.left,
+    right: Math.max(...rects.map((r) => r.right)) - box.left,
+    fontSize,
+    align,
+    whole: whiteSpace === 'pre',
+    monitorWidth: box.width,
+  });
+  return {
+    left,
+    top,
+    width,
+    height: Math.max(pitch, bottom - top),
+    font: {
+      fontFamily: type.fontFamily,
+      fontSize: type.fontSize,
+      fontWeight: type.fontWeight as CSSProperties['fontWeight'],
+      fontStyle: type.fontStyle,
+      fontStretch: type.fontStretch,
+      letterSpacing: type.letterSpacing,
+      wordSpacing: type.wordSpacing,
+      lineHeight: `${pitch}px`,
+      whiteSpace,
+      ...(textWrap ? ({ textWrap } as CSSProperties) : {}),
+      color: type.color,
+      textShadow: type.textShadow,
+      filter: type.filter,
+      textAlign: align as CSSProperties['textAlign'],
+      textTransform: type.textTransform as CSSProperties['textTransform'],
+    },
+  };
+}
+
+/**
+ * The words typed straight on the slide: a text box laid exactly on the slide's own words, in their type and place, while those are hidden
+ * (data-stage-editing), so the stage shows one set of words, the ones being typed, with a thin gold outline and no shade over the slide. The
+ * slide is still drawn with the draft words underneath, so its fit runs as the projector's would, and the box follows it as it changes. It is
+ * in step with the Slide Lines box (one draft), and Escape or a click away puts the preview back.
+ */
+function StageWordsEditor({
+  monitorRef,
+  stageRef,
+  value,
+  label,
+  textCase,
+  onChange,
+  onDone,
+}: {
+  monitorRef: RefObject<HTMLDivElement | null>;
+  stageRef: RefObject<HTMLDivElement | null>;
+  value: string;
+  label: string;
+  textCase: TextCase;
+  onChange: (text: string) => void;
+  onDone: () => void;
+}) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const [type, setType] = useState<StageType | null>(null);
+  // Measured again whenever the slide changes under the box: new words, a new fitted size, a resize, the fonts loading. Only the slide is
+  // watched, never the box, so measuring cannot feed itself.
+  useLayoutEffect(() => {
+    const monitor = monitorRef.current;
+    const stage = stageRef.current;
+    if (!monitor || !stage) return undefined;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const next = stageTypeOf(monitor, stage);
+      setType((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : next));
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    measure();
+    const mutations = new MutationObserver(schedule);
+    mutations.observe(stage, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
+    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
+    resize?.observe(monitor);
+    let alive = true;
+    void document.fonts?.ready.then(() => alive && schedule());
+    return () => {
+      alive = false;
+      mutations.disconnect();
+      resize?.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [monitorRef, stageRef]);
+  // Grows with its lines when the words run past the slide's own block.
   useLayoutEffect(() => {
     const el = ref.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  }, [value]);
+    if (!el || !type) return;
+    el.style.height = `${type.height}px`;
+    if (el.scrollHeight > el.clientHeight) el.style.height = `${el.scrollHeight}px`;
+  }, [value, type]);
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
+  // A slide with no words of its own drawn (none marked): the box sits in the title-safe area, in the slide's usual type.
+  const place: CSSProperties = type
+    ? { left: type.left, top: type.top, width: type.width, height: type.height, ...type.font }
+    : { left: '5%', top: '5%', width: '90%', fontSize: '4.2cqw', lineHeight: 1.15, fontWeight: 800, color: '#fff', textAlign: 'center' };
+  const transform = type?.font.textTransform && type.font.textTransform !== 'none' ? type.font.textTransform : CSS_CASE[textCase];
+  return (
+    <textarea
+      ref={ref}
+      aria-label={label}
+      data-stage-words-editor
+      rows={1}
+      value={value}
+      spellCheck={false}
+      style={{ ...NO_DRAG, ...place, textTransform: transform, caretColor: 'var(--color-gold)' }}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={onDone}
+      onKeyDown={(e) => doneKeys(e, onDone)}
+      className={`${STAGE_BOX} absolute z-30`}
+    />
+  );
+}
+
+/** The lower-third band's line of words, typed on: the band's own line in its own type, the one set of words in the band. */
+function BandWordsEditor({ value, label, textCase, onChange, onDone }: { value: string; label: string; textCase: TextCase; onChange: (text: string) => void; onDone: () => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     ref.current?.focus();
   }, []);
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 p-[5%]">
-      <textarea
-        ref={ref}
-        aria-label={label}
-        rows={1}
-        value={value}
-        style={{ ...NO_DRAG, textAlign: align, textTransform: CSS_CASE[textCase] }}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onDone}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopPropagation();
-            onDone();
-          }
-        }}
-        className="max-h-full w-[92%] resize-none overflow-hidden rounded-lg border-0 bg-transparent px-2 py-1 text-[4.2cqw] leading-[1.15] font-extrabold tracking-tight text-white shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-gold)_75%,transparent)] outline-none"
-      />
-    </div>
+    <textarea
+      ref={ref}
+      aria-label={label}
+      data-stage-words-editor
+      rows={2}
+      value={value}
+      spellCheck={false}
+      style={{ ...NO_DRAG, textTransform: CSS_CASE[textCase], caretColor: 'var(--color-gold)' }}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={onDone}
+      onKeyDown={(e) => doneKeys(e, onDone)}
+      className={`${STAGE_BOX} block w-full text-[2.4cqw] leading-tight font-bold text-white`}
+    />
   );
+}
+
+/** A text box on the stage: no box of its own (no fill, no padding, no shade over the slide), only a thin gold outline. */
+const STAGE_BOX = 'm-0 resize-none overflow-hidden rounded-[2px] border-0 bg-transparent p-0 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-gold)_75%,transparent)] outline-none';
+
+/** Escape in a text box on the preview puts the preview back and goes no further: the dialog stays open. */
+function doneKeys(e: KeyboardEvent, onDone: () => void) {
+  if (e.key !== 'Escape') return;
+  e.preventDefault();
+  e.stopPropagation();
+  onDone();
 }

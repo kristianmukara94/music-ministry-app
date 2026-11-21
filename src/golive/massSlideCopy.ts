@@ -1,5 +1,5 @@
 import { blackoutOverMass, welcomeOverMass, type Frame, type QueueItem } from '../../shared/live.js';
-import { MASS_FLOW_CATEGORIES, MAX_NOTE_BODY, MAX_NOTE_TITLE, noteSource, slidesNote } from '../../shared/notes.js';
+import { MASS_FLOW_CATEGORIES, MAX_NOTE_BODY, MAX_NOTE_TITLE, exactSlidesNote, noteSource } from '../../shared/notes.js';
 import { screenPagesOf } from '../../shared/prayer-screen.js';
 import type { PrayerSplit } from '../../shared/prayer-screen';
 import { bridge } from '../live/bridge';
@@ -58,8 +58,8 @@ export function slideIndexOf(frame: Frame): number {
   return 0;
 }
 
-/** The note body and manual split for these slides (see slidesNote). */
-const composeSlides = (pages: string[]): { body: string; split: PrayerSplit | null } => slidesNote(pages);
+/** The note body and split for these slides: each page the operator typed stays exactly one slide (see exactSlidesNote), never split again. */
+const composeSlides = (pages: string[]): { body: string; split: PrayerSplit | null } => exactSlidesNote(pages);
 
 /** Whether these slides fit in one note. */
 export const slidesTooLong = (pages: string[]): boolean => composeSlides(pages).body.length > MAX_NOTE_BODY;

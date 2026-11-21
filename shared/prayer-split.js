@@ -5,6 +5,8 @@
 /**
  * A prayer's split: null (one slide), `{ mode: 'auto' }` (the fit check places the breaks), or `{ mode: 'manual', at }` where `at`
  * lists the lines a break follows, counted from 0. `of` is the fingerprint of the text the split was made for.
+ * `exact: true` marks the slides an operator typed on air (the Output Preview Editor, the Slide Inspector): each part between the breaks
+ * is one slide exactly as typed, never split again for length (with no breaks, the whole text is one slide). See exactSlidesNote.
  * Anything out of range is dropped, so a stored split never points past the text.
  */
 export function normalizeSplit(split, body) {
@@ -16,7 +18,7 @@ export function normalizeSplit(split, body) {
   const at = [...new Set((Array.isArray(split.at) ? split.at : []).map(Number))]
     .filter((k) => Number.isInteger(k) && k >= 0 && k <= lastBreak)
     .sort((a, b) => a - b);
-  return { mode: 'manual', at, ...of };
+  return { mode: 'manual', at, ...of, ...(split.exact === true ? { exact: true } : {}) };
 }
 
 /** The slides a manual split makes: the lines between the breaks, in order. Blank lines at a part's edges are dropped; a part with no text is dropped. */

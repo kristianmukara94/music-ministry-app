@@ -1,5 +1,7 @@
-// Pagination follows the operator's text size. At 70%, 100%, 120% and 150%, long lyrics and prayers split into pages that fit the 16:9 frame; a
+// The paging rules can follow a text size: at 70%, 100%, 120% and 150%, long lyrics and prayers split into pages that fit the 16:9 frame; a
 // larger size makes more pages, a smaller one makes fewer; and at 100% the pages are the ones the app laid out before the control existed.
+// The live lineup no longer pages at the operator's text size (A− / A+): a slide stays one slide at every size, and the face fits it instead
+// (see the last test and shared/slide-edit-keeps-slides.test.js).
 // Run with: node --test shared/pagination-scale.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -86,10 +88,13 @@ test('a prayer at 150% has more slides than at 100%, and the reading of a script
   assert.ok(prayerAt(0.7).length <= prayerAt(1).length);
 });
 
-test('the lineup and the Live panel page with the operator’s size, and the surfaces read it', () => {
-  assert.match(read('src/praise-worship/live.ts'), /const scale = useLive\.getState\(\)\.state\.settings\.slideFontScale;/);
-  assert.match(read('src/praise-worship/live.ts'), /slidesFor\(segment, resolvedFor\(segment, state\), \{ band, scale \}\)/);
-  assert.match(read('src/operator/OperatorApp.tsx'), /useEffect\(\(\) => watchSlideScale\(\), \[\]\);/);
+test('the lineup and the Live panel never page with the operator’s size: A+ or A− never adds or removes a slide', () => {
+  const live = read('src/praise-worship/live.ts');
+  assert.match(live, /slidesFor\(segment, resolvedFor\(segment, state\), \{ band \}\)/);
+  assert.doesNotMatch(live, /slideFontScale/, 'the deck does not read the text size');
+  assert.doesNotMatch(live, /watchSlideScale|repaginateOnAir/, 'nothing pages the item on air again when the size changes');
+  assert.doesNotMatch(read('src/operator/OperatorApp.tsx'), /watchSlideScale/);
+  assert.doesNotMatch(read('src/praise-worship/lineupSlideCopy.ts'), /slideFontScale/, 'the card editor counts slides the same way');
   // The line height grows with the size, so a larger page holds fewer lines.
   assert.equal(lineupFitAt(LYRIC_PX, undefined, 1.5).lineHeightPx, lineupFitAt(LYRIC_PX, undefined, 1).lineHeightPx * 1.5);
   assert.ok(LINEUP_LINE_HEIGHT > 1);

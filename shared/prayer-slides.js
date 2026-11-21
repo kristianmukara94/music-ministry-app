@@ -244,15 +244,18 @@ function compute(body, split, px = PRAYER_MAX_PX) {
   let texts;
   let manualBreaks = 0;
   let automaticSlides = null;
-  if (split?.mode === 'manual' && split.of === splitFingerprint(body) && split.at.length > 0) {
+  // An exact split (the operator's own slides, typed on air) holds even with no breaks: the whole text is then one slide.
+  const exact = split?.mode === 'manual' && split.exact === true;
+  if (split?.mode === 'manual' && split.of === splitFingerprint(body) && (split.at.length > 0 || exact)) {
     mode = 'manual';
     manualBreaks = split.at.length;
     const parts = manualParts(body, split.at);
-    const pieces = parts.map((part) => (fits(part, px) ? [part] : autoSplit(part, px)));
+    // An exact part is one slide whatever its length (the surface fits it smaller); any other part too long for a slide is split again.
+    const pieces = parts.map((part) => (exact || fits(part, px) ? [part] : autoSplit(part, px)));
     texts = pieces.flat();
     automaticSlides = texts.length - parts.length;
   } else {
-    if (split?.mode === 'manual' && split.at.length > 0) mode = 'stale';
+    if (split?.mode === 'manual' && (split.at.length > 0 || exact)) mode = 'stale';
     texts = autoSplit(body, px);
   }
   const tops = pageTops(texts, px);

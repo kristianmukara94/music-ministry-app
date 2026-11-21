@@ -5,6 +5,7 @@ import type { BackdropThemeId } from './stage-cue.js';
 
 export type SlideAlign = 'left' | 'center' | 'right';
 export const SLIDE_ALIGNS: readonly SlideAlign[];
+export function slideTextAlign(align: unknown): SlideAlign;
 
 /** One slide's own formatting, over the projector settings. Every key is optional: a missing key follows the setting. */
 export interface SlideLook {

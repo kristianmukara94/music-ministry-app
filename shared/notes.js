@@ -146,6 +146,18 @@ export function slidesNote(pages) {
 }
 
 /**
+ * The note body and split for slides an operator typed on air (the Output Preview Editor, the Slide Inspector, the card editor): like
+ * slidesNote, but the split is exact, so each page stays one slide exactly as typed and is never split again for its length (a long page is
+ * fitted smaller on screen instead). One page gets an exact split with no breaks, so it stays one slide too. Only adding a slide (Add After,
+ * Duplicate) makes another.
+ */
+export function exactSlidesNote(pages) {
+  const { body, split } = slidesNote(pages);
+  if (!body) return { body, split: null };
+  return { body, split: { mode: 'manual', at: split?.at ?? [], of: splitFingerprint(body), exact: true } };
+}
+
+/**
  * The inverse of dividedNote: a saved note's text with a `---` line after each manual slide break, so the editor shows the breaks the way
  * they are typed. An automatic split, no split, or a split made for an earlier version of the text gives the text as it is.
  */

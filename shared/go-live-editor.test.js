@@ -103,7 +103,8 @@ test('the editor: header stepper, preview modes, safe guides, inline editing, he
   assert.match(modal, /t\('consoleEdFullStage'\)/);
   assert.match(modal, /t\('consoleEdLowerThird'\)/);
   assert.match(modal, /inset-\[2\.5%\][\s\S]*inset-\[5%\]/, '95% action safe and 90% title safe');
-  assert.match(modal, /<InlineEditor\s+value=\{draft\.text\}/, 'the words typed on the preview are the same draft as the Slide Lines box');
+  assert.match(modal, /<StageWordsEditor[^>]*?value=\{draft\.text\}/, 'the words typed on the stage are the same draft as the Slide Lines box');
+  assert.match(modal, /<BandWordsEditor value=\{draft\.text\}/, 'and on the lower-third band');
   assert.match(modal, /edit\(\{ text: balanceLines\(draft\.text, 2\) \}\)/);
   assert.match(modal, /edit\(\{ text: balanceLines\(draft\.text, 3\) \}\)/);
   assert.match(modal, /edit\(\{ text: draft\.text\.toLocaleUpperCase\(\) \}\)/);
@@ -236,7 +237,8 @@ test('every new button and box is no-drag, so a click never becomes a window dra
   const modal = read(`${DIR}/SlideEditorModal.tsx`);
   assert.match(modal, /className="fixed inset-0 z-\[60\][^"]*"\s+style=\{NO_DRAG\}/, 'the backdrop');
   assert.match(modal, /aria-modal="true"[\s\S]{0,200}style=\{NO_DRAG\}/, 'the shell');
-  assert.match(modal, /style=\{\{ \.\.\.NO_DRAG, textAlign: align/, 'the inline editor');
+  assert.match(modal, /style=\{\{ \.\.\.NO_DRAG, \.\.\.place, textTransform: transform/, 'the text box on the stage');
+  assert.match(modal, /style=\{\{ \.\.\.NO_DRAG, textTransform: CSS_CASE\[textCase\]/, 'the text box on the band');
   const mini = read(`${DIR}/FloatingProgram.tsx`);
   assert.equal(mini.split('<aside').length - 1, 2, 'the mini screen and its hidden bar');
   for (const aside of mini.split('<aside').slice(1)) assert.match(aside.slice(0, aside.indexOf('>')), /style=\{NO_DRAG\}/);

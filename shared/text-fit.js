@@ -51,6 +51,22 @@ export function wrapNeeded(widestLineAtReadablePx, roomWidthPx) {
   return widestLineAtReadablePx > roomWidthPx;
 }
 
+/** How much larger wrapping must draw an enlarged stanza before its lines are let wrap: anything less keeps the lines whole. */
+export const GROW_WRAP_GAIN = 1.15;
+
+/**
+ * Whether a stanza the operator asked to draw larger than its layout (A+ above 100%, or MAX) wraps its lines rather than keeping them whole.
+ * Whole lines cap the size at the one where the widest line fills the width, so a long line already filling it at 100% would never grow: the
+ * size asked for would be shrunk straight back. So when the whole lines fall short of the size asked for (`requestedPx`, the operator's size
+ * or the MAX ceiling), the lines wrap if that draws the stanza at least GROW_WRAP_GAIN times larger (`wrappedPx`, fitted to the same room)
+ * than whole (`wholePx`). At 100% and below nothing is asked to grow, so every slide keeps the lines it was laid out with.
+ */
+export function growByWrapping({ requestedPx, wholePx, wrappedPx }) {
+  if (!(requestedPx > 0) || !(wholePx > 0) || !(wrappedPx > 0)) return false;
+  if (wholePx >= requestedPx * 0.98) return false;
+  return wrappedPx >= wholePx * GROW_WRAP_GAIN;
+}
+
 /**
  * The stanza as it is drawn and the size it is drawn at, with the synthetic `measure(text, px)` the tests use and the same rule the projector
  * window runs on the real text: every line whole at the largest size that fits (widest line by width, all lines by height); past the readable

@@ -21,7 +21,7 @@ import { TransportBar, consoleOutputActions } from '../golive/console/TransportB
 import { CueNavigator } from '../golive/console/CueNavigator';
 import { SlideEditorCard } from '../golive/console/SlideEditorCard';
 import { TypographyCard } from '../golive/console/TypographyCard';
-import { pwSongTarget } from '../golive/console/editTargets';
+import { pwCardTarget, pwSongTarget } from '../golive/console/editTargets';
 import { SlideEditorModal, type EditorCue } from '../golive/console/SlideEditorModal';
 import { FloatingProgram } from '../golive/console/FloatingProgram';
 import { OutputsCard } from '../golive/console/OutputsCard';
@@ -48,7 +48,9 @@ function shownAt(session: PwSession, deck: LiveStep[][], at: { segment: number; 
 /** A step as the editor previews it: with the words being typed in place of the saved ones (a lyric or prayer slide; others have none). */
 function withWords(shown: Shown, text: string): Shown {
   const slide = shown.slide;
-  if (slide?.kind === 'lyrics' || slide?.kind === 'prayer') return { ...shown, slide: { ...slide, text } };
+  if (slide?.kind === 'lyrics') return { ...shown, slide: { ...slide, text } };
+  // An empty prayer slot's words are drawn as words once typed, not in the placeholder's muted italic.
+  if (slide?.kind === 'prayer') return { ...shown, slide: { ...slide, text, placeholder: Boolean(slide.placeholder) && !text.trim() } };
   return shown;
 }
 
@@ -272,7 +274,10 @@ export function LiveView() {
       ? tg('consoleUpNext', { text: cueText(nextCue.text, textCase) || nextCue.tag })
       : `${tg('consoleFinalSlide')} · ${tg('consoleUpNext', { text: session.segments[nextAt.segment]?.name ?? '' })}`;
   const lyricHymn = playingHymn !== null ? hymns[playingHymn] ?? null : null;
-  const editTarget = lyricHymn ? pwSongTarget({ t, segmentIndex, steps, onAir: at.slide, hymn: lyricHymn }) : null;
+  // The inspector edits the slide on air, whatever it is: a song's stanza, or a prayer's or reading's page or a title slide in the card's own copy.
+  const editTarget = lyricHymn
+    ? pwSongTarget({ t, segmentIndex, steps, onAir: at.slide, hymn: lyricHymn })
+    : pwCardTarget({ t, segmentIndex, steps, step: at.slide, onAir: at.slide });
   // The editor opens on any slide of a segment (the black step has nothing to edit). E opens it on the slide on air.
   const editableIn = (seg: number) => (i: number) => deck[seg]?.[i]?.kind === 'slide';
   const editable = editableIn(segmentIndex);
@@ -280,7 +285,10 @@ export function LiveView() {
   const openEditor = (i: number) => segment && editable(i) && setEditing({ segment: segment.key, slide: i });
   const nextInSegment = nextAt && nextAt.segment === segmentIndex ? nextAt.slide : null;
   const liveNote = segment && editable(at.slide) ? cueMeta[pwLookKey(segment.key, at.slide)]?.notes ?? null : null;
-  /** The editor's view of step `i` of segment `seg`: a song's slide has its words (this service's own stanza), any other its formatting and notes. */
+  /**
+   * The editor's view of step `i` of segment `seg`. Every slide with words can be edited: a song's slide (this service's own stanza), and a
+   * prayer's or a reading's page or a title slide (the card's own copy, see pwCardTarget). A picture keeps its formatting and notes only.
+   */
   const cueAtIn = (seg: number) => {
     const segSteps = deck[seg] ?? [];
     const segCues = seg === segmentIndex ? cues : pwCues(segSteps, t);
@@ -294,7 +302,9 @@ export function LiveView() {
         index: i,
         count: segSteps.length,
         lookKey: pwLookKey(own.key, s.index),
-        target: hymn ? pwSongTarget({ t, segmentIndex: seg, steps: segSteps, onAir: i, hymn }) : null,
+        target: hymn
+          ? pwSongTarget({ t, segmentIndex: seg, steps: segSteps, onAir: i, hymn })
+          : pwCardTarget({ t, segmentIndex: seg, steps: segSteps, step: i, onAir: seg === segmentIndex ? at.slide : null }),
         tag: segCues[i]?.tag ?? '',
         text: segCues[i]?.text ?? '',
         onAir: seg === segmentIndex && i === at.slide,
@@ -479,7 +489,7 @@ export function LiveView() {
                   onOpenEditor={liveStep.current !== null ? () => openEditor(at.slide) : null}
                   number={at.slide + 1}
                   emptyHint={tg('consoleEditNone')}
-                  // Any other slide (a title card, a prayer, a reading, a picture) is edited by the card editor, in this lineup's own copy.
+                  // A picture has no words: the card editor still offers a text slide after it, and Delete.
                   fallback={<CardSlideHotEdit t={t} segmentIndex={segmentIndex} steps={steps} onAir={at.slide} showButtons editRequest={null} onEditHandled={() => {}} />}
                 />
                 <TypographyCard />

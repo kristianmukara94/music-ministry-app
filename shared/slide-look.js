@@ -14,6 +14,13 @@ import { BACKDROP_THEMES } from './stage-cue.js';
 /** The alignments a slide can take. */
 export const SLIDE_ALIGNS = Object.freeze(['left', 'center', 'right']);
 
+/**
+ * The alignment a slide's words are drawn with: the one chosen (on the slide, for every slide, or in the slide's own style), else centred.
+ * Centre is the one default for every kind of slide (songs, Bible passages, readings, psalms, prayers and notes), so a slide with no
+ * alignment chosen never falls back to the page's left.
+ */
+export const slideTextAlign = (align) => (SLIDE_ALIGNS.includes(align) ? align : 'center');
+
 /** The settings a look can override, in the order the editor shows them. */
 export const SLIDE_LOOK_KEYS = Object.freeze(['textCase', 'align', 'fontScale', 'maxFit', 'backdrop']);
 
@@ -102,7 +109,8 @@ export function frameWithAlign(frame, align) {
   if (frame.kind === 'pw' && (frame.slide?.kind === 'lyrics' || frame.slide?.kind === 'prayer')) {
     return frame.slide.align === align ? frame : { ...frame, slide: { ...frame.slide, align } };
   }
-  if (frame.kind === 'lyrics' || frame.kind === 'text' || frame.kind === 'psalm') {
+  // A deck is a Bible passage or a Holy Mass Order reading; a rosary step is a prayer. Both draw their words from the style's alignment too.
+  if (frame.kind === 'lyrics' || frame.kind === 'text' || frame.kind === 'psalm' || frame.kind === 'deck' || frame.kind === 'rosary') {
     return frame.style?.textAlign === align ? frame : { ...frame, style: { ...(frame.style ?? {}), textAlign: align } };
   }
   return frame;

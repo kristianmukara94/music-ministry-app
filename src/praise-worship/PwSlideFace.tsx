@@ -11,6 +11,7 @@ import { BackgroundShade } from '../output/BackgroundMedia';
 import { useProjectorTextAutoFit } from '../output/useProjectorTextAutoFit';
 import { useTextAutoFit } from '../output/useTextAutoFit';
 import { EDGE_TO_EDGE, edgeToEdgeBox } from '../../shared/text-fit.js';
+import { slideTextAlign } from '../../shared/slide-look.js';
 
 const TYPE_ICON = { prayer: Cross, song: Music, scripture: BookOpen } as const;
 
@@ -97,7 +98,7 @@ export function PwSlideFace({
       <div data-theme="default" className={rootClass} style={colorStyle}>
         <div className="absolute inset-0 flex flex-col items-center justify-center px-[8cqw] py-[4.5cqw] text-center">
           <Icon aria-hidden className="mb-[1.406cqw] h-[4cqw] w-[4cqw] shrink-0 text-gold opacity-80" strokeWidth={1.25} />
-          <h2 className="max-h-[36.563cqw] leading-[1.12] tracking-[0.08em] uppercase" style={{ fontFamily: slideFont ?? TEXT_FONTS.display.css, fontWeight: 700, fontSize: `${titleCqw}cqw` }}>
+          <h2 data-slide-words className="max-h-[36.563cqw] leading-[1.12] tracking-[0.08em] uppercase" style={{ fontFamily: slideFont ?? TEXT_FONTS.display.css, fontWeight: 700, fontSize: `${titleCqw}cqw` }}>
             {slideLine(slide.label, titleChars)}
           </h2>
           <div aria-hidden className="mt-[1.406cqw] h-[0.197cqw] w-[12cqw] bg-gold" />
@@ -124,7 +125,7 @@ export function PwSlideFace({
         {/* Full size, at the slide's top: the shared top for normal slides, the centred top for a short one (see shared/text-area.js). */}
         <FittedFaceText
           className={`font-serif text-[5cqw] whitespace-pre-line ${slide.placeholder ? 'text-muted italic' : 'font-semibold'}`}
-          place={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slide.align ?? 'center' }}
+          place={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slideTextAlign(slide.align) }}
           fontFamily={slideFont}
           naturalSize={scaledSize(`${(slide.fontPx ?? 96) / 19.2}cqw`, slideScale)}
         >
@@ -145,13 +146,13 @@ export function PwSlideFace({
       {edgeToEdge ? (
         <EdgeToEdgeFaceText
           box={edgeToEdgeBox({ header: !hideTitle, footer: Boolean(footer || position), lowerThird: bandOn })}
-          textAlign={slide.align ?? 'center'}
+          textAlign={slideTextAlign(slide.align)}
           fontFamily={slideFont}
         >
           {slide.text}
         </EdgeToEdgeFaceText>
       ) : (
-      <FittedFaceText keepLines className="font-serif text-[5cqw] font-semibold whitespace-pre-line" place={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slide.align ?? 'center' }} fontFamily={slideFont} naturalSize={scaledSize('5cqw', (slideScale ?? 1) * (slide.fontScale ?? 1))}>
+      <FittedFaceText keepLines className="font-serif text-[5cqw] font-semibold whitespace-pre-line" place={{ top: `${(slide.top ?? textAreaShare().top) * 100}%`, textAlign: slideTextAlign(slide.align) }} fontFamily={slideFont} naturalSize={scaledSize('5cqw', (slideScale ?? 1) * (slide.fontScale ?? 1))} grow={(slideScale ?? 1) * (slide.fontScale ?? 1) > 1}>
         {slideText(slide.text, charsPerLine(0.88, 5 * 19.2 * (slide.fontScale ?? 1)))}
       </FittedFaceText>
       )}
@@ -170,7 +171,8 @@ function EdgeToEdgeFaceText({ box, textAlign, fontFamily, children }: { box: { l
   const boxRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLParagraphElement>(null);
   const naturalSize = `${EDGE_TO_EDGE.ceilingCqw}cqw`;
-  useTextAutoFit({ boxRef, textRef, naturalSize, deps: [children, fontFamily, box.top, box.bottom], heightShare: EDGE_TO_EDGE.heightShare });
+  // MAX asks for the largest size the slide holds: the lines wrap when that draws the page clearly larger than whole lines can (growByWrapping).
+  useTextAutoFit({ boxRef, textRef, naturalSize, deps: [children, fontFamily, box.top, box.bottom], heightShare: EDGE_TO_EDGE.heightShare, grow: true });
   return (
     <div
       ref={boxRef}
@@ -178,7 +180,7 @@ function EdgeToEdgeFaceText({ box, textAlign, fontFamily, children }: { box: { l
       className="absolute flex items-center justify-center overflow-hidden"
       style={{ left: `${box.left}cqw`, right: `${box.right}cqw`, top: `${box.top}cqw`, bottom: `${box.bottom}cqw` }}
     >
-      <p ref={textRef} className="apcc-prose w-full font-serif font-semibold whitespace-pre-line" style={{ fontFamily, fontSize: naturalSize, lineHeight: EDGE_TO_EDGE.leading, textAlign }}>
+      <p ref={textRef} data-slide-words className="apcc-prose w-full font-serif font-semibold whitespace-pre-line" style={{ fontFamily, fontSize: naturalSize, lineHeight: EDGE_TO_EDGE.leading, textAlign }}>
         {children}
       </p>
     </div>
@@ -190,15 +192,16 @@ function EdgeToEdgeFaceText({ box, textAlign, fontFamily, children }: { box: { l
  * own size; when a real font wraps wider than the page was counted, the text steps down rather than running into the footer and the page count.
  * A lyric page (`keepLines`) keeps each of its lines whole: at a large text size the page shrinks to its widest line instead of wrapping a word
  * onto a line of its own, so the CURRENT SLIDE and NEXT SLIDE previews and the projector never leave an orphan or clip at the right edge.
+ * `grow` (A+ above 100%) lets those lines wrap, balanced, when that is what it takes to draw the page larger (see growByWrapping).
  */
-function FittedFaceText({ className, place, fontFamily, naturalSize, keepLines = false, children }: { className: string; place: { top: string; textAlign: CSSProperties['textAlign'] }; fontFamily?: string; naturalSize: string; keepLines?: boolean; children: string }) {
+function FittedFaceText({ className, place, fontFamily, naturalSize, keepLines = false, grow = false, children }: { className: string; place: { top: string; textAlign: CSSProperties['textAlign'] }; fontFamily?: string; naturalSize: string; keepLines?: boolean; grow?: boolean; children: string }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLParagraphElement>(null);
-  useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps: [children, fontFamily, place.top], keepLines });
+  useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps: [children, fontFamily, place.top], keepLines, grow });
   // The line spacing is on the box: the fit clears the text's own when it restores a step, and the text then inherits this.
   return (
     <div ref={boxRef} className="absolute inset-x-[6cqw] bottom-[6.6cqw] overflow-hidden" style={{ ...place, lineHeight: LINEUP_LINE_HEIGHT }}>
-      <p ref={textRef} className={`apcc-prose ${className}`} style={{ fontFamily, fontSize: naturalSize }}>
+      <p ref={textRef} data-slide-words className={`apcc-prose ${className}`} style={{ fontFamily, fontSize: naturalSize }}>
         {children}
       </p>
     </div>

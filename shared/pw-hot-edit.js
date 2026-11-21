@@ -122,3 +122,81 @@ export function arrangementWithSplit(arrangement, hymnId, firstId, secondId) {
   if (!Array.isArray(order) || !order.includes(String(firstId))) return arrangement;
   return { ...arrangement, [key]: order.flatMap((id) => (id === String(firstId) ? [id, String(secondId)] : [id])) };
 }
+
+// ── A card's other slides: prayers, readings (scripture) and title slides ──────────────────────────────────────────────────────────────────
+// A lineup card's slides that are not a song's come from its first item (`head`), its chained items (0, 1 …) or the card itself (see
+// slideOriginsFor in pw.js). These rules say what the Output Preview Editor's words, Add After and the projector do on each of them.
+
+/** Whether an origin is a prayer's or a reading's own item (its pages are words the card can keep its own copy of). */
+const textItem = (origin) => (origin.source === 'prayer' || origin.source === 'reading') && origin.item !== 'songs' && origin.item !== 'card';
+
+/** Where an item's words go once saved: its first item, or chained item `index`. */
+const itemTarget = (item) => (item === 'head' ? { kind: 'head' } : { kind: 'chain', index: item });
+
+/** The words of an item's text slides, in order, as the lineup shows them. Empty for a prayer slot with no prayer yet. */
+export function itemPages(steps, origins, item) {
+  return steps.flatMap((step, i) => {
+    const origin = origins[i];
+    if (!origin || origin.item !== item || origin.page === null || step?.kind !== 'slide' || step.slide.kind !== 'prayer' || step.slide.placeholder) return [];
+    return [step.slide.text];
+  });
+}
+
+/**
+ * What the editor does on step `index` of a card, from where the slide comes from:
+ * - `edit`: the card's title (a title slide: the card's name, which belongs to this lineup), or page `page` of an item's words; null for a
+ *   picture, which has no words;
+ * - `add`: a new page in an item's words, at `at` (a title slide's new page goes first in the words after it, or starts the card's own).
+ * Null for the black step and a song's slide (the song's own target edits those).
+ */
+export function cardSlidePlan(steps, origins, index, segment) {
+  const step = steps[index];
+  const origin = origins[index];
+  if (!step || step.kind !== 'slide' || !origin || step.slide.kind === 'lyrics') return null;
+  if (origin.source === 'pictures' && typeof origin.item === 'number') {
+    return { edit: null, add: { target: { kind: 'newChain', at: origin.item + 1 }, pages: [], at: 0 } };
+  }
+  if (origin.title) {
+    const edit = { kind: 'title', text: segment.name };
+    if (textItem(origin)) return { edit, add: { target: itemTarget(origin.item), pages: itemPages(steps, origins, origin.item), at: 0 } };
+    const newHead = origin.item === 'head' || (origin.item === 'card' && segment.content.kind !== 'song');
+    return { edit, add: { target: newHead ? { kind: 'newHead' } : { kind: 'newChain', at: 0 }, pages: [], at: 0 } };
+  }
+  if (textItem(origin)) {
+    const target = itemTarget(origin.item);
+    const pages = itemPages(steps, origins, origin.item);
+    // A prayer slot with no prayer yet shows a placeholder: its words start the card's own.
+    const page = pages.length === 0 ? 0 : (origin.page ?? 0);
+    const editPages = pages.length === 0 ? [''] : pages;
+    return { edit: { kind: 'page', target, pages: editPages, page }, add: { target, pages, at: pages.length === 0 ? 0 : page + 1 } };
+  }
+  return null;
+}
+
+/**
+ * The step the projector shows once `removed` steps were taken out of the card from `start` (`slides` slides are left), when step `shown`
+ * was on screen. A slide before the deleted ones stays where it is (null: leave the projector alone); a slide after them keeps its place on
+ * screen, `removed` steps earlier; the deleted slide itself gives way to the one that moved up into its place.
+ */
+export function liveStepAfterDelete({ shown, start, removed, slides }) {
+  if (shown < start) return null;
+  if (removed > 0 && shown >= start + removed) return shown - removed;
+  return slideAfterDelete(start, slides);
+}
+
+/**
+ * What saving new words on a card's slide writes (see cardSlidePlan): a title slide renames the card; a page replaces that page of its
+ * item's words, kept on screen only when the slide edited is the one on screen (`onScreen`). Null for a slide with no words to edit.
+ */
+export function cardEditSave(plan, text, { onScreen }) {
+  const edit = plan?.edit;
+  if (!edit) return null;
+  if (edit.kind === 'title') return { rename: text };
+  return { target: edit.target, pages: edit.pages.map((p, i) => (i === edit.page ? text : p)), showPage: onScreen ? edit.page : null };
+}
+
+/** What Add After writes on a card's slide: a new page in the item's words at the plan's place, kept off screen. */
+export function cardAddSave(plan, text) {
+  const { target, pages, at } = plan.add;
+  return { target, pages: [...pages.slice(0, at), text, ...pages.slice(at)], showPage: null };
+}

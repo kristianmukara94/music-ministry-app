@@ -16,7 +16,7 @@ const listeners = new Set<(id: number) => void>();
 let nextStanzaId = -1;
 
 /** A stanza for setLiveStanzas: one the song has (its id), or a new one (no id). */
-export type LiveStanza = Pick<Stanza, 'stanzaType' | 'lyricsText'> & { id?: number };
+export type LiveStanza = Pick<Stanza, 'stanzaType' | 'lyricsText' | 'pages'> & { id?: number };
 
 export const liveLyrics = {
   /** The song as Go Live plays it: the stored song, with this run's on-air edits. A song deleted from the library comes back deleted. */
@@ -46,7 +46,8 @@ export const liveLyrics = {
 export async function setLiveStanzas(hymn: Hymn, stanzas: LiveStanza[]): Promise<Hymn> {
   const next: Hymn = {
     ...hymn,
-    stanzas: stanzas.map((s, i) => ({ id: s.id ?? nextStanzaId--, stanzaType: s.stanzaType, lyricsText: s.lyricsText, order: i + 1 })),
+    // A stanza edited on air keeps its slides exactly as typed (`pages`); see Stanza.pages.
+    stanzas: stanzas.map((s, i) => ({ id: s.id ?? nextStanzaId--, stanzaType: s.stanzaType, lyricsText: s.lyricsText, order: i + 1, ...(s.pages?.length ? { pages: [...s.pages] } : {}) })),
   };
   edited.set(hymn.id, next);
   for (const listener of [...listeners]) {

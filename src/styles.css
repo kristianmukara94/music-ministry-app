@@ -281,6 +281,11 @@
   overflow-wrap: break-word;
   hyphens: manual;
 }
+/* The Output Preview Editor typing on the stage: the slide's own words (data-slide-words) keep their place and size, so the fit still runs and
+   the editor's text box sits exactly on them, but are not painted. Only the editor's words are seen: no second copy under them. */
+[data-stage-editing] [data-slide-words] {
+  visibility: hidden;
+}
 .apcc-legible {
   filter: drop-shadow(0 4px var(--apcc-legible-blur, 12px) rgb(0 0 0 / var(--apcc-legible-alpha, 0.95)));
 }

@@ -36,6 +36,11 @@ export interface Stanza {
   stanzaType: string;
   lyricsText: string;
   order: number;
+  /**
+   * The stanza's slides exactly as the operator left them on air (Go Live's editors; this run of the app only, never stored): each page is
+   * one slide, never paged again for its length or the text size. Missing for a stanza nobody edited on air, which is paged as usual.
+   */
+  pages?: string[];
 }
 
 export interface Hymn {

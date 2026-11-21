@@ -32,6 +32,7 @@ export function typeOfNote(note: { display: string; category: string }): NoteTyp
 export function typeOfSection(section: NoteSection): NoteType;
 export function dividedNote(text: string): { body: string; split: { mode: 'manual'; at: number[] } | null };
 export function slidesNote(pages: readonly string[]): { body: string; split: { mode: 'manual'; at: number[]; of?: string } | null };
+export function exactSlidesNote(pages: readonly string[]): { body: string; split: { mode: 'manual'; at: number[]; of: string; exact: true } | null };
 export function dividedText(body: string, split: PrayerSplit | null | undefined): string;
 export function noteSourceId(id: number, slides?: readonly number[] | null): string;
 export function noteSource(sourceId: string | number | null | undefined): { id: number; slides: number[] | null } | null;

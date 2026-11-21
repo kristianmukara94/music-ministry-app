@@ -24,7 +24,7 @@ import { useTheme } from '../theme/store';
 import { stepQueue } from '../planner/routing';
 import { watchProjectorPromptChoice } from '../live/prompt-choice';
 import { watchRemoteCommands } from '../live/remoteBridge';
-import { watchRemoteSteps, watchSlideScale } from '../praise-worship/live';
+import { watchRemoteSteps } from '../praise-worship/live';
 import { stepLive } from '../praise-worship/live';
 import { massShowing, stepMass } from '../golive/massLive';
 import { CommandPalette } from './CommandPalette';
@@ -155,7 +155,6 @@ function EdgeTabs() {
 export function OperatorApp() {
   // Keeps the projector-prompt choice in step with the projector and the loaded queue or session.
   useEffect(() => watchProjectorPromptChoice(), []);
-  useEffect(() => watchSlideScale(), []);
   // The loaded Holy Mass plan's own choice for slot titles on the projector.
   useEffect(() => watchPlanSlotTitle(), []);
   useEffect(() => watchRemoteSteps(), []);

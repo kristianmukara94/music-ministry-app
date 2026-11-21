@@ -427,7 +427,8 @@ function songSlides(segment, hymns, { band, scale, withTitle }) {
       // The stanza's position in the song, and the song's stanza count, let the projector follow an edit while this slide is live.
       // A stanza longer than a lineup slide is split under the same rule as a prayer. Each page keeps the stanza's text, in order.
       // The band, when it is on, only changes how the stanza is split: the text and its size stay the same.
-      const pages = lyricPagesFor(stanza.lyricsText, band, songScale);
+      // A stanza edited on air keeps the slides the operator left (`pages`): never paged again, so an edit never adds a slide.
+      const pages = Array.isArray(stanza.pages) && stanza.pages.length > 0 ? stanza.pages : lyricPagesFor(stanza.lyricsText, band, songScale);
       entries.push({ sectionId, stanza, list: pages.length ? pages : [''] });
     }
     const tops = pageTops(entries.flatMap((e) => e.list), PRAYER_MAX_PX * songScale);

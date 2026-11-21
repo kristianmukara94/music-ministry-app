@@ -373,7 +373,7 @@ test('the projector, the mirror, Holy Mass and the P&W previews all draw lyric l
   assert.match(steps, /keepLines = false/, 'prayers and text slides still wrap as they are laid out');
   const face = read('src/praise-worship/PwSlideFace.tsx');
   assert.match(face, /<FittedFaceText keepLines className="font-serif text-\[5cqw\] font-semibold whitespace-pre-line"/, 'a P&W lyric page keeps its lines');
-  assert.match(face, /useTextAutoFit\(\{ boxRef, textRef, naturalSize, deps: \[children, fontFamily, box\.top, box\.bottom\], heightShare: EDGE_TO_EDGE\.heightShare \}\);/, 'MAX on the P&W face keeps its lines too');
+  assert.match(face, /useTextAutoFit\(\{ boxRef, textRef, naturalSize, deps: \[children, fontFamily, box\.top, box\.bottom\], heightShare: EDGE_TO_EDGE\.heightShare, grow: true \}\);/, 'MAX on the P&W face keeps its lines too, wrapping only when that draws it clearly larger');
   const preview = read('src/praise-worship/CurrentNextPreview.tsx');
   assert.match(preview, /<PwSlideFace/, 'CURRENT SLIDE and NEXT SLIDE draw through the face');
   assert.match(preview, /const STAGE = 'relative aspect-video w-full overflow-hidden/, 'each preview frame clips');

@@ -1,6 +1,6 @@
 import { useLayoutEffect, useState, type RefObject } from 'react';
 import { pickFitStep } from '../../shared/projector-autofit.js';
-import { MIN_READABLE_CQW, fitFontSize, wrapNeeded } from '../../shared/text-fit.js';
+import { MIN_READABLE_CQW, fitFontSize, growByWrapping, wrapNeeded } from '../../shared/text-fit.js';
 import { FIT_FLOOR_CQW } from './useTextAutoFit';
 
 interface Options {
@@ -18,6 +18,11 @@ interface Options {
    * and the usual fit then runs on the wrapped text. Off by default: prayers and text slides are laid out to wrap.
    */
   keepLines?: boolean;
+  /**
+   * With `keepLines`: the operator asked for the text larger than its layout (A+ above 100%). Whole lines would cap the size where the widest
+   * line fills the width, so the lines may wrap (balanced) instead when that draws the page clearly larger (see growByWrapping).
+   */
+  grow?: boolean;
 }
 
 /**
@@ -29,7 +34,7 @@ interface Options {
  * Text still too tall at the smallest step is clipped inside the box, never over the title or the badges, and `overflow` turns true so the
  * operator's views can say so. Slides too long to read are split into parts before they are staged (see splitDeck), so this is rare.
  */
-export function useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps, keepLines = false }: Options): { overflow: boolean; step: number } {
+export function useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps, keepLines = false, grow = false }: Options): { overflow: boolean; step: number } {
   const [result, setResult] = useState({ overflow: false, step: 0 });
   useLayoutEffect(() => {
     const box = boxRef.current;
@@ -39,6 +44,10 @@ export function useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps, ke
     const fit = () => {
       text.style.maxHeight = '';
       text.style.overflow = '';
+      text.style.removeProperty('text-wrap');
+      // The size asked for: the set size, the operator's scale included.
+      text.style.fontSize = naturalSize;
+      const requestedPx = parseFloat(getComputedStyle(text).fontSize);
       const style = getComputedStyle(box);
       const roomHeight = box.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
       const roomWidth = box.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
@@ -67,11 +76,25 @@ export function useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps, ke
       };
       const floor = (box.clientWidth * FIT_FLOOR_CQW) / 100;
       text.style.whiteSpace = keepLines ? 'pre' : '';
-      let { picked, overflow } = run(keepLines ? (box.clientWidth * MIN_READABLE_CQW) / 100 : floor);
+      const readable = (box.clientWidth * MIN_READABLE_CQW) / 100;
+      let { picked, overflow } = run(keepLines ? readable : floor);
       // A line too wide to stay whole even at the readable size: the text wraps after all, fitted the usual way. Too tall only: it stays whole.
       if (keepLines && overflow && wrapNeeded(text.scrollWidth, roomWidth + 1)) {
         text.style.whiteSpace = '';
         ({ picked, overflow } = run(floor));
+      } else if (keepLines && grow && !overflow) {
+        // Asked to grow but held back by the widest line: wrapped, balanced lines take the larger size when it is clearly larger.
+        const wholePx = parseFloat(getComputedStyle(text).fontSize);
+        text.style.whiteSpace = '';
+        text.style.setProperty('text-wrap', 'balance');
+        const wrapped = run(floor);
+        const wrappedPx = parseFloat(getComputedStyle(text).fontSize);
+        if (!wrapped.overflow && growByWrapping({ requestedPx, wholePx, wrappedPx })) ({ picked, overflow } = wrapped);
+        else {
+          text.style.whiteSpace = 'pre';
+          text.style.removeProperty('text-wrap');
+          ({ picked, overflow } = run(readable));
+        }
       }
       // The fail-safe: what is still too tall at the smallest size is clipped inside the room.
       if (overflow) {
@@ -91,6 +114,6 @@ export function useProjectorTextAutoFit({ boxRef, textRef, naturalSize, deps, ke
       cancelled = true;
       observer?.disconnect();
     };
-  }, [naturalSize, keepLines, ...deps]);
+  }, [naturalSize, keepLines, grow, ...deps]);
   return result;
 }

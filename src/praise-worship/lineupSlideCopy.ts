@@ -1,7 +1,7 @@
-import { MAX_NOTE_BODY, MAX_NOTE_TITLE, slidesNote } from '../../shared/notes.js';
+import { MAX_NOTE_BODY, MAX_NOTE_TITLE, exactSlidesNote } from '../../shared/notes.js';
 import { prayerSlidesFor } from '../../shared/prayer-slides.js';
 import { removeChainItem, slideOriginsFor, withChain, type PwChainItem, type PwContent, type PwSegment, type PwSlideOrigin } from '../../shared/pw.js';
-import { arrangementWithout, lyricAt, occurrenceOf, pagesWithout, slideAfterDelete } from '../../shared/pw-hot-edit.js';
+import { arrangementWithout, itemPages, liveStepAfterDelete, lyricAt, occurrenceOf, pagesWithout, type CardTextTarget } from '../../shared/pw-hot-edit.js';
 import { bridge } from '../live/bridge';
 import { useLive } from '../live/store';
 import { cardCopyOwner, isCopyFor } from '../notes/slideCopies';
@@ -16,13 +16,10 @@ import { resolvedFor, setPwState, updateSegment, usePw } from './store';
  * the copy. A title slide is the card's name, which belongs to this lineup, so editing it renames the card.
  */
 
-/** Where a card's text goes: its first item, a chained item, a new chained item at `at`, or a new first item on a title card. */
-export type CardTextTarget = { kind: 'head' } | { kind: 'chain'; index: number } | { kind: 'newChain'; at: number } | { kind: 'newHead' };
+export type { CardTextTarget };
 
-const settings = () => {
-  const live = useLive.getState().state;
-  return { band: live.lowerThird.live, scale: live.settings.slideFontScale };
-};
+// Paged as liveDeck pages: with the band, never with the operator's text size (a slide stays one slide at every size).
+const settings = () => ({ band: useLive.getState().state.lowerThird.live });
 
 /** Where each live step of a card comes from, lined up with liveDeck (the black step at the end has none). */
 export function originsOf(segment: PwSegment): PwSlideOrigin[] {
@@ -31,11 +28,7 @@ export function originsOf(segment: PwSegment): PwSlideOrigin[] {
 
 /** The words of an item's text slides, in order, as the lineup shows them. Empty for a prayer slot with no prayer yet. */
 export function pagesOfItem(steps: LiveStep[], origins: PwSlideOrigin[], item: PwSlideOrigin['item']): string[] {
-  return steps.flatMap((step, i) => {
-    const origin = origins[i];
-    if (!origin || origin.item !== item || origin.page === null || step.kind !== 'slide' || step.slide.kind !== 'prayer' || step.slide.placeholder) return [];
-    return [step.slide.text];
-  });
+  return itemPages(steps, origins, item);
 }
 
 /** The note an item plays now, if it is a prayer with one. */
@@ -52,12 +45,12 @@ function noteIdOf(content: PwContent, target: CardTextTarget): number | null {
 const itemAfter = (target: CardTextTarget): PwSlideOrigin['item'] =>
   target.kind === 'head' || target.kind === 'newHead' ? 'head' : target.kind === 'chain' ? target.index : target.at;
 
-/** How many screen slides the first `page` pages make, once fitted (a long page can take more than one slide). */
+/** How many screen slides the first `page` pages make: one each, since the operator's pages are kept exactly as typed (exactSlidesNote). */
 function slidesBefore(pages: string[], page: number): number {
   const before = pages.slice(0, Math.max(0, page)).filter((p) => p.trim());
   if (before.length === 0) return 0;
-  const { body, split } = slidesNote(before);
-  return prayerSlidesFor(body, split, settings().scale).pages.length;
+  const { body, split } = exactSlidesNote(before);
+  return prayerSlidesFor(body, split).pages.length;
 }
 
 export interface SaveCardText {
@@ -76,7 +69,8 @@ export async function saveCardText({ segmentIndex, target, pages, showPage, keep
   const state = usePw.getState();
   const segment = state.session?.segments[segmentIndex];
   if (!segment) throw new Error('That card is not in the lineup any more.');
-  const { body, split } = slidesNote(pages);
+  // Each page the operator typed stays one slide: a long page is fitted smaller on screen, never split into more slides.
+  const { body, split } = exactSlidesNote(pages);
   if (!body.trim()) throw new Error('A slide needs some words.');
   if (body.length > MAX_NOTE_BODY) throw new Error(`This item is too long to save: keep it under ${MAX_NOTE_BODY} characters.`);
 
@@ -150,17 +144,27 @@ export async function saveCardText({ segmentIndex, target, pages, showPage, keep
 /** Why a slide stayed: the item's only slide, the song's last section on the card, or a slide Delete does not reach. */
 export type DeleteRefusal = 'deleteSlideLast' | 'deleteSlideLastStanza' | 'deleteSlideNone';
 
+/** How many steps the card has now, to tell how many a delete took out. */
+const stepCount = (segmentIndex: number) => {
+  const session = usePw.getState().session;
+  return session ? (liveDeck(session)[segmentIndex] ?? []).length : 0;
+};
+
 /**
- * After a delete, the card's slide that took the deleted one's place goes up: the next one, or the one before when the last went. `start` is
- * the first step that was taken out. Only while this card is on air, as an edit does.
+ * After a delete, while this card is on air: when the deleted slide was the one on screen, the slide that took its place goes up (the next
+ * one, or the one before when the last went). A slide deleted off screen (from the Output Preview Editor) never moves the screen: the slide
+ * on screen stays up, one place earlier when the deleted one came before it. `start` is the first step taken out, `before` the card's step
+ * count before the delete.
  */
-function showAfterDelete(segmentIndex: number, start: number) {
+function showAfterDelete(segmentIndex: number, start: number, before: number) {
   const live = useLive.getState().state.pw;
   const session = usePw.getState().session;
   const fresh = session?.segments[segmentIndex];
   if (!session || !fresh || !live?.onAir || live.segmentKey !== fresh.key) return;
-  const slides = (liveDeck(session)[segmentIndex] ?? []).filter((s) => s.kind === 'slide').length;
-  jumpTo(segmentIndex, slideAfterDelete(start, slides));
+  const deck = liveDeck(session)[segmentIndex] ?? [];
+  const slides = deck.filter((s) => s.kind === 'slide').length;
+  const next = liveStepAfterDelete({ shown: live.slide, start, removed: before - deck.length, slides });
+  if (next !== null) jumpTo(segmentIndex, next);
 }
 
 /**
@@ -175,8 +179,9 @@ export function deleteSongStep(segmentIndex: number, steps: LiveStep[], step: nu
   if (!segment || !slide || !hymn) return 'deleteSlideNone';
   const arrangement = arrangementWithout(segment.arrangement, hymn, slide.sectionId, occurrenceOf(steps, step));
   if (!arrangement) return 'deleteSlideLastStanza';
+  const before = stepCount(segmentIndex);
   updateSegment(segmentIndex, { arrangement });
-  showAfterDelete(segmentIndex, step - (slide.part ?? 0));
+  showAfterDelete(segmentIndex, step - (slide.part ?? 0), before);
   return null;
 }
 
@@ -198,12 +203,13 @@ export async function deleteCardStep(segmentIndex: number, steps: LiveStep[], st
   if (!origin) return 'deleteSlideNone';
   const slideCount = steps.filter((x) => x.kind === 'slide').length;
   if (slideCount <= 1) return 'deleteSlideLast';
+  const before = stepCount(segmentIndex);
   const firstOf = (item: PwSlideOrigin['item']) => Math.max(0, origins.findIndex((o) => o.item === item));
   const dropChain = (index: number) => {
     const patch = removeChainItem(segment, index);
     if (!patch) return 'deleteSlideNone' as const;
     updateSegment(segmentIndex, patch);
-    showAfterDelete(segmentIndex, firstOf(index));
+    showAfterDelete(segmentIndex, firstOf(index), before);
     return null;
   };
 
@@ -212,7 +218,7 @@ export async function deleteCardStep(segmentIndex: number, steps: LiveStep[], st
     const titles = origins.filter((o) => o.title).length;
     if (origin.item === 'card' || origin.source === 'title' || !segment.cues.titleFirst || titles > 1) return 'deleteSlideNone';
     updateSegment(segmentIndex, { cues: { ...segment.cues, titleFirst: false } });
-    showAfterDelete(segmentIndex, step);
+    showAfterDelete(segmentIndex, step, before);
     return null;
   }
 
@@ -229,7 +235,7 @@ export async function deleteCardStep(segmentIndex: number, steps: LiveStep[], st
     const more = [...(segment.content.more ?? [])];
     more[origin.item] = { ...item, slideIds };
     updateSegment(segmentIndex, withChain(segment, more));
-    showAfterDelete(segmentIndex, step);
+    showAfterDelete(segmentIndex, step, before);
     return null;
   }
 
@@ -241,7 +247,7 @@ export async function deleteCardStep(segmentIndex: number, steps: LiveStep[], st
     const target: CardTextTarget = origin.item === 'head' ? { kind: 'head' } : { kind: 'chain', index: origin.item };
     // Saved without moving the projector; the slide that took the deleted one's place goes up after.
     await saveCardText({ segmentIndex, target, pages: next, showPage: null, keep: null });
-    showAfterDelete(segmentIndex, step);
+    showAfterDelete(segmentIndex, step, before);
     return null;
   }
   return 'deleteSlideNone';

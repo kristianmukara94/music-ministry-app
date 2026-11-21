@@ -101,7 +101,8 @@ export interface PwHymn {
   category?: string;
   /** The song's own projector font size, as a multiple of the theme's (1 or missing: the theme's own). */
   fontScale?: number;
-  stanzas: { id: number; stanzaType: string; lyricsText: string }[];
+  /** `pages`: a stanza edited on air keeps exactly these slides, never paged again. */
+  stanzas: { id: number; stanzaType: string; lyricsText: string; pages?: string[] }[];
 }
 
 export interface PwHymnTag {

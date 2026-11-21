@@ -2,54 +2,26 @@ import { useEffect, useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { MAX_NOTE_BODY, slidesNote } from '../../shared/notes.js';
 import type { PwSlideOrigin } from '../../shared/pw.js';
+import { cardSlidePlan, type CardSlidePlan } from '../../shared/pw-hot-edit.js';
 import { errorText } from '../whiteboard/errors';
 import { useDeleteSlideKey } from '../components/useDeleteSlideKey';
 import { DELETE_BTN, editKeys, SMALL_BTN } from './HotEditForms';
 import type { LiveStep } from './live';
-import { deleteCardStep, originsOf, pagesOfItem, renameCard, saveCardText, type CardTextTarget } from './lineupSlideCopy';
+import { deleteCardStep, originsOf, renameCard, saveCardText } from './lineupSlideCopy';
 import { usePw } from './store';
 import type { PwT } from './strings';
 
 const FIELD = 'w-full rounded-md border border-fg/15 bg-panel px-2 py-1.5 text-sm leading-snug text-fg outline-none focus:border-accent';
 
-/** What Edit or Add does on one slide of a card. */
-interface SlidePlan {
-  /** Edit: the card's title, or a page of an item's words. Null when the slide has no words (a picture). */
-  edit: { kind: 'title'; text: string } | { kind: 'page'; target: CardTextTarget; pages: string[]; page: number } | null;
-  /** Add: a new page in an item's words, at `at`. */
-  add: { target: CardTextTarget; pages: string[]; at: number };
-  /** The slide's name in the editor. */
+/** What Edit or Add does on one slide of a card (see cardSlidePlan), with the slide's name for the editor. */
+interface SlidePlan extends CardSlidePlan {
   name: string;
 }
 
 /** Works out what Edit and Add do on step `index` of the card, from where the slide comes from. Null for the black step or a song's slide. */
 function planFor(steps: LiveStep[], origins: PwSlideOrigin[], index: number, segment: { name: string; content: { kind: string } }, t: PwT): SlidePlan | null {
-  const step = steps[index];
-  const origin = origins[index];
-  if (!step || step.kind !== 'slide' || !origin || step.slide.kind === 'lyrics') return null;
-  const itemTarget = (item: PwSlideOrigin['item']): CardTextTarget => (item === 'head' ? { kind: 'head' } : { kind: 'chain', index: item as number });
-  const name = t('slideName', { n: index + 1 });
-  if (origin.source === 'pictures' && typeof origin.item === 'number') {
-    return { edit: null, add: { target: { kind: 'newChain', at: origin.item + 1 }, pages: [], at: 0 }, name };
-  }
-  if (origin.title) {
-    const edit = { kind: 'title' as const, text: segment.name };
-    // A title slide's new slide goes first in the words that follow it, or starts words of the card's own.
-    if ((origin.source === 'prayer' || origin.source === 'reading') && origin.item !== 'songs' && origin.item !== 'card') {
-      return { edit, add: { target: itemTarget(origin.item), pages: pagesOfItem(steps, origins, origin.item), at: 0 }, name };
-    }
-    const newHead = origin.item === 'head' || (origin.item === 'card' && segment.content.kind !== 'song');
-    return { edit, add: { target: newHead ? { kind: 'newHead' } : { kind: 'newChain', at: 0 }, pages: [], at: 0 }, name };
-  }
-  if ((origin.source === 'prayer' || origin.source === 'reading') && origin.item !== 'songs' && origin.item !== 'card') {
-    const target = itemTarget(origin.item);
-    const pages = pagesOfItem(steps, origins, origin.item);
-    // A prayer slot with no prayer yet shows a placeholder: its words start the card's own.
-    const page = pages.length === 0 ? 0 : (origin.page ?? 0);
-    const editPages = pages.length === 0 ? [''] : pages;
-    return { edit: { kind: 'page', target, pages: editPages, page }, add: { target, pages, at: pages.length === 0 ? 0 : page + 1 }, name };
-  }
-  return null;
+  const plan = cardSlidePlan(steps, origins, index, segment);
+  return plan ? { ...plan, name: t('slideName', { n: index + 1 }) } : null;
 }
 
 interface Props {
