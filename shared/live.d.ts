@@ -297,11 +297,17 @@ export interface LiveState {
   pwLineup?: { key: string; name: string; minutes: number }[];
   /** The Output Preview Editor's per-slide looks, by slide key (shared/slide-look.js). Absent in older states. */
   slideLooks?: Record<string, import('./slide-look.js').SlideLook>;
+  /** The Plan Appearance of the loaded Holy Mass plan and Praise & Worship plan (shared/plan-appearance.js). Absent in older states. */
+  planLooks?: { mass: import('./plan-appearance.js').PlanLookEntry | null; pw: import('./plan-appearance.js').PlanLookEntry | null };
 }
 
 export type LiveAction =
   | { type: 'slideLook/set'; key: string; look: import('./slide-look.js').SlideLook | null }
   | { type: 'slideLook/clear' }
+  /** Drops the on-air looks of one loaded plan's slides (Plan Appearance's Overwrite All Slide Overrides). */
+  | { type: 'slideLook/clearPlan'; kind: import('./plan-appearance.js').PlanKind; planId: number }
+  /** A loaded plan's appearance. Ignored unless `planId` is the plan loaded for that kind. */
+  | { type: 'planLook/set'; kind: import('./plan-appearance.js').PlanKind; planId: number; appearance: import('./plan-appearance.js').PlanAppearance }
   | { type: 'output/toggle'; output: OutputKey }
   | { type: 'output/set'; output: OutputKey; on: boolean }
   /** A direct show ends the Mass Queue's selection. Overlays from the operator's buttons pass DIRECT_DECK. */

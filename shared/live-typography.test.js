@@ -102,7 +102,8 @@ test('the P&W CURRENT SLIDE and NEXT SLIDE previews show the live case, as the p
   assert.equal(applyPwSlideTextCase(null, 'uppercase'), null, 'a black step stays black');
 
   const preview = read('src/praise-worship/CurrentNextPreview.tsx');
-  assert.match(preview, /const settingsCase = useLive\(\(s\) => textCaseOf\(s\.state\.settings\.textCase\)\);/, 'the previews read the live case');
+  assert.match(preview, /const settings = applyPlanAppearance\(useLive\(\(s\) => s\.state\.settings\), appearance\);/, 'the previews read the live settings, under the plan’s look');
+  assert.match(preview, /const settingsCase = textCaseOf\(settings\.textCase\);/, 'the previews read the live case');
   assert.match(preview, /const textCase = look\?\.textCase \?\? settingsCase;/, 'under the slide’s own case, when it has one');
   assert.match(preview, /applyPwSlideTextCase\(shown\.slide, textCase\)/, 'the slide is cased before PwSlideFace fits it');
   assert.match(preview, /segmentName=\{applyTextCase\(shown\.segmentName, textCase\)\}/);

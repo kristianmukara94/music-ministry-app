@@ -33,7 +33,10 @@ export function resolveSlideLook(
   settings: Partial<Pick<ProjectorSettings, 'textCase' | 'slideFontScale' | 'edgeToEdge' | 'slideAlign'>> | null | undefined,
   look: SlideLook | null | undefined,
   globalBackdrop?: BackdropThemeId | null,
+  planAppearance?: import('./plan-appearance.js').PlanAppearance | null,
 ): ResolvedSlideLook;
+export function withoutPlanSlideLooks(looks: Record<string, SlideLook> | null | undefined, kind: 'mass' | 'pw', planId: number | null | undefined): Record<string, SlideLook>;
+export function planSlideLookCount(looks: Record<string, SlideLook> | null | undefined, kind: 'mass' | 'pw', planId: number | null | undefined): number;
 
 export function lookChange<K extends SlideLookKey>(
   look: SlideLook | null | undefined,

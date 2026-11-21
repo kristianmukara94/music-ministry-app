@@ -29,11 +29,19 @@ export function entrySummaryHtml(entries, { tags = true } = {}) {
   }).join('');
 }
 
-/** What a step holds, in the drawer or panel: each item with its key for this plan (songs only) and Remove. */
+/**
+ * What a step holds, in the drawer or panel: each item with its key for this plan (songs only), Move up and Move down when there is more than
+ * one, and Remove. The first item is the one that fills the slot on the church laptop.
+ */
 export function entryListHtml(entries, rowId, canEdit) {
   if (entries.length === 0) return '<p class="entry-empty">Nothing here yet. Add a song, type text, or choose from the Hub. A step can hold more than one.</p>';
   const lock = canEdit ? '' : 'disabled';
-  const rows = entries.map((entry) => {
+  const move = (entry, delta, at) => {
+    const edge = at + delta < 0 || at + delta >= entries.length;
+    const label = `${delta < 0 ? 'Move up' : 'Move down'}: ${entry.title}`;
+    return `<button type="button" class="entry-move" data-move-entry="${entry.index}" data-delta="${delta}" data-for="${esc(rowId)}" aria-label="${esc(label)}" title="${delta < 0 ? 'Move up' : 'Move down'}" ${edge || !canEdit ? 'disabled' : ''}>${delta < 0 ? '↑' : '↓'}</button>`;
+  };
+  const rows = entries.map((entry, at) => {
     const key = entry.songId
       ? `<label class="entry-key">Key
           <select data-role="entry-key" data-for="${esc(rowId)}" data-index="${entry.index}" aria-label="Key for ${esc(entry.title)}" ${lock}>
@@ -44,6 +52,7 @@ export function entryListHtml(entries, rowId, canEdit) {
     return `<li class="slot-entry">
         <span class="entry-title">${esc(entry.title)}</span>
         ${key}
+        ${entries.length > 1 ? `<span class="entry-moves">${move(entry, -1, at)}${move(entry, 1, at)}</span>` : ''}
         <button type="button" class="btn-link-danger" data-remove-entry="${entry.index}" data-for="${esc(rowId)}" aria-label="Remove ${esc(entry.title)}" ${lock}>Remove</button>
       </li>`;
   }).join('');

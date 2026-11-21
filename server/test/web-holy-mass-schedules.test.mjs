@@ -73,11 +73,13 @@ test('Open Existing opens that plan\'s Holy Mass editor', () => {
   assert.deepEqual(opened, [`../plan/mass.html?id=${SIX}`], 'one press, one navigation; a press elsewhere does nothing');
   assert.equal(ui.openExistingHref(SIX), model.editorPathFor({ id: SIX, kind: 'mass' }), 'the same page the plan list opens');
 
-  // Both pages wire it, and the editor asks before leaving unsaved changes.
-  assert.match(readWeb('js/new-plan.js'), /onOpenExisting\(conflictBox, \(id\) => location\.assign\(openExistingHref\(id,/);
+  // The New Plan form (page and modal) and the editor wire it, and the editor asks before leaving unsaved changes.
+  assert.match(readWeb('js/new-plan-form.js'), /onOpenExisting\(conflictBox, \(id\) => openExisting\?\.\(id\)\);/);
+  assert.match(readWeb('js/new-plan.js'), /onOpenExisting: \(id\) => location\.assign\(openExistingHref\(id, root\)\)/);
+  assert.match(readWeb('js/plans.js'), /onOpenExisting: \(id\) => location\.assign\(openExistingHref\(id\)\)/);
   assert.match(readWeb('js/mass.js'), /onOpenExisting\(document\.getElementById\('schedule-conflict'\), \(id\) => \{\s*if \(state\.dirty && !window\.confirm/);
   // A taken time disables the create and save buttons until it changes.
-  assert.match(readWeb('js/new-plan.js'), /submit\.disabled = taken !== null;/);
+  assert.match(readWeb('js/new-plan-form.js'), /submit\.disabled = taken !== null;/);
   assert.match(readWeb('js/mass.js'), /saveEl\.disabled = !plan \|\| !canEdit \|\| save\.disabled \|\| takenBy\(\) !== null;/);
 });
 
@@ -169,6 +171,6 @@ test('the broadcast colours follow the laptop theme tokens, and every label says
   // The labels this adds say "Holy Mass", never "Mass" alone.
   assert.match(ui.scheduleFieldsHtml(), /<label class="bc-label" for="schedule-time">Holy Mass time<\/label>/);
   assert.match(ui.switcherHtml([ui.asSchedulePlan(listed(SIX, '', ''))], SIX, { pathOf: () => '' }), /Holy Masses on this day/);
-  assert.match(readWeb('plan/new.html'), /class="bc-eyebrow">Holy Mass schedule</);
+  assert.match(readWeb('js/new-plan-form.js'), /class="bc-eyebrow">Holy Mass schedule</);
   assert.match(readWeb('plan/mass.html'), /aria-label="Holy Mass time and language"/);
 });

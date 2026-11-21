@@ -155,3 +155,14 @@ CREATE TABLE rate_limits (
   window_start  TIMESTAMPTZ NOT NULL,
   hits          INTEGER NOT NULL
 );
+
+-- The web Planner's day memos: one short note per church per calendar day, shown in both calendars (server/lib/day-notes.js).
+-- A database created before it needs server/db/migrations/2026-11-22-calendar-day-notes.sql.
+CREATE TABLE calendar_day_notes (
+  church_id       UUID NOT NULL REFERENCES churches(id) ON DELETE CASCADE,
+  liturgical_date DATE NOT NULL,
+  note            TEXT NOT NULL CHECK (char_length(note) BETWEEN 1 AND 200),
+  updated_at      TIMESTAMPTZ NOT NULL,
+  updated_by      UUID REFERENCES users(id) ON DELETE SET NULL,
+  PRIMARY KEY (church_id, liturgical_date)
+);

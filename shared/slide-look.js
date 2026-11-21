@@ -10,6 +10,7 @@
 import { SLIDE_FONT_SCALES } from './projector-settings.js';
 import { TEXT_CASES, textCaseOf } from './text-fit.js';
 import { BACKDROP_THEMES } from './stage-cue.js';
+import { applyPlanAppearance } from './plan-appearance.js';
 
 /** The alignments a slide can take. */
 export const SLIDE_ALIGNS = Object.freeze(['left', 'center', 'right']);
@@ -40,22 +41,44 @@ export function sanitizeSlideLook(look) {
 /** True when the look overrides anything. */
 export const hasSlideLook = (look) => sanitizeSlideLook(look) !== null;
 
+/** A text scale from the settings: any size from 50% to 250% (a plan's 85% or 115% included), else 100%. */
+const settingsScale = (scale) => (Number.isFinite(scale) && scale >= SLIDE_FONT_SCALES[0] && scale <= SLIDE_FONT_SCALES[SLIDE_FONT_SCALES.length - 1] ? scale : 1);
+
 /**
- * The formatting a slide is drawn with: its own look over the projector settings. `globalBackdrop` is the quick theme the Live slide
- * background shows now (backdropThemeOf), or null. `hasOverride` lights the editor's Reset Override.
+ * The formatting a slide is drawn with, in strict priority: its own look (Go Live "This Slide"), then the loaded plan's appearance when its
+ * Custom Plan Look is on (`planAppearance`, shared/plan-appearance.js), then the projector settings (the Global Appearance). `globalBackdrop`
+ * is the quick theme the Live slide background shows now (backdropThemeOf), or null. `hasOverride` lights the editor's Reset Override.
  */
-export function resolveSlideLook(settings, look, globalBackdrop = null) {
+export function resolveSlideLook(settings, look, globalBackdrop = null, planAppearance = null) {
   const own = sanitizeSlideLook(look) ?? {};
-  const align = SLIDE_ALIGNS.includes(settings?.slideAlign) ? settings.slideAlign : null;
+  const base = applyPlanAppearance(settings, planAppearance);
+  const align = SLIDE_ALIGNS.includes(base?.slideAlign) ? base.slideAlign : null;
   return {
-    textCase: own.textCase ?? textCaseOf(settings?.textCase),
+    textCase: own.textCase ?? textCaseOf(base?.textCase),
     align: own.align ?? align,
-    fontScale: own.fontScale ?? (SLIDE_FONT_SCALES.includes(settings?.slideFontScale) ? settings.slideFontScale : 1),
-    maxFit: own.maxFit ?? settings?.edgeToEdge === true,
+    fontScale: own.fontScale ?? settingsScale(base?.slideFontScale),
+    maxFit: own.maxFit ?? base?.edgeToEdge === true,
     backdrop: own.backdrop ?? globalBackdrop ?? null,
     hasOverride: Object.keys(own).length > 0,
   };
 }
+
+/**
+ * The on-air looks without those of one plan's slides: a Holy Mass plan's are keyed by its plan id (massLookKey); a Praise & Worship plan's
+ * by its cards (pwLookKey), which belong to the one Praise & Worship plan loaded. The same object back when there was nothing to drop.
+ */
+export function withoutPlanSlideLooks(looks, kind, planId) {
+  const prefix = kind === 'mass' ? `mass:${planId ?? 'none'}:` : kind === 'pw' ? 'pw:' : null;
+  if (!prefix || !looks) return looks ?? {};
+  const keys = Object.keys(looks).filter((k) => k.startsWith(prefix));
+  if (keys.length === 0) return looks;
+  const next = { ...looks };
+  for (const k of keys) delete next[k];
+  return next;
+}
+
+/** How many on-air looks one plan's slides have (see withoutPlanSlideLooks). */
+export const planSlideLookCount = (looks, kind, planId) => Object.keys(looks ?? {}).length - Object.keys(withoutPlanSlideLooks(looks, kind, planId)).length;
 
 /**
  * One formatting change from the editor. In "This Slide" scope it goes into the slide's look (`look`); in "All Slides" scope it is a change

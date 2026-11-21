@@ -20,22 +20,27 @@
 
   <div data-sidebar="plans"></div>
 
-  <main class="main" style="flex: 999 1 560px; min-width: 0; padding: 32px 40px; display: flex; flex-direction: column; gap: 24px">
+  <main class="main planner-main">
 
-    <header style="display: flex; flex-direction: column; gap: 16px">
-      <a href="../index.html" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
-        All plans
-      </a>
+    <div data-planner-header></div>
+
+    <header class="pe-head" style="display: flex; flex-direction: column; gap: 16px">
       <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 20px">
-        <div style="display: flex; flex-direction: column; gap: 8px">
+        <div class="pe-title-block">
           <span id="eyebrow" class="eyebrow"></span>
-          <h1 id="title" class="page-title"></h1>
+          <input id="plan-title" class="pe-title-input" type="text" maxlength="120" autocomplete="off" spellcheck="false" aria-label="Plan title" disabled>
+          <div class="pe-badges">
+            <span id="date-badge" class="pe-badge"></span>
+            <span class="pe-badge is-kind">Holy Mass</span>
+            <span id="fill-badge" class="pe-badge is-progress" aria-live="polite"></span>
+          </div>
         </div>
         <div class="plan-actions" style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
           <span class="plan-status" style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--pill-text); font-weight: 600"><span style="width: 7px; height: 7px; border-radius: 50%; background: var(--pill-text)"></span><span id="status" aria-live="polite"></span></span>
+          <button id="duplicate" type="button" class="btn-quiet pe-action">Duplicate Plan</button>
+          <button id="delete" type="button" class="btn-quiet pe-action is-danger">Delete Plan</button>
           <button id="discard" type="button" class="btn-quiet" style="height: 44px; padding: 0 18px; font-size: 14px; font-weight: 600">Discard changes</button>
-          <button id="save" type="button" class="btn-primary" style="height: 44px; padding: 0 22px; font-size: 14px; font-weight: 700">Save plan</button>
+          <button id="save" type="button" class="btn-primary" title="Ctrl + S, or Cmd + S on a Mac" aria-keyshortcuts="Control+S Meta+S" style="height: 44px; padding: 0 22px; font-size: 14px; font-weight: 700">Save plan</button>
         </div>
       </div>
       <p id="view-only" hidden style="margin: 0; font-size: 13px; color: var(--muted)"></p>
@@ -64,5 +69,17 @@
     </div>
   </main>
 </div>
+
+<dialog id="delete-dialog" class="modal" aria-labelledby="delete-title">
+  <div class="dialog-body">
+    <h2 id="delete-title">Delete this plan?</h2>
+    <p id="delete-text"></p>
+    <p id="delete-error" class="form-error" role="alert"></p>
+    <div class="dialog-actions">
+      <button type="button" id="delete-cancel" class="quiet" autofocus>Keep plan</button>
+      <button type="button" id="delete-confirm" class="danger">Delete plan</button>
+    </div>
+  </div>
+</dialog>
 </body>
 </html>

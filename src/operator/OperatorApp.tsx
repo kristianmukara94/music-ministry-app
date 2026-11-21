@@ -42,6 +42,7 @@ import { LiveNoticeBanner } from '../live/LiveNoticeBanner';
 import { LicenseBanner } from '../live/LicenseBanner';
 import { startLicenseWatch } from '../live/license';
 import { watchPlanSlotTitle } from '../planner/plan-api';
+import { watchPlanAppearance } from '../planner/planAppearanceStore';
 
 function useGlobalHotkeys() {
   useEffect(() => {
@@ -157,6 +158,7 @@ export function OperatorApp() {
   useEffect(() => watchProjectorPromptChoice(), []);
   // The loaded Holy Mass plan's own choice for slot titles on the projector.
   useEffect(() => watchPlanSlotTitle(), []);
+  useEffect(() => watchPlanAppearance(), []);
   useEffect(() => watchRemoteSteps(), []);
   useEffect(() => watchRemoteCommands(), []);
   // A song or prayer on the projector follows its edits, and the operator is told when it was deleted.

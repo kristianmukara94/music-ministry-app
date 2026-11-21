@@ -1,0 +1,263 @@
+// The web Planner end to end, against a real Postgres (PGlite): a Holy Mass made from a calendar day, a second Holy Mass on the same day, a
+// song and slot notes chosen and the title changed in the Plan Editor, the calendar's progress pills from the plan list, and the church
+// laptop's pull and push carrying all of it. Also the calendar's day memos. Synthetic names only.
+// Run with: node --test server/test/web-planner-roundtrip.test.mjs
+import { test, before, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { PGlite } from '@electric-sql/pglite';
+import { createApi } from '../lib/handlers.js';
+import { createPlanEditingApi } from '../lib/plan-editing.js';
+import { createPlanSyncApi } from '../lib/plan-sync.js';
+import { createDayNotesApi, MAX_DAY_NOTE } from '../lib/day-notes.js';
+import { hashPassword, hashToken } from '../lib/auth.js';
+import { tagFromQuery } from '../lib/db.js';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.join(here, '..', '..');
+const SCHEMA = fs.readFileSync(path.join(here, '..', 'db', 'schema.sql'), 'utf8');
+const MIGRATION = fs.readFileSync(path.join(here, '..', 'db', 'migrations', '2026-11-22-calendar-day-notes.sql'), 'utf8');
+const web = (file) => import(pathToFileURL(path.join(root, 'web', 'js', file)).href);
+const model = await web('plan-model.js');
+const cal = await web('planner-calendar.js');
+const form = await web('new-plan-form.js');
+const { MASS_PLAN } = await web('sample-data.js');
+const { requiredSlotsFor } = await web('liturgical-calendar.js');
+
+const SECRET = randomBytes(32).toString('hex');
+const PASSWORD = `Test-${randomBytes(16).toString('base64url')}`;
+const CHURCH_A = '00000000-0000-4000-8000-00000000000a';
+const CHURCH_B = '00000000-0000-4000-8000-00000000000b';
+const SONG = randomUUID();
+const DAY = '2026-11-08';
+const ROWS = model.massRows(MASS_PLAN);
+const rowOfSlot = (n) => ROWS.find((r) => r.slot === n);
+
+let pg;
+let clock;
+let laptop;
+const sql = tagFromQuery((text, params) => pg.query(text, params));
+const transaction = (work) => pg.transaction((tx) => work(tagFromQuery((t, v) => tx.query(t, v))));
+const api = () => createApi({ sql, secret: SECRET, now: () => clock });
+const editing = () => createPlanEditingApi({ sql, transaction, secret: SECRET, now: () => clock });
+const sync = () => createPlanSyncApi({ sql, transaction, secret: SECRET, now: () => clock });
+const memos = () => createDayNotesApi({ sql, secret: SECRET, now: () => clock });
+const body = (res) => JSON.parse(res.body);
+
+async function user(church, username, role) {
+  const rows = await pg.query(
+    `INSERT INTO users (id, church_id, username, display_name, role, password_hash, must_change_password)
+     VALUES (gen_random_uuid(), $1, $2, $2, $3, $4, false) RETURNING id`,
+    [church, username, role, await hashPassword(PASSWORD)],
+  );
+  return rows.rows[0].id;
+}
+
+async function cookieFor(username, churchCode = 'K7QM-4XD2') {
+  const res = await api().login({ httpMethod: 'POST', headers: {}, body: JSON.stringify({ username, password: PASSWORD, churchCode }) });
+  assert.equal(res.statusCode, 200, `${username} signs in`);
+  return res.headers['Set-Cookie'].split(';')[0];
+}
+
+const listPlans = async (cookie) => body(await api().plans({ httpMethod: 'GET', headers: { cookie } })).plans;
+const getPlan = async (cookie, id) => body(await editing().getPlan({ httpMethod: 'GET', headers: { cookie }, queryStringParameters: { id } }));
+const savePlan = (cookie, payload) => editing().savePlan({ httpMethod: 'POST', headers: { cookie }, body: JSON.stringify(payload) });
+const createPlan = (cookie, payload) => sync().createPlan({ httpMethod: 'POST', headers: { cookie }, body: JSON.stringify(payload) });
+const pull = async () => body(await sync().pullPlans({ httpMethod: 'GET', headers: { authorization: `Bearer ${laptop}` }, queryStringParameters: null }));
+const memoGet = (cookie, query = null) => memos().dayNotes({ httpMethod: 'GET', headers: { cookie }, queryStringParameters: query });
+const memoPost = (cookie, payload) => memos().dayNotes({ httpMethod: 'POST', headers: { cookie }, body: JSON.stringify(payload) });
+
+before(async () => {
+  pg = new PGlite();
+  await pg.exec(SCHEMA);
+});
+
+beforeEach(async () => {
+  clock = new Date('2026-11-02T12:00:00Z');
+  await pg.exec('TRUNCATE rate_limits, audit_log, device_tokens, sessions, users, plans, songs, devices, licences, setup_keys, churches CASCADE;');
+  await pg.query(`INSERT INTO churches (id, display_code, name) VALUES ($1, 'K7QM-4XD2', 'Sample Parish A'), ($2, 'R2VT-9HJ6', 'Sample Parish B')`, [CHURCH_A, CHURCH_B]);
+  const planner = await user(CHURCH_A, 'planner', 'planner');
+  await user(CHURCH_A, 'viewer', 'viewer');
+  await user(CHURCH_B, 'otherplanner', 'planner');
+  laptop = randomBytes(32).toString('base64url');
+  await pg.query(`INSERT INTO device_tokens (token_hash, church_id, user_id, device_name) VALUES ($1, $2, $3, 'Sample booth')`, [hashToken(laptop, SECRET), CHURCH_A, planner]);
+  await pg.query(
+    `INSERT INTO songs (id, church_id, title, category, language, musical_key, updated_at) VALUES ($1, $2, 'Sample Song Title', 'Entrance Procession', 'English', 'D', now())`,
+    [SONG, CHURCH_A],
+  );
+});
+
+/** A Holy Mass made as the calendar's New Plan modal makes it: named after the liturgical day, with its time and language. */
+async function createFromDay(cookie, { massTime, massLanguage }) {
+  const id = randomUUID();
+  const request = model.newPlanRequest({ name: form.dayNameOf(DAY), date: DAY, kind: 'mass', language: 'EN', massTime, massLanguage }, id);
+  const res = await createPlan(cookie, request);
+  assert.equal(res.statusCode, 201, res.body);
+  return body(res).plan;
+}
+
+test('a Holy Mass made from a calendar day, then a second one that day: both on the Liturgical Calendar, listed in the order they are celebrated', async () => {
+  const cookie = await cookieFor('planner');
+  const late = await createFromDay(cookie, { massTime: '9:30 AM', massLanguage: 'English' });
+  assert.equal(late.name, '32nd Sunday in Ordinary Time');
+  assert.equal(late.date, DAY);
+  const early = await createFromDay(cookie, { massTime: '6:00 AM', massLanguage: 'Cebuano' });
+  // The same time again is refused, and the server names the Holy Mass already there.
+  const clash = await createPlan(cookie, model.newPlanRequest({ name: 'Sample Plan Title', date: DAY, kind: 'mass', language: 'EN', massTime: '06:00' }, randomUUID()));
+  assert.equal(clash.statusCode, 409);
+  assert.equal(body(clash).conflict.id, early.id);
+
+  const plans = await listPlans(cookie);
+  assert.deepEqual(plans.map((p) => p.filledSlots), [[], []], 'nothing filled yet');
+  const month = cal.calendarMonth({ kind: 'mass', month: '2026-11', plans });
+  const cell = month.weeks.flat().find((c) => c.iso === DAY);
+  const total = requiredSlotsFor(DAY).length;
+  assert.deepEqual(cell.badges.map((b) => [b.label, b.count]), [['6:00 AM · CEB', `0/${total}`], ['9:30 AM · EN', `0/${total}`]]);
+  const click = cal.dayClick('mass', plans, DAY, true);
+  assert.equal(click.action, 'pick', 'Available Holy Mass Schedules');
+  assert.deepEqual(click.plans.map((p) => p.id), [early.id, late.id]);
+  // The Praise & Worship Calendar does not show them.
+  assert.equal(cal.dayClick('pw', plans, DAY, true).action, 'create');
+});
+
+test('the Plan Editor: a song and its cue, a note-only slot and a new title are saved, counted on the calendar and pulled by the laptop', async () => {
+  const cookie = await cookieFor('planner');
+  const created = await createFromDay(cookie, { massTime: '9:30 AM', massLanguage: 'English' });
+  const { plan, canEdit } = await getPlan(cookie, created.id);
+  assert.equal(canEdit, true);
+
+  // What the editor does: the Entrance Hymn gets the song with a musician cue; the Confiteor gets only a note.
+  const state = { ...model.massFromItems(plan.items, ROWS), contentHubItems: [] };
+  const entrance = rowOfSlot(1);
+  const confiteor = rowOfSlot(2);
+  state.segments = model.withEntry(state.segments, entrance.id, { songId: SONG, contentType: 'song' });
+  state.notes[entrance.id] = 'Sample Slot Note';
+  state.notes[confiteor.id] = 'Sample Musician Cue';
+  const payload = model.savePayload(plan, model.massToItems(state, ROWS), { name: '  Sample Plan Title ', language: 'EN', massTime: '9:30 AM', massLanguage: 'English' });
+  assert.equal(payload.name, 'Sample Plan Title');
+
+  clock = new Date('2026-11-02T12:05:00Z');
+  const saved = await savePlan(cookie, payload);
+  assert.equal(saved.statusCode, 200, saved.body);
+  assert.equal(body(saved).name, 'Sample Plan Title');
+
+  // The calendar: the new title, and two slots filled.
+  const listed = (await listPlans(cookie)).find((p) => p.id === created.id);
+  assert.equal(listed.name, 'Sample Plan Title');
+  assert.deepEqual(listed.filledSlots, [1, 2]);
+  assert.equal(cal.massBadge(listed, DAY).count, `2/${requiredSlotsFor(DAY).length}`);
+
+  // The editor reads it back as it was saved.
+  const reread = await getPlan(cookie, created.id);
+  const back = model.massFromItems(reread.plan.items, ROWS);
+  assert.equal(model.slotEntries(back.segments[entrance.id])[0].songId, SONG);
+  assert.equal(back.notes[entrance.id], 'Sample Slot Note');
+  assert.equal(back.notes[confiteor.id], 'Sample Musician Cue');
+
+  // The laptop's next pull carries the title, the schedule, the song in slot 1 with its cue, and the note in slot 2.
+  const pulled = (await pull()).plans.find((p) => p.id === created.id);
+  assert.equal(pulled.name, 'Sample Plan Title');
+  assert.equal(pulled.date, DAY);
+  assert.equal(pulled.massTime, '9:30 AM');
+  assert.equal(pulled.massLanguage, 'English');
+  const song = pulled.items.find((i) => i.slot === 1);
+  assert.equal(song.songId, SONG);
+  assert.equal(song.kind, 'song');
+  assert.equal(song.note, 'Sample Slot Note');
+  assert.equal(pulled.items.find((i) => i.slot === 2).note, 'Sample Musician Cue');
+
+  // The laptop sends the plan back with a new key for the song and no notes (it keeps one item per slot): the web's notes stay.
+  clock = new Date('2026-11-02T12:10:00Z');
+  const pushed = await sync().pushPlans({
+    httpMethod: 'POST',
+    headers: { authorization: `Bearer ${laptop}` },
+    body: JSON.stringify({ plans: [{ id: created.id, name: 'Sample Plan Title', date: DAY, kind: 'mass', baseUpdatedAt: pulled.updatedAt, massTime: '9:30 AM', massLanguage: 'English', items: [{ key: 'laptop-1', group: 'introductory', order: 1, kind: 'song', songId: SONG, slot: 1 }, { key: pulled.items.find((i) => i.slot === 2).key, group: 'introductory', order: 2, kind: 'rite', slot: 2 }] }] }),
+  });
+  assert.equal(body(pushed).results[0].status, 'accepted', pushed.body);
+  const after = (await pull()).plans.find((p) => p.id === created.id);
+  assert.equal(after.items.find((i) => i.slot === 1).note, 'Sample Slot Note', 'the cue on the song survives a laptop push');
+  assert.equal(after.items.find((i) => i.slot === 2).note, 'Sample Musician Cue');
+});
+
+test('a title is checked like a new plan\'s, a viewer cannot save one, and a save without a title keeps the name', async () => {
+  const cookie = await cookieFor('planner');
+  const created = await createFromDay(cookie, { massTime: '', massLanguage: '' });
+  const { plan } = await getPlan(cookie, created.id);
+  const blank = await savePlan(cookie, { id: plan.id, baseUpdatedAt: plan.updatedAt, items: [], name: '   ' });
+  assert.equal(blank.statusCode, 400);
+  assert.match(body(blank).error, /1 to 120 characters/);
+  const long = await savePlan(cookie, { id: plan.id, baseUpdatedAt: plan.updatedAt, items: [], name: 'x'.repeat(121) });
+  assert.equal(long.statusCode, 400);
+  const viewer = await savePlan(await cookieFor('viewer'), { id: plan.id, baseUpdatedAt: plan.updatedAt, items: [], name: 'Sample Plan Title' });
+  assert.equal(viewer.statusCode, 403);
+  clock = new Date('2026-11-02T12:05:00Z');
+  const kept = await savePlan(cookie, { id: plan.id, baseUpdatedAt: plan.updatedAt, items: [] });
+  assert.equal(kept.statusCode, 200);
+  assert.equal(body(kept).name, '32nd Sunday in Ordinary Time');
+  assert.equal((await pg.query('SELECT name FROM plans WHERE id = $1', [plan.id])).rows[0].name, '32nd Sunday in Ordinary Time');
+});
+
+test('a Praise & Worship plan made from its calendar shows its item count, and its rename reaches the laptop', async () => {
+  const cookie = await cookieFor('planner');
+  const id = randomUUID();
+  const res = await createPlan(cookie, model.newPlanRequest({ name: 'Sample Praise Night', date: DAY, kind: 'pw' }, id));
+  assert.equal(res.statusCode, 201);
+  const { plan } = await getPlan(cookie, id);
+  clock = new Date('2026-11-02T12:05:00Z');
+  const items = [{ key: 'opening', group: 'opening', order: 1, kind: 'song', songId: SONG, slotId: 'opening', note: 'Sample Musician Cue' }];
+  assert.equal((await savePlan(cookie, { id, baseUpdatedAt: plan.updatedAt, items, name: 'Sample Renamed Night' })).statusCode, 200);
+  const listed = (await listPlans(cookie)).find((p) => p.id === id);
+  assert.equal('filledSlots' in listed, false, 'only Holy Mass plans carry slots');
+  const cell = cal.calendarMonth({ kind: 'pw', month: '2026-11', plans: [listed] }).weeks.flat().find((c) => c.iso === DAY);
+  assert.deepEqual(cell.badges.map((b) => [b.label, b.count]), [['Sample Renamed Night', '1']]);
+  assert.equal(cal.dayClick('pw', [listed], DAY, true).action, 'open');
+  const pulled = (await pull()).plans.find((p) => p.id === id);
+  assert.equal(pulled.name, 'Sample Renamed Night');
+  assert.equal(pulled.items[0].note, 'Sample Musician Cue');
+});
+
+test('day memos: planners set and remove them, everyone in the church reads them, other churches never see them', async () => {
+  const planner = await cookieFor('planner');
+  const viewer = await cookieFor('viewer');
+  const other = await cookieFor('otherplanner', 'R2VT-9HJ6');
+
+  const set = await memoPost(planner, { date: DAY, note: '  Sample\nmemo   text  ' });
+  assert.equal(set.statusCode, 200);
+  assert.equal(body(set).note, 'Sample memo text', 'one line, spaces collapsed');
+  await memoPost(planner, { date: '2026-12-06', note: 'Sample Liturgical Day memo' });
+  assert.deepEqual(body(await memoGet(viewer)), { notes: { [DAY]: 'Sample memo text', '2026-12-06': 'Sample Liturgical Day memo' }, available: true });
+  assert.deepEqual(body(await memoGet(viewer, { from: '2026-11-01', to: '2026-11-30' })).notes, { [DAY]: 'Sample memo text' });
+  assert.deepEqual(body(await memoGet(other)).notes, {});
+
+  // Changing it keeps one memo for the day; a blank one removes it.
+  await memoPost(planner, { date: DAY, note: 'Sample updated memo' });
+  assert.equal(body(await memoGet(planner)).notes[DAY], 'Sample updated memo');
+  assert.equal(body(await memoPost(planner, { date: DAY, note: '   ' })).note, '');
+  assert.equal(DAY in body(await memoGet(planner)).notes, false);
+
+  assert.equal((await memoPost(viewer, { date: DAY, note: 'Sample memo' })).statusCode, 403);
+  assert.equal((await memoPost(planner, { date: '2026-02-30', note: 'Sample memo' })).statusCode, 400);
+  assert.equal((await memoPost(planner, { date: DAY, note: 'x'.repeat(MAX_DAY_NOTE + 1) })).statusCode, 400);
+  assert.equal((await memoPost(planner, { date: DAY })).statusCode, 400);
+  assert.equal((await memos().dayNotes({ httpMethod: 'GET', headers: {} })).statusCode, 401);
+  assert.equal((await memos().dayNotes({ httpMethod: 'DELETE', headers: { cookie: planner } })).statusCode, 405);
+});
+
+test('a database without the memo table still shows the calendar: no memos, and a save says why; the migration adds it', async () => {
+  const planner = await cookieFor('planner');
+  await pg.exec('DROP TABLE calendar_day_notes');
+  try {
+    assert.deepEqual(body(await memoGet(planner)), { notes: {}, available: false });
+    const refused = await memoPost(planner, { date: DAY, note: 'Sample memo' });
+    assert.equal(refused.statusCode, 503);
+    assert.match(body(refused).error, /cannot be saved yet/);
+  } finally {
+    // The migration file creates it, and running it twice is safe.
+    await pg.exec(MIGRATION);
+    await pg.exec(MIGRATION);
+  }
+  assert.equal((await memoPost(planner, { date: DAY, note: 'Sample memo' })).statusCode, 200);
+});

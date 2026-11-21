@@ -65,7 +65,8 @@ test('the header and footer badges are pinned to the top and bottom edges, above
 
 test('the preview reads the scale from the store, and passes it into the slide, so Current and Next re-render at once', () => {
   const next = read('src/praise-worship/CurrentNextPreview.tsx');
-  assert.match(next, /const settingsScale = useLive\(\(s\) => s\.state\.settings\.slideFontScale\);/);
+  assert.match(next, /const settings = applyPlanAppearance\(useLive\(\(s\) => s\.state\.settings\), appearance\);/);
+  assert.match(next, /const settingsScale = settings\.slideFontScale;/);
   assert.match(next, /const slideScale = look\?\.fontScale \?\? settingsScale;/, 'under the slide’s own scale, when it has one');
   assert.match(next, /slideScale=\{slideScale\}/);
 });

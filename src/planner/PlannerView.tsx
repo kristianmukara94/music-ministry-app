@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
-import { CalendarDays, ClipboardList, Guitar, Lock } from 'lucide-react';
+import { CalendarDays, ClipboardList, Copy, Guitar, Lock } from 'lucide-react';
 import { monthGrid } from '../../shared/liturgical-calendar.js';
 import { DEFAULT_TEMPLATE, readiness } from '../../shared/pw.js';
 import { calendarForPlan, calendarPlans, type PlannerCalendar } from '../../shared/planner-calendars.js';
@@ -12,6 +12,8 @@ import { createSession, errorText, flushSave, openSession, readSession, refreshS
 import { MassPlanner, createMassPlan, templateFor, todayIn } from './MassPlanner';
 import { PlannerCalendarView, type CalendarMonth, type PlanKind, type PlanRef, type PwProgress } from './PlannerCalendarView';
 import { usePlannerT } from './strings';
+import { PlanAppearanceButton } from './PlanAppearance';
+import { NO_DRAG } from '../components/appRegion';
 import type { DayNotes, MassSchedule, PlanSummary } from './types';
 
 const monthOfIso = (iso: string): CalendarMonth => ({ year: Number(iso.slice(0, 4)), month: Number(iso.slice(5, 7)) - 1 });
@@ -190,6 +192,33 @@ export function PlannerView() {
     reloadLists();
   };
 
+  /**
+   * Duplicate: a copy of the open plan (its lineup and Plan Appearance) on the same day, opened in the Plan Editor. A Holy Mass copy has no
+   * time yet, since two Holy Masses on one day may not share a time.
+   */
+  const duplicatePlan = async () => {
+    if (!active) return;
+    setError(null);
+    try {
+      if (active.kind === 'mass') {
+        const copy = await bridge.plans.duplicate(active.id);
+        setMassPlans(await bridge.plans.list());
+        await openPlan({ kind: 'mass', id: copy.id });
+      } else {
+        await flushSave();
+        const copy = await bridge.pw.duplicateSession(active.id);
+        await refreshSessions();
+        await openPlan({ kind: 'pw', id: copy.id });
+      }
+    } catch (err) {
+      setError(errorText(err));
+    }
+  };
+
+  // The open plan's name, for the Plan Appearance drawer's header.
+  const pwSessionName = usePw((s) => s.session?.name);
+  const activeName = active?.kind === 'mass' ? massPlans.find((p) => p.id === active.id)?.name : active?.kind === 'pw' ? pwSessionName : undefined;
+
   // The open plan's day is marked only on the calendar that holds it.
   const selectedDate =
     active?.kind !== calendar
@@ -217,7 +246,22 @@ export function PlannerView() {
             <h1 className="mt-1 text-4xl leading-tight font-extrabold tracking-tight text-fg xl:text-[44px]">{title}</h1>
             <p className="mt-1 text-sm text-fg/70">{subtitle}</p>
           </div>
-          <div role="group" aria-label={t('viewSwitch')} className="ml-auto flex rounded-full border border-fg/15 bg-panel-2 p-1 shadow-inner shadow-black/20 backdrop-blur">
+          {/* The open plan's own tools: its default look for every slide (Plan Appearance), and Duplicate. Both kinds of plan have them. */}
+          {editorOpen && active && (
+            <div className="ml-auto flex flex-wrap items-center gap-2" style={NO_DRAG}>
+              <PlanAppearanceButton key={`${active.kind}:${active.id}`} kind={active.kind} planId={active.id} planName={activeName} />
+              <button
+                type="button"
+                onClick={() => void duplicatePlan()}
+                title={t('duplicate_plan_tip')}
+                className="inline-flex h-10 items-center gap-2 rounded-full border border-fg/20 bg-surface px-4 text-sm font-bold text-fg shadow-sm transition hover:border-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+              >
+                <Copy size={15} aria-hidden />
+                {t('duplicate_plan')}
+              </button>
+            </div>
+          )}
+          <div role="group" aria-label={t('viewSwitch')} className={`${editorOpen && active ? '' : 'ml-auto '}flex rounded-full border border-fg/15 bg-panel-2 p-1 shadow-inner shadow-black/20 backdrop-blur`}>
             <button
               type="button"
               aria-pressed={!editorOpen && calendar === 'mass'}

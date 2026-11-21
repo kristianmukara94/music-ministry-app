@@ -162,10 +162,12 @@ test('the editor draws the five sections as collapsible, slots first, and rememb
 
 // ---- Labels ----
 
-test('every label on the web portal says Holy Mass: the list tab, the plan rows, the form, the editor and the login page', () => {
-  assert.match(readWeb('js/plans.js'), /\{ key: 'mass', label: 'Holy Mass' \}/);
+test('every label on the web portal says Holy Mass: the list tab, the plan rows, the form, the editor and the login page', async () => {
+  // The Planner's tabs and calendar line, the plan cards, and the New Plan form (the page and the modal draw the same one).
+  assert.match(readWeb('js/planner-calendar.js'), /\{ key: 'mass', label: 'Liturgical Calendar', subtitle: 'Holy Mass plans on the liturgical calendar\.' \}/);
   assert.match(readWeb('js/plans.js'), /'Holy Mass plan'/);
-  assert.match(readWeb('plan/new.html'), /name="kind" value="mass"[\s\S]*?template-card-title">Holy Mass Plan</, 'the stored value is still mass');
+  const { newPlanFormHtml } = await web('new-plan-form.js');
+  assert.match(newPlanFormHtml(), /name="kind" value="mass"[\s\S]*?template-card-title">Holy Mass Plan</, 'the stored value is still mass');
   assert.match(readWeb('plan/mass.html'), /<title>Holy Mass plan · APCCMMA Web Planner<\/title>/);
   assert.match(readWeb('js/mass.js'), /\[dateLabel\(plan\.date\), state\.massTime/);
   assert.match(readWeb('js/mass.js'), /`HOLY MASS PLAN · \$\{when\}/);
@@ -179,6 +181,9 @@ test('no standalone "Mass" is left in the web portal\'s own text', () => {
     for (const entry of fs.readdirSync(path.join(root, 'web', dir), { withFileTypes: true })) {
       const rel = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(rel);
+      // The Ordo's official day titles ("…, Mass during the Day") are liturgical names, not the portal's own words. They are the laptop's
+      // own (web-planner-calendar.test.mjs keeps them equal), so they are left as the Ordo has them.
+      else if (rel === path.join('js', 'ordo-names.js')) continue;
       else if (/\.(html|js)$/.test(entry.name)) {
         fs.readFileSync(path.join(root, 'web', rel), 'utf8').split(/\r?\n/).forEach((line, i) => {
           if (/^\s*(\/\/|\*|\/\*)/.test(line)) return;

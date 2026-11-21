@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { Frame, MediaFrame, SlideLine } from '../../shared/live.js';
 import { presentedFrame, slotTitleShown } from '../../shared/live.js';
-import { OnAirLook, useOutput } from './outputState';
+import { OnAirLook, PlanLook, PlanLookOverride, useOutput } from './outputState';
+import { PlanBackgroundLayer, PlanTextLook } from './PlanLook';
+import { planAppearanceFor, planBackgroundShown, planReachesFrame, type PlanAppearance, type ResolvedPlanBackground } from '../../shared/plan-appearance.js';
 import { dispatch } from '../live/store';
 import { pwT } from '../../shared/pw-i18n.js';
 import { useUi } from '../state/ui';
@@ -355,10 +357,53 @@ function FittedPrayer({ label, text, className, style = null }: { label: string;
 }
 
 /**
- * One frame. `sharedBackground` is set by the projector when the Media Library's background is on screen behind every slide: the Live set's
- * slides then draw no background of their own, so it shows through them.
+ * The Plan Appearance `frame` is drawn with: the Planner's draft while its preview is open (PlanLookOverride), else the look of the plan loaded
+ * for Go Live that the slide belongs to (shared/plan-appearance.js), else null (the Global Appearance).
  */
-function FrameView({ frame: given, sharedBackground = false }: { frame: Frame; sharedBackground?: boolean }) {
+function useFramePlanLook(frame: Frame): PlanAppearance | null {
+  const override = useContext(PlanLookOverride);
+  const loaded = useOutput((s) => planAppearanceFor(s, frame));
+  return override !== undefined ? (planReachesFrame(frame) ? override : null) : loaded;
+}
+
+/**
+ * The look a frame brings or was given on air (Go Live "This Slide"): the editor's draft when one is open, else the saved one. Only its
+ * backdrop is read here, to tell whether the plan's background gives way to it.
+ */
+function useFrameOwnLook(frame: Frame): SlideLook | null {
+  const lookKey = useOutput((s) => slideLookKeyOf(s, frame));
+  const saved = useOutput((s) => slideLookAt(s, lookKey)) ?? frameOwnLook(frame);
+  const draft = useContext(DraftLook);
+  return draft === undefined ? saved : draft;
+}
+
+/**
+ * The plan background kept for a surface: the one to show now, or the last one shown, hidden, so a motion clip stays loaded while a slide that is
+ * not the plan's (the Welcome screen, a picture) is up, and carries on when the plan's slides come back.
+ */
+function useKeptPlanBackground(shown: ResolvedPlanBackground | null): ResolvedPlanBackground | null {
+  const kept = useRef<ResolvedPlanBackground | null>(null);
+  if (shown) kept.current = shown;
+  return kept.current;
+}
+
+/**
+ * One frame. `sharedBackground` is set by the projector when the Media Library's background is on screen behind every slide: the Live set's
+ * slides then draw no background of their own, so it shows through them. Inside it, every setting read is the slide's plan's (PlanLook), and the
+ * plan's weight, colour and shadow are drawn over its words.
+ */
+function FrameView({ frame, sharedBackground = false }: { frame: Frame; sharedBackground?: boolean }) {
+  const appearance = useFramePlanLook(frame);
+  return (
+    <PlanLook.Provider value={appearance}>
+      <PlanTextLook appearance={appearance}>
+        <FrameViewBody frame={frame} sharedBackground={sharedBackground} />
+      </PlanTextLook>
+    </PlanLook.Provider>
+  );
+}
+
+function FrameViewBody({ frame: given, sharedBackground = false }: { frame: Frame; sharedBackground?: boolean }) {
   // The slide's own look (the Output Preview Editor's "This Slide"), when it has one: each of its settings replaces the projector's for this
   // slide only. See shared/slide-look.js.
   const lookKey = useOutput((s) => slideLookKeyOf(s, given));
@@ -381,8 +426,10 @@ function FrameView({ frame: given, sharedBackground = false }: { frame: Frame; s
   // one of the console's quick themes, laid over that setting.
   const savedBackground = useOutput((s) => s.welcome.slideBackground);
   const ownBackground = welcomeBackground(own?.backdrop ? withBackdropTheme(savedBackground, own.backdrop) : savedBackground);
-  // A face that has media draws no colour of its own; the shared layer below already has its shade, so the face adds none.
-  const pwBackground = sharedBackground ? SEE_THROUGH : ownBackground;
+  // A face that has media draws no colour of its own; the shared layer below already has its shade, so the face adds none. The plan's own
+  // background is drawn the same way, under the face, by the surface (the projector, the preview), so a motion clip runs on across slides.
+  const planBackground = planBackgroundShown({ frame: given, appearance: useContext(PlanLook), ownBackdrop: own?.backdrop ?? null, libraryBackground: sharedBackground, backgroundEverywhere: sharedBackground });
+  const pwBackground = sharedBackground || planBackground ? SEE_THROUGH : ownBackground;
   // The title above a slide's text, on every kind of slide: the slot or reading banner, a prayer's or announcement's heading, a song's label. The
   // operator can hide it, for every slide or for one Holy Mass plan. A heading that is all the slide says stays, so hiding titles never blanks the screen.
   const showSlotTitle = useOutput(slotTitleShown);
@@ -893,6 +940,15 @@ export function FramePreview({ frame, counter, background, look }: { frame: Fram
   const shown = presentedFrame(frame, introSlideMode);
   return (
     <DraftLook.Provider value={look}>
+      <FramePreviewBody shown={shown} counter={counter} background={background} />
+    </DraftLook.Provider>
+  );
+}
+
+function FramePreviewBody({ shown, counter, background }: { shown: Frame; counter?: string; background?: { src: string; mediaType: 'image' | 'video' } | null }) {
+  // The slide's plan background (Plan Appearance), as the projector draws it: under the face, with its dim.
+  const planBackground = planBackgroundShown({ frame: shown, appearance: useFramePlanLook(shown), ownBackdrop: useFrameOwnLook(shown)?.backdrop ?? null, libraryBackground: Boolean(background) });
+  return (
     <OnAirLook.Provider value={false}>
       <div className="relative isolate h-full w-full overflow-hidden bg-stone-950 text-white select-none [container-type:size]">
         {/* A Media Library background, as the projector puts one behind the text: covering the slide, under its usual shade. */}
@@ -910,6 +966,7 @@ export function FramePreview({ frame, counter, background, look }: { frame: Fram
         {!background && (shown.kind === 'lyrics' || shown.kind === 'rosary') && shown.style?.bgColor && (
           <div className="absolute inset-0" style={{ backgroundColor: shown.style.bgColor }} />
         )}
+        {planBackground && <PlanBackgroundLayer background={planBackground} />}
         <div className="absolute inset-0 flex items-center justify-center">
           <FrameView frame={shown} />
         </div>
@@ -920,7 +977,6 @@ export function FramePreview({ frame, counter, background, look }: { frame: Fram
         )}
       </div>
     </OnAirLook.Provider>
-    </DraftLook.Provider>
   );
 }
 
@@ -986,10 +1042,24 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
 
   const ratio = aspectRatioOf(settings.aspect);
 
+  // The plan background (Plan Appearance) of the slide on screen. It replaces the Live slide background behind a Praise & Worship slide, and fills
+  // the screen behind a Holy Mass text slide; the slide's own backdrop and a Media Library background put live keep their place over it.
+  const shownPlanLook = useOutput((s) => planAppearanceFor(s, shownFrame));
+  const shownOwnLook = useFrameOwnLook(shownFrame);
+  const planBackground = planBackgroundShown({
+    frame: shownFrame,
+    appearance: shownPlanLook,
+    ownBackdrop: shownOwnLook?.backdrop ?? null,
+    libraryBackground: Boolean(background),
+    backgroundEverywhere: settings.backgroundEverywhere,
+  });
+  const keptPlanBackground = useKeptPlanBackground(planBackground);
+  const planVisible = Boolean(planBackground) && outputShowing && !blackedOut;
+
   // Auto-legibility: the background actually behind the text is measured, and its shade and the text shadow follow it.
   const welcomeMedia = welcomeBackground(useOutput((s) => s.welcome)).media;
   const welcomeTextColor = useOutput((s) => s.welcome.textColor);
-  const legibilityTarget = legibilitySource({ frame: shownFrame, background, slideMedia, welcomeMedia, sharedBackground, ratio });
+  const legibilityTarget = legibilitySource({ frame: shownFrame, background, slideMedia: planBackground ? null : slideMedia, welcomeMedia, sharedBackground, ratio });
   const textColor = (settings.advancedOutput && settings.textColor) || (shownFrame.kind === 'welcome' ? welcomeTextColor : frameTextColor(shownFrame));
   const plan = useBackgroundLegibility(legibilityTarget?.asset ?? null, textColor, settings.autoLegibility);
   const shadeChoice: ShadeChoice = settings.autoLegibility
@@ -1013,7 +1083,7 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
     <LegibilityContext.Provider value={shadeChoice}>
     <div className="relative isolate overflow-hidden [container-type:size]" style={{ ...stageStyle, ...legibleVars }}>
       {background && <BackgroundLayer media={background} onEnded={setEndedShowing} audible={!mirror && !embedded} />}
-      {slideMedia && <SlideBackgroundLayer media={slideMedia} visible={outputShowing && !blackedOut && shownFrame.kind === 'pw' && !sharedBackground} />}
+      {slideMedia && <SlideBackgroundLayer media={slideMedia} visible={outputShowing && !blackedOut && shownFrame.kind === 'pw' && !sharedBackground && !planBackground} />}
       {/* A song's or prayer's background colour fills the screen only when no motion background is playing, so it never covers the media. */}
       {!background && shownFrame.kind === 'idle' && <IdleScreen mode={settings.idle} media={settings.idleMedia} />}
       {shownFrame.kind === 'black' && <div className="absolute inset-0 bg-black" />}
@@ -1026,8 +1096,11 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
       {/* The operator's Text Contrast Dimmer from the Media Library: an even dark tint on top of the shade, behind the text. */}
       {background && backgroundTint(background) > 0 && <div aria-hidden className="absolute inset-0 bg-black" style={{ opacity: backgroundTint(background) }} />}
 
+      {/* The slide's plan background, with its dim: over the Live slide background it replaces, under the slide. Kept mounted between slides. */}
+      {keptPlanBackground && <PlanBackgroundLayer background={planBackground ?? keptPlanBackground} visible={planVisible} />}
+
       {/* A Praise & Worship slide draws its own colour inside its face, so with its words hidden the colour is kept here instead. */}
-      {textHidden && outputShowing && shownFrame.kind === 'pw' && !slideMedia && !sharedBackground && (
+      {textHidden && outputShowing && shownFrame.kind === 'pw' && !slideMedia && !sharedBackground && !planBackground && (
         <div aria-hidden className="absolute inset-0 bg-canvas" style={slideColor ? { backgroundColor: slideColor } : undefined} />
       )}
 

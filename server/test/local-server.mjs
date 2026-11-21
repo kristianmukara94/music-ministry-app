@@ -19,6 +19,7 @@ import { createPlanEditingApi } from '../lib/plan-editing.js';
 import { createSongsSyncApi } from '../lib/songs-sync.js';
 import { createPlanSyncApi } from '../lib/plan-sync.js';
 import { createThemeSyncApi } from '../lib/theme-sync.js';
+import { createDayNotesApi } from '../lib/day-notes.js';
 import { hashPassword, hashToken, setupKey } from '../lib/auth.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -108,6 +109,7 @@ const planEditing = createPlanEditingApi({ sql, transaction, secret: LOCAL_SECRE
 const songsSync = createSongsSyncApi({ sql, transaction, secret: LOCAL_SECRET });
 const planSync = createPlanSyncApi({ sql, transaction, secret: LOCAL_SECRET });
 const themeSync = createThemeSyncApi({ sql, secret: LOCAL_SECRET });
+const dayNotesApi = createDayNotesApi({ sql, secret: LOCAL_SECRET });
 const routes = {
   login: api.login, logout: api.logout, me: api.me, 'change-password': api.changePassword, plans: api.plans,
   'users-list': admin.list, 'users-create': admin.create, 'users-update': admin.update,
@@ -129,6 +131,7 @@ const routes = {
   'plan-sync-push': planSync.pushPlans,
   theme: themeSync.webTheme,
   'theme-sync': themeSync.laptopTheme,
+  'day-notes': dayNotesApi.dayNotes,
 };
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };

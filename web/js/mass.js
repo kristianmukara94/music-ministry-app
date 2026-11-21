@@ -2,7 +2,11 @@
 // drawer that fills the selected row. The structure comes from the template and mass-slots.js. What
 // is chosen, typed and noted comes from the saved plan on the server, and Save sends the whole plan in one request. Any row can hold any song
 // from the church's list, typed text and Content Hub entries, and more than one of them. A rite also takes an optional note for the operator.
-// Songs are chosen in the song picker, which opens on Holy Mass and on the row's own category.
+// Songs are chosen in the song picker, which opens on Holy Mass and on the row's own category. Every row also takes a note for the musicians and
+// the operator (key, capo, choir cue), can be cleared in one press, and has its items put in order with Move up and Move down.
+//
+// The page is the Planner's Plan Editor tab: the Planner header sits above it, the title is edited in place, the badges show the date, the
+// template and how many of the slots the day needs are filled, and Duplicate Plan and Delete Plan sit beside Save.
 import { MASS_PLAN } from './sample-data.js';
 import { SLOT_COUNT } from './mass-slots.js';
 import { MASS_LANGUAGES, languageName, massLanguageOf, sectionName, slotName } from './mass-language.js';
@@ -11,6 +15,9 @@ import { asSchedulePlan, conflictIn, mountScheduleFields, onOpenExisting, openEx
 import { esc, mountSidebar } from './shell.js';
 import { guard } from './auth.js';
 import { getPlan, listPlans, listSongs, savePlan, watchSongList } from './plan-api.js';
+import { calendarHref, lastPlan, mountPlannerHeader, newPlanFlowHref, rememberPlan } from './planner-header.js';
+import { massProgress } from './planner-calendar.js';
+import { deletePlanById, deleteWarning, duplicatePlanById } from './plan-actions.js';
 import { usedHubIds } from './content-hub.js';
 import { entryListHtml, entrySummaryHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
 import { mountSongPicker, resetSongPickers } from './song-picker.js';
@@ -28,12 +35,19 @@ import {
   statusText,
   withEntry,
   withEntryKey,
+  withEntryMoved,
   withoutEntry,
+  withoutEntries,
   editorPathFor,
+  checkPlanName,
+  shortDate,
 } from './plan-model.js';
 
 mountSidebar();
 
+const ROOT = document.documentElement.dataset.base ?? '';
+const header = { setSubtitle() {} };
+const titleInput = document.getElementById('plan-title');
 const planId = new URLSearchParams(location.search).get('id');
 const SECTIONS = massSections(MASS_PLAN);
 const ROWS = SECTIONS.flatMap((section) => section.rows);
@@ -101,6 +115,8 @@ function fresh(saved) {
     // The language its readings and responses are in (EN, TL, CEB), and its Holy Mass schedule as the laptop keeps it: the time as typed
     // ("6:00 AM") and the schedule language ('English', 'Cebuano', 'Tagalog' or the parish's own), '' for none.
     language: massLanguageOf(saved?.language),
+    // The plan's title as it is being edited; saved with the plan.
+    name: saved?.name ?? plan?.name ?? '',
     massTime: saved?.massTime ?? '',
     massLanguage: saved?.massLanguage ?? '',
     dirty: false,
@@ -146,8 +162,19 @@ function renderHeader() {
   const readings = steps.filter((s) => s.kind === 'reading');
   const when = plan ? [dateLabel(plan.date), state.massTime].filter(Boolean).join(' · ') : '';
   document.getElementById('eyebrow').textContent = plan ? `HOLY MASS PLAN · ${when} · ${languageName(state.language).toUpperCase()}` : 'HOLY MASS PLAN';
-  document.getElementById('title').textContent = plan ? plan.name : 'No plan open';
-  document.title = `${plan ? plan.name : 'Holy Mass plan'} · APCCMMA Web Planner`;
+  // The title is edited in place; it is not redrawn while it is being typed in.
+  if (document.activeElement !== titleInput) titleInput.value = plan ? state.name : 'No plan open';
+  titleInput.disabled = !plan || !canEdit;
+  document.getElementById('date-badge').textContent = plan ? shortDate(plan.date) : '';
+  const progress = plan ? massProgress({ filledSlots: filledSlotNumbers() }, plan.date) : null;
+  const fill = document.getElementById('fill-badge');
+  fill.textContent = progress ? `${progress.done} / ${progress.total} slots filled` : '';
+  fill.classList.toggle('is-ready', Boolean(progress?.ready));
+  fill.title = 'The slots this day needs, as the laptop counts them: every slot that is not optional, and on a weekday not the parts said only on Sundays and solemnities.';
+  document.getElementById('duplicate').disabled = !plan || !canEdit || state.saving;
+  document.getElementById('delete').disabled = !plan || !canEdit || state.saving;
+  header.setSubtitle(plan ? [state.name || plan.name, shortDate(plan.date), state.massTime].filter(Boolean).join(' · ') : 'Open a plan from a calendar to edit it.');
+  document.title = `${plan ? state.name || plan.name : 'Holy Mass plan'} · APCCMMA Web Planner`;
   document.getElementById('status').textContent = plan ? statusText({ dirty: state.dirty, error: state.error }) : state.error || 'Not loaded';
   document.getElementById('songs-label').textContent = `${songSteps.filter((s) => s.value).length} of ${songSteps.length} chosen`;
   document.getElementById('readings-label').textContent = `${readings.filter((s) => s.value).length} of ${readings.length} entered`;
@@ -163,6 +190,11 @@ function renderHeader() {
   note.textContent = VIEW_ONLY;
   note.hidden = !plan || canEdit;
   renderDetails();
+}
+
+/** The slot numbers this plan has an item in, as the server and the laptop count them: a slot with a song, text or a note. */
+function filledSlotNumbers() {
+  return ROWS.filter((r) => r.slot && (slotEntries(state.segments[r.id]).length || (state.notes[r.id] ?? '').trim())).map((r) => r.slot);
 }
 
 /** The Holy Mass already at this plan's typed time on its day, or null. */
@@ -182,7 +214,7 @@ function renderSwitcher() {
   const root = document.documentElement.dataset.base ?? '';
   nav.innerHTML = switcherHtml(day, plan.id, {
     pathOf: (p) => `${root}${editorPathFor({ id: p.id, kind: 'mass' })}`,
-    addHref: canEdit ? `new.html?date=${encodeURIComponent(plan.date)}&kind=mass` : null,
+    addHref: canEdit ? newPlanFlowHref({ kind: 'mass', date: plan.date }, root) : null,
   });
 }
 
@@ -252,6 +284,7 @@ function rowHtml(r) {
                 </span>
                 <span style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 3px">
                   <span style="font-size:14px;line-height:1.4;${r.value ? 'color:var(--text);font-weight:600' : 'color:var(--muted)'}">${r.value ? entrySummaryHtml(r.entries, { tags: r.entries.length > 1 }) : r.kind === 'rite' ? '' : 'Nothing chosen yet'}</span>
+                  ${state.notes[r.id] ? `<span class="slot-note-line"><span class="sr-only">Note: </span>${esc(state.notes[r.id])}</span>` : ''}
                 </span>
                 <span class="editor-item-actions" style="flex: 0 0 auto; display: inline-flex">${chip}</span>
                 <button type="button" data-pick="${esc(r.id)}" aria-pressed="${selected}" ${DISABLED(canEdit)} class="btn-choose ${needs ? BTN_PRIMARY : BTN_QUIET}" style="height:36px;padding:0 14px;font-size:13px;font-weight:700">${btnLabel}</button>
@@ -311,14 +344,20 @@ function addBody(cur) {
   return `<div style="display: flex; flex-direction: column; gap: 14px">${tabs}${panel}${hubButtonsHtml(canEdit)}</div>`;
 }
 
-function riteNoteBody(cur) {
+/** The row's note for the musicians and the operator (key, capo, choir cue), then Clear slot when the row holds anything. */
+function slotNoteBody(cur) {
+  const holds = cur.entries.length > 0 || Boolean((state.notes[cur.id] ?? '').trim());
+  const placeholder = cur.kind === 'song' ? 'e.g. Capo 2, choir sings the second verse' : cur.kind === 'rite' ? 'e.g. Incense at the Gospel' : 'e.g. Read by the youth lector';
   return `
           <div style="display: flex; flex-direction: column; gap: 14px; padding-top: 14px; border-top: 1px solid var(--border)">
             <label style="display: flex; flex-direction: column; gap: 8px">
-              <span style="font-size: 13px; font-weight: 600; color: var(--text)">Operator note (optional)</span>
-              <textarea id="rite-note" rows="3" maxlength="1000" placeholder="e.g. Incense at the Gospel" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(state.notes[cur.id] ?? '')}</textarea>
+              <span style="font-size: 13px; font-weight: 600; color: var(--text)">Slot note / musician cue (optional)</span>
+              <textarea id="rite-note" rows="3" maxlength="1000" placeholder="${esc(placeholder)}" ${DISABLED(canEdit)} style="padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); font-size: 14px; line-height: 1.5; resize: vertical; outline: 0">${esc(state.notes[cur.id] ?? '')}</textarea>
             </label>
-            <button type="button" data-action="save-note" ${DISABLED(canEdit)} class="btn-quiet" style="height: 44px; font-size: 14px; font-weight: 600">${state.noteSaved ? 'Note saved' : 'Save note'}</button>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px">
+              <button type="button" data-action="save-note" ${DISABLED(canEdit)} class="btn-quiet" style="flex: 1 1 140px; height: 44px; font-size: 14px; font-weight: 600">${state.noteSaved ? 'Note saved' : 'Save note'}</button>
+              ${holds ? `<button type="button" data-action="clear-slot" ${DISABLED(canEdit)} class="btn-quiet is-danger" style="flex: 1 1 140px; height: 44px; font-size: 14px; font-weight: 600">${cur.slot ? 'Clear slot' : 'Clear step'}</button>` : ''}
+            </div>
           </div>`;
 }
 
@@ -334,7 +373,7 @@ function renderDrawer() {
           <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted)">${cur.slot ? `SLOT ${cur.n} OF ${SLOT_COUNT}` : 'OTHER STEP'}</span>
           <h2 class="section-title" style="font-size: 24px">${esc(cur.name)}</h2>
           <span style="font-size: 13px; color: var(--text)">${esc(subOf(cur))}</span>
-        </div>${entryListHtml(cur.entries, cur.id, canEdit)}${addBody(cur)}${cur.kind === 'rite' ? riteNoteBody(cur) : ''}`;
+        </div>${entryListHtml(cur.entries, cur.id, canEdit)}${addBody(cur)}${slotNoteBody(cur)}`;
   mountPicker();
 }
 
@@ -419,6 +458,8 @@ async function load() {
     planSongs = saved.songs;
     songWatch.seen(list);
     state = fresh({ ...massFromItems(plan.items, ROWS), language: plan.language, massTime: plan.massTime, massLanguage: plan.massLanguage });
+    rememberPlan({ id: plan.id, kind: 'mass', name: plan.name, date: plan.date });
+    mountHeader();
     scheduleFields.set({ massTime: state.massTime, massLanguage: state.massLanguage });
     scheduleFields.setDisabled(!canEdit);
     resetSongPickers();
@@ -435,15 +476,26 @@ async function save() {
     document.querySelector('#schedule-conflict [data-open-existing]')?.focus();
     return;
   }
+  const nameProblem = checkPlanName(state.name);
+  if (nameProblem) {
+    state.error = nameProblem;
+    renderHeader();
+    titleInput.focus();
+    return;
+  }
   state.saving = true;
   state.error = '';
   renderHeader();
   try {
-    const details = { language: state.language, massTime: state.massTime.trim() || null, massLanguage: state.massLanguage.trim() || null, contentHubItems: state.contentHubItems };
+    const details = { name: state.name, language: state.language, massTime: state.massTime.trim() || null, massLanguage: state.massLanguage.trim() || null, contentHubItems: state.contentHubItems };
     const response = await savePlan(savePayload(plan, massToItems(state, ROWS), details));
     Object.assign(plan, details, { massTime: details.massTime ?? '', massLanguage: details.massLanguage ?? '' });
+    plan.name = response.name ?? state.name.trim();
+    state.name = plan.name;
     plan.updatedAt = response.savedAt;
     state.dirty = false;
+    rememberPlan({ id: plan.id, kind: 'mass', name: plan.name, date: plan.date });
+    mountHeader();
   } catch (err) {
     if (err.conflict) {
       // Saved on another device since the list was read: the server names the Holy Mass already at that time.
@@ -484,6 +536,16 @@ document.querySelector('main').addEventListener('click', (event) => {
     renderDrawer();
   } else if (target.dataset.removeEntry !== undefined) {
     changeSegments(withoutEntry(state.segments, target.dataset.for, Number(target.dataset.removeEntry)));
+  } else if (target.dataset.moveEntry !== undefined) {
+    const from = Number(target.dataset.moveEntry);
+    const to = from + Number(target.dataset.delta);
+    changeSegments(withEntryMoved(state.segments, target.dataset.for, from, to));
+    document.querySelector(`[data-move-entry="${to}"][data-delta="${target.dataset.delta}"]:not(:disabled), [data-move-entry="${to}"]:not(:disabled)`)?.focus();
+  } else if (target.dataset.action === 'clear-slot') {
+    const row = stepOf(state.sel);
+    if (!window.confirm(`Clear ${row.name}? Its songs, text and note are taken out of this plan.`)) return;
+    delete state.notes[state.sel];
+    changeSegments(withoutEntries(state.segments, state.sel));
   } else if (target.dataset.hub) {
     openHub(target.dataset.hub);
   } else if (target.dataset.action === 'use-text') {
@@ -499,6 +561,99 @@ document.querySelector('main').addEventListener('click', (event) => {
     if (planId) void load();
   } else if (target.id === 'save') {
     void save();
+  } else if (target.id === 'duplicate') {
+    void duplicate();
+  } else if (target.id === 'delete') {
+    askDelete();
+  }
+});
+
+titleInput.addEventListener('input', () => {
+  if (!plan || !canEdit) return;
+  setDetail({ name: titleInput.value });
+  renderHeader();
+});
+titleInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    void save();
+  } else if (event.key === 'Escape' && plan) {
+    titleInput.value = plan.name;
+    setDetail({ name: plan.name });
+    renderHeader();
+  }
+});
+
+// Ctrl + S (Cmd + S on a Mac) saves the plan, as on the laptop.
+document.addEventListener('keydown', (event) => {
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 's') {
+    event.preventDefault();
+    void save();
+  }
+});
+
+// Leaving with unsaved changes asks first.
+window.addEventListener('beforeunload', (event) => {
+  if (state.dirty) event.preventDefault();
+});
+
+/** The Planner header, with Plan Editor on and this plan's title and date beneath "Planner". */
+function mountHeader() {
+  Object.assign(header, mountPlannerHeader(document.querySelector('[data-planner-header]'), {
+    tab: 'editor',
+    root: ROOT,
+    editorPlan: plan ? { id: plan.id, kind: 'mass', name: plan.name, date: plan.date } : lastPlan(),
+    canCreate: canEdit,
+    newPlan: newPlanFlowHref({ kind: 'mass', date: plan?.date ?? '' }, ROOT),
+  }));
+  renderHeader();
+}
+
+/** Duplicate Plan: a copy of the saved plan on the same day, opened in the editor. Unsaved changes here are not in the copy. */
+async function duplicate() {
+  if (!plan || !canEdit || state.saving) return;
+  if (state.dirty && !window.confirm('Your unsaved changes are not in the copy. Duplicate the last saved version?')) return;
+  const button = document.getElementById('duplicate');
+  button.disabled = true;
+  button.textContent = 'Copying…';
+  try {
+    const { created } = await duplicatePlanById(plan.id);
+    state.dirty = false;
+    location.assign(`${ROOT}${editorPathFor(created)}`);
+  } catch (err) {
+    state.error = err.message;
+    button.textContent = 'Duplicate Plan';
+    renderHeader();
+  }
+}
+
+const deleteDialog = document.getElementById('delete-dialog');
+const deleteConfirm = document.getElementById('delete-confirm');
+const deleteError = document.getElementById('delete-error');
+
+function askDelete() {
+  if (!plan || !canEdit) return;
+  document.getElementById('delete-text').textContent = deleteWarning(state.name || plan.name);
+  deleteError.textContent = '';
+  deleteDialog.showModal();
+}
+
+document.getElementById('delete-cancel').addEventListener('click', () => deleteDialog.close());
+deleteDialog.addEventListener('close', () => document.getElementById('delete')?.focus());
+deleteConfirm.addEventListener('click', async () => {
+  if (!plan || deleteConfirm.disabled) return;
+  deleteConfirm.disabled = true;
+  deleteConfirm.textContent = 'Deleting…';
+  deleteError.textContent = '';
+  try {
+    await deletePlanById(plan.id);
+    state.dirty = false;
+    // Back to the Liturgical Calendar, on the month the plan was in.
+    location.assign(calendarHref('mass', ROOT, plan.date.slice(0, 7)));
+  } catch (err) {
+    deleteError.textContent = err.message;
+    deleteConfirm.disabled = false;
+    deleteConfirm.textContent = 'Delete plan';
   }
 });
 
@@ -527,6 +682,7 @@ document.getElementById('drawer').addEventListener('change', (event) => {
 
 const user = await guard();
 if (user) {
+  mountHeader();
   if (planId) await load();
   else render();
 }

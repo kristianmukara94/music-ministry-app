@@ -10,6 +10,7 @@ import { MASS_ORDER_ID, MASS_ORDER_LANGS, MAX_MASS_ORDER_ID, checkMassOrderText,
 import { MASS_PARTS } from '../shared/mass-parts.js';
 import { normalizeMassLanguage, normalizeMassTime } from '../shared/mass-schedule.js';
 import { lyricsHash, sanitizeSongSlides } from '../shared/song-slides.js';
+import { parsePlanAppearance, portablePlanAppearance, serializePlanAppearance } from '../shared/plan-appearance.js';
 
 export const TRANSFER_FORMAT = 'apccmma-library';
 export const TRANSFER_FORMAT_VERSION = 1;
@@ -144,8 +145,38 @@ function writePlanSchedule(db, planId, record) {
   db.prepare('UPDATE mass_plans SET mass_time = ?, mass_language = ? WHERE id = ?').run(normalizeMassTime(record.massTime), normalizeMassLanguage(record.massLanguage), planId);
 }
 
+/** Whether `table` keeps a Plan Appearance (PLAN_APPEARANCE_MIGRATIONS in plan-appearance.js). A database from before them exports none. */
+const hasAppearanceColumn = (db, table) =>
+  db.prepare(`SELECT COUNT(*) AS n FROM pragma_table_info('${table}') WHERE name = 'appearance_json'`).get().n === 1;
+
+/**
+ * A plan's appearance for the file: the plan's own, or null when it follows the Global Appearance. A database that keeps none writes no key,
+ * so an import can tell "this plan uses the Global Appearance" (null) from "this file is from before Plan Appearance" (no key).
+ */
+const appearanceOut = (row) => (row.appearanceJson === undefined ? {} : { appearance: row.appearanceJson ? parsePlanAppearance(row.appearanceJson) : null });
+
+/**
+ * Puts an imported plan's Plan Appearance on it. A file from before Plan Appearance carries none, and the plan keeps what it has. A picture or
+ * motion clip whose Media Library item is not on this laptop falls back to the plan's colour (the file carries no media).
+ */
+function writePlanAppearance(db, table, id, record) {
+  if (record.appearance === undefined || !hasAppearanceColumn(db, table)) return;
+  // A database with no Media Library table holds no pictures, so every picture falls back to its colour.
+  let media = null;
+  try {
+    media = db.prepare('SELECT 1 FROM media_assets WHERE id = ?');
+  } catch {
+    media = null;
+  }
+  const hasMedia = (mediaId) => Boolean(media?.get(Number(mediaId)));
+  const json = record.appearance === null ? null : serializePlanAppearance(portablePlanAppearance(record.appearance, hasMedia));
+  db.prepare(`UPDATE ${table} SET appearance_json = ? WHERE id = ?`).run(json, id);
+}
+
 function readPlans(db) {
-  const schedule = hasScheduleColumns(db) ? ", COALESCE(mass_time, '') AS massTime, COALESCE(mass_language, '') AS massLanguage" : '';
+  const schedule =
+    (hasScheduleColumns(db) ? ", COALESCE(mass_time, '') AS massTime, COALESCE(mass_language, '') AS massLanguage" : '') +
+    (hasAppearanceColumn(db, 'mass_plans') ? ', appearance_json AS appearanceJson' : '');
   const items = db
     .prepare(
       `SELECT plan_id AS planId, liturgical_block AS liturgicalBlock, source_module AS sourceModule, source_id AS sourceId,
@@ -166,7 +197,10 @@ function readSessions(db) {
     )
     .all();
   return db
-    .prepare('SELECT id, uuid, name, liturgical_date AS liturgicalDate, groups, updated_at AS updatedAt FROM pw_sessions ORDER BY liturgical_date, id')
+    .prepare(
+      `SELECT id, uuid, name, liturgical_date AS liturgicalDate, groups, updated_at AS updatedAt${hasAppearanceColumn(db, 'pw_sessions') ? ', appearance_json AS appearanceJson' : ''}
+       FROM pw_sessions ORDER BY liturgical_date, id`,
+    )
     .all()
     .map((row) => ({
       ...row,
@@ -285,6 +319,8 @@ export function collectLibrary(db, options, { laptop, exportedAt = new Date().to
     updatedAt: p.updatedAt,
     // The Holy Mass time and language, from a database that keeps them. A file without them imports as before.
     ...(p.massTime !== undefined ? { massTime: p.massTime, massLanguage: p.massLanguage } : {}),
+    // The plan's own look for its slides, when it has one. The picture or clip is named by this laptop's Media Library address.
+    ...appearanceOut(p),
     // A lyrics item points at a song by its UUID. One whose song is gone is left out.
     items: p.items
       .map((i) => (i.sourceModule === 'lyrics' ? { ...i, sourceId: uuidOf(Number(i.sourceId)) } : i))
@@ -298,6 +334,7 @@ export function collectLibrary(db, options, { laptop, exportedAt = new Date().to
     liturgicalDate: w.liturgicalDate,
     groups: w.groups,
     updatedAt: w.updatedAt,
+    ...appearanceOut(w),
     segments: w.segments.map((seg) => {
       const contentRef = seg.contentRef.kind === 'song'
         ? { ...seg.contentRef, hymnIds: (seg.contentRef.hymnIds ?? []).map(uuidOf).filter(Boolean) }
@@ -675,12 +712,14 @@ export function applyImport(db, data, choices = {}) {
         const planId = Number(info.lastInsertRowid);
         writePlanItems(db, planId, r.items ?? [], songIdMap);
         writePlanSchedule(db, planId, r);
+        writePlanAppearance(db, 'mass_plans', planId, r);
         added.plans += 1;
       } else if (decide('plans', r.id) === 'use') {
         db.prepare('UPDATE mass_plans SET name = ?, liturgical_date = ?, updated_at = ? WHERE id = ?').run(r.name, r.liturgicalDate, r.updatedAt, entry.localId);
         db.prepare('DELETE FROM mass_plan_items WHERE plan_id = ?').run(entry.localId);
         writePlanItems(db, entry.localId, r.items ?? [], songIdMap);
         writePlanSchedule(db, entry.localId, r);
+        writePlanAppearance(db, 'mass_plans', entry.localId, r);
         changed.used += 1;
       } else {
         changed.kept += 1;
@@ -698,11 +737,13 @@ export function applyImport(db, data, choices = {}) {
         const info = db.prepare('INSERT INTO pw_sessions (uuid, name, liturgical_date, groups, updated_at) VALUES (?, ?, ?, ?, ?)').run(r.id, r.name, r.liturgicalDate, groups, r.updatedAt);
         const sessionId = Number(info.lastInsertRowid);
         writeSegments(db, sessionId, r.segments ?? [], songIdMap, stanzaIdsFor);
+        writePlanAppearance(db, 'pw_sessions', sessionId, r);
         added.praiseWorship += 1;
       } else if (decide('praiseWorship', r.id) === 'use') {
         db.prepare('UPDATE pw_sessions SET name = ?, liturgical_date = ?, groups = ?, updated_at = ? WHERE id = ?').run(r.name, r.liturgicalDate, groups, r.updatedAt, entry.localId);
         db.prepare('DELETE FROM pw_segments WHERE session_id = ?').run(entry.localId);
         writeSegments(db, entry.localId, r.segments ?? [], songIdMap, stanzaIdsFor);
+        writePlanAppearance(db, 'pw_sessions', entry.localId, r);
         changed.used += 1;
       } else {
         changed.kept += 1;

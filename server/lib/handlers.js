@@ -22,6 +22,12 @@ import {
 const GENERIC_LOGIN_ERROR = 'Username or password is incorrect.';
 const SESSION_MS = SESSION_HOURS * 60 * 60 * 1000;
 
+/** The slot numbers a Holy Mass plan has an item in, from the list query: whole numbers 1 to 28, once each, in order. */
+export function filledSlotsOf(value) {
+  const list = typeof value === 'string' ? JSON.parse(value) : value;
+  return [...new Set((Array.isArray(list) ? list : []).map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 28))].sort((a, b) => a - b);
+}
+
 const json = (statusCode, body, extraHeaders = {}) => ({
   statusCode,
   headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extraHeaders },
@@ -207,17 +213,21 @@ export function createApi({ sql, secret, now = () => new Date() }) {
     // Every signed-in role can list the church's plans. The body is not sent, so the list stays light. `kind` says which editor
     // a plan opens in, and is read from the body without sending it. A Holy Mass plan's time, language and item count are read the same
     // way, for the calendar's schedule badges and the Available Holy Mass Schedules list.
+    // `filledSlots` are the slot numbers (1 to 28) a Holy Mass plan has an item in, as the laptop counts them, for the calendar's
+    // "8/23" progress pill.
     // A database without plans.synced_at (2026-11-09-plans-synced-at.sql not run yet) still lists its plans, all shown as not yet on a laptop.
     const rows = await withColumnFallback('synced_at', () => sql`
       SELECT id, name, liturgical_date, updated_at, synced_at, body->>'kind' AS kind,
         body->>'massTime' AS mass_time, body->>'massLanguage' AS mass_language,
-        CASE WHEN jsonb_typeof(body->'items') = 'array' THEN jsonb_array_length(body->'items') ELSE 0 END AS item_count
+        CASE WHEN jsonb_typeof(body->'items') = 'array' THEN jsonb_array_length(body->'items') ELSE 0 END AS item_count,
+        (SELECT COALESCE(jsonb_agg(DISTINCT (i->>'slot')::int), '[]'::jsonb) FROM jsonb_array_elements(CASE WHEN jsonb_typeof(body->'items') = 'array' THEN body->'items' ELSE '[]'::jsonb END) i WHERE (i->>'slot') ~ '^[0-9]{1,2}$') AS filled_slots
       FROM plans
       WHERE church_id = ${session.churchId} AND COALESCE(body->>'deleted', '') <> 'true'
       ORDER BY liturgical_date, name, id`, () => sql`
       SELECT id, name, liturgical_date, updated_at, NULL AS synced_at, body->>'kind' AS kind,
         body->>'massTime' AS mass_time, body->>'massLanguage' AS mass_language,
-        CASE WHEN jsonb_typeof(body->'items') = 'array' THEN jsonb_array_length(body->'items') ELSE 0 END AS item_count
+        CASE WHEN jsonb_typeof(body->'items') = 'array' THEN jsonb_array_length(body->'items') ELSE 0 END AS item_count,
+        (SELECT COALESCE(jsonb_agg(DISTINCT (i->>'slot')::int), '[]'::jsonb) FROM jsonb_array_elements(CASE WHEN jsonb_typeof(body->'items') = 'array' THEN body->'items' ELSE '[]'::jsonb END) i WHERE (i->>'slot') ~ '^[0-9]{1,2}$') AS filled_slots
       FROM plans
       WHERE church_id = ${session.churchId} AND COALESCE(body->>'deleted', '') <> 'true'
       ORDER BY liturgical_date, name, id`);
@@ -230,6 +240,7 @@ export function createApi({ sql, secret, now = () => new Date() }) {
       kind: r.kind ?? null,
       ...(r.kind === 'pw' ? {} : { massTime: normalizeMassTime(r.mass_time), massLanguage: normalizeMassLanguage(r.mass_language) }),
       itemCount: Number(r.item_count) || 0,
+      ...(r.kind === 'pw' ? {} : { filledSlots: filledSlotsOf(r.filled_slots) }),
     }));
     return json(200, plans.length ? { plans } : { plans, message: 'No plans yet. Plans are created on the church laptop and appear here after sync.' });
   });

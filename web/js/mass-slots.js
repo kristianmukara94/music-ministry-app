@@ -5,41 +5,42 @@
 //
 // `group` is the plan group the slot's items are saved in. It is the laptop's liturgical block, so an item stays in the same block on both sides.
 // `category` is the song category the song list is narrowed to, and `kind` is 'song' (a hymn from the church's list, or typed text), 'reading'
-// (a reading of the day) or 'text' (a spoken part, typed).
+// (a reading of the day) or 'text' (a spoken part, typed). `id` is the laptop's slot id; `optional` and `sundayOnly` are the laptop's own
+// flags, so liturgical-calendar.js (a byte copy of the laptop's) counts the slots a day needs exactly as the laptop's calendar does.
 
 const SLOTS = [
   // 1. Introductory Rites
-  { number: 1, group: 'introductory', name: 'Entrance Hymn', kind: 'song', category: 'Entrance Procession' },
-  { number: 2, group: 'introductory', name: 'I Confess (Confiteor)', kind: 'text' },
-  { number: 3, group: 'introductory', name: 'Lord, Have Mercy (Kyrie)', kind: 'song', category: 'Kyrie' },
-  { number: 18, group: 'introductory', name: 'Glory to God (Gloria)', kind: 'song', category: 'Gloria' },
-  { number: 19, group: 'introductory', name: 'Opening Prayer (Collect)', kind: 'text' },
+  { number: 1, group: 'introductory', id: 'entrance', name: 'Entrance Hymn', kind: 'song', category: 'Entrance Procession' },
+  { number: 2, group: 'introductory', id: 'confess', name: 'I Confess (Confiteor)', kind: 'text' },
+  { number: 3, group: 'introductory', id: 'kyrie', name: 'Lord, Have Mercy (Kyrie)', kind: 'song', category: 'Kyrie' },
+  { number: 18, group: 'introductory', id: 'gloria', name: 'Glory to God (Gloria)', kind: 'song', category: 'Gloria', sundayOnly: true },
+  { number: 19, group: 'introductory', id: 'collect', name: 'Opening Prayer (Collect)', kind: 'text' },
   // 2. Liturgy of the Word
-  { number: 20, group: 'word', name: 'First Reading', kind: 'reading' },
-  { number: 4, group: 'word', name: 'Responsorial Psalm', kind: 'song', category: 'Responsorial Psalm' },
-  { number: 21, group: 'word', name: 'Second Reading', kind: 'reading' },
-  { number: 5, group: 'word', name: 'Gospel Acclamation', kind: 'song', category: 'Gospel Acclamation' },
-  { number: 22, group: 'word', name: 'Holy Gospel', kind: 'reading' },
-  { number: 23, group: 'word', name: 'Homily', kind: 'text' },
-  { number: 24, group: 'word', name: 'Profession of Faith (Creed)', kind: 'text' },
-  { number: 6, group: 'word', name: 'Prayer of the Faithful', kind: 'text' },
+  { number: 20, group: 'word', id: 'first-reading', name: 'First Reading', kind: 'reading' },
+  { number: 4, group: 'word', id: 'psalm', name: 'Responsorial Psalm', kind: 'song', category: 'Responsorial Psalm' },
+  { number: 21, group: 'word', id: 'second-reading', name: 'Second Reading', kind: 'reading', sundayOnly: true },
+  { number: 5, group: 'word', id: 'gospel-acclamation', name: 'Gospel Acclamation', kind: 'song', category: 'Gospel Acclamation' },
+  { number: 22, group: 'word', id: 'gospel', name: 'Holy Gospel', kind: 'reading' },
+  { number: 23, group: 'word', id: 'homily', name: 'Homily', kind: 'text', optional: true },
+  { number: 24, group: 'word', id: 'creed', name: 'Profession of Faith (Creed)', kind: 'text' },
+  { number: 6, group: 'word', id: 'prayer-faithful', name: 'Prayer of the Faithful', kind: 'text' },
   // 3. Liturgy of the Eucharist
-  { number: 7, group: 'eucharist', name: 'Offertory / Presentation of Gifts', kind: 'song', category: 'Preparation of the Gifts' },
-  { number: 8, group: 'eucharist', name: 'May the Lord Accept the Sacrifice', kind: 'text' },
-  { number: 9, group: 'eucharist', name: 'Holy, Holy, Holy (Sanctus)', kind: 'song', category: 'Holy, Holy, Holy' },
-  { number: 10, group: 'eucharist', name: 'Memorial Acclamation', kind: 'song', category: 'Memorial Acclamation' },
-  { number: 13, group: 'eucharist', name: 'Doxology', kind: 'text' },
-  { number: 11, group: 'eucharist', name: 'Great Amen', kind: 'song', category: 'Great Amen' },
-  { number: 12, group: 'eucharist', name: "The Lord's Prayer (Our Father)", kind: 'song', category: 'Our Father' },
-  { number: 25, group: 'eucharist', name: 'Sign of Peace', kind: 'text' },
-  { number: 14, group: 'eucharist', name: 'Lamb of God (Agnus Dei)', kind: 'song', category: 'Lamb of God' },
-  { number: 15, group: 'eucharist', name: 'Lord, I Am Not Worthy', kind: 'text' },
-  { number: 16, group: 'communion', name: 'Communion Hymn', kind: 'song', category: 'Communion Procession' },
-  { number: 26, group: 'communion', name: 'Prayer after Communion', kind: 'text' },
+  { number: 7, group: 'eucharist', id: 'offertory', name: 'Offertory / Presentation of Gifts', kind: 'song', category: 'Preparation of the Gifts' },
+  { number: 8, group: 'eucharist', id: 'accept-sacrifice', name: 'May the Lord Accept the Sacrifice', kind: 'text' },
+  { number: 9, group: 'eucharist', id: 'sanctus', name: 'Holy, Holy, Holy (Sanctus)', kind: 'song', category: 'Holy, Holy, Holy' },
+  { number: 10, group: 'eucharist', id: 'memorial-acclamation', name: 'Memorial Acclamation', kind: 'song', category: 'Memorial Acclamation' },
+  { number: 13, group: 'eucharist', id: 'doxology', name: 'Doxology', kind: 'text' },
+  { number: 11, group: 'eucharist', id: 'great-amen', name: 'Great Amen', kind: 'song', category: 'Great Amen' },
+  { number: 12, group: 'eucharist', id: 'lords-prayer', name: "The Lord's Prayer (Our Father)", kind: 'song', category: 'Our Father' },
+  { number: 25, group: 'eucharist', id: 'sign-of-peace', name: 'Sign of Peace', kind: 'text', optional: true },
+  { number: 14, group: 'eucharist', id: 'agnus-dei', name: 'Lamb of God (Agnus Dei)', kind: 'song', category: 'Lamb of God' },
+  { number: 15, group: 'eucharist', id: 'not-worthy', name: 'Lord, I Am Not Worthy', kind: 'text' },
+  { number: 16, group: 'communion', id: 'communion', name: 'Communion Hymn', kind: 'song', category: 'Communion Procession' },
+  { number: 26, group: 'communion', id: 'prayer-after-communion', name: 'Prayer after Communion', kind: 'text' },
   // 4. Concluding Rites
-  { number: 27, group: 'concluding', name: 'Parish Announcements', kind: 'text' },
-  { number: 28, group: 'concluding', name: 'Final Blessing & Dismissal', kind: 'text' },
-  { number: 17, group: 'concluding', name: 'Recessional Hymn', kind: 'song', category: 'Recessional' },
+  { number: 27, group: 'concluding', id: 'announcements', name: 'Parish Announcements', kind: 'text', optional: true },
+  { number: 28, group: 'concluding', id: 'final-blessing', name: 'Final Blessing & Dismissal', kind: 'text' },
+  { number: 17, group: 'concluding', id: 'recessional', name: 'Recessional Hymn', kind: 'song', category: 'Recessional' },
 ];
 
 /** The slots in Mass order, each with its `position` in the Mass. */

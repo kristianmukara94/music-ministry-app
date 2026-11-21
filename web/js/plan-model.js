@@ -213,6 +213,22 @@ export const withEntry = (segments, id, entry) => ({ ...segments, [id]: withEntr
 /** Returns new segments without the step's entry at `index`. The next entry moves up. */
 export const withoutEntry = (segments, id, index) => ({ ...segments, [id]: withEntries(segments[id], slotEntries(segments[id]).filter((_, i) => i !== index)) });
 
+/**
+ * Returns new segments with the step's entry at `from` moved to `to` (Move up, Move down). The first entry is the one that fills the slot on the
+ * laptop; the others come after it. An index outside the step leaves it as it is.
+ */
+export function withEntryMoved(segments, id, from, to) {
+  const entries = slotEntries(segments[id]);
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from === to || from < 0 || to < 0 || from >= entries.length || to >= entries.length) return segments;
+  const next = [...entries];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return { ...segments, [id]: withEntries(segments[id], next) };
+}
+
+/** Returns new segments with nothing in the step (Clear slot). The minutes of a Praise & Worship segment are kept. */
+export const withoutEntries = (segments, id) => ({ ...segments, [id]: withEntries(segments[id], []) });
+
 /** Returns new segments with the key of the step's entry at `index`. An empty key goes back to the song's own. */
 export function withEntryKey(segments, id, index, keyTransposed) {
   const entries = slotEntries(segments[id]).map((entry, i) => {
@@ -573,11 +589,12 @@ export function withOrders(items) {
 /**
  * The body the plan-save route takes: the plan's id, the version the editor loaded, and the items. A Holy Mass plan also sends its details:
  * `language` (EN, TL or CEB), and its schedule as the laptop keeps it: `massTime` as typed ("6:00 AM") and `massLanguage` ('English',
- * 'Cebuano', 'Tagalog' or the parish's own), each null for none. Either planner can send the plan's `contentHubItems`. Details left out are not
- * sent, and the server keeps what it has.
+ * 'Cebuano', 'Tagalog' or the parish's own), each null for none. Either planner can send the plan's `contentHubItems`, and a new `name` (the
+ * Plan Editor's title; sent only when it differs from the loaded name). Details left out are not sent, and the server keeps what it has.
  */
 export function savePayload(plan, items, details = {}) {
   const payload = { id: plan.id, baseUpdatedAt: plan.updatedAt, items };
+  if (details.name !== undefined && String(details.name).trim() !== plan.name) payload.name = String(details.name).trim();
   if (details.language !== undefined) payload.language = details.language;
   if (details.massTime !== undefined) payload.massTime = details.massTime || null;
   if (details.massLanguage !== undefined) payload.massLanguage = details.massLanguage || null;
@@ -729,8 +746,20 @@ export function dateShortcut(which, now = new Date()) {
   return localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + ahead));
 }
 
-/** The name the New plan form suggests: "Sunday Holy Mass (15 Nov)" or "Praise & Worship Night (26 Oct)". With no date yet, the name without one. */
-export function suggestPlanName({ kind, date } = {}) {
+/** Why a plan title cannot be saved, or '' when it can: 1 to 120 characters once trimmed, as the server checks it. */
+export function checkPlanName(name) {
+  const clean = String(name ?? '').trim();
+  if (!clean) return 'Give the plan a title.';
+  if (clean.length > 120) return 'Keep the plan title to 120 characters.';
+  return '';
+}
+
+/**
+ * The name the New plan form suggests: "Sunday Holy Mass (15 Nov)" or "Praise & Worship Night (26 Oct)". With no date yet, the name without one.
+ * A Holy Mass with the day's liturgical name (`dayName`, from the calendar) is named after the day, as the laptop's Create a plan names it.
+ */
+export function suggestPlanName({ kind, date, dayName } = {}) {
+  if (kind !== 'pw' && typeof dayName === 'string' && dayName.trim()) return dayName.trim().slice(0, 120);
   const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(date ?? ''));
   if (!parts) return kind === 'pw' ? 'Praise & Worship Night' : 'Holy Mass';
   const [year, month, day] = parts.slice(1).map(Number);

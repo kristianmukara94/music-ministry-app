@@ -48,7 +48,7 @@ const onDay = (plans, iso = DAY) => plans.listPlans().filter((p) => p.liturgical
 
 test('the schedule columns are appended to the end of the migration list, additive and defaulting to blank', () => {
   const list = readFileSync(new URL('./announcements.js', import.meta.url), 'utf8');
-  assert.match(list, /\.\.\.HYMN_FONT_SCALE_MIGRATIONS,\s*\.\.\.MASS_SCHEDULE_MIGRATIONS,\s*\.\.\.HYMN_DEFAULT_SLIDES_MIGRATIONS,\s*\];/);
+  assert.match(list, /\.\.\.HYMN_FONT_SCALE_MIGRATIONS,\s*\.\.\.MASS_SCHEDULE_MIGRATIONS,\s*\.\.\.HYMN_DEFAULT_SLIDES_MIGRATIONS,\s*\.\.\.PLAN_APPEARANCE_MIGRATIONS,\s*\];/);
   for (const sql of MASS_SCHEDULE_MIGRATIONS) assert.match(sql, /^ALTER TABLE mass_plans ADD COLUMN mass_(time|language) TEXT DEFAULT '';$/);
 });
 

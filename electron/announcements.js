@@ -28,6 +28,7 @@ import { TRANSFER_MIGRATIONS } from './transfer.js';
 import { PLAN_SYNC_MIGRATIONS } from './plan-sync-schema.js';
 import { SPONTANEOUS_LOG_MIGRATIONS } from './spontaneous-log.js';
 import { MASS_ORDER_CUSTOM_MIGRATIONS, MASS_ORDER_TEXT_MIGRATIONS } from './mass-order.js';
+import { PLAN_APPEARANCE_MIGRATIONS } from './plan-appearance.js';
 import { MEDIA_SCHEME, installMediaProtocol, registerMediaRoute } from './protocol.js';
 import { assetRootFor, migrateAbsolutePaths, relPath, resolveAsset, setActiveAssetRoot } from './assets.js';
 import { ensureIncrementalAutoVacuum, preMigrationBackup } from './db-backup-manager.js';
@@ -162,6 +163,7 @@ const ALL_MIGRATIONS = [
   ...HYMN_FONT_SCALE_MIGRATIONS,
   ...MASS_SCHEDULE_MIGRATIONS,
   ...HYMN_DEFAULT_SLIDES_MIGRATIONS,
+  ...PLAN_APPEARANCE_MIGRATIONS,
 ];
 
 const SLIDE_SELECT = `

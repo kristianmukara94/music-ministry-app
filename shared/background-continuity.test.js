@@ -27,9 +27,9 @@ test('the slides do not draw the video: the slide root is transparent over the l
 
 test('the Current and Next panels each keep their own layer, outside the slide', () => {
   const panels = read('src/praise-worship/CurrentNextPreview.tsx');
-  const current = panels.indexOf('<SlideBackgroundLayer media={background.media} visible={current.slide !== null} />');
+  const current = panels.indexOf('<SlideBackgroundLayer media={background.media} visible={current.slide !== null && !planOn} />');
   const currentFace = panels.indexOf('<Face shown={current}');
-  const next = panels.indexOf('<SlideBackgroundLayer media={background.media} visible={next.slide !== null} />');
+  const next = panels.indexOf('<SlideBackgroundLayer media={background.media} visible={next.slide !== null && !planOn} />');
   const nextFace = panels.indexOf('<Face shown={next}');
   assert.ok(current > 0 && current < currentFace, 'the current panel mounts its layer before its slide');
   assert.ok(next > 0 && next < nextFace, 'the next panel mounts its layer before its slide');

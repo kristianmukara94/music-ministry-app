@@ -12,10 +12,11 @@ import type { RosaryApi } from '../rosary/types';
 import type { LyricsApi } from '../lyrics/types';
 import type { LectionaryApi } from '../lectionary/types';
 import type { MediaApi, ThumbnailJob } from '../media/types';
-import type { CalendarApi, PlansApi } from '../planner/types';
+import type { CalendarApi, PlanAppearanceApi, PlansApi } from '../planner/types';
 import type { NotesApi } from '../notes/types';
 import type { MassOrderEntry, MassOrderLang } from '../../shared/mass-order-text';
 import type { PwApi } from '../praise-worship/types';
+import { sanitizePlanAppearance } from '../../shared/plan-appearance.js';
 import type { ProjectorSettings } from '../../shared/projector-settings';
 import type { WelcomeSettings } from '../../shared/welcome-settings';
 import type { LowerThirdStyle } from '../../shared/lower-third-style';
@@ -282,6 +283,8 @@ interface ElectronApi {
   rosary: RosaryApi;
   media: MediaApi;
   plans: PlansApi;
+  /** Each plan's own default look for its slides (Plan Appearance). */
+  planAppearance: PlanAppearanceApi;
   calendar: CalendarApi;
   pw: PwApi;
   notes: NotesApi;
@@ -471,6 +474,7 @@ const offlinePlans: PlansApi = {
   list: async () => [],
   create: async () => offlineError(),
   deletePlan: async () => offlineError(),
+  duplicate: async () => offlineError(),
   get: async () => offlineError(),
   save: async () => offlineError(),
   setLanguage: async () => offlineError(),
@@ -481,6 +485,12 @@ const offlinePlans: PlansApi = {
   getTemplate: async () => offlineError(),
   saveTemplate: async () => offlineError(),
   deleteTemplate: async () => offlineError(),
+};
+
+/** Browser preview has no database: every plan follows the Global Appearance, and none can be changed. */
+const offlinePlanAppearance: PlanAppearanceApi = {
+  get: async () => sanitizePlanAppearance(null),
+  set: async () => offlineError(),
 };
 
 /** Browser preview has no database: every day shows its Ordo name, and a day's own title cannot be saved. */
@@ -497,6 +507,7 @@ const offlinePw: PwApi = {
   getSession: async () => offlineError(),
   saveSession: async () => offlineError(),
   deleteSession: async () => offlineError(),
+  duplicateSession: async () => offlineError(),
   listTemplates: async () => [],
   saveAsTemplate: async () => offlineError(),
   deleteTemplate: async () => offlineError(),
@@ -1033,6 +1044,7 @@ function createBrowserBridge(): LiveBridge {
     rosary: offlineRosary,
     media: offlineMedia,
     plans: offlinePlans,
+    planAppearance: offlinePlanAppearance,
     calendar: offlineCalendar,
     pw: offlinePw,
     notes: offlineNotes,

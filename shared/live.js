@@ -2,7 +2,8 @@ import { sanitizeProjectorSettings, PROJECTOR_SETTINGS_DEFAULTS, INTRO_SLIDE_MOD
 import { WELCOME_DEFAULTS, sanitizeWelcomeSettings } from './welcome-settings.js';
 import { sanitizeLowerThirdStyle, LOWER_THIRD_DEFAULTS } from './lower-third-style.js';
 import { sanitizeAlert } from './sanctuary-alert.js';
-import { sanitizeSlideLook } from './slide-look.js';
+import { sanitizeSlideLook, withoutPlanSlideLooks } from './slide-look.js';
+import { planLookEntry, samePlanAppearance } from './plan-appearance.js';
 // Single source of truth for what the congregation sees.
 // Plain JS so the Electron main process (authoritative copy) and the
 // renderer (browser fallback + optimistic UI) run the exact same reducer.
@@ -113,6 +114,9 @@ export function initialLiveState() {
     pw: null,
     // The Output Preview Editor's "This Slide" looks, by slide key (see shared/slide-look.js). Kept for this run of the app only.
     slideLooks: {},
+    // The Plan Appearance of the plans loaded now: the Holy Mass plan in the queue and the Praise & Worship plan, each with its plan id, or null.
+    // The operator window reads it from the plan when the plan is loaded (see src/planner/planAppearanceStore.ts). Every output draws it.
+    planLooks: { mass: null, pw: null },
   };
 }
 
@@ -317,6 +321,25 @@ function reduce(s, a) {
     case 'slideLook/clear':
       return s.slideLooks && Object.keys(s.slideLooks).length > 0 ? { ...s, slideLooks: {} } : s;
 
+    // Plan Appearance's Overwrite All Slide Overrides: the looks set on air for one loaded plan's slides are dropped, so the plan's look governs
+    // every slide of it. Other plans' slides keep theirs. A Praise & Worship plan's looks are dropped only while it is the one loaded.
+    case 'slideLook/clearPlan': {
+      if (a.kind === 'pw' && s.pw?.sessionId !== a.planId) return s;
+      const looks = withoutPlanSlideLooks(s.slideLooks ?? {}, a.kind, a.planId);
+      return looks === (s.slideLooks ?? {}) ? s : { ...s, slideLooks: looks };
+    }
+
+    // A loaded plan's appearance, read from the plan or changed in the Planner. Ignored for a plan that is not the one loaded (a slow read that
+    // lost a race, or a plan open in the Planner but not in Go Live).
+    case 'planLook/set': {
+      const loaded = a.kind === 'mass' ? s.queuePlanId : a.kind === 'pw' ? s.pw?.sessionId : undefined;
+      if (loaded == null || a.planId !== loaded) return s;
+      const entry = planLookEntry(a.kind, a.planId, a.appearance);
+      const before = s.planLooks?.[a.kind] ?? null;
+      if (before && entry && before.planId === entry.planId && samePlanAppearance(before.appearance, entry.appearance)) return s;
+      return { ...s, planLooks: { mass: null, pw: null, ...(s.planLooks ?? {}), [a.kind]: entry } };
+    }
+
     case 'projector/hideText': {
       const p = s.projector;
       const hidden = a.hidden ?? !p.textHidden;
@@ -512,6 +535,8 @@ function reduce(s, a) {
         queue: a.items,
         queuePlanId: a.planId ?? null,
         queueSlotTitle: samePlan ? (s.queueSlotTitle ?? null) : null,
+        // A different plan brings its own appearance, which the operator window reads and sends (planLook/set). Until then, the Global Appearance.
+        ...(samePlan || !s.planLooks?.mass ? {} : { planLooks: { ...s.planLooks, mass: null } }),
         queueCursor: given ?? (samePlan ? s.queueCursor : -1),
         ...(samePlan ? {} : unparkQueue(s)),
       };
@@ -533,7 +558,11 @@ function reduce(s, a) {
     // Loads a Praise & Worship session for live use, at its start and off air. Reloading the same session keeps the place.
     case 'pw/load':
       if (s.pw?.sessionId === a.sessionId) return s;
-      return { ...s, pw: { sessionId: a.sessionId, segmentKey: null, slide: 0, startedAt: null, liveSince: null, onAir: false } };
+      return {
+        ...s,
+        pw: { sessionId: a.sessionId, segmentKey: null, slide: 0, startedAt: null, liveSince: null, onAir: false },
+        ...(s.planLooks?.pw ? { planLooks: { ...s.planLooks, pw: null } } : {}),
+      };
 
     // Moves the live position and puts Praise & Worship on air. Sent with the projector/show of the same slide.
     // Times come from the action, so the reducer stays pure. A new segment restarts the segment timer.
@@ -558,7 +587,7 @@ function reduce(s, a) {
     case 'pw/end': {
       if (!s.pw) return s;
       const { pwLineup, ...rest } = s;
-      return { ...rest, pw: null };
+      return { ...rest, pw: null, ...(s.planLooks?.pw ? { planLooks: { ...s.planLooks, pw: null } } : {}) };
     }
 
     // The segment names a phone can pick from. Sent by the operator window, which holds the lineup.

@@ -4,11 +4,17 @@
 // readiness checks without redrawing the list, so what is being typed in an open panel stays. Any segment takes any song from the church's list,
 // typed text and Content Hub entries, and more than one of them, through the panel that opens under it. Songs are chosen in the song picker, which
 // opens on Praise & Worship and on the segment's own category. The minutes and what is chosen come from the saved plan on the server. Every value
-// written into markup goes through esc().
+// written into markup goes through esc(). Every segment also takes a note for the musicians and the operator, can be cleared in one press, and
+// has its songs and items put in order with Move up and Move down.
+//
+// The page is the Planner's Plan Editor tab: the Planner header sits above it, the title is edited in place, the badges show the date, the
+// template and how many segments are filled, and Duplicate Plan and Delete Plan sit beside Save.
 import { PRAISE_PLAN } from './sample-data.js';
 import { esc, mountSidebar } from './shell.js';
 import { guard, parishLine } from './auth.js';
 import { getPlan, listSongs, savePlan, watchSongList } from './plan-api.js';
+import { calendarHref, lastPlan, mountPlannerHeader, newPlanFlowHref, rememberPlan } from './planner-header.js';
+import { deletePlanById, deleteWarning, duplicatePlanById } from './plan-actions.js';
 import { usedHubIds } from './content-hub.js';
 import { entryListHtml, entrySummaryHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
 import { mountSongPicker, resetSongPickers } from './song-picker.js';
@@ -35,11 +41,19 @@ import {
   withChoice,
   withEntry,
   withEntryKey,
+  withEntryMoved,
   withoutEntry,
+  withoutEntries,
+  checkPlanName,
+  shortDate,
+  editorPathFor,
 } from './plan-model.js';
 
 mountSidebar();
 
+const ROOT = document.documentElement.dataset.base ?? '';
+const header = { setSubtitle() {} };
+const titleInput = document.getElementById('plan-title');
 const planId = new URLSearchParams(location.search).get('id');
 // The laptop's lineup, until a plan the earlier editor laid out is loaded (see load).
 let TEMPLATE = PRAISE_TEMPLATE;
@@ -66,6 +80,8 @@ function fresh(saved) {
     // The segments the saved plan has an item for, so a card taken out on the laptop is not put back by a save here.
     present: saved?.present ?? new Set(),
     contentHubItems: structuredClone(plan?.contentHubItems ?? []),
+    // The plan's title as it is being edited; saved with the plan.
+    name: plan?.name ?? '',
     open: null,
     // 'list' or 'text': which way of adding the open panel shows.
     panelMode: 'list',
@@ -99,8 +115,18 @@ function statusState() {
 
 function renderHeader(view) {
   document.getElementById('eyebrow').textContent = plan ? `PRAISE & WORSHIP · ${dateLabel(plan.date)}` : 'PRAISE & WORSHIP';
-  document.getElementById('title').textContent = plan ? plan.name : 'No plan open';
-  document.title = `${plan ? plan.name : 'Praise & Worship'} · APCCMMA Web Planner`;
+  // The title is edited in place; it is not redrawn while it is being typed in.
+  if (document.activeElement !== titleInput) titleInput.value = plan ? state.name : 'No plan open';
+  titleInput.disabled = !plan || !canEdit;
+  document.getElementById('date-badge').textContent = plan ? shortDate(plan.date) : '';
+  const filled = SEGMENTS.filter((seg) => slotEntries(state.segments[seg.id]).length > 0).length;
+  const fill = document.getElementById('fill-badge');
+  fill.textContent = plan ? `${filled} / ${SEGMENTS.length} segments filled` : '';
+  fill.classList.toggle('is-ready', Boolean(plan) && filled === SEGMENTS.length);
+  document.getElementById('duplicate').disabled = !plan || !canEdit || state.saving;
+  document.getElementById('delete').disabled = !plan || !canEdit || state.saving;
+  header.setSubtitle(plan ? `${state.name || plan.name} · ${shortDate(plan.date)}` : 'Open a plan from a calendar to edit it.');
+  document.title = `${plan ? state.name || plan.name : 'Praise & Worship'} · APCCMMA Web Planner`;
   document.getElementById('status').textContent = plan ? statusText({ dirty: state.dirty, error: state.error }) : state.error || 'Not loaded';
   document.getElementById('status-pill').dataset.state = statusState();
   document.getElementById('songs-label').textContent = `${view.songsDone} of ${view.songsTotal} chosen`;
@@ -144,14 +170,16 @@ function panelFor(row) {
               <textarea data-role="panel-text" rows="3" maxlength="500" placeholder="e.g. Sung by the youth choir" ${DISABLED(canEdit)} style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;line-height:1.5;resize:vertical;outline:0"></textarea>
             </label>
             <div><button type="button" data-use-text="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-primary" style="height:40px;padding:0 16px;font-size:14px;font-weight:700">Add this text</button></div>`;
-  const note = row.kind === 'rite'
-    ? `
+  const holds = row.entries.length > 0 || Boolean(row.note);
+  const note = `
             <label style="${FIELD_LABEL}">
-              Operator note
-              <textarea data-role="panel-note" rows="3" maxlength="1000" placeholder="e.g. Speaker to confirm" ${DISABLED(canEdit)} style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;line-height:1.5;resize:vertical;outline:0">${esc(row.note)}</textarea>
+              Segment note / musician cue
+              <textarea data-role="panel-note" rows="3" maxlength="1000" placeholder="${row.kind === 'song' ? 'e.g. Capo 2, repeat the chorus twice' : 'e.g. Speaker to confirm'}" ${DISABLED(canEdit)} style="padding:12px 14px;border-radius:8px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:14px;line-height:1.5;resize:vertical;outline:0">${esc(row.note)}</textarea>
             </label>
-            <div><button type="button" data-save-note="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-quiet" style="height:40px;padding:0 16px;font-size:14px;font-weight:600">Save note</button></div>`
-    : '';
+            <div style="display:flex;flex-wrap:wrap;gap:10px">
+              <button type="button" data-save-note="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-quiet" style="height:40px;padding:0 16px;font-size:14px;font-weight:600">Save note</button>
+              ${holds ? `<button type="button" data-clear-segment="${esc(row.id)}" ${DISABLED(canEdit)} class="btn-quiet is-danger" style="height:40px;padding:0 16px;font-size:14px;font-weight:600">Clear segment</button>` : ''}
+            </div>`;
   return `
           <div style="display:flex;flex-direction:column;gap:12px;padding:14px 18px;background:var(--input-bg);border-bottom:1px solid var(--border)">
             ${entryListHtml(row.entries, row.id, canEdit)}
@@ -211,7 +239,7 @@ function renderSegments(view) {
                   <span style="font-size: 15px; font-weight: 700">${esc(r.name)}</span>
                   <span style="font-size: 12px; color: var(--muted)">${esc(sub)}</span>
                 </span>
-                <span style="flex: 1 1 200px; min-width: 0; font-size: 14px; line-height: 1.4; ${valueStyle}">${contentHtml(r)}</span>
+                <span style="flex: 1 1 200px; min-width: 0; font-size: 14px; line-height: 1.4; ${valueStyle}">${contentHtml(r)}${r.note ? `<span class="slot-note-line"><span class="sr-only">Note: </span>${esc(r.note)}</span>` : ''}</span>
                 <span class="editor-item-actions" style="flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg)">
                   <button type="button" data-step="${esc(r.id)}" data-delta="-1" aria-label="Fewer minutes for ${esc(r.name)}" ${r.minutes <= MIN_MINUTES || !canEdit ? 'disabled' : ''} style="width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--focus); font-size: 18px; font-weight: 700; cursor: pointer">−</button>
                   <span data-minutes="${esc(r.id)}" style="min-width: 46px; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 13px">${r.minutes} min</span>
@@ -365,6 +393,8 @@ async function load() {
     TEMPLATE = praiseTemplateFor(plan.items, PRAISE_PLAN);
     SEGMENTS = praiseSegments(TEMPLATE);
     state = fresh(praiseFromItems(plan.items, SEGMENTS));
+    rememberPlan({ id: plan.id, kind: 'pw', name: plan.name, date: plan.date });
+    mountHeader();
     resetSongPickers();
   } catch (err) {
     if (plan) state.error = err.message;
@@ -378,14 +408,26 @@ async function save({ onlyIfChanged = false } = {}) {
   const applied = applyOpenPanel();
   if (onlyIfChanged && !state.dirty) return;
   if (applied) renderKeepingField();
+  const nameProblem = checkPlanName(state.name);
+  if (nameProblem) {
+    state.error = nameProblem;
+    renderHeader(compute());
+    titleInput.focus();
+    return;
+  }
   state.saving = true;
   state.error = '';
   const sent = state.edits;
   renderHeader(compute());
   try {
-    const response = await savePlan(savePayload(plan, praiseToItems(state, SEGMENTS), { contentHubItems: state.contentHubItems }));
+    const sentName = state.name;
+    const response = await savePlan(savePayload(plan, praiseToItems(state, SEGMENTS), { name: sentName, contentHubItems: state.contentHubItems }));
     plan.updatedAt = response.savedAt;
+    plan.name = response.name ?? sentName.trim();
+    if (state.name === sentName) state.name = plan.name;
     if (state.edits === sent) state.dirty = false;
+    rememberPlan({ id: plan.id, kind: 'pw', name: plan.name, date: plan.date });
+    mountHeader();
   } catch (err) {
     state.error = err.message;
   } finally {
@@ -446,6 +488,20 @@ document.querySelector('main').addEventListener('click', (event) => {
     state.segments = withoutEntry(state.segments, button.dataset.for, Number(button.dataset.removeEntry));
     markEdited();
     render();
+  } else if (button.dataset.moveEntry !== undefined) {
+    const from = Number(button.dataset.moveEntry);
+    const to = from + Number(button.dataset.delta);
+    state.segments = withEntryMoved(state.segments, button.dataset.for, from, to);
+    markEdited();
+    render();
+    document.querySelector(`[data-move-entry="${to}"][data-delta="${button.dataset.delta}"]:not(:disabled), [data-move-entry="${to}"]:not(:disabled)`)?.focus();
+  } else if (button.dataset.clearSegment) {
+    const id = button.dataset.clearSegment;
+    if (!window.confirm(`Clear ${rowOf(id).name}? Its songs, text and note are taken out of this plan.`)) return;
+    state.segments = withoutEntries(state.segments, id);
+    delete state.notes[id];
+    markEdited();
+    render();
   } else if (button.dataset.useText) {
     if (applyOpenPanel()) render();
   } else if (button.dataset.close) {
@@ -462,6 +518,93 @@ document.querySelector('main').addEventListener('click', (event) => {
     if (planId) void load();
   } else if (button.id === 'save') {
     void save();
+  } else if (button.id === 'duplicate') {
+    void duplicate();
+  } else if (button.id === 'delete') {
+    askDelete();
+  }
+});
+
+titleInput.addEventListener('input', () => {
+  if (!plan || !canEdit) return;
+  state.name = titleInput.value;
+  markEdited();
+  renderHeader(compute());
+});
+titleInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    void save();
+  } else if (event.key === 'Escape' && plan) {
+    titleInput.value = plan.name;
+    state.name = plan.name;
+    markEdited();
+    renderHeader(compute());
+  }
+});
+
+// Leaving with unsaved changes asks first.
+window.addEventListener('beforeunload', (event) => {
+  if (state.dirty) event.preventDefault();
+});
+
+/** The Planner header, with Plan Editor on and this plan's title and date beneath "Planner". */
+function mountHeader() {
+  Object.assign(header, mountPlannerHeader(document.querySelector('[data-planner-header]'), {
+    tab: 'editor',
+    root: ROOT,
+    editorPlan: plan ? { id: plan.id, kind: 'pw', name: plan.name, date: plan.date } : lastPlan(),
+    canCreate: canEdit,
+    newPlan: newPlanFlowHref({ kind: 'pw', date: plan?.date ?? '' }, ROOT),
+  }));
+  renderHeader(compute());
+}
+
+/** Duplicate Plan: a copy of the saved plan on the same day, opened in the editor. Unsaved changes here are not in the copy. */
+async function duplicate() {
+  if (!plan || !canEdit || state.saving) return;
+  if (state.dirty && !window.confirm('Your unsaved changes are not in the copy. Duplicate the last saved version?')) return;
+  const button = document.getElementById('duplicate');
+  button.disabled = true;
+  button.textContent = 'Copying…';
+  try {
+    const { created } = await duplicatePlanById(plan.id);
+    state.dirty = false;
+    location.assign(`${ROOT}${editorPathFor(created)}`);
+  } catch (err) {
+    state.error = err.message;
+    button.textContent = 'Duplicate Plan';
+    renderHeader(compute());
+  }
+}
+
+const deleteDialog = document.getElementById('delete-dialog');
+const deleteConfirm = document.getElementById('delete-confirm');
+const deleteError = document.getElementById('delete-error');
+
+function askDelete() {
+  if (!plan || !canEdit) return;
+  document.getElementById('delete-text').textContent = deleteWarning(state.name || plan.name);
+  deleteError.textContent = '';
+  deleteDialog.showModal();
+}
+
+document.getElementById('delete-cancel').addEventListener('click', () => deleteDialog.close());
+deleteDialog.addEventListener('close', () => document.getElementById('delete')?.focus());
+deleteConfirm.addEventListener('click', async () => {
+  if (!plan || deleteConfirm.disabled) return;
+  deleteConfirm.disabled = true;
+  deleteConfirm.textContent = 'Deleting…';
+  deleteError.textContent = '';
+  try {
+    await deletePlanById(plan.id);
+    state.dirty = false;
+    // Back to the Praise & Worship Calendar, on the month the plan was in.
+    location.assign(calendarHref('pw', ROOT, plan.date.slice(0, 7)));
+  } catch (err) {
+    deleteError.textContent = err.message;
+    deleteConfirm.disabled = false;
+    deleteConfirm.textContent = 'Delete plan';
   }
 });
 
@@ -482,6 +625,7 @@ document.addEventListener('keydown', (event) => {
 
 const user = await guard();
 if (user) {
+  mountHeader();
   if (planId) await load();
   else render();
 }

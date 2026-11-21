@@ -84,8 +84,9 @@ test('the create request keeps the route\'s fields; language and time are for a 
 });
 
 test('the page offers both templates, with the counts the editors really have', async () => {
-  const web = (file) => fs.readFileSync(path.join(here, '..', '..', 'web', file), 'utf8');
-  const page = web('plan/new.html');
+  // plan/new.html and the Planner's New Plan modal both draw the form from new-plan-form.js.
+  const { newPlanFormHtml } = await import(pathToFileURL(path.join(here, '..', '..', 'web', 'js', 'new-plan-form.js')).href);
+  const page = newPlanFormHtml();
   const { SLOT_COUNT } = await import(pathToFileURL(path.join(here, '..', '..', 'web', 'js', 'mass-slots.js')).href);
   const { PRAISE_PLAN } = await import(pathToFileURL(path.join(here, '..', '..', 'web', 'js', 'sample-data.js')).href);
   const segments = PRAISE_PLAN.sections.reduce((sum, section) => sum + section.rows.length, 0);
@@ -102,4 +103,11 @@ test('the page runs under the site\'s content security policy: no inline script 
   assert.doesNotMatch(page, /\son[a-z]+=/);
   const script = web('js/new-plan.js');
   assert.doesNotMatch(script, /innerHTML|insertAdjacentHTML|outerHTML|eval\(|new Function/);
+  // The shared form writes markup once, from constants only (newPlanFormHtml takes no user value); everything typed goes through
+  // textContent or an input's value.
+  const form = web('js/new-plan-form.js');
+  assert.deepEqual(form.match(/innerHTML|insertAdjacentHTML|outerHTML/g), ['innerHTML']);
+  assert.match(form, /root\.innerHTML = newPlanFormHtml\(\{ cancel \}\);/);
+  assert.doesNotMatch(form, /eval\(|new Function/);
+  for (const page of ['plan/new.html', 'index.html']) assert.match(web(page), /<div id="new-plan-layout" class="new-plan-layout"/, `${page} holds the form`);
 });

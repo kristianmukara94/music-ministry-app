@@ -307,6 +307,29 @@
 .apcc-advanced-text.apcc-text-color * {
   color: var(--apcc-text-color) !important;
 }
+/*
+ * Plan Appearance (shared/plan-appearance.js, src/output/PlanLook.tsx): a plan's weight, colour and drop shadow for the words of its slides.
+ * Only the words ([data-slide-words]) take them: labels, counters and footers keep the slide's design. They sit over Advanced output (the
+ * Global Appearance), so a plan's choice wins. A song or reading saved with its own custom font keeps that font (it is the item's own style).
+ */
+.apcc-plan-text[data-plan-weight] [data-slide-words],
+.apcc-plan-text[data-plan-weight] [data-slide-words] * {
+  font-weight: var(--apcc-plan-weight) !important;
+}
+.apcc-plan-text[data-plan-color] [data-slide-words],
+.apcc-plan-text[data-plan-color] [data-slide-words] * {
+  color: var(--apcc-plan-text-color) !important;
+}
+.apcc-plan-text[data-plan-shadow] [data-slide-words],
+.apcc-plan-text[data-plan-shadow] [data-slide-words] * {
+  text-shadow: var(--apcc-legible-text-shadow, 0 2px 14px rgba(0, 0, 0, 0.85), 0 0 3px rgba(0, 0, 0, 0.6)) !important;
+}
+.apcc-plan-text[data-plan-flat] [data-slide-words],
+.apcc-plan-text[data-plan-flat] [data-slide-words] * {
+  text-shadow: none !important;
+  filter: none !important;
+  -webkit-text-stroke: 0 transparent !important;
+}
 @keyframes apcc-enter-zoom {
   from { opacity: 0; transform: scale(0.9); }
   to { opacity: 1; transform: none; }

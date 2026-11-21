@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { parseSourceId } from '../shared/bible-ref.js';
 import { GOSPEL_ACCLAMATION } from './lectionary.js';
 import { recordTombstone } from './plan-sync-schema.js';
+import { copyName } from './plan-appearance.js';
 import { isSlotId } from '../shared/mass-slots.js';
 import { noteSource } from '../shared/notes.js';
 import { announcementSource } from '../shared/flow-insert.js';
@@ -376,6 +377,33 @@ export function createMassPlanService(db) {
       return show;
     },
 
+    /**
+     * Copies a plan: its items, language, slot-title choice and Plan Appearance, on the same day, named "<name> (Copy)". The copy keeps the
+     * Holy Mass language but not the time, since two Holy Masses on one day may not share a time (see checkedSchedule); the operator sets it.
+     * Resolves to the copy as createPlan does.
+     */
+    duplicatePlan(id) {
+      const plan = requirePlan(id);
+      const name = copyName(plan.name, MAX_NAME);
+      const schedule = { massTime: '', massLanguage: plan.massLanguage ?? '' };
+      const copied = (table, keyColumn) =>
+        db.prepare(`SELECT name FROM pragma_table_info('${table}') WHERE name NOT IN ('id', '${keyColumn}', 'uuid', 'updated_at')`).all().map((c) => c.name);
+      const planColumns = new Set(copied('mass_plans', 'id'));
+      const itemColumns = copied('mass_plan_items', 'plan_id');
+      const made = db.transaction(() => {
+        const newId = Number(q.insertPlan.run(name, plan.liturgicalDate, plan.language).lastInsertRowid);
+        if (hasScheduleColumns) q.setSchedule.run(schedule.massTime, schedule.massLanguage, newId);
+        // The plan's own choices, where this database keeps them.
+        for (const column of ['show_slot_title', 'appearance_json']) {
+          if (planColumns.has(column)) db.prepare(`UPDATE mass_plans SET ${column} = (SELECT ${column} FROM mass_plans WHERE id = ?) WHERE id = ?`).run(id, newId);
+        }
+        const cols = itemColumns.join(', ');
+        db.prepare(`INSERT INTO mass_plan_items (plan_id, ${cols}) SELECT ?, ${cols} FROM mass_plan_items WHERE plan_id = ? ORDER BY id`).run(newId, id);
+        return newId;
+      })();
+      return { id: made, name, liturgicalDate: plan.liturgicalDate, language: plan.language, ...schedule };
+    },
+
     deletePlan(id) {
       // The tombstone and the delete happen together, so a deleted plan is never pulled back on the next sync.
       return db.transaction(() => {
@@ -454,6 +482,7 @@ export function setupMassPlans(db) {
   handle('list', () => service.listPlans());
   handle('create', (input) => service.createPlan(input));
   handle('delete', (id) => service.deletePlan(Number(id)));
+  handle('duplicate', (id) => service.duplicatePlan(Number(id)));
   handle('get', (id) => service.getPlan(Number(id)));
   handle('save', (id, items) => service.savePlan(Number(id), items));
   handle('setLanguage', (id, language) => service.setLanguage(Number(id), language));

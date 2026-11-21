@@ -5,6 +5,7 @@
 const LOADERS = {
   'admin-create-from-app': () => import('../functions/admin-create-from-app.js'),
   'change-password': () => import('../functions/change-password.js'),
+  'day-notes': () => import('../functions/day-notes.js'),
   'church-renew': () => import('../functions/church-renew.js'),
   'device-status': () => import('../functions/device-status.js'),
   'device-unlink': () => import('../functions/device-unlink.js'),

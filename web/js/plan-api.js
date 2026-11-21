@@ -113,3 +113,9 @@ export const createLinkCode = () => request('link-code-create', { method: 'POST'
 
 /** Unlinks one of the church's laptops by its device id (admins only). */
 export const unlinkDevice = (deviceId) => request('device-unlink', { method: 'POST', body: { deviceId } });
+
+/** The church's calendar day memos: { notes: { "YYYY-MM-DD": "…" }, available }. `available` is false until the server can store them. */
+export const listDayNotes = () => request('day-notes');
+
+/** Sets one day's memo, or removes it when `note` is blank. Returns { ok, date, note }. */
+export const saveDayNote = (date, note) => request('day-notes', { method: 'POST', body: { date, note } });

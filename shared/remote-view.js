@@ -1,5 +1,6 @@
 import { outputLookOf, presentedFrame, secondaryFrame, slotTitleShown } from './live.js';
 import { welcomeBackground } from './welcome-settings.js';
+import { planAppearanceFor, planBackgroundShown, planSettingsOverlay } from './plan-appearance.js';
 // Remote view: the settings for the two phone viewers, the snapshot of the live screen they show, and the control requests
 // the Primary viewer may send. Shared by the main process (saved to config.json, sent to phones) and tested without
 // Electron. Pure: its only import is the live state's secondary display selector.
@@ -197,7 +198,16 @@ function frameSnapshot(state, frame, base) {
   if (kind !== 'slide') return { kind, title: '', lines: [], image: null, mediaId: null, font: null, fontScale: 1 };
   const look = outputLookOf(state);
   const settings = frame.kind === 'welcome' ? look.welcome : frame.kind === 'pw' ? look.welcome.slideBackground : null;
-  const bg = settings ? welcomeBackground(settings) : { color: null, media: null, shade: false };
+  // A plan's own look (Plan Appearance) reaches the TV too: its background in place of the Live slide background, and its font and size.
+  const plan = planAppearanceFor(state, frame);
+  const own = state.slideLooks?.[frame.lookKey] ?? frame.look ?? frame.slide?.look ?? null;
+  const planBg = planBackgroundShown({ frame, appearance: plan, ownBackdrop: own?.backdrop ?? null });
+  const planType = planSettingsOverlay(plan);
+  const bg = planBg
+    ? { color: planBg.color, media: planBg.media, shade: planBg.dim > 0 }
+    : settings
+      ? welcomeBackground(settings)
+      : { color: null, media: null, shade: false };
   return {
     kind,
     // The operator's Title switch reaches the TV as it does the projector. A title that is all the slide says stays, so the screen is not left blank.
@@ -210,8 +220,9 @@ function frameSnapshot(state, frame, base) {
     fit: bg.media ? bg.media.fit : null,
     loop: bg.media ? bg.media.loop : null,
     shade: bg.shade,
-    font: outputLookOf(state).slideFont ?? null,
-    fontScale: outputLookOf(state).slideFontScale ?? 1,
+    font: planType.slideFont ?? outputLookOf(state).slideFont ?? null,
+    // A plan's MAX is the TV's largest size (150%).
+    fontScale: planType.edgeToEdge ? 1.5 : (planType.slideFontScale ?? outputLookOf(state).slideFontScale ?? 1),
   };
 }
 

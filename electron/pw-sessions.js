@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { DEFAULT_CUES, DEFAULT_TEMPLATE, MAX_CHAIN, MAX_PICTURES, MAX_SONGS, PW_TYPES, segmentFromTemplate } from '../shared/pw.js';
 import { recordTombstone } from './plan-sync-schema.js';
+import { copyName } from './plan-appearance.js';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const KEY = /^[a-z][a-z0-9_]{0,39}$/;
@@ -332,6 +333,22 @@ export function createPwService(db) {
       return this.getSession(id);
     },
 
+    /** Copies a session: its groups, segments (songs, prayers, cues, notes) and Plan Appearance, on the same day, named "<name> (Copy)". */
+    duplicateSession(id) {
+      const session = requireSession(id);
+      const columns = (table, skip) => db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all().map((c) => c.name).filter((c) => !skip.includes(c));
+      const sessionColumns = new Set(columns('pw_sessions', []));
+      const segmentColumns = columns('pw_segments', ['id', 'session_id', 'uuid', 'updated_at']).join(', ');
+      const made = db.transaction(() => {
+        const { lastInsertRowid } = q.insertSession.run(copyName(session.name, MAX_NAME), session.liturgicalDate, JSON.stringify(session.groups));
+        const newId = Number(lastInsertRowid);
+        if (sessionColumns.has('appearance_json')) db.prepare('UPDATE pw_sessions SET appearance_json = (SELECT appearance_json FROM pw_sessions WHERE id = ?) WHERE id = ?').run(id, newId);
+        db.prepare(`INSERT INTO pw_segments (session_id, ${segmentColumns}) SELECT ?, ${segmentColumns} FROM pw_segments WHERE session_id = ? ORDER BY display_order, id`).run(newId, id);
+        return newId;
+      })();
+      return this.getSession(made);
+    },
+
     deleteSession(id) {
       // The tombstone and the delete happen together, so a deleted session is never pulled back on the next sync.
       return db.transaction(() => {
@@ -433,6 +450,7 @@ export function setupPwSessions(db) {
   handle('getSession', (id) => service.getSession(Number(id)));
   handle('saveSession', (id, input) => service.saveSession(Number(id), input));
   handle('deleteSession', (id) => service.deleteSession(Number(id)));
+  handle('duplicateSession', (id) => service.duplicateSession(Number(id)));
   handle('listTemplates', () => service.listTemplates());
   handle('saveAsTemplate', (sessionId, name) => service.saveAsTemplate(Number(sessionId), name));
   handle('deleteTemplate', (id) => service.deleteTemplate(Number(id)));

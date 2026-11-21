@@ -95,8 +95,9 @@ test('the list does not send the plan body: only the list fields are in each ent
   const cookie = await cookieFor('planner', 'K7QM-4XD2');
   const plans = JSON.parse((await web().plans(event({ cookie }))).body).plans;
   for (const plan of plans) {
-    // A Holy Mass plan also carries its schedule (time and language, '' for none) for the calendar; every plan its item count.
-    const schedule = plan.kind === 'pw' ? [] : ['massLanguage', 'massTime'];
+    // A Holy Mass plan also carries its schedule (time and language, '' for none) and the slot numbers it fills, for the calendar; every
+    // plan its item count.
+    const schedule = plan.kind === 'pw' ? [] : ['filledSlots', 'massLanguage', 'massTime'];
     assert.deepEqual(Object.keys(plan).sort(), ['id', 'itemCount', 'kind', 'liturgical_date', ...schedule, 'name', 'synced_at', 'updated_at'].sort());
     assert.equal(typeof plan.itemCount, 'number');
   }

@@ -33,6 +33,7 @@ import { setupMedia } from './media.js';
 import { setupMassPlans } from './mass-plans.js';
 import { setupCalendarNotes } from './calendar-notes.js';
 import { setupPwSessions } from './pw-sessions.js';
+import { setupPlanAppearance } from './plan-appearance.js';
 import { seedBible } from './bible-seed.js';
 import { setupBible } from './bible.js';
 import { seedRosary, setupRosary } from './rosary.js';
@@ -1693,6 +1694,7 @@ app.whenReady().then(() => {
   const planService = setupMassPlans(announcements.db);
   setupCalendarNotes(announcements.db);
   const pwService = setupPwSessions(announcements.db);
+  setupPlanAppearance(announcements.db);
   // Packaged builds copy resources/bible next to the app; in development it is read from the project.
   const bibleDataDir = app.isPackaged
     ? path.join(process.resourcesPath, 'bible')

@@ -8,6 +8,7 @@ import { SLIDE_FONT_SCALES } from '../../../shared/projector-settings.js';
 import { applyTextCase, type TextCase } from '../../../shared/text-fit.js';
 import { BACKDROP_THEMES, backdropThemeOf, balanceLines, lineStats, pad2, toTitleCase, withBackdropTheme, type BackdropThemeId } from '../../../shared/stage-cue.js';
 import { stageWordsBounds, stageWordsBox, stageWordsRows, stageWordsWhiteSpace } from '../../../shared/stage-words-box.js';
+import { loadedPlanAppearance } from '../../../shared/plan-appearance.js';
 import { editorDraftChanged as draftChanged, lookChange, resolveSlideLook, sanitizeSlideLook, stepScale, SLIDE_ALIGNS, type SlideAlign, type SlideLook, type SlideLookKey } from '../../../shared/slide-look.js';
 import { useGoLiveT } from '../strings';
 import { setCueMeta, useCueMetaOf } from './cueMeta';
@@ -98,6 +99,8 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
   const cue = cueAt(index);
   const settings = useLive((s) => s.state.settings);
   const slideBackground = useLive((s) => s.state.welcome.slideBackground);
+  // The loaded plan's own look (Plan Appearance) sits between this slide's look and the settings: a Praise & Worship slide's plan, or the Holy Mass plan.
+  const planLook = useLive((s) => loadedPlanAppearance(s.state, cue?.lookKey?.startsWith('pw:') ? 'pw' : 'mass'));
   const savedLook = useLive((s) => (cue?.lookKey ? s.state.slideLooks?.[cue.lookKey] ?? null : null)) ?? cue?.ownLook ?? null;
   const meta = useCueMetaOf(cue?.lookKey);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -133,7 +136,7 @@ export function SlideEditorModal({ index, cueAt, title, onIndex, onClose, backdr
 
   if (!cue || !draft) return null;
   const target = cue.target;
-  const resolved = resolveSlideLook(settings, draft.look, backdropThemeOf(slideBackground));
+  const resolved = resolveSlideLook(settings, draft.look, backdropThemeOf(slideBackground), planLook);
   const stats = lineStats(draft.text);
   const scaleLabel = resolved.maxFit ? 'MAX' : `${Math.round(resolved.fontScale * 100)}%`;
   const editable = target !== null;

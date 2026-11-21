@@ -94,7 +94,9 @@ test('the legacy blue palette is gone from every web stylesheet', () => {
 test('outside the paper print styles, web stylesheets use theme tokens rather than fixed colours', () => {
   for (const file of ['web/css/planner.css', 'web/css/login.css']) {
     const text = read(file).replace(/@media print \{[\s\S]*?\n\}/g, '');
-    const fixed = [...text.matchAll(/^(?!\s*--brand-tile)[^\n]*(#[0-9a-f]{3,8}\b|rgba?\([\d\s,.]+\))[^\n]*$/gim)]
+    // Exempt, like the brand tile: the web Planner calendar's liturgical colours (--lit-*), the vestment colours, fixed on every theme as
+    // the laptop's calendar keeps them.
+    const fixed = [...text.matchAll(/^(?!\s*--brand-tile|\s*--lit-)[^\n]*(#[0-9a-f]{3,8}\b|rgba?\([\d\s,.]+\))[^\n]*$/gim)]
       .map((m) => m[0].trim())
       .filter((line) => !/^--shadow-strong|^--card-shadow|^\/\*|^\*/.test(line));
     assert.deepEqual(fixed, [], `${file} has fixed colours`);

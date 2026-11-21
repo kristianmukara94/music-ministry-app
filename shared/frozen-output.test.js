@@ -89,7 +89,7 @@ test('the Preview shows a paused badge, and the audience picture reads the on-ai
   assert.match(read('src/operator/PreviewPanel.tsx'), /Projector paused · editing staged/);
   const outputs = read('src/output/outputState.ts');
   assert.match(outputs, /export const OnAirLook = createContext\(false\);/);
-  assert.match(outputs, /return select\(audience \? onAir\(state\) : state\);/);
+  assert.match(outputs, /return select\(withPlanAppearance\(audience \? onAir\(state\) : state, plan\)\);/, 'with the slide’s plan look over it (Plan Appearance)');
   const view = read('src/output/ProjectorView.tsx');
   assert.match(view, /<OnAirLook\.Provider value=\{!props\.mirror\}>/, 'the congregation picture reads the on-air look; the mirror does not');
 });

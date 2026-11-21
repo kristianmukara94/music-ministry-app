@@ -38,6 +38,8 @@ export interface PwApi {
   getSession(id: number): Promise<PwSession>;
   saveSession(id: number, input: PwSessionInput): Promise<PwSession>;
   deleteSession(id: number): Promise<boolean>;
+  /** Copies a session (segments, groups, Plan Appearance) on the same day as "<name> (Copy)". */
+  duplicateSession(id: number): Promise<PwSession>;
   listTemplates(): Promise<PwTemplate[]>;
   saveAsTemplate(sessionId: number, name: string): Promise<PwTemplate>;
   /** False for the built-in template, which cannot be deleted. */

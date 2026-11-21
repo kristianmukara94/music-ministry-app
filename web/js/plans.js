@@ -1,18 +1,26 @@
-// Plans: the plan type tabs, the search box, the sort and layout controls, and the list of the church's plans. The plans come from the
-// server. Nothing is made up: when the church has no plans the list says so, and a plan shows Synced only while a laptop holds its latest
-// version. Each card opens its editor with the plan's id in the address, and its ··· menu holds the plan's other actions.
+// The Planner (index.html), as the church laptop's SERVICE PLANNING → Planner: the header with Liturgical Calendar, Praise & Worship Calendar
+// and Plan Editor, and + New Plan. Each calendar shows a month of its own plans (planner-calendar.js): Holy Mass plans on the Liturgical
+// Calendar with their time, language and slots filled ("9:30 AM · EN 8/23"), Praise & Worship plans on theirs. A click on an empty day opens
+// the New Plan modal for it, on a day with one plan opens that plan in the Plan Editor, and on a day with several lists them (Available Holy
+// Mass Schedules, with + Add Another Holy Mass Schedule). Each day can carry a memo. The list and grid views show the same calendar's plans
+// with search, sort and each plan's ··· menu (Edit, Duplicate, Export PDF Setlist, Delete).
+//
+// The address keeps the calendar and month (?cal=pw&month=2026-12), and ?new=mass|pw&date= opens the New Plan modal (+ New Plan from the Plan
+// Editor). Nothing is made up: the plans and memos come from the server.
 import { esc, mountSidebar } from './shell.js';
 import { guard, parishLine } from './auth.js';
-import { createPlan, deletePlan, getPlan, listPlans, savePlan } from './plan-api.js';
+import { getPlan, listDayNotes, listPlans, saveDayNote } from './plan-api.js';
 import { MASS_PLAN, PRAISE_PLAN } from './sample-data.js';
 import { languageName, slotName } from './mass-language.js';
-import { badgeText, scheduleText } from './schedule-ui.js';
-import { WEEKDAY_SHORT, dayAction, dayBadges, monthGrid, monthOf, monthTitle, newPlanHref, plansOnDay, shiftMonth } from './plan-calendar.js';
+import { openExistingHref, scheduleText } from './schedule-ui.js';
+import { monthOf, shiftMonth } from './plan-calendar.js';
+import { calendarHtml, calendarKindOf, calendarMonth, chooserRowHtml, dayClick, liturgicalDay, longDate, massProgress, plannerViewOf, plansOnCalendarDay } from './planner-calendar.js';
+import { editorHrefFor, lastPlan, mountPlannerHeader } from './planner-header.js';
+import { mountNewPlanForm } from './new-plan-form.js';
+import { deletePlanById, deleteWarning, duplicatePlanById } from './plan-actions.js';
 import {
   DEFAULT_SORT,
   canCreatePlans,
-  duplicateRequest,
-  editorPathFor,
   localDate,
   massFromItems,
   massRows,
@@ -20,27 +28,24 @@ import {
   praiseFromItems,
   praiseSegments,
   praiseTemplateFor,
-  savePayload,
   setlistEntries,
   shortDate,
   sortPlans,
-  tabCounts,
-  viewModeOf,
   visiblePlans,
 } from './plan-model.js';
 
 mountSidebar();
 
-const EMPTY = 'No plans yet. Plans are created on the church laptop and appear here after sync.';
-const VIEW_KEY = 'apccmma_plans_view_mode';
+const EMPTY = 'No plans on this calendar yet. Pick a day on the calendar to start one, or create plans on the church laptop.';
+const VIEW_KEY = 'apccmma.planner.view';
 const PAGE_TITLE = document.title;
+const params = new URLSearchParams(location.search);
 
-/** The layout chosen in this browser. A blocked store just starts with the list. */
 function readView() {
   try {
-    return viewModeOf(localStorage.getItem(VIEW_KEY));
+    return plannerViewOf(localStorage.getItem(VIEW_KEY));
   } catch {
-    return 'list';
+    return 'calendar';
   }
 }
 
@@ -52,8 +57,20 @@ function writeView(view) {
   }
 }
 
-// `month` (YYYY-MM) is the month the calendar view shows; it opens on this month.
-const state = { tab: 'all', query: '', sort: DEFAULT_SORT, view: readView(), month: monthOf(localDate()), plans: null, message: '', error: '', canEdit: false, busy: false };
+const state = {
+  cal: calendarKindOf(params.get('cal')),
+  month: monthOf(params.get('month')) ?? monthOf(localDate()),
+  view: readView(),
+  query: '',
+  sort: DEFAULT_SORT,
+  plans: null,
+  notes: {},
+  notesAvailable: true,
+  message: '',
+  error: '',
+  canEdit: false,
+  busy: false,
+};
 
 const list = document.getElementById('plan-rows');
 const search = document.getElementById('plan-search');
@@ -64,14 +81,7 @@ const deleteConfirm = document.getElementById('delete-confirm');
 const deleteCancel = document.getElementById('delete-cancel');
 const deleteError = document.getElementById('delete-error');
 const setlistPrint = document.getElementById('setlist-print');
-
-const TABS = [
-  { key: 'all', label: 'All' },
-  { key: 'mass', label: 'Holy Mass' },
-  { key: 'pw', label: 'Praise &amp; Worship' },
-];
-const TAB_ON = 'height:40px;padding:0 16px;border-radius:8px;border:1px solid var(--primary);background:var(--primary);color:var(--on-primary);font-size:14px;font-weight:700;cursor:pointer';
-const TAB_OFF = 'height:40px;padding:0 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:14px;font-weight:600;cursor:pointer';
+const headerSlot = document.querySelector('[data-planner-header]');
 
 const stroke = (size, body) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 const ICON_MASS = stroke(20, '<path d="M12 3v18M7 8h10"/>');
@@ -87,6 +97,8 @@ const ICON_TRASH = stroke(16, '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 
 const updatedText = (iso) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 const planOf = (id) => state.plans?.find((p) => p.id === id);
+const editorHref = (plan) => editorHrefFor(plan);
+const openPlan = (plan) => location.assign(editorHref(plan));
 
 /** Says what just happened in the line above the list. A screen reader speaks it too. */
 function say(text, isError = false) {
@@ -94,14 +106,21 @@ function say(text, isError = false) {
   statusLine.classList.toggle('is-error', isError);
 }
 
-function renderTabs() {
-  const counts = state.plans ? tabCounts(state.plans) : null;
-  document.getElementById('tabs').innerHTML = TABS.map((t) => `
-            <button type="button" role="tab" data-tab="${t.key}" aria-selected="${t.key === state.tab}" style="${t.key === state.tab ? TAB_ON : TAB_OFF}">${t.label}${counts ? ` <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; margin-left: 6px">${counts[t.key]}</span>` : ''}</button>`).join('');
+/** Keeps the calendar and month in the address, so a reload or a shared link opens the same view. */
+function writeAddress() {
+  const next = new URLSearchParams();
+  next.set('cal', state.cal);
+  if (state.month !== monthOf(localDate())) next.set('month', state.month);
+  history.replaceState(null, '', `${location.pathname}?${next}`);
+}
+
+function renderHeader() {
+  mountPlannerHeader(headerSlot, { tab: state.cal, editorPlan: lastPlan(), canCreate: state.canEdit });
 }
 
 function renderViewToggle() {
   document.querySelectorAll('[data-view]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.view === state.view)));
+  document.getElementById('list-controls').hidden = state.view === 'calendar';
 }
 
 /** The message in place of the cards: a loading line, a server error, the empty message, or no match. */
@@ -117,14 +136,16 @@ function showNotice(text, tone) {
 function card(plan, today) {
   const isPw = plan.kind === 'pw';
   const timing = planTiming(plan.liturgical_date, today);
+  const progress = isPw ? null : massProgress(plan, plan.liturgical_date);
   return `
           <article class="plan-card">
             <span class="plan-card-icon">${isPw ? ICON_PW : ICON_MASS}</span>
             <div class="plan-card-main">
-              <a class="plan-card-link" href="${esc(editorPathFor(plan))}">${esc(plan.name)}</a>
+              <a class="plan-card-link" href="${esc(editorHref(plan))}">${esc(plan.name)}</a>
               <span class="plan-badges">
                 <span class="plan-badge is-kind">${isPw ? 'Praise &amp; Worship' : 'Holy Mass plan'}</span>
                 ${!isPw && scheduleText(plan) ? `<span class="plan-badge is-kind">${esc(scheduleText(plan))}</span>` : ''}
+                ${progress ? `<span class="plan-badge is-kind">${progress.ready ? 'Ready' : `${progress.done}/${progress.total} slots`}</span>` : `<span class="plan-badge is-kind">${plan.itemCount ?? 0} items</span>`}
                 <span class="plan-badge is-${timing}">${timing === 'upcoming' ? 'Upcoming' : 'Past'}</span>
                 ${plan.synced_at != null ? '<span class="badge-pill badge-synced">Synced</span>' : ''}
               </span>
@@ -135,42 +156,8 @@ function card(plan, today) {
           </article>`;
 }
 
-/**
- * The month calendar: each day's Holy Masses as schedule badges in the order they are celebrated ("6:00 AM · EN", "+N more") and its Praise &
- * Worship plans. The tabs and the search narrow it as they narrow the list.
- */
-function calendarMarkup(plans, today) {
-  const cells = monthGrid(state.month).map(({ iso, day, inMonth }) => {
-    const onDay = plansOnDay(plans, iso);
-    const { shown, more } = dayBadges(onDay.mass);
-    const action = dayAction(onDay, state.canEdit);
-    const badges = [
-      ...shown.map((p) => `<span class="bc-badge">${esc(badgeText(p))}</span>`),
-      ...(more ? [`<span class="bc-badge is-more">+${more} more</span>`] : []),
-      ...onDay.pw.slice(0, 1).map((p) => `<span class="bc-badge is-pw">${esc(p.name)}</span>`),
-      ...(onDay.pw.length > 1 ? [`<span class="bc-badge is-more">+${onDay.pw.length - 1} more</span>`] : []),
-    ];
-    const names = [...onDay.mass.map((p) => scheduleText(p) || p.name), ...onDay.pw.map((p) => p.name)].join(', ');
-    const label = `${shortDate(iso)}${names ? `: ${names}` : action === 'create' ? ': create a plan' : ''}`;
-    const classes = ['bc-day', inMonth ? '' : 'is-outside', iso === today ? 'is-today' : ''].filter(Boolean).join(' ');
-    return `<button type="button" class="${classes}" data-day="${iso}" aria-label="${esc(label)}"${action === 'none' ? ' disabled' : ''}><span class="bc-day-num">${day}</span>${badges.join('')}</button>`;
-  });
-  return `
-    <section class="bc-calendar" aria-label="Plan calendar">
-      <div class="bc-cal-head">
-        <h2 class="bc-cal-title">${esc(monthTitle(state.month))}</h2>
-        <div class="bc-cal-nav">
-          <button type="button" data-cal-nav="-1" aria-label="Previous month">‹</button>
-          <button type="button" data-cal-nav="0">Today</button>
-          <button type="button" data-cal-nav="1" aria-label="Next month">›</button>
-        </div>
-      </div>
-      <div class="bc-cal-grid">
-        ${WEEKDAY_SHORT.map((d) => `<span class="bc-cal-weekday" aria-hidden="true">${d}</span>`).join('')}
-        ${cells.join('')}
-      </div>
-    </section>`;
-}
+/** The plans of the calendar on show. */
+const calendarPlans = () => visiblePlans(state.plans ?? [], { tab: state.cal });
 
 function renderRows() {
   closeMenu();
@@ -180,21 +167,31 @@ function renderRows() {
   if (state.view === 'calendar') {
     // The calendar shows even with no plans, so a planner can pick a day to create the first one.
     list.classList.remove('is-grid');
-    list.innerHTML = calendarMarkup(visiblePlans(state.plans, { tab: state.tab, query: state.query }), localDate());
+    const model = calendarMonth({ kind: state.cal, month: state.month, plans: calendarPlans(), notes: state.notes, today: localDate() });
+    list.innerHTML = calendarHtml(model, { canEdit: state.canEdit });
     return;
   }
-  if (state.plans.length === 0) return showNotice(state.message || EMPTY);
-  const rows = sortPlans(visiblePlans(state.plans, { tab: state.tab, query: state.query }), state.sort);
-  if (rows.length === 0) return showNotice('No plans match. Try another tab or clear the search.');
+  const rows = sortPlans(visiblePlans(state.plans, { tab: state.cal, query: state.query }), state.sort);
+  if (calendarPlans().length === 0) return showNotice(state.message || EMPTY);
+  if (rows.length === 0) return showNotice('No plans match. Clear the search to see them all.');
   const today = localDate();
   list.classList.toggle('is-grid', state.view === 'grid');
   list.innerHTML = rows.map((plan) => card(plan, today)).join('');
 }
 
 function render() {
-  renderTabs();
+  renderHeader();
   renderViewToggle();
   renderRows();
+}
+
+/** Shows the other calendar, keeping the month. */
+function showCalendar(kind) {
+  if (kind === state.cal) return;
+  state.cal = kind;
+  writeAddress();
+  render();
+  headerSlot.querySelector(`[data-planner-tab="${kind}"]`)?.focus();
 }
 
 // ---- The ··· menu. One menu, moved to the card that opened it, so the list can redraw without losing it and no card can clip it. ----
@@ -267,22 +264,8 @@ async function runAction(label, work) {
 
 function duplicatePlan(plan) {
   return runAction(`Copying ${plan.name}…`, async () => {
-    const { plan: source } = await getPlan(plan.id);
-    const { plan: created } = await createPlan(duplicateRequest(source, crypto.randomUUID()));
-    let updatedAt = created.updatedAt;
-    let message = `Copied to ${created.name}.`;
-    let failed = false;
-    // A new plan starts without a language, so a Holy Mass plan's readings language and schedule language are saved onto the copy straight
-    // after. The copy is on the same day, so it takes no time: two Holy Masses on one day cannot share one. Set it in the copy's editor.
-    if (created.kind !== 'pw' && (source.language || source.massLanguage)) {
-      try {
-        updatedAt = (await savePlan(savePayload(created, created.items, { language: source.language, massLanguage: source.massLanguage ?? '' }))).savedAt;
-      } catch {
-        message = `Copied to ${created.name}, but its language was not copied. Open the copy to set it.`;
-        failed = true;
-      }
-    }
-    const schedule = created.kind === 'pw' ? {} : { massTime: '', massLanguage: source.massLanguage ?? '' };
+    const { created, source, updatedAt, message, failed } = await duplicatePlanById(plan.id);
+    const schedule = created.kind === 'pw' ? {} : { massTime: '', massLanguage: source.massLanguage ?? '', filledSlots: plan.filledSlots ?? [] };
     state.plans = [...state.plans, { id: created.id, name: created.name, liturgical_date: created.date, updated_at: updatedAt, kind: created.kind, ...schedule, itemCount: created.items.length }];
     render();
     say(message, failed);
@@ -337,7 +320,7 @@ let deleting = null;
 
 function askDelete(plan) {
   deleting = plan;
-  document.getElementById('delete-text').textContent = `“${plan.name}” will be removed for everyone, and from the church laptops at their next sync. This cannot be undone here.`;
+  document.getElementById('delete-text').textContent = deleteWarning(plan.name);
   deleteError.textContent = '';
   deleteDialog.showModal();
 }
@@ -363,7 +346,7 @@ deleteConfirm.addEventListener('click', async () => {
   deleteConfirm.textContent = 'Deleting…';
   deleteError.textContent = '';
   try {
-    await deletePlan(plan.id);
+    await deletePlanById(plan.id);
     state.plans = state.plans.filter((p) => p.id !== plan.id);
     render();
     say(`Deleted ${plan.name}.`);
@@ -378,61 +361,64 @@ deleteConfirm.addEventListener('click', async () => {
   }
 });
 
-// ---- The calendar's day: Available Holy Mass Schedules, or New plan for an empty day. ----
+// ---- New Plan: the modal over the calendar, with the same form plan/new.html shows. ----
+
+const newPlanDialog = document.getElementById('new-plan-dialog');
+let newPlanForm = null;
+let newPlanReturn = null;
+
+/** Opens New Plan for a day and a kind (a calendar day, + Add Another Holy Mass Schedule, + New Plan). Planners and admins only. */
+function openNewPlan({ kind = state.cal, date = '' } = {}) {
+  if (!state.canEdit) return;
+  newPlanReturn = document.activeElement;
+  if (dayDialog.open) dayDialog.close();
+  if (!newPlanForm) {
+    newPlanForm = mountNewPlanForm(document.getElementById('new-plan-layout'), {
+      kind,
+      date,
+      plans: state.plans ?? [],
+      cancel: true,
+      onCreated: (plan) => location.assign(editorHref(plan)),
+      onOpenExisting: (id) => location.assign(openExistingHref(id)),
+      onCancel: () => newPlanDialog.close(),
+    });
+  } else {
+    newPlanForm.setPlans(state.plans ?? []);
+    newPlanForm.reset({ kind, date });
+  }
+  newPlanDialog.showModal();
+  newPlanForm.focus();
+}
+
+document.getElementById('new-plan-dialog-close').addEventListener('click', () => newPlanDialog.close());
+newPlanDialog.addEventListener('close', () => {
+  newPlanReturn?.focus?.();
+  newPlanReturn = null;
+});
+
+// ---- A day: Available Holy Mass Schedules (or the day's Praise & Worship plans), and its memo. ----
 
 const dayDialog = document.getElementById('day-dialog');
 let dayOpenFor = null;
 
-/** A click on a calendar day: a day with plans lists them; an empty day opens New plan with its date (planners and admins only). */
+/** A click on a calendar day: New Plan for an empty day, the plan itself for a day with one, the chooser for a day with several. */
 function pickDay(iso) {
-  const onDay = plansOnDay(visiblePlans(state.plans ?? [], { tab: state.tab, query: state.query }), iso);
-  const action = dayAction(onDay, state.canEdit);
-  if (action === 'create') {
-    location.assign(newPlanHref(iso, state.tab === 'pw' ? 'pw' : 'mass'));
-    return;
-  }
-  if (action === 'pick') openDay(iso, onDay);
-}
-
-function scheduleRow(plan) {
-  const time = plan.massTime || '';
-  const language = plan.massLanguage || '';
-  const count = plan.itemCount ?? 0;
-  return `
-      <li>
-        <a class="bc-schedule" href="${esc(editorPathFor(plan))}" aria-label="${esc(`Open the ${scheduleText(plan) || 'unscheduled'} Holy Mass: ${plan.name}`)}">
-          <span class="bc-schedule-main">
-            <span style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
-              <span class="bc-schedule-time${time ? '' : ' is-blank'}">${esc(time || 'No time set')}</span>
-              ${language ? `<span class="bc-lang">${esc(language)}</span>` : ''}
-            </span>
-            <span class="bc-schedule-name">${esc(plan.name)}</span>
-          </span>
-          <span class="bc-schedule-count">${count} ${count === 1 ? 'item' : 'items'}</span>
-        </a>
-      </li>`;
-}
-
-function praiseRow(plan) {
-  return `
-      <li>
-        <a class="bc-schedule" href="${esc(editorPathFor(plan))}">
-          <span class="bc-schedule-main">
-            <span class="bc-lang">Praise &amp; Worship</span>
-            <span class="bc-schedule-name">${esc(plan.name)}</span>
-          </span>
-          <span class="bc-schedule-count">${plan.itemCount ?? 0} items</span>
-        </a>
-      </li>`;
+  const click = dayClick(state.cal, calendarPlans(), iso, state.canEdit);
+  if (click.action === 'create') openNewPlan({ kind: state.cal, date: iso });
+  else if (click.action === 'open') openPlan(click.plan);
+  else if (click.action === 'pick') openDay(iso, click.plans);
 }
 
 function openDay(iso, onDay) {
   dayOpenFor = iso;
-  document.getElementById('day-dialog-title').textContent = shortDate(iso);
-  document.getElementById('day-dialog-list').innerHTML = [...onDay.mass.map(scheduleRow), ...onDay.pw.map(praiseRow)].join('');
+  const isPw = state.cal === 'pw';
+  const day = liturgicalDay(iso);
+  document.getElementById('day-dialog-eyebrow').textContent = isPw ? 'Praise & Worship plans' : 'Available Holy Mass Schedules';
+  document.getElementById('day-dialog-title').textContent = longDate(iso);
+  document.getElementById('day-dialog-hint').textContent = `${day.name}. ${isPw ? 'Pick a plan to open it.' : 'Pick a Holy Mass to open it, or add another time on this day.'}`;
+  document.getElementById('day-dialog-list').innerHTML = onDay.map((plan) => chooserRowHtml(plan, iso, state.cal, editorHref(plan))).join('');
   document.getElementById('day-dialog-actions').innerHTML = state.canEdit
-    ? `<a class="bc-btn-gold" href="${esc(newPlanHref(iso, 'mass'))}"><span aria-hidden="true">+</span> ${onDay.mass.length ? 'Add Another Holy Mass Schedule' : 'Add a Holy Mass Schedule'}</a>`
-      + (onDay.pw.length ? '' : `<a class="bc-btn-quiet" href="${esc(newPlanHref(iso, 'pw'))}">Praise &amp; Worship plan</a>`)
+    ? `<button type="button" class="bc-btn-gold" data-dialog-add="${iso}"><span aria-hidden="true">+</span> ${isPw ? 'Add a Praise &amp; Worship Plan' : onDay.length ? 'Add Another Holy Mass Schedule' : 'Add a Holy Mass Schedule'}</button>`
     : '';
   dayDialog.showModal();
   dayDialog.querySelector('.bc-schedule, .bc-btn-gold')?.focus();
@@ -442,14 +428,71 @@ document.getElementById('day-dialog-close').addEventListener('click', () => dayD
 dayDialog.addEventListener('click', (event) => {
   // A press on the backdrop closes it.
   if (event.target === dayDialog) dayDialog.close();
+  const add = event.target.closest?.('[data-dialog-add]');
+  if (add) openNewPlan({ kind: state.cal, date: add.dataset.dialogAdd });
 });
 dayDialog.addEventListener('close', () => {
-  list.querySelector(`[data-day="${dayOpenFor}"]`)?.focus();
+  if (!newPlanDialog.open) list.querySelector(`[data-day="${dayOpenFor}"]`)?.focus();
   dayOpenFor = null;
 });
 
+const memoDialog = document.getElementById('memo-dialog');
+const memoInput = document.getElementById('memo-input');
+const memoError = document.getElementById('memo-error');
+const memoSave = document.getElementById('memo-save');
+const memoRemove = document.getElementById('memo-remove');
+let memoFor = null;
+
+function openMemo(iso) {
+  if (!state.canEdit) return;
+  memoFor = iso;
+  document.getElementById('memo-dialog-title').textContent = longDate(iso);
+  document.getElementById('memo-dialog-day').textContent = liturgicalDay(iso).name;
+  memoInput.value = state.notes[iso] ?? '';
+  memoRemove.hidden = !state.notes[iso];
+  memoError.textContent = state.notesAvailable ? '' : 'Day memos cannot be saved yet. Ask your admin to update the planner database.';
+  memoInput.disabled = !state.notesAvailable;
+  memoSave.disabled = !state.notesAvailable;
+  memoDialog.showModal();
+  memoInput.focus();
+}
+
+async function storeMemo(note) {
+  if (!memoFor || memoSave.disabled) return;
+  const iso = memoFor;
+  memoSave.disabled = true;
+  memoRemove.disabled = true;
+  memoError.textContent = '';
+  try {
+    const saved = await saveDayNote(iso, note);
+    const next = { ...state.notes };
+    if (saved.note) next[iso] = saved.note;
+    else delete next[iso];
+    state.notes = next;
+    memoDialog.close();
+    renderRows();
+    say(saved.note ? `Memo saved for ${shortDate(iso)}.` : `Memo removed from ${shortDate(iso)}.`);
+  } catch (err) {
+    memoError.textContent = err.message;
+  } finally {
+    memoSave.disabled = !state.notesAvailable;
+    memoRemove.disabled = false;
+  }
+}
+
+document.getElementById('memo-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  void storeMemo(memoInput.value);
+});
+memoRemove.addEventListener('click', () => void storeMemo(''));
+document.getElementById('memo-dialog-close').addEventListener('click', () => memoDialog.close());
+memoDialog.addEventListener('close', () => {
+  list.querySelector(`[data-memo-day="${memoFor}"]`)?.focus();
+  memoFor = null;
+});
+
 const ACTIONS = {
-  edit: (plan) => location.assign(editorPathFor(plan)),
+  edit: openPlan,
   duplicate: duplicatePlan,
   export: exportSetlist,
   delete: askDelete,
@@ -484,13 +527,32 @@ list.addEventListener('click', (event) => {
   if (nav) {
     const step = Number(nav.dataset.calNav);
     state.month = step === 0 ? monthOf(localDate()) : shiftMonth(state.month, step);
+    writeAddress();
     renderRows();
-    list.querySelector(`[data-cal-nav="${nav.dataset.calNav}"]`)?.focus();
+    (list.querySelector(`[data-cal-nav="${nav.dataset.calNav}"]:not(:disabled)`) ?? list.querySelector('[data-cal-nav="1"]'))?.focus();
+    return;
+  }
+  const badge = event.target.closest('[data-open-plan]');
+  if (badge) {
+    const plan = planOf(badge.dataset.openPlan);
+    if (plan) openPlan(plan);
+    return;
+  }
+  const add = event.target.closest('[data-add-day]');
+  if (add) {
+    openNewPlan({ kind: state.cal, date: add.dataset.addDay });
+    return;
+  }
+  const memo = event.target.closest('[data-memo-day]');
+  if (memo) {
+    openMemo(memo.dataset.memoDay);
     return;
   }
   const day = event.target.closest('[data-day]');
   if (day) {
-    pickDay(day.dataset.day);
+    // "+N more" always lists the whole day.
+    if (day.classList.contains('is-more')) openDay(day.dataset.day, plansOnCalendarDay(state.cal, calendarPlans(), day.dataset.day));
+    else pickDay(day.dataset.day);
     return;
   }
   const button = event.target.closest('[data-menu]');
@@ -513,15 +575,17 @@ document.addEventListener('click', (event) => {
 window.addEventListener('scroll', () => closeMenu(), { capture: true, passive: true });
 window.addEventListener('resize', () => closeMenu());
 
-// ---- The controls above the list. ----
+// ---- The header and the controls above the list. ----
 
-document.getElementById('tabs').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-tab]');
-  if (!button) return;
-  state.tab = button.dataset.tab;
-  render();
-  // The tabs are redrawn, so keep keyboard focus on the one that was pressed.
-  document.querySelector(`[data-tab="${state.tab}"]`)?.focus();
+headerSlot.addEventListener('click', (event) => {
+  // The two calendars switch in place; Plan Editor is a link to the editor page.
+  const tab = event.target.closest('a[data-planner-tab="mass"], a[data-planner-tab="pw"]');
+  if (tab && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.button === 0) {
+    event.preventDefault();
+    showCalendar(tab.dataset.plannerTab);
+    return;
+  }
+  if (event.target.closest('[data-new-plan]')) openNewPlan({ kind: state.cal });
 });
 
 search.addEventListener('input', (event) => {
@@ -537,7 +601,7 @@ document.getElementById('plan-sort').addEventListener('change', (event) => {
 document.querySelector('.view-toggle').addEventListener('click', (event) => {
   const button = event.target.closest('[data-view]');
   if (!button) return;
-  state.view = viewModeOf(button.dataset.view);
+  state.view = plannerViewOf(button.dataset.view);
   writeView(state.view);
   renderViewToggle();
   renderRows();
@@ -546,26 +610,37 @@ document.querySelector('.view-toggle').addEventListener('click', (event) => {
 const user = await guard();
 if (user) {
   state.canEdit = canCreatePlans(user.role);
-  // The New plan button is for planners and admins only.
-  document.getElementById('new-plan-actions').style.display = state.canEdit ? 'flex' : 'none';
 
-  // "/" goes to the search box, unless the person is already typing somewhere or a dialog is open. The key is added only now, so it
-  // cannot move focus behind the change-password screen.
+  // "/" goes to the search box in the list, unless the person is already typing somewhere or a dialog is open. The key is added only now,
+  // so it cannot move focus behind the change-password screen.
   document.addEventListener('keydown', (event) => {
-    if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
-    if (event.target.closest?.('input, textarea, select, [contenteditable]') || deleteDialog.open || dayDialog.open) return;
+    if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey || state.view === 'calendar') return;
+    if (event.target.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('dialog[open]')) return;
     event.preventDefault();
     closeMenu();
     search.focus();
   });
 
   render();
+  // The memos are extra: a server that cannot store them yet, or a failed read, leaves the calendar without them.
+  const notes = listDayNotes().catch(() => ({ notes: {}, available: false }));
   try {
     const body = await listPlans();
     state.plans = body.plans;
-    state.message = body.message ?? '';
+    state.message = '';
   } catch (err) {
     state.error = err.message;
   }
+  const memoBody = await notes;
+  state.notes = memoBody.notes ?? {};
+  state.notesAvailable = memoBody.available !== false;
   render();
+
+  // + New Plan from the Plan Editor, and older links: ?new=mass|pw opens the New Plan modal, on ?date= when given.
+  const asked = params.get('new');
+  if (asked && state.canEdit && !state.error) {
+    const date = params.get('date');
+    openNewPlan({ kind: calendarKindOf(asked), date: /^\d{4}-\d{2}-\d{2}$/.test(date ?? '') ? date : '' });
+    writeAddress();
+  }
 }

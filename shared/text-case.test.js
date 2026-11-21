@@ -77,8 +77,8 @@ test('the projector case is a saved setting, original by default', () => {
 test('the projector, mirror, previews and lower thirds draw the cased text before fitting and balancing', () => {
   const projector = read('src/output/ProjectorView.tsx');
   // FrameView draws every surface (projector, mirror, preview, thumbnails); the case is its first step, before any fit or balance hook.
-  const frameView = projector.slice(projector.indexOf('function FrameView('));
-  assert.match(frameView, /^function FrameView\(\{ frame: given[\s\S]*?const frame = useMemo\(\(\) => frameWithAlign\(applyFrameTextCase\(given, textCase\), align\), \[given, textCase, align\]\);/);
+  const frameView = projector.slice(projector.indexOf('function FrameViewBody('));
+  assert.match(frameView, /^function FrameViewBody\(\{ frame: given[\s\S]*?const frame = useMemo\(\(\) => frameWithAlign\(applyFrameTextCase\(given, textCase\), align\), \[given, textCase, align\]\);/);
   assert.match(projector, /const useTextCase = \(\) => useOutput\(\(s\) => textCaseOf\(s\.settings\.textCase\)\);/);
   const lower = read('src/output/LowerThirdView.tsx');
   assert.match(lower, /const value = useMemo\(\(\) => applyLowerThirdCase\(given, textCase\), \[given, textCase\]\);/);

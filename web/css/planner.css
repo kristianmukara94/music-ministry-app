@@ -3045,3 +3045,757 @@ dialog.bc-dialog::backdrop {
   border: 0;
   background: transparent;
 }
+
+/* ==== The Planner: SERVICE PLANNING header, the two calendars, the Plan Editor bar and the New Plan modal (js/planner-*.js). ==== */
+
+.planner-main {
+  flex: 999 1 560px;
+  min-width: 0;
+  padding: 32px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* The header, as the laptop's Planner: gold eyebrow, serif heading, a line saying what is shown; the pill switcher and + New Plan. */
+.ph {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 24px;
+}
+.ph-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ph-eyebrow {
+  color: var(--bc-gold);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.ph-title {
+  margin: 0;
+  color: var(--text);
+  font: 700 40px/1.1 var(--font-serif);
+}
+.ph-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.ph-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.ph-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 999px;
+  background: var(--bc-cell);
+}
+.ph-tab {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.ph-tab:hover {
+  background: var(--bc-cell-hover);
+  color: var(--bc-gold);
+}
+.ph-tab.is-on {
+  background: var(--bc-gold);
+  color: var(--bc-on-gold);
+  font-weight: 800;
+}
+.ph-tab.is-locked {
+  color: var(--muted);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.ph-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 18px;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* The controls above the calendar or list. */
+.planner-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.planner-list-controls {
+  flex: 1 1 420px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+.planner-list-controls[hidden] {
+  display: none;
+}
+.planner-search {
+  flex: 1 1 220px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  min-width: 0;
+}
+.planner-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+}
+.planner-sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.planner-sort select {
+  height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 14px;
+}
+.planner-footnote {
+  margin: 0;
+  max-width: 720px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* The calendar. The liturgical colours are the laptop's own fixed swatches (not theme colours), used for ribbons, dots and edges only. */
+.pc-calendar {
+  --lit-green: #10b981;
+  --lit-violet: #8b5cf6;
+  --lit-white: #fcd34d;
+  --lit-red: #ef4444;
+  --lit-rose: #f472b6;
+  overflow: hidden;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 14px;
+  background: var(--bc-surface);
+  color: var(--bc-text);
+  box-shadow: var(--card-shadow, none);
+}
+.pc-banner {
+  padding: 16px 20px 18px;
+  border-bottom: 1px solid var(--bc-border);
+  background: linear-gradient(135deg, var(--bc-gold-wash), transparent 70%);
+}
+.pc-banner-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.pc-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pc-round {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--bc-text);
+  cursor: pointer;
+}
+.pc-round:hover {
+  border-color: var(--bc-gold);
+  color: var(--bc-gold);
+}
+.pc-title {
+  min-width: 13ch;
+  margin: 0;
+  padding: 0 8px;
+  color: var(--bc-date);
+  font: 700 32px/1 var(--font-serif);
+  text-align: center;
+}
+.pc-year {
+  color: var(--bc-gold);
+}
+.pc-today {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--bc-gold);
+  border-radius: 999px;
+  background: var(--bc-gold-wash);
+  color: var(--bc-gold);
+  font: 800 12px var(--font-sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.pc-today:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pc-seasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+.pc-season {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid color-mix(in srgb, var(--swatch) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--swatch) 18%, transparent);
+  color: var(--bc-text);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.pc-season-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--swatch);
+}
+.pc-dedication {
+  margin: 12px 0 0;
+  color: var(--bc-text);
+  font: italic 600 20px/1.3 var(--font-serif);
+}
+.pc-hint {
+  margin: 4px 0 0;
+  color: var(--bc-muted);
+  font-size: 13px;
+}
+.pc-calendar [data-color="green"] { --swatch: var(--lit-green); }
+.pc-calendar [data-color="violet"] { --swatch: var(--lit-violet); }
+.pc-calendar [data-color="white"] { --swatch: var(--lit-white); }
+.pc-calendar [data-color="red"] { --swatch: var(--lit-red); }
+.pc-calendar [data-color="rose"] { --swatch: var(--lit-rose); }
+
+/* The month: wide enough to read on a laptop; on a phone it scrolls sideways inside its card, never the page. */
+.pc-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.pc-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 840px;
+  padding: 12px;
+}
+.pc-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.pc-weekday {
+  padding: 0 8px 2px;
+  color: var(--bc-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+.pc-weekday.is-sunday {
+  color: var(--bc-gold);
+}
+.pc-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 124px;
+  padding: 8px 8px 8px 11px;
+  border: 1px solid var(--bc-border);
+  border-radius: 10px;
+  background: var(--bc-cell);
+}
+/* The day's liturgical colour, as a ribbon down its left edge. */
+.pc-day::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 3px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--swatch);
+  opacity: 0.9;
+  pointer-events: none;
+}
+.pc-day:hover,
+.pc-day:focus-within {
+  border-color: var(--bc-border-hover);
+  background: var(--bc-cell-hover);
+}
+.pc-day.is-outside {
+  opacity: 0.45;
+}
+.pc-day.is-today {
+  border-color: var(--bc-gold);
+  box-shadow: inset 0 0 0 1px var(--bc-gold);
+}
+/* The whole cell is one button underneath; the badges and tools sit above it. */
+.pc-day-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+span.pc-day-hit {
+  cursor: default;
+}
+.pc-day-hit:focus-visible {
+  outline: 2px solid var(--bc-gold);
+  outline-offset: -2px;
+}
+.pc-day > :not(.pc-day-hit) {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+.pc-day button:not(.pc-day-hit) {
+  pointer-events: auto;
+}
+.pc-day-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
+.pc-day-num {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  color: var(--bc-date);
+  font: 800 15px "JetBrains Mono", monospace;
+}
+.pc-day.is-today .pc-day-num {
+  border-radius: 999px;
+  background: var(--bc-gold);
+  color: var(--bc-on-gold);
+}
+.pc-rank {
+  overflow: hidden;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--swatch) 70%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--swatch) 16%, transparent);
+  color: var(--bc-text);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.pc-memo-dot {
+  display: inline-flex;
+  color: var(--bc-gold);
+}
+/* The memo and add tools float over the top row, so the rank keeps its whole word. */
+.pc-day-tools {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: inline-flex;
+  gap: 2px;
+  border-radius: 6px;
+}
+.pc-day:hover .pc-day-tools,
+.pc-day:focus-within .pc-day-tools {
+  background: var(--bc-surface);
+}
+.pc-day-tools:empty {
+  display: none;
+}
+.pc-memo-btn,
+.pc-add {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--bc-muted);
+  font: 800 15px/1 var(--font-sans);
+  cursor: pointer;
+  opacity: 0;
+}
+.pc-day:hover .pc-memo-btn,
+.pc-day:hover .pc-add,
+.pc-day:focus-within .pc-memo-btn,
+.pc-day:focus-within .pc-add {
+  opacity: 1;
+}
+.pc-memo-btn:hover,
+.pc-add:hover,
+.pc-memo-btn:focus-visible,
+.pc-add:focus-visible {
+  border-color: var(--bc-gold);
+  color: var(--bc-gold);
+}
+/* A touch screen has no hover: the tools stay in view. */
+@media (hover: none) {
+  .pc-memo-btn,
+  .pc-add {
+    opacity: 1;
+  }
+  .pc-day-tools {
+    background: var(--bc-surface);
+  }
+}
+.pc-day-title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--bc-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.pc-day.is-festive .pc-day-title {
+  font-weight: 800;
+}
+.pc-memo {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bc-gold-wash);
+  color: var(--bc-text);
+  font-size: 11px;
+  font-style: italic;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.pc-badges {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: auto;
+}
+.pc-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px 6px;
+  border: 1px solid var(--bc-border-hover);
+  border-left: 3px solid var(--swatch);
+  border-radius: 6px;
+  background: var(--bc-badge);
+  color: var(--bc-text);
+  font: 700 11px var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.pc-badge:hover,
+.pc-badge:focus-visible {
+  border-color: var(--bc-gold);
+  outline: 0;
+}
+.pc-badge svg {
+  flex: none;
+}
+/* In a narrow cell the time and language keep the room; a ready badge keeps its tick. */
+@media (max-width: 1699px) {
+  .pc-badge:not(.is-ready) svg {
+    display: none;
+  }
+}
+.pc-badge-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pc-badge-count {
+  flex: none;
+  margin-left: auto;
+  font: 700 11px "JetBrains Mono", monospace;
+  opacity: 0.9;
+}
+.pc-badge.is-pw {
+  border-color: color-mix(in srgb, var(--bc-gold) 60%, transparent);
+  background: var(--bc-gold-wash);
+  color: var(--bc-gold);
+}
+.pc-badge.is-ready {
+  border-color: var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--pill-text);
+}
+.pc-badge.is-more {
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--bc-muted);
+}
+
+/* The Plan Editor bar under the header: the title edited in place, its badges, and the actions. */
+.pe-title-block {
+  display: flex;
+  flex: 1 1 360px;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.pe-title-input {
+  width: 100%;
+  min-width: 0;
+  margin: 0 0 0 -8px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: 700 32px/1.2 var(--font-serif);
+  text-overflow: ellipsis;
+}
+.pe-title-input:not(:disabled):hover {
+  border-color: var(--border);
+}
+.pe-title-input:focus {
+  border-color: var(--bc-gold);
+  outline: 0;
+  background: var(--input-bg);
+}
+.pe-title-input:disabled {
+  opacity: 1;
+  color: var(--text);
+}
+.pe-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pe-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 999px;
+  background: var(--bc-cell);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.pe-badge:empty {
+  display: none;
+}
+.pe-badge.is-kind {
+  border-color: color-mix(in srgb, var(--bc-gold) 60%, transparent);
+  background: var(--bc-gold-wash);
+  color: var(--bc-gold);
+}
+.pe-badge.is-progress {
+  font-family: "JetBrains Mono", monospace;
+}
+.pe-badge.is-ready {
+  border-color: var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--pill-text);
+}
+.pe-action {
+  height: 44px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.btn-quiet.is-danger {
+  color: var(--danger);
+}
+.slot-note-line {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.entry-moves {
+  display: inline-flex;
+  gap: 2px;
+}
+.entry-move {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.entry-move:hover:not(:disabled) {
+  border-color: var(--bc-gold);
+  color: var(--bc-gold);
+}
+.entry-move:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* New Plan: the modal over the calendar, holding the same form plan/new.html shows. */
+dialog.np-dialog {
+  width: min(1040px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 16px;
+  background: var(--app-bg);
+  color: var(--text);
+}
+dialog.np-dialog::backdrop {
+  background: var(--overlay);
+}
+.np-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+}
+.np-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.new-plan-day {
+  margin: 0;
+  color: var(--bc-gold);
+  font-size: 14px;
+  font-weight: 700;
+}
+.new-plan-day:empty {
+  display: none;
+}
+.new-plan-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media (max-width: 820px) {
+  .planner-main {
+    padding: 24px 16px;
+  }
+  .ph-title {
+    font-size: 34px;
+  }
+  .ph-actions,
+  .ph-tabs {
+    width: 100%;
+  }
+  .ph-tabs {
+    border-radius: 16px;
+  }
+  .ph-tab {
+    border-radius: 12px;
+  }
+  .ph-tab {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .ph-new {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+  .pc-banner {
+    padding: 14px;
+  }
+  .pc-title {
+    min-width: 0;
+    font-size: 26px;
+  }
+  .pc-seasons {
+    margin-left: 0;
+  }
+  .pe-title-input {
+    font-size: 26px;
+  }
+  .np-dialog-body {
+    padding: 16px;
+  }
+}
+@media (max-width: 560px) {
+  .main.planner-main:has(.pe-action) {
+    padding-bottom: calc(170px + env(safe-area-inset-bottom)) !important;
+  }
+  .plan-actions .pe-action {
+    order: 5;
+    flex: 1 1 calc(50% - 4px);
+    height: 38px !important;
+    font-size: 13px !important;
+  }
+}

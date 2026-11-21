@@ -143,6 +143,7 @@ contextBridge.exposeInMainWorld('apcc', {
     list: () => ipcRenderer.invoke('plans:list'),
     create: (input) => ipcRenderer.invoke('plans:create', input),
     deletePlan: (id) => ipcRenderer.invoke('plans:delete', id),
+    duplicate: (id) => ipcRenderer.invoke('plans:duplicate', id),
     get: (id) => ipcRenderer.invoke('plans:get', id),
     save: (id, items) => ipcRenderer.invoke('plans:save', id, items),
     setLanguage: (id, language) => ipcRenderer.invoke('plans:setLanguage', id, language),
@@ -153,6 +154,12 @@ contextBridge.exposeInMainWorld('apcc', {
     getTemplate: (id) => ipcRenderer.invoke('plans:getTemplate', id),
     saveTemplate: (input) => ipcRenderer.invoke('plans:saveTemplate', input),
     deleteTemplate: (id) => ipcRenderer.invoke('plans:deleteTemplate', id),
+  },
+
+  // Each plan's own default look for its slides (Plan Appearance): `kind` is 'mass' or 'pw'.
+  planAppearance: {
+    get: (kind, id) => ipcRenderer.invoke('planAppearance:get', kind, id),
+    set: (kind, id, appearance) => ipcRenderer.invoke('planAppearance:set', kind, id, appearance),
   },
 
   // The parish's own title for a calendar day, shown in place of its Ordo name.
@@ -168,6 +175,7 @@ contextBridge.exposeInMainWorld('apcc', {
     getSession: (id) => ipcRenderer.invoke('pw:getSession', id),
     saveSession: (id, input) => ipcRenderer.invoke('pw:saveSession', id, input),
     deleteSession: (id) => ipcRenderer.invoke('pw:deleteSession', id),
+    duplicateSession: (id) => ipcRenderer.invoke('pw:duplicateSession', id),
     listTemplates: () => ipcRenderer.invoke('pw:listTemplates'),
     saveAsTemplate: (sessionId, name) => ipcRenderer.invoke('pw:saveAsTemplate', sessionId, name),
     deleteTemplate: (id) => ipcRenderer.invoke('pw:deleteTemplate', id),

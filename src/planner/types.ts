@@ -1,4 +1,5 @@
 import type { MassLanguage } from '../../shared/mass-language.js';
+import type { PlanAppearance, PlanKind } from '../../shared/plan-appearance.js';
 
 export type { MassLanguage };
 export type LiturgicalBlock = 'introductory' | 'word' | 'eucharist' | 'communion' | 'concluding';
@@ -82,6 +83,8 @@ export interface PlansApi {
   /** Makes a plan. A plan with a time and language that another plan on the same day already has is refused. */
   create(input: { name: string; liturgicalDate: string; language?: MassLanguage } & Partial<MassSchedule>): Promise<{ id: number; name: string; liturgicalDate: string; language: MassLanguage } & MassSchedule>;
   deletePlan(id: number): Promise<boolean>;
+  /** Copies a plan (items, language, slot titles, Plan Appearance) on the same day as "<name> (Copy)", with no time set. */
+  duplicate(id: number): Promise<{ id: number; name: string; liturgicalDate: string; language: MassLanguage } & MassSchedule>;
   get(id: number): Promise<PlanDetail>;
   save(id: number, items: PlanItem[]): Promise<number>;
   /** Sets the plan's language. Its items are left as they are. */
@@ -97,6 +100,13 @@ export interface PlansApi {
   /** Saves items as a template under a name. A name already used is refused. */
   saveTemplate(input: { name: string; items: PlanItem[] }): Promise<PlanTemplateSummary>;
   deleteTemplate(id: number): Promise<boolean>;
+}
+
+/** Plan Appearance: each plan's own default look for its slides. `kind` is 'mass' (a Holy Mass plan) or 'pw' (a Praise & Worship plan). */
+export interface PlanAppearanceApi {
+  get(kind: PlanKind, id: number): Promise<PlanAppearance>;
+  /** Saves the appearance and resolves to it as kept. */
+  set(kind: PlanKind, id: number, appearance: PlanAppearance): Promise<PlanAppearance>;
 }
 
 /** The parish's own titles for calendar days, keyed "YYYY-MM-DD". A day without one shows its Ordo name. */
