@@ -167,7 +167,8 @@ test('every label on the web portal says Holy Mass: the list tab, the plan rows,
   assert.match(readWeb('js/planner-calendar.js'), /\{ key: 'mass', label: 'Liturgical Calendar', subtitle: 'Holy Mass plans on the liturgical calendar\.' \}/);
   assert.match(readWeb('js/plans.js'), /'Holy Mass plan'/);
   const { newPlanFormHtml } = await web('new-plan-form.js');
-  assert.match(newPlanFormHtml(), /name="kind" value="mass"[\s\S]*?template-card-title">Holy Mass Plan</, 'the stored value is still mass');
+  assert.match(newPlanFormHtml(), /data-plan-kind="mass" aria-pressed="true">Holy Mass</, 'the stored value is still mass');
+  assert.match(newPlanFormHtml(), /id="np-action-title" class="np-action-title">Create Holy Mass Plan</);
   assert.match(readWeb('plan/mass.html'), /<title>Holy Mass plan · APCCMMA Web Planner<\/title>/);
   assert.match(readWeb('js/mass.js'), /\[dateLabel\(plan\.date\), state\.massTime/);
   assert.match(readWeb('js/mass.js'), /`HOLY MASS PLAN · \$\{when\}/);

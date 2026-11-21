@@ -1,142 +1,181 @@
-// New Plan: template, date, name and, for a Holy Mass plan, its schedule (time and language) as the church laptop asks for it, with a preview
-// that follows the form and the liturgical day of the chosen date. A time another Holy Mass on the date already has is not sent: the form says
-// so, with Open Existing beside it. The browser makes the plan's UUID and the server creates the plan.
+// Create a plan: the church laptop's CREATE A PLAN card (src/planner/PlannerCalendarView.tsx, CreatePlanDialog), on the web. One centred
+// column with the day's liturgical colour as a ribbon down its left edge: the full date, the day's Ordo name in italics, the plan name, and
+// for a Holy Mass its time and language (the laptop's ScheduleFields, from schedule-ui.js). One action card at the foot makes the plan.
+// A time another Holy Mass on the date already has is not sent: the card says so, with Open Existing beside it.
 //
-// One form, two places: the Planner's New Plan modal (index.html, opened from + New Plan or an empty calendar day) and the plan/new.html page
-// that older links still open. Both draw newPlanFormHtml() and call mountNewPlanForm(). The markup is built from constants only; everything
-// the user types reaches the page through textContent, an input's value, or the escaped markup of schedule-ui.js.
-import { MASS_SECTIONS, MASS_SLOTS } from './mass-slots.js';
-import { conflictIn, mountScheduleFields, onOpenExisting, scheduleText, showConflict, textsLanguageFor } from './schedule-ui.js';
-import { PRAISE_TEMPLATE, checkNewPlan, dateShortcut, newPlanRequest, shortDate, suggestPlanName } from './plan-model.js';
+// From a calendar day the card opens on that day in that calendar's kind, as on the laptop. Opened without a day (+ New Plan, plan/new.html)
+// it adds a picker row on top: Holy Mass / Praise & Worship, a date box and Today / This Saturday / Next Sunday, and the heading follows them.
+//
+// One card, two places: the Planner's New Plan modal (index.html) and the plan/new.html page that older links still open. Both call
+// mountNewPlanForm(). The markup is built from constants only; everything the user types or the data holds reaches the page through
+// textContent, an input's value, or the escaped markup of schedule-ui.js.
+import { conflictIn, mountScheduleFields, onOpenExisting, showConflict, textsLanguageFor } from './schedule-ui.js';
+import { checkNewPlan, dateShortcut, newPlanRequest, suggestPlanName } from './plan-model.js';
 import { liturgicalDay } from './planner-calendar.js';
 import { createPlan } from './plan-api.js';
 
-/** What the preview says about each template. The parts and their counts come from the lists the editors are built from. */
-export const TEMPLATES = {
-  mass: {
-    label: 'Holy Mass Plan',
-    unit: 'slots',
-    parts: MASS_SECTIONS.map((section) => ({ title: section.title, count: MASS_SLOTS.filter((slot) => section.groups.includes(slot.group)).length })),
-  },
-  pw: {
-    label: 'Praise & Worship Night',
-    unit: 'segments',
-    // A new plan is laid out as the church laptop's lineup: Opening, Praise & Worship, Word & Offering.
-    parts: PRAISE_TEMPLATE.sections.map((section) => ({ title: section.title, count: section.rows.length })),
-  },
+/** The action card at the foot of the card, per kind, in the laptop's words. */
+export const ACTIONS = {
+  mass: { title: 'Create Holy Mass Plan', text: "The four parts of the Holy Mass, with the day's readings from the Lectionary." },
+  pw: { title: 'Create Praise & Worship Plan', text: 'Opening, Praise & Worship, and Word & Offering sets.' },
 };
+export const BUSY_TITLE = 'Creating…';
 
-const total = (kind) => TEMPLATES[kind].parts.reduce((sum, part) => sum + part.count, 0);
-const CHECK = '<svg class="template-card-check" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+/** The picker row's date shortcuts, in the order they are shown. */
+export const DATE_SHORTCUTS = [
+  { key: 'today', label: 'Today' },
+  { key: 'saturday', label: 'This Saturday' },
+  { key: 'sunday', label: 'Next Sunday' },
+];
 
-/** The form and its preview. `cancel` adds a Cancel button (the modal). No value from the user or the data is in it. */
-export function newPlanFormHtml({ cancel = false } = {}) {
-  return `
-      <form id="new-plan-form" class="new-plan-form" novalidate autocomplete="off">
-        <p id="plan-day-line" class="new-plan-day" aria-live="polite"></p>
-
-        <fieldset class="new-plan-group">
-          <legend class="new-plan-label">Template</legend>
-          <div class="template-cards">
-            <label class="template-card">
-              <input type="radio" name="kind" value="mass" checked>
-              <span class="template-card-body">
-                ${CHECK}
-                <span class="template-card-title">Holy Mass Plan</span>
-                <span class="template-card-count">${total('mass')} slots</span>
-                <span class="template-card-text">Introductory Rites, Liturgy of the Word, Eucharist and Recessional.</span>
-              </span>
-            </label>
-            <label class="template-card">
-              <input type="radio" name="kind" value="pw">
-              <span class="template-card-body">
-                ${CHECK}
-                <span class="template-card-title">Praise &amp; Worship Night</span>
-                <span class="template-card-count">${total('pw')} segments</span>
-                <span class="template-card-text">Opening, Praise &amp; Worship, and Word &amp; Offering sets.</span>
-              </span>
-            </label>
-          </div>
-        </fieldset>
-
-        <div class="new-plan-group">
-          <label class="new-plan-label" for="plan-date">Date</label>
-          <input id="plan-date" class="new-plan-input" type="date">
-          <div class="date-chips">
-            <button type="button" class="date-chip" data-date-shortcut="sunday" aria-pressed="false">Next Sunday</button>
-            <button type="button" class="date-chip" data-date-shortcut="saturday" aria-pressed="false">This Saturday</button>
-            <button type="button" class="date-chip" data-date-shortcut="today" aria-pressed="false">Today</button>
-          </div>
-        </div>
-
-        <div class="new-plan-group">
-          <label class="new-plan-label" for="plan-name">Plan name</label>
-          <input id="plan-name" class="new-plan-input" type="text" maxlength="120">
-        </div>
-
-        <div id="mass-fields" class="new-plan-mass-fields">
-          <section class="bc-panel" aria-labelledby="schedule-title">
-            <p id="schedule-title" class="bc-eyebrow">Holy Mass schedule</p>
-            <div id="schedule-fields" style="display: flex; flex-direction: column; gap: 16px"></div>
-          </section>
-          <div id="schedule-conflict" hidden></div>
-        </div>
-
-        <p id="new-plan-status" class="form-error" role="alert"></p>
-        <div class="new-plan-buttons">
-          <button id="new-plan-submit" type="submit" class="btn-primary" style="height: 44px; padding: 0 22px; font-size: 14px; font-weight: 700">Create plan</button>
-          ${cancel ? '<button id="new-plan-cancel" type="button" class="btn-quiet" style="height: 44px; padding: 0 18px; font-size: 14px; font-weight: 600">Cancel</button>' : ''}
-        </div>
-        <p class="new-plan-note">Songs and readings are chosen in the Plan Editor. Lyrics and slides are prepared in the desktop app.</p>
-      </form>
-
-      <aside class="preview-card-box" aria-label="Plan preview">
-        <span class="eyebrow">Live preview</span>
-        <h2 id="preview-title" class="preview-title"></h2>
-        <span id="preview-kind" class="preview-kind"></span>
-        <dl class="preview-details">
-          <div><dt>Date</dt><dd id="preview-date"></dd></div>
-          <div><dt>Liturgical day</dt><dd id="preview-day"></dd></div>
-          <div id="preview-language-row"><dt>Language</dt><dd id="preview-language"></dd></div>
-          <div id="preview-time-row"><dt>Holy Mass time</dt><dd id="preview-time"></dd></div>
-          <div><dt>Order</dt><dd id="preview-count"></dd></div>
-        </dl>
-        <ul id="preview-parts" class="preview-parts"></ul>
-      </aside>`;
-}
+const icon = (body, size = 18, cls = '') =>
+  `<svg${cls ? ` class="${cls}"` : ''} width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const ICON_CLOSE = icon('<path d="M18 6 6 18M6 6l12 12"/>');
+const ICON_CHURCH = icon('<path d="M10 9h4"/><path d="M12 7v5"/><path d="M14 22v-4a2 2 0 0 0-4 0v4"/><path d="M18 22V5.6a1 1 0 0 0-.55-.9l-4.56-2.27a2 2 0 0 0-1.78 0L6.55 4.72a1 1 0 0 0-.55.9V22"/><path d="m18 7 3.45 1.72a1 1 0 0 1 .55.9V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-9.38a1 1 0 0 1 .55-.9L6 7"/>', 20, 'np-action-glyph is-mass');
+const ICON_MUSIC = icon('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>', 20, 'np-action-glyph is-pw');
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** A whole "YYYY-MM-DD" as a UTC date, or null ("2026-02-30" is not a day). */
+function dateOf(iso) {
+  if (!DATE.test(iso ?? '')) return null;
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d ? date : null;
+}
+
+/** "Saturday, November 7, 2026", as the laptop's heading says it, or '' when the date is not a whole date. */
+export function fullDate(iso) {
+  const date = dateOf(iso);
+  if (!date) return '';
+  return `${WEEKDAYS[date.getUTCDay()]}, ${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`;
+}
 
 /** The liturgical name of a date, or '' when the date is not a whole date. */
 export function dayNameOf(iso) {
-  if (!DATE.test(iso ?? '')) return '';
-  const [y, m, d] = iso.split('-').map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d));
-  // "2026-02-30" is not a day.
-  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return '';
-  return liturgicalDay(iso).name;
+  return dateOf(iso) ? liturgicalDay(iso).name : '';
+}
+
+/** The vestment colour of a date for the ribbon (green, violet, white, red, rose), or 'none' with no whole date. */
+export function ribbonColorOf(iso) {
+  return dateOf(iso) ? liturgicalDay(iso).color : 'none';
 }
 
 /**
- * Draws the form in `root` and runs it. `kind` and `date` are its first values (a date from a calendar click; else next Sunday). `plans` are
- * the church's plans for the taken-time warning, when already loaded; `setPlans()` gives them later. `onCreated(plan)` is called with the new
- * plan, `onOpenExisting(id)` when Open Existing is pressed, and `onCancel()` from Cancel. Returns { setPlans, reset, focus }.
+ * What the card shows for its state, without a browser: the heading and subtitle, the ribbon colour, the action card, the Holy Mass already
+ * at the typed time (a Holy Mass only) and whether the plan can be made. `plans` are the church's plans, as the list gives them.
  */
-export function mountNewPlanForm(root, { kind = 'mass', date = '', plans = [], cancel = false, onCreated, onOpenExisting: openExisting, onCancel } = {}) {
-  // The form is drawn from constants (newPlanFormHtml takes no user value).
-  root.innerHTML = newPlanFormHtml({ cancel });
+export function newPlanCard({ kind = 'mass', date = '', name = '', massTime = '', plans = [], busy = false } = {}) {
+  const chosen = kind === 'pw' ? 'pw' : 'mass';
+  const whole = dateOf(date) !== null;
+  const conflict = chosen === 'mass' && whole ? conflictIn(plans, date, massTime) : null;
+  return {
+    kind: chosen,
+    heading: whole ? fullDate(date) : 'Choose a date',
+    subtitle: dayNameOf(date),
+    color: ribbonColorOf(date),
+    action: { title: busy ? BUSY_TITLE : ACTIONS[chosen].title, text: ACTIONS[chosen].text },
+    conflict,
+    canCreate: !busy && whole && String(name).trim() !== '' && conflict === null,
+  };
+}
+
+/**
+ * Makes the plan the card describes. `input` is { name, date, kind, language, massTime, massLanguage }; `create(request)` posts it (the
+ * server's answer has `plan`). Returns { plan }, { problem } (a message for the card) or { conflict } (the Holy Mass already at that time,
+ * from `known` or from the server). Nothing is sent for a problem or a known conflict.
+ */
+export async function submitNewPlan(input, { known = [], create = createPlan, uuid = () => crypto.randomUUID() } = {}) {
+  const problem = checkNewPlan(input);
+  if (problem) return { problem };
+  const taken = input.kind === 'mass' ? conflictIn(known, input.date, input.massTime) : null;
+  if (taken) return { conflict: taken };
+  try {
+    const body = await create(newPlanRequest(input, uuid()));
+    return { plan: body.plan };
+  } catch (err) {
+    // Made on another device since the list was read: the server names the plan already there.
+    if (err?.conflict) return { conflict: { ...err.conflict, liturgicalDate: err.conflict.date, kind: 'mass' } };
+    return { problem: err?.message || 'The plan could not be made. Try again.' };
+  }
+}
+
+/** The card. No value from the user or the data is in it; mountNewPlanForm fills it. */
+export function newPlanFormHtml() {
+  const chips = DATE_SHORTCUTS.map((s) => `<button type="button" class="bc-chip" data-date-shortcut="${s.key}" aria-pressed="false">${s.label}</button>`).join('');
+  return `
+      <form id="new-plan-form" class="np-card" data-color="none" data-kind="mass" novalidate autocomplete="off" aria-labelledby="np-heading">
+        <span class="np-ribbon" aria-hidden="true"></span>
+        <div class="np-head">
+          <div class="np-head-text">
+            <p class="np-eyebrow">Create a plan</p>
+            <h2 id="np-heading" class="np-heading"></h2>
+            <p id="np-subtitle" class="np-subtitle"></p>
+          </div>
+          <button type="button" id="new-plan-close" class="np-close" aria-label="Close" title="Close (Esc)">${ICON_CLOSE}</button>
+        </div>
+
+        <div id="np-picker" class="np-picker" hidden>
+          <div class="bc-pills" role="group" aria-label="Plan type">
+            <button type="button" class="bc-pill" data-plan-kind="mass" aria-pressed="true">Holy Mass</button>
+            <button type="button" class="bc-pill" data-plan-kind="pw" aria-pressed="false">Praise &amp; Worship</button>
+          </div>
+          <div class="bc-field">
+            <label class="np-label" for="plan-date">Date</label>
+            <input id="plan-date" class="bc-input" type="date">
+            <div class="bc-chips" role="group" aria-label="Quick dates">${chips}</div>
+          </div>
+        </div>
+
+        <div class="bc-field">
+          <label class="np-label" for="plan-name">Plan name</label>
+          <input id="plan-name" class="bc-input np-name" type="text" maxlength="120" required>
+        </div>
+
+        <div id="mass-fields" class="np-mass-fields">
+          <div id="schedule-fields" class="np-schedule"></div>
+          <div id="schedule-conflict" hidden></div>
+        </div>
+
+        <p id="new-plan-status" class="np-error" role="alert"></p>
+
+        <button id="new-plan-submit" type="submit" class="np-action">
+          <span class="np-action-icon">${ICON_CHURCH}${ICON_MUSIC}</span>
+          <span class="np-action-text">
+            <span id="np-action-title" class="np-action-title">${ACTIONS.mass.title}</span>
+            <span id="np-action-sub" class="np-action-sub">${ACTIONS.mass.text}</span>
+          </span>
+        </button>
+      </form>`;
+}
+
+/**
+ * Draws the card in `root` and runs it. `kind` and `date` are its first values: with a date (a calendar day, + Add Time) the card is for that
+ * day and kind; without one it shows the picker row and starts on next Sunday. `plans` are the church's plans for the taken-time warning,
+ * when already loaded; `setPlans()` gives them later. `onCreated(plan)` is called with the new plan, `onOpenExisting(id)` when Open Existing
+ * is pressed, and `onClose()` from the × button. Returns { setPlans, reset, focus, busy, kind }.
+ */
+export function mountNewPlanForm(root, { kind = 'mass', date = '', plans = [], onCreated, onOpenExisting: openExisting, onClose } = {}) {
+  // The card is drawn from constants (newPlanFormHtml takes no user value).
+  root.innerHTML = newPlanFormHtml();
   const byId = (id) => root.querySelector(`#${id}`);
   const form = byId('new-plan-form');
   const status = byId('new-plan-status');
   const submit = byId('new-plan-submit');
   const nameInput = byId('plan-name');
   const dateInput = byId('plan-date');
+  const picker = byId('np-picker');
   const massFields = byId('mass-fields');
   const conflictBox = byId('schedule-conflict');
   const shortcuts = [...root.querySelectorAll('[data-date-shortcut]')];
+  const kindPills = [...root.querySelectorAll('[data-plan-kind]')];
 
+  let chosenKind = 'mass';
   // Set once the user has typed a name of their own. A suggestion never replaces it.
   let nameIsCustom = false;
+  let busy = false;
   // The church's plans, for the taken-time warning. Until they load (or if they cannot), the server still refuses a taken time.
   let known = plans ?? [];
   let schedule = { massTime: '', massLanguage: '' };
@@ -152,7 +191,7 @@ export function mountNewPlanForm(root, { kind = 'mass', date = '', plans = [], c
   const values = () => ({
     name: nameInput.value,
     date: dateInput.value,
-    kind: form.elements.kind.value,
+    kind: chosenKind,
     dayName: dayNameOf(dateInput.value),
     // English, Tagalog and Cebuano draft the readings and responses in that language, as on the laptop; another language drafts in English.
     language: textsLanguageFor(schedule.massLanguage),
@@ -160,53 +199,29 @@ export function mountNewPlanForm(root, { kind = 'mass', date = '', plans = [], c
     massLanguage: schedule.massLanguage,
   });
 
-  /** The Holy Mass already at the typed time on the chosen date, or null. */
-  const conflict = () => {
-    const now = values();
-    return now.kind === 'mass' ? conflictIn(known, now.date, now.massTime) : null;
-  };
-
   function suggestName() {
     const suggestion = suggestPlanName(values());
     nameInput.placeholder = suggestion;
     if (!nameIsCustom) nameInput.value = suggestion;
   }
 
-  function renderPreview() {
-    const { name, date, kind: chosen, dayName, massTime, massLanguage } = values();
-    const template = TEMPLATES[chosen];
-    const title = name.trim();
-    const isMass = chosen === 'mass';
-    byId('preview-title').textContent = title || 'Untitled plan';
-    byId('preview-title').classList.toggle('is-empty', !title);
-    byId('preview-kind').textContent = template.label;
-    byId('preview-date').textContent = date ? shortDate(date) : 'No date chosen';
-    byId('preview-day').textContent = dayName || 'Choose a date';
-    byId('preview-language-row').hidden = !isMass;
-    byId('preview-time-row').hidden = !isMass;
-    byId('preview-language').textContent = scheduleText({ massLanguage }) || 'Not set';
-    byId('preview-time').textContent = scheduleText({ massTime }) || 'Decide later';
-    byId('preview-count').textContent = `${total(chosen)} ${template.unit}`;
-    byId('preview-parts').replaceChildren(...template.parts.map((part) => {
-      const row = document.createElement('li');
-      const partTitle = document.createElement('span');
-      const count = document.createElement('span');
-      partTitle.textContent = part.title;
-      count.textContent = String(part.count);
-      row.append(partTitle, count);
-      return row;
-    }));
-  }
-
   function render() {
-    const { date, kind: chosen, dayName } = values();
-    massFields.hidden = chosen !== 'mass';
-    byId('plan-day-line').textContent = date ? `${shortDate(date)}${dayName ? ` · ${dayName}` : ''}` : '';
-    for (const chip of shortcuts) chip.setAttribute('aria-pressed', String(dateShortcut(chip.dataset.dateShortcut) === date));
-    const taken = conflict();
-    showConflict(conflictBox, taken);
-    submit.disabled = taken !== null;
-    renderPreview();
+    const now = values();
+    const card = newPlanCard({ ...now, plans: known, busy });
+    form.dataset.color = card.color;
+    form.dataset.kind = card.kind;
+    byId('np-heading').textContent = card.heading;
+    byId('np-subtitle').textContent = card.subtitle;
+    byId('np-action-title').textContent = card.action.title;
+    byId('np-action-sub').textContent = card.action.text;
+    massFields.hidden = card.kind !== 'mass';
+    for (const chip of shortcuts) chip.setAttribute('aria-pressed', String(dateShortcut(chip.dataset.dateShortcut) === now.date));
+    for (const pill of kindPills) pill.setAttribute('aria-pressed', String(pill.dataset.planKind === card.kind));
+    showConflict(conflictBox, card.conflict);
+    submit.disabled = !card.canCreate;
+    submit.setAttribute('aria-busy', String(busy));
+    form.setAttribute('aria-busy', String(busy));
+    for (const el of form.querySelectorAll('input, button')) if (el !== submit) el.disabled = busy;
   }
 
   form.addEventListener('input', ({ target }) => {
@@ -214,7 +229,7 @@ export function mountNewPlanForm(root, { kind = 'mass', date = '', plans = [], c
     if (target.closest('#schedule-fields')) return;
     status.textContent = '';
     if (target === nameInput) nameIsCustom = nameInput.value.trim() !== '' && nameInput.value !== suggestPlanName(values());
-    if (target === dateInput || target.name === 'kind') suggestName();
+    if (target === dateInput) suggestName();
     render();
   });
 
@@ -224,55 +239,50 @@ export function mountNewPlanForm(root, { kind = 'mass', date = '', plans = [], c
       dateInput.dispatchEvent(new Event('input', { bubbles: true }));
     });
   }
+  for (const pill of kindPills) {
+    pill.addEventListener('click', () => {
+      chosenKind = pill.dataset.planKind === 'pw' ? 'pw' : 'mass';
+      status.textContent = '';
+      suggestName();
+      render();
+    });
+  }
 
   // Open Existing: the Holy Mass already at that time opens in its editor.
   onOpenExisting(conflictBox, (id) => openExisting?.(id));
-  byId('new-plan-cancel')?.addEventListener('click', () => onCancel?.());
-
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const input = values();
-    const problem = checkNewPlan(input);
-    if (problem) {
-      status.textContent = problem;
-      return;
-    }
-    if (conflict()) {
-      render();
-      conflictBox.querySelector('[data-open-existing]')?.focus();
-      return;
-    }
-    const label = submit.textContent;
-    submit.disabled = true;
-    submit.textContent = 'Creating…';
-    status.textContent = '';
-    try {
-      const body = await createPlan(newPlanRequest(input, crypto.randomUUID()));
-      onCreated?.(body.plan);
-    } catch (err) {
-      submit.disabled = false;
-      submit.textContent = label;
-      if (err.conflict) {
-        // Made on another device since the list was read: the server names the plan already there.
-        known = [...known.filter((p) => p.id !== err.conflict.id), { ...err.conflict, liturgical_date: err.conflict.date, kind: 'mass' }];
-        render();
-        conflictBox.querySelector('[data-open-existing]')?.focus();
-      } else {
-        status.textContent = err.message;
-      }
-    }
+  byId('new-plan-close').addEventListener('click', () => {
+    if (!busy) onClose?.();
   });
 
-  /** Starts the form again: the date and the plan type given (a calendar day, + Add Time), else next Sunday as a Holy Mass. */
+  // The action card is the form's one submit button, so Enter in the name or time box makes the plan too, once it can be made.
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (busy) return;
+    const input = values();
+    busy = true;
+    status.textContent = '';
+    render();
+    const result = await submitNewPlan(input, { known });
+    if (result.plan) {
+      onCreated?.(result.plan);
+      return;
+    }
+    busy = false;
+    if (result.conflict) known = [...known.filter((p) => p.id !== result.conflict.id), result.conflict];
+    if (result.problem) status.textContent = result.problem;
+    render();
+    if (result.conflict) conflictBox.querySelector('[data-open-existing]')?.focus();
+  });
+
+  /** Starts the card again: for the date and kind given (a calendar day, + Add Time), or with the picker on next Sunday when no date is. */
   function reset(next = {}) {
-    form.reset();
+    const day = dateOf(next.date) ? next.date : '';
+    busy = false;
     nameIsCustom = false;
     status.textContent = '';
-    submit.disabled = false;
-    submit.textContent = 'Create plan';
-    dateInput.value = DATE.test(next.date ?? '') ? next.date : dateShortcut('sunday');
-    const choice = form.querySelector(`input[name="kind"][value="${next.kind === 'pw' ? 'pw' : 'mass'}"]`);
-    if (choice) choice.checked = true;
+    chosenKind = next.kind === 'pw' ? 'pw' : 'mass';
+    picker.hidden = day !== '';
+    dateInput.value = day || dateShortcut('sunday');
     schedule = { massTime: '', massLanguage: '' };
     fields.set(schedule);
     suggestName();
@@ -289,6 +299,12 @@ export function mountNewPlanForm(root, { kind = 'mass', date = '', plans = [], c
     focus() {
       nameInput.focus();
       nameInput.select();
+    },
+    get busy() {
+      return busy;
+    },
+    get kind() {
+      return chosenKind;
     },
   };
 }

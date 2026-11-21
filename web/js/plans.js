@@ -361,13 +361,27 @@ deleteConfirm.addEventListener('click', async () => {
   }
 });
 
-// ---- New Plan: the modal over the calendar, with the same form plan/new.html shows. ----
+// ---- New Plan: the CREATE A PLAN card over the calendar, the same card plan/new.html shows. ----
 
 const newPlanDialog = document.getElementById('new-plan-dialog');
 let newPlanForm = null;
 let newPlanReturn = null;
 
-/** Opens New Plan for a day and a kind (a calendar day, + Add Another Holy Mass Schedule, + New Plan). Planners and admins only. */
+/** A plan just made: on the calendar at once (the pill shows on Back too), then open in the Plan Editor. */
+function planCreated(plan) {
+  const schedule = plan.kind === 'pw' ? {} : { massTime: plan.massTime ?? '', massLanguage: plan.massLanguage ?? '' };
+  const listed = { id: plan.id, name: plan.name, liturgical_date: plan.date, updated_at: plan.updatedAt ?? new Date().toISOString(), kind: plan.kind, ...schedule, filledSlots: [], itemCount: plan.items?.length ?? 0 };
+  state.plans = [...(state.plans ?? []).filter((p) => p.id !== plan.id), listed];
+  renderRows();
+  newPlanReturn = null;
+  newPlanDialog.close();
+  openPlan(plan);
+}
+
+/**
+ * Opens Create a plan. From a calendar day (and + Add Another Holy Mass Schedule) it is for that day, in the calendar's kind; from + New Plan
+ * (no day) it shows the date and kind picker. Planners and admins only.
+ */
 function openNewPlan({ kind = state.cal, date = '' } = {}) {
   if (!state.canEdit) return;
   newPlanReturn = document.activeElement;
@@ -377,10 +391,9 @@ function openNewPlan({ kind = state.cal, date = '' } = {}) {
       kind,
       date,
       plans: state.plans ?? [],
-      cancel: true,
-      onCreated: (plan) => location.assign(editorHref(plan)),
+      onCreated: planCreated,
       onOpenExisting: (id) => location.assign(openExistingHref(id)),
-      onCancel: () => newPlanDialog.close(),
+      onClose: () => newPlanDialog.close(),
     });
   } else {
     newPlanForm.setPlans(state.plans ?? []);
@@ -390,7 +403,14 @@ function openNewPlan({ kind = state.cal, date = '' } = {}) {
   newPlanForm.focus();
 }
 
-document.getElementById('new-plan-dialog-close').addEventListener('click', () => newPlanDialog.close());
+// Esc closes the card, as on the laptop, except while the plan is being made.
+newPlanDialog.addEventListener('cancel', (event) => {
+  if (newPlanForm?.busy) event.preventDefault();
+});
+// A click on the dimmed page around the card closes it too.
+newPlanDialog.addEventListener('click', (event) => {
+  if (event.target === newPlanDialog && !newPlanForm?.busy) newPlanDialog.close();
+});
 newPlanDialog.addEventListener('close', () => {
   newPlanReturn?.focus?.();
   newPlanReturn = null;

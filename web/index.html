@@ -80,18 +80,9 @@
   </div>
 </dialog>
 
-<dialog id="new-plan-dialog" class="np-dialog" aria-labelledby="new-plan-dialog-title">
-  <div class="np-dialog-body">
-    <div class="np-dialog-head">
-      <div>
-        <p class="bc-eyebrow">Service Planning</p>
-        <h2 id="new-plan-dialog-title" class="bc-dialog-title">New Plan</h2>
-      </div>
-      <button type="button" id="new-plan-dialog-close" class="bc-btn-quiet" aria-label="Close">✕</button>
-    </div>
-    <!-- The New Plan form (js/new-plan-form.js), the same one plan/new.html shows. -->
-    <div id="new-plan-layout" class="new-plan-layout"></div>
-  </div>
+<dialog id="new-plan-dialog" class="np-dialog" aria-labelledby="np-heading">
+  <!-- The CREATE A PLAN card (js/new-plan-form.js), the same one plan/new.html shows. It carries its own heading and × button. -->
+  <div id="new-plan-layout" class="new-plan-layout"></div>
 </dialog>
 
 <dialog id="memo-dialog" class="bc-dialog" aria-labelledby="memo-dialog-title">

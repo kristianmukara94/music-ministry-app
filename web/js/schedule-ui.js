@@ -1,5 +1,5 @@
 // The Holy Mass schedule on the web planner, as the church laptop has it (src/planner/MassSchedule.tsx): a typed time with one-tap presets,
-// English / Cebuano / Tagalog / Other pills, the warning when the time is already taken on that date with Open Existing beside it, the
+// English / Cebuano / Tagalog / Other / Custom pills, the warning when the time is already taken on that date with Open Existing beside it, the
 // calendar's schedule badges, and the editor's switcher pills. The rules (reading times, ordering, clashes) are the laptop's own, from
 // holy-mass-schedule.js, a byte-for-byte copy of shared/mass-schedule.js. Everything typed reaches the page escaped, never as markup.
 // Pure markup builders plus one small DOM mount, so the builders run in tests without a browser.
@@ -25,6 +25,12 @@ export const TIME_PLACEHOLDER = 'e.g. 6:00 AM, 8:00 AM, 9:30 AM';
 export const TEXTS_HINT = 'English, Tagalog and Cebuano also set the language of the readings and responses.';
 export const OPEN_EXISTING = 'Open Existing';
 export const TAKEN_HINT = 'Open it, or pick another time.';
+export const OTHER_LANGUAGE = 'Other / Custom';
+
+const labelIcon = (body) =>
+  `<svg class="bc-label-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const ICON_CLOCK = labelIcon('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>');
+const ICON_LANGUAGES = labelIcon('<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>');
 
 /** A website plan as the schedule rules read it: the list gives `liturgical_date`, a loaded plan `date`. */
 export const asSchedulePlan = (plan) => ({ ...plan, liturgicalDate: plan.liturgicalDate ?? plan.liturgical_date ?? plan.date });
@@ -54,18 +60,18 @@ export function scheduleFieldsHtml({ massTime = '', massLanguage = '', otherOpen
       const on = !isOther && language === name;
       return `<button type="button" class="bc-pill" data-schedule-lang="${name}" aria-pressed="${on}"${off}>${name}</button>`;
     }),
-    `<button type="button" class="bc-pill" data-schedule-lang="other" aria-pressed="${isOther}"${off}>Other</button>`,
+    `<button type="button" class="bc-pill" data-schedule-lang="other" aria-pressed="${isOther}"${off}>${OTHER_LANGUAGE}</button>`,
   ].join('');
   return `
     <div class="bc-field">
-      <label class="bc-label" for="${id}-time">Holy Mass time</label>
+      <label class="bc-label" for="${id}-time">${ICON_CLOCK}Holy Mass time</label>
       <input id="${id}-time" class="bc-input" data-role="mass-time" type="text" maxlength="${MAX_MASS_TIME}" autocomplete="off" placeholder="${TIME_PLACEHOLDER}" value="${esc(massTime)}"${off}>
       <div class="bc-chips" role="group" aria-label="Quick times">${presets}<span class="bc-hint">Type any time, or tap one of these.</span></div>
     </div>
     <div class="bc-field">
-      <span class="bc-label" id="${id}-lang-label">Language</span>
+      <span class="bc-label" id="${id}-lang-label">${ICON_LANGUAGES}Language</span>
       <div class="bc-pills" role="group" aria-labelledby="${id}-lang-label">${pills}</div>
-      ${isOther ? `<input id="${id}-lang-other" class="bc-input" data-role="lang-other" type="text" maxlength="${MAX_MASS_LANGUAGE}" aria-label="Other language" placeholder="Type the language" value="${esc(language)}"${off}>` : ''}
+      ${isOther ? `<input id="${id}-lang-other" class="bc-input" data-role="lang-other" type="text" maxlength="${MAX_MASS_LANGUAGE}" aria-label="Custom language" placeholder="Type the language" value="${esc(language)}"${off}>` : ''}
       <span class="bc-hint">${TEXTS_HINT}</span>
     </div>`;
 }

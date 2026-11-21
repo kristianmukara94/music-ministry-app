@@ -17,6 +17,7 @@ const cal = await load('web', 'js', 'planner-calendar.js');
 const header = await load('web', 'js', 'planner-header.js');
 const model = await load('web', 'js', 'plan-model.js');
 const form = await load('web', 'js', 'new-plan-form.js');
+const schedule = await load('web', 'js', 'schedule-ui.js');
 const webSlots = await load('web', 'js', 'mass-slots.js');
 const webCalendar = await load('web', 'js', 'liturgical-calendar.js');
 const laptopCalendar = await load('shared', 'liturgical-calendar.js');
@@ -244,16 +245,135 @@ test('the Plan Editor tab remembers the last plan opened in this browser, and fo
 test('New Plan from a day: the Holy Mass is named after the liturgical day, as on the laptop', () => {
   assert.equal(form.dayNameOf(SUNDAY), '32nd Sunday in Ordinary Time');
   assert.equal(form.dayNameOf('2026-13-40'), '');
+  assert.equal(form.dayNameOf('2026-02-30'), '', 'not a day');
   assert.equal(model.suggestPlanName({ kind: 'mass', date: SUNDAY, dayName: form.dayNameOf(SUNDAY) }), '32nd Sunday in Ordinary Time');
   assert.equal(model.suggestPlanName({ kind: 'pw', date: SUNDAY, dayName: 'Sample Liturgical Day' }), 'Praise & Worship Night (8 Nov)', 'Praise & Worship keeps its own');
   assert.equal(model.suggestPlanName({ kind: 'mass', date: SUNDAY }), 'Sunday Holy Mass (8 Nov)', 'without a day name, as before');
-  const html = form.newPlanFormHtml({ cancel: true });
-  assert.match(html, /id="new-plan-cancel"/);
-  assert.match(html, /id="plan-day-line"/);
-  assert.match(html, /<dt>Liturgical day<\/dt>/);
-  assert.doesNotMatch(form.newPlanFormHtml(), /new-plan-cancel/);
   // The time chips and languages come from the schedule fields the laptop asks for.
   assert.match(readWeb('js/new-plan-form.js'), /mountScheduleFields\(byId\('schedule-fields'\)/);
+});
+
+test('CREATE A PLAN is one card: the eyebrow, the date heading, the italic day, the × button, and no template boxes or live preview', () => {
+  const html = form.newPlanFormHtml();
+  assert.match(html, /<form id="new-plan-form" class="np-card" data-color="none" data-kind="mass"/);
+  assert.match(html, /<span class="np-ribbon" aria-hidden="true"><\/span>/);
+  assert.match(html, /<p class="np-eyebrow">Create a plan<\/p>/);
+  assert.match(html, /<h2 id="np-heading" class="np-heading"><\/h2>/);
+  assert.match(html, /<p id="np-subtitle" class="np-subtitle"><\/p>/);
+  assert.match(html, /id="new-plan-close" class="np-close" aria-label="Close"/);
+  assert.match(html, /<label class="np-label" for="plan-name">Plan name<\/label>/);
+  assert.doesNotMatch(html, /Live preview|preview-card-box|template-card|name="kind"/);
+  assert.equal(html.match(/type="submit"/g).length, 1, 'the action card is the one submit button, so Enter makes the plan');
+  // The picker row (kind toggle, date, Today / This Saturday / Next Sunday) is hidden until the card is opened without a day.
+  assert.match(html, /<div id="np-picker" class="np-picker" hidden>/);
+  assert.deepEqual([...html.matchAll(/data-date-shortcut="(\w+)"[^>]*>([^<]+)</g)].map((m) => [m[1], m[2]]), [['today', 'Today'], ['saturday', 'This Saturday'], ['sunday', 'Next Sunday']]);
+  assert.match(html, /data-plan-kind="mass" aria-pressed="true">Holy Mass</);
+  assert.match(html, /data-plan-kind="pw" aria-pressed="false">Praise &amp; Worship</);
+  // The Planner's modal holds only the card, which brings its own heading; plan/new.html shows the same card.
+  const page = readWeb('index.html');
+  assert.match(page, /<dialog id="new-plan-dialog" class="np-dialog" aria-labelledby="np-heading">\s*<!--[^>]*-->\s*<div id="new-plan-layout" class="new-plan-layout"><\/div>\s*<\/dialog>/);
+  const css = readWeb('css/planner.css');
+  assert.match(css, /dialog\.np-dialog \{\s*width: min\(520px, calc\(100vw - 32px\)\);/);
+  assert.match(css, /\.new-plan-layout \{\s*width: 100%;\s*max-width: 520px;/);
+  assert.doesNotMatch(css, /\.preview-card-box|\.template-card/, 'the old two-column layout is gone');
+});
+
+test('the heading is the full date, the subtitle the day\'s Ordo name, and the ribbon its vestment colour', () => {
+  assert.equal(form.fullDate('2026-11-07'), 'Saturday, November 7, 2026');
+  assert.equal(form.fullDate(SUNDAY), 'Sunday, November 8, 2026');
+  assert.equal(form.fullDate('2026-02-30'), '');
+  const colours = { [SUNDAY]: 'green', '2026-12-06': 'violet', '2026-12-13': 'rose', [SOLEMNITY]: 'white', '2026-05-24': 'red', '2026-12-26': 'red' };
+  for (const [iso, colour] of Object.entries(colours)) {
+    assert.equal(form.ribbonColorOf(iso), colour, iso);
+    assert.equal(form.ribbonColorOf(iso), cal.liturgicalDay(iso).color, 'the calendar\'s own colour');
+  }
+  assert.equal(form.ribbonColorOf(''), 'none');
+  const card = form.newPlanCard({ kind: 'mass', date: '2026-12-06', name: 'Sample Plan Title' });
+  assert.equal(card.heading, 'Sunday, December 6, 2026');
+  assert.equal(card.subtitle, form.dayNameOf('2026-12-06'));
+  assert.equal(card.color, 'violet');
+  assert.equal(form.newPlanCard({ date: '' }).heading, 'Choose a date');
+  assert.equal(form.newPlanCard({ date: '' }).canCreate, false);
+  // Every colour the calendar uses has a ribbon swatch, 5px down the card's left edge.
+  const css = readWeb('css/planner.css');
+  for (const colour of ['green', 'violet', 'white', 'red', 'rose']) assert.match(css, new RegExp(`\\.np-card\\[data-color="${colour}"\\] \\{ --swatch: var\\(--lit-${colour}\\); \\}`));
+  assert.match(css, /\.np-ribbon \{[^}]*width: 5px;[^}]*background: var\(--swatch\);/);
+  assert.match(css, /\.np-subtitle \{[^}]*font-family: var\(--font-serif\);[^}]*font-style: italic;/);
+});
+
+test('the action card: Create Holy Mass Plan or Create Praise & Worship Plan, in the laptop\'s words, Creating… while it works', () => {
+  const massCard = form.newPlanCard({ kind: 'mass', date: SUNDAY, name: 'Sample Plan Title' });
+  assert.deepEqual(massCard.action, { title: 'Create Holy Mass Plan', text: "The four parts of the Holy Mass, with the day's readings from the Lectionary." });
+  assert.equal(massCard.canCreate, true);
+  const pwCard = form.newPlanCard({ kind: 'pw', date: SUNDAY, name: 'Sample Plan Title' });
+  assert.deepEqual(pwCard.action, { title: 'Create Praise & Worship Plan', text: 'Opening, Praise & Worship, and Word & Offering sets.' });
+  assert.equal(pwCard.kind, 'pw');
+  assert.equal(form.newPlanCard({ kind: 'mass', date: SUNDAY, name: '   ' }).canCreate, false, 'a plan needs a name');
+  const busy = form.newPlanCard({ kind: 'mass', date: SUNDAY, name: 'Sample Plan Title', busy: true });
+  assert.equal(busy.action.title, 'Creating…');
+  assert.equal(busy.canCreate, false, 'one press makes one plan');
+  // The card shows only the Holy Mass fields for a Holy Mass, and the glyph of the kind on show.
+  const css = readWeb('css/planner.css');
+  assert.match(css, /\.np-card\[data-kind="mass"\] \.np-action-glyph\.is-pw,\s*\.np-card\[data-kind="pw"\] \.np-action-glyph\.is-mass \{\s*display: none;/);
+  assert.match(readWeb('js/new-plan-form.js'), /massFields\.hidden = card\.kind !== 'mass';/);
+});
+
+test('HOLY MASS TIME: the four quick chips, a typed time of its own, and a taken time warned of with creation held back', () => {
+  const html = schedule.scheduleFieldsHtml({ massTime: '9:30 AM', id: 'np' });
+  assert.match(html, /<label class="bc-label" for="np-time"><svg class="bc-label-icon"[\s\S]*?<\/svg>Holy Mass time<\/label>/, 'clock icon and label');
+  assert.match(html, /placeholder="e\.g\. 6:00 AM, 8:00 AM, 9:30 AM"/);
+  assert.match(html, /Type any time, or tap one of these\./);
+  const pressed = (h) => [...h.matchAll(/data-time-preset="([^"]+)" aria-pressed="(true|false)"/g)].map((m) => [m[1], m[2] === 'true']);
+  assert.deepEqual(pressed(html), [['6:00 AM', false], ['8:00 AM', false], ['9:30 AM', true], ['5:00 PM', false]]);
+  // A time of the operator's own presses no chip.
+  assert.ok(pressed(schedule.scheduleFieldsHtml({ massTime: '7:15 AM' })).every(([, on]) => !on));
+
+  // A Holy Mass already at that time on that date ("06:00" is "6:00 AM"): warned of, and the card cannot make the plan.
+  const plans = [mass(1, SUNDAY, { massTime: '6:00 AM', massLanguage: 'English' })];
+  const taken = form.newPlanCard({ kind: 'mass', date: SUNDAY, name: 'Sample Plan Title', massTime: '06:00', plans });
+  assert.equal(taken.conflict?.id, ids(1));
+  assert.equal(taken.canCreate, false);
+  assert.match(schedule.conflictBannerHtml(taken.conflict), new RegExp(`data-open-existing="${ids(1)}"`));
+  // Another time, another day, or Praise & Worship: free.
+  assert.equal(form.newPlanCard({ kind: 'mass', date: SUNDAY, name: 'Sample Plan Title', massTime: '8:00 AM', plans }).canCreate, true);
+  assert.equal(form.newPlanCard({ kind: 'mass', date: WEEKDAY, name: 'Sample Plan Title', massTime: '6:00 AM', plans }).conflict, null);
+  assert.equal(form.newPlanCard({ kind: 'pw', date: SUNDAY, name: 'Sample Plan Title', massTime: '6:00 AM', plans }).conflict, null);
+  assert.match(readWeb('js/new-plan-form.js'), /submit\.disabled = !card\.canCreate;/);
+});
+
+test('LANGUAGE: English, Cebuano, Tagalog and Other / Custom, which opens a box for the parish\'s own language', () => {
+  const html = schedule.scheduleFieldsHtml({ massLanguage: 'Tagalog', id: 'np' });
+  assert.match(html, /<span class="bc-label" id="np-lang-label"><svg class="bc-label-icon"[\s\S]*?<\/svg>Language<\/span>/, 'language icon and label');
+  assert.deepEqual([...html.matchAll(/data-schedule-lang="[^"]+" aria-pressed="(true|false)"[^>]*>([^<]+)</g)].map((m) => [m[2], m[1] === 'true']), [
+    ['English', false], ['Cebuano', false], ['Tagalog', true], ['Other / Custom', false],
+  ]);
+  assert.doesNotMatch(html, /data-role="lang-other"/, 'no box until Other / Custom');
+  assert.match(html, /English, Tagalog and Cebuano also set the language of the readings and responses\./);
+  const own = schedule.scheduleFieldsHtml({ massLanguage: 'Sample Custom Language', id: 'np' });
+  assert.match(own, /data-schedule-lang="other" aria-pressed="true"[^>]*>Other \/ Custom</);
+  assert.match(own, /id="np-lang-other"[^>]*aria-label="Custom language"[^>]*value="Sample Custom Language"/);
+  assert.match(schedule.scheduleFieldsHtml({ otherOpen: true, id: 'np' }), /id="np-lang-other"[^>]*value=""/, 'Other / Custom opens an empty box');
+  // English, Tagalog and Cebuano draft the readings in that language; the parish's own drafts in English.
+  assert.equal(schedule.textsLanguageFor('Cebuano'), 'CEB');
+  assert.equal(schedule.textsLanguageFor('Tagalog'), 'TL');
+  assert.equal(schedule.textsLanguageFor('Sample Custom Language'), 'EN');
+});
+
+test('a calendar day opens the card in its calendar\'s kind; + New Plan adds the picker; Esc and × close it; a new plan opens in the Plan Editor', () => {
+  const plans = readWeb('js/plans.js');
+  assert.match(plans, /if \(click\.action === 'create'\) openNewPlan\(\{ kind: state\.cal, date: iso \}\);/, 'Liturgical → Holy Mass, Praise & Worship → Praise & Worship');
+  assert.match(plans, /openNewPlan\(\{ kind: state\.cal \}\)/, '+ New Plan has no day, so the card shows its picker');
+  assert.match(plans, /newPlanDialog\.addEventListener\('cancel', \(event\) => \{\s*if \(newPlanForm\?\.busy\) event\.preventDefault\(\);/, 'Esc closes it, except while creating');
+  assert.match(plans, /onClose: \(\) => newPlanDialog\.close\(\)/);
+  // A made plan shows on the calendar at once, then opens in the Plan Editor.
+  assert.match(plans, /function planCreated\(plan\) \{[\s\S]*?state\.plans = \[[\s\S]*?renderRows\(\);[\s\S]*?newPlanDialog\.close\(\);\s*openPlan\(plan\);/);
+  assert.match(plans, /onCreated: planCreated/);
+  const script = readWeb('js/new-plan-form.js');
+  assert.match(script, /picker\.hidden = day !== '';/, 'the picker shows only without a day');
+  assert.match(script, /const result = await submitNewPlan\(input, \{ known \}\);\s*if \(result\.plan\) \{\s*onCreated\?\.\(result\.plan\);/);
+  assert.match(readWeb('js/new-plan.js'), /onClose: \(\) => location\.assign\(`\$\{root\}index\.html\?cal=\$\{form\.kind \?\? kind\}`\)/);
+  assert.equal(model.editorPathFor({ id: ids(9), kind: 'mass' }), `plan/mass.html?id=${ids(9)}`);
+  assert.equal(model.editorPathFor({ id: ids(9), kind: 'pw' }), `plan/praise.html?id=${ids(9)}`);
 });
 
 test('the Planner page: the header slot, the New Plan modal, the memo dialog and the schedule chooser; plan/new.html still works', () => {

@@ -79,7 +79,7 @@ test('Open Existing opens that plan\'s Holy Mass editor', () => {
   assert.match(readWeb('js/plans.js'), /onOpenExisting: \(id\) => location\.assign\(openExistingHref\(id\)\)/);
   assert.match(readWeb('js/mass.js'), /onOpenExisting\(document\.getElementById\('schedule-conflict'\), \(id\) => \{\s*if \(state\.dirty && !window\.confirm/);
   // A taken time disables the create and save buttons until it changes.
-  assert.match(readWeb('js/new-plan-form.js'), /submit\.disabled = taken !== null;/);
+  assert.match(readWeb('js/new-plan-form.js'), /submit\.disabled = !card\.canCreate;/);
   assert.match(readWeb('js/mass.js'), /saveEl\.disabled = !plan \|\| !canEdit \|\| save\.disabled \|\| takenBy\(\) !== null;/);
 });
 
@@ -169,8 +169,8 @@ test('the broadcast colours follow the laptop theme tokens, and every label says
   for (const [, name, value] of declared) assert.match(value, /var\(--color-[\w-]+\)/, `${name} comes from a theme token`);
   assert.equal(new Set(declared.map((m) => m[1])).size, declared.length);
   // The labels this adds say "Holy Mass", never "Mass" alone.
-  assert.match(ui.scheduleFieldsHtml(), /<label class="bc-label" for="schedule-time">Holy Mass time<\/label>/);
+  assert.match(ui.scheduleFieldsHtml(), /<label class="bc-label" for="schedule-time"><svg class="bc-label-icon"[^>]*>[\s\S]*?<\/svg>Holy Mass time<\/label>/);
   assert.match(ui.switcherHtml([ui.asSchedulePlan(listed(SIX, '', ''))], SIX, { pathOf: () => '' }), /Holy Masses on this day/);
-  assert.match(readWeb('js/new-plan-form.js'), /class="bc-eyebrow">Holy Mass schedule</);
+  assert.match(readWeb('js/new-plan-form.js'), /title: 'Create Holy Mass Plan'/);
   assert.match(readWeb('plan/mass.html'), /aria-label="Holy Mass time and language"/);
 });

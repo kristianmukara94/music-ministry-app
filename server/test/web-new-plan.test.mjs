@@ -83,17 +83,14 @@ test('the create request keeps the route\'s fields; language and time are for a 
   assert.equal('massTime' in model.newPlanRequest({ ...input, kind: 'mass', massTime: '' }, id), false, 'a time left for later is not sent');
 });
 
-test('the page offers both templates, with the counts the editors really have', async () => {
-  // plan/new.html and the Planner's New Plan modal both draw the form from new-plan-form.js.
+test('the page shows the one CREATE A PLAN card: no template boxes and no live preview', async () => {
+  // plan/new.html and the Planner's New Plan modal both draw the card from new-plan-form.js.
   const { newPlanFormHtml } = await import(pathToFileURL(path.join(here, '..', '..', 'web', 'js', 'new-plan-form.js')).href);
   const page = newPlanFormHtml();
-  const { SLOT_COUNT } = await import(pathToFileURL(path.join(here, '..', '..', 'web', 'js', 'mass-slots.js')).href);
-  const { PRAISE_PLAN } = await import(pathToFileURL(path.join(here, '..', '..', 'web', 'js', 'sample-data.js')).href);
-  const segments = PRAISE_PLAN.sections.reduce((sum, section) => sum + section.rows.length, 0);
-  assert.match(page, new RegExp(`template-card-count">${SLOT_COUNT} slots<`));
-  assert.match(page, new RegExp(`template-card-count">${segments} segments<`));
+  assert.match(page, /class="np-eyebrow">Create a plan</);
+  assert.doesNotMatch(page, /template-card|preview-card-box|Live preview/);
   assert.doesNotMatch(page, /<select id="plan-kind"/);
-  assert.match(page, /class="preview-card-box"/);
+  assert.equal(page.match(/type="submit"/g).length, 1, 'the action card is the one submit button');
 });
 
 test('the page runs under the site\'s content security policy: no inline script or handler, and nothing typed goes in as markup', () => {
@@ -107,7 +104,7 @@ test('the page runs under the site\'s content security policy: no inline script 
   // textContent or an input's value.
   const form = web('js/new-plan-form.js');
   assert.deepEqual(form.match(/innerHTML|insertAdjacentHTML|outerHTML/g), ['innerHTML']);
-  assert.match(form, /root\.innerHTML = newPlanFormHtml\(\{ cancel \}\);/);
+  assert.match(form, /root\.innerHTML = newPlanFormHtml\(\);/);
   assert.doesNotMatch(form, /eval\(|new Function/);
   for (const page of ['plan/new.html', 'index.html']) assert.match(web(page), /<div id="new-plan-layout" class="new-plan-layout"/, `${page} holds the form`);
 });

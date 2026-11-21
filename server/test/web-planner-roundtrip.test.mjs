@@ -24,6 +24,7 @@ const web = (file) => import(pathToFileURL(path.join(root, 'web', 'js', file)).h
 const model = await web('plan-model.js');
 const cal = await web('planner-calendar.js');
 const form = await web('new-plan-form.js');
+const schedule = await web('schedule-ui.js');
 const { MASS_PLAN } = await web('sample-data.js');
 const { requiredSlotsFor } = await web('liturgical-calendar.js');
 
@@ -217,6 +218,104 @@ test('a Praise & Worship plan made from its calendar shows its item count, and i
   const pulled = (await pull()).plans.find((p) => p.id === id);
   assert.equal(pulled.name, 'Sample Renamed Night');
   assert.equal(pulled.items[0].note, 'Sample Musician Cue');
+});
+
+// ---- The CREATE A PLAN card's action, against the real server ----
+
+/** What the card's action card posts through: plan-api.js's createPlan, with this server behind it. Every request is kept in `sent`. */
+function cardCreate(cookie, sent = []) {
+  return async (request) => {
+    sent.push(request);
+    const res = await createPlan(cookie, request);
+    const answer = body(res);
+    if (res.statusCode !== 201) {
+      const err = new Error(answer.error ?? `refused (${res.statusCode})`);
+      if (answer.conflict) err.conflict = answer.conflict;
+      throw err;
+    }
+    return answer;
+  };
+}
+
+test('Create Holy Mass Plan from a Liturgical Calendar day: the time chip and a custom language are kept, and the plan opens in the Plan Editor', async () => {
+  const cookie = await cookieFor('planner');
+  const card = form.newPlanCard({ kind: 'mass', date: DAY, name: 'Sample Plan Title', massTime: '8:00 AM', plans: await listPlans(cookie) });
+  assert.equal(card.action.title, 'Create Holy Mass Plan');
+  assert.equal(card.canCreate, true);
+  const massLanguage = 'Sample Custom Language';
+  const input = { name: 'Sample Plan Title', date: DAY, kind: 'mass', language: schedule.textsLanguageFor(massLanguage), massTime: '8:00 AM', massLanguage };
+  const result = await form.submitNewPlan(input, { known: await listPlans(cookie), create: cardCreate(cookie) });
+  assert.ok(result.plan, JSON.stringify(result));
+  assert.equal(result.plan.kind, 'mass');
+  assert.equal(model.editorPathFor(result.plan), `plan/mass.html?id=${result.plan.id}`, 'the Plan Editor opens on it');
+  const listed = (await listPlans(cookie)).find((p) => p.id === result.plan.id);
+  assert.deepEqual([listed.name, listed.massTime, listed.massLanguage], ['Sample Plan Title', '8:00 AM', massLanguage]);
+  // The calendar's pill shows it.
+  const cell = cal.calendarMonth({ kind: 'mass', month: '2026-11', plans: [listed] }).weeks.flat().find((c) => c.iso === DAY);
+  assert.equal(cell.badges.length, 1);
+  assert.match(cell.badges[0].label, /^8:00 AM · /);
+});
+
+test('a taken time is held back by the card before anything is sent; one made elsewhere meanwhile comes back as the server\'s conflict', async () => {
+  const cookie = await cookieFor('planner');
+  const first = await form.submitNewPlan(
+    { name: 'Sample Plan Title', date: DAY, kind: 'mass', language: 'EN', massTime: '6:00 AM', massLanguage: 'English' },
+    { known: [], create: cardCreate(cookie) },
+  );
+  assert.ok(first.plan);
+  const known = await listPlans(cookie);
+  // The card knows the time is taken ("06:00" is "6:00 AM", whatever the language): it warns, and sends nothing.
+  assert.equal(form.newPlanCard({ kind: 'mass', date: DAY, name: 'Sample Plan Title', massTime: '06:00', plans: known }).canCreate, false);
+  const sent = [];
+  const held = await form.submitNewPlan(
+    { name: 'Sample Plan Title', date: DAY, kind: 'mass', language: 'CEB', massTime: '06:00', massLanguage: 'Cebuano' },
+    { known, create: cardCreate(cookie, sent) },
+  );
+  assert.equal(held.conflict?.id, first.plan.id);
+  assert.deepEqual(sent, [], 'nothing sent');
+  // A card opened before the first plan was made does not know it: the server refuses, and the card shows the plan already there.
+  const late = await form.submitNewPlan(
+    { name: 'Sample Plan Title', date: DAY, kind: 'mass', language: 'EN', massTime: '6 am', massLanguage: 'English' },
+    { known: [], create: cardCreate(cookie, sent) },
+  );
+  assert.equal(sent.length, 1);
+  assert.equal(late.conflict?.id, first.plan.id);
+  assert.equal(form.newPlanCard({ kind: 'mass', date: DAY, name: 'Sample Plan Title', massTime: '6:00 AM', plans: [late.conflict] }).conflict?.id, first.plan.id);
+  assert.equal((await listPlans(cookie)).length, 1, 'no duplicate was made');
+  // Another time the same day is free.
+  const other = await form.submitNewPlan(
+    { name: 'Sample Plan Title', date: DAY, kind: 'mass', language: 'EN', massTime: '5:00 PM', massLanguage: 'English' },
+    { known, create: cardCreate(cookie) },
+  );
+  assert.ok(other.plan);
+});
+
+test('Create Praise & Worship Plan from its calendar: the default name, no Holy Mass schedule, and it opens in the Plan Editor', async () => {
+  const cookie = await cookieFor('planner');
+  const name = model.suggestPlanName({ kind: 'pw', date: DAY, dayName: form.dayNameOf(DAY) });
+  assert.equal(name, 'Praise & Worship Night (8 Nov)');
+  const card = form.newPlanCard({ kind: 'pw', date: DAY, name, massTime: '6:00 AM', plans: await listPlans(cookie) });
+  assert.equal(card.action.title, 'Create Praise & Worship Plan');
+  const sent = [];
+  const result = await form.submitNewPlan({ name, date: DAY, kind: 'pw', language: 'EN', massTime: '6:00 AM', massLanguage: 'English' }, { create: cardCreate(cookie, sent) });
+  assert.ok(result.plan, JSON.stringify(result));
+  assert.equal('massTime' in sent[0], false, 'a Praise & Worship plan carries no Holy Mass time');
+  assert.equal(model.editorPathFor(result.plan), `plan/praise.html?id=${result.plan.id}`);
+  const listed = (await listPlans(cookie)).find((p) => p.id === result.plan.id);
+  assert.equal(listed.kind, 'pw');
+  assert.equal(cal.dayClick('pw', [listed], DAY, true).action, 'open');
+});
+
+test('the card sends nothing without a name or a whole date, and a viewer\'s create is refused with the server\'s reason', async () => {
+  const sent = [];
+  const create = cardCreate(await cookieFor('planner'), sent);
+  assert.deepEqual(await form.submitNewPlan({ name: '  ', date: DAY, kind: 'mass' }, { create }), { problem: 'Enter a name for the plan.' });
+  assert.deepEqual(await form.submitNewPlan({ name: 'Sample Plan Title', date: '2026-11-xx', kind: 'mass' }, { create }), { problem: 'Choose a date for the plan.' });
+  assert.deepEqual(sent, []);
+  const viewer = await form.submitNewPlan({ name: 'Sample Plan Title', date: DAY, kind: 'mass', language: 'EN' }, { create: cardCreate(await cookieFor('viewer')) });
+  assert.equal(typeof viewer.problem, 'string');
+  assert.ok(viewer.problem.length > 0);
+  assert.equal(viewer.plan, undefined);
 });
 
 test('day memos: planners set and remove them, everyone in the church reads them, other churches never see them', async () => {
