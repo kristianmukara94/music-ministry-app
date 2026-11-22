@@ -13,6 +13,7 @@ import { conflictIn, mountScheduleFields, onOpenExisting, showConflict, textsLan
 import { checkNewPlan, dateShortcut, newPlanRequest, suggestPlanName } from './plan-model.js';
 import { liturgicalDay } from './planner-calendar.js';
 import { createPlan } from './plan-api.js';
+import { dayReadingItems } from './day-readings.js';
 
 /** The action card at the foot of the card, per kind, in the laptop's words. */
 export const ACTIONS = {
@@ -93,7 +94,9 @@ export async function submitNewPlan(input, { known = [], create = createPlan, uu
   const taken = input.kind === 'mass' ? conflictIn(known, input.date, input.massTime) : null;
   if (taken) return { conflict: taken };
   try {
-    const body = await create(newPlanRequest(input, uuid()));
+    const request = newPlanRequest(input, uuid());
+    // A new Holy Mass starts with the day's readings in their slots, as the laptop's Planner fills them. Names only: the laptop shows the readings itself.
+    const body = await create(input.kind === 'mass' ? { ...request, items: dayReadingItems(input.date) } : request);
     return { plan: body.plan };
   } catch (err) {
     // Made on another device since the list was read: the server names the plan already there.

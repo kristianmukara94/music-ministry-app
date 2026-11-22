@@ -475,3 +475,119 @@ test('Copy from another Holy Mass: the second Holy Mass of the day takes the fir
   const refused = await savePlan(viewer, model.savePayload(read.plan, [], {}));
   assert.equal(refused.statusCode, 403);
 });
+
+// ---- The day's readings, web to laptop and back ----
+
+const dayReadings = await web('day-readings.js');
+const laptopMap = await import(pathToFileURL(path.join(root, 'electron', 'plan-sync-map.js')).href);
+const laptopStore = await import(pathToFileURL(path.join(root, 'electron', 'plan-sync-store.js')).href);
+
+/** A Holy Mass made as the New Plan card makes it: with the day's readings in their slots. */
+async function createWithReadings(cookie, { massTime = '9:30 AM', date = DAY } = {}) {
+  const request = model.newPlanRequest({ name: 'Sample Plan Title', date, kind: 'mass', language: 'EN', massTime, massLanguage: 'English' }, randomUUID());
+  const res = await createPlan(cookie, { ...request, items: dayReadings.dayReadingItems(date) });
+  assert.equal(res.statusCode, 201, res.body);
+  return body(res).plan;
+}
+
+/** What the laptop sends for the plan it pulled: each item as a laptop row, and back as the laptop's own item with the laptop's own key. */
+function laptopRowsOf(pulled, date) {
+  const hymnByUuid = () => null;
+  const rows = pulled.items
+    .map((item, at) => ({ item, row: laptopStore.massRowFrom(item, date, hymnByUuid) }))
+    .filter(({ row }) => row)
+    .map(({ row, item }, order) => ({ ...row, order, slot: laptopSlotId(item.slot) }));
+  return laptopMap.massEntries(rows, () => null).filter((e) => e.item).map((e, i) => ({ key: e.key, order: i + 1, ...e.item }));
+}
+const laptopSlotId = (number) => webSlotIds.find((s) => s.number === number)?.id ?? null;
+const webSlotIds = (await web('mass-slots.js')).MASS_SLOTS;
+
+test('a Holy Mass made with the day\'s readings: the server keeps them, the calendar counts them, and the laptop maps each to its Lectionary reading by date and name', async () => {
+  const cookie = await cookieFor('planner');
+  const created = await createWithReadings(cookie);
+  const listed = (await listPlans(cookie)).find((p) => p.id === created.id);
+  assert.deepEqual([...listed.filledSlots].sort((a, b) => a - b), [4, 20, 21, 22]);
+  assert.equal(cal.massBadge(listed, DAY).count, `4/${requiredSlotsFor(DAY).length}`);
+
+  const pulled = (await pull()).plans.find((p) => p.id === created.id);
+  assert.deepEqual(pulled.items.map((i) => [i.slot, i.kind, i.text, i.group]), [[20, 'reading', 'First Reading', 'word'], [4, 'reading', 'Responsorial Psalm', 'word'], [21, 'reading', 'Second Reading', 'word'], [22, 'reading', 'Gospel', 'word']]);
+  // The laptop's own rule (electron/plan-sync-store.js): each is the Lectionary reading of the plan's date, found locally, never a typed reference.
+  for (const item of pulled.items) {
+    assert.deepEqual(laptopStore.massRowFrom(item, DAY, () => null), { block: 'word', module: 'lectionary', sourceId: `${DAY}|${item.text}`, label: item.text });
+  }
+  // No reference, no reading words are stored on the website.
+  const stored = JSON.stringify((await pg.query('SELECT body FROM plans WHERE id = $1', [created.id])).rows[0].body);
+  for (const { citation } of dayReadings.dayReadingsFor(DAY).readings) assert.ok(!stored.includes(citation));
+
+  // A weekday has no Second Reading.
+  const weekday = await createWithReadings(cookie, { date: '2026-11-10', massTime: '6:00 AM' });
+  assert.deepEqual((await pull()).plans.find((p) => p.id === weekday.id).items.map((i) => i.slot), [20, 4, 22]);
+});
+
+test('web readings survive the laptop\'s push: one reading per slot, no duplicates, and the web\'s note, sung psalm and reference stay', async () => {
+  const cookie = await cookieFor('planner');
+  const created = await createWithReadings(cookie);
+  const { plan } = await getPlan(cookie, created.id);
+  // The planner adds a note on the First Reading, a sung psalm beside the Psalm reading, and a Gospel reference typed for the day.
+  const state = { ...model.massFromItems(plan.items, ROWS), contentHubItems: [] };
+  state.notes.s20 = 'Sample Musician Cue';
+  state.segments = model.withEntry(state.segments, 's4', { songId: SONG, contentType: 'song' });
+  clock = new Date('2026-11-02T12:05:00Z');
+  assert.equal((await savePlan(cookie, model.savePayload(plan, model.massToItems(state, ROWS), {}))).statusCode, 200);
+
+  const pulled = (await pull()).plans.find((p) => p.id === created.id);
+  assert.equal(pulled.items.find((i) => i.slot === 20).note, 'Sample Musician Cue');
+  // The laptop resolves the readings, keeps them as Lectionary rows, and pushes the plan back with ITS keys.
+  const sent = laptopRowsOf(pulled, DAY);
+  assert.equal(sent.filter((i) => i.kind === 'reading').length, 4, 'four lectionary rows');
+  assert.ok(sent.filter((i) => i.kind === 'reading').every((i) => /^h/.test(i.key)), 'the laptop\'s own keys, not the web\'s');
+  clock = new Date('2026-11-02T12:10:00Z');
+  const pushed = await sync().pushPlans({
+    httpMethod: 'POST',
+    headers: { authorization: `Bearer ${laptop}` },
+    body: JSON.stringify({ plans: [{ id: created.id, name: pulled.name, date: DAY, kind: 'mass', baseUpdatedAt: pulled.updatedAt, massTime: '9:30 AM', massLanguage: 'English', items: sent }] }),
+  });
+  assert.equal(body(pushed).results[0].status, 'accepted', pushed.body);
+
+  const after = (await pull()).plans.find((p) => p.id === created.id);
+  const readingsAfter = after.items.filter((i) => i.kind === 'reading');
+  assert.deepEqual(readingsAfter.map((i) => [i.slot, i.text]), [[20, 'First Reading'], [4, 'Responsorial Psalm'], [21, 'Second Reading'], [22, 'Gospel']], 'exactly one per slot');
+  assert.equal(after.items.find((i) => i.slot === 20).note, 'Sample Musician Cue', 'the web note on the reading survives the push');
+  assert.ok(readingsAfter.every((i) => i.contentType === 'scripture'), 'still marked as readings');
+
+  // The editor reads it back: four readings by name, the planner's note, and Populate has nothing to add.
+  const back = model.massFromItems((await getPlan(cookie, created.id)).plan.items, ROWS);
+  assert.equal(model.slotEntries(back.segments.s20)[0].text, 'First Reading');
+  assert.equal(back.notes.s20, 'Sample Musician Cue');
+  const populated = dayReadings.withDayReadings(back.segments, DAY);
+  assert.deepEqual(populated.filled, []);
+  assert.equal(populated.current.length, 4);
+  // Saved again from the editor: still one per slot, keyed as the laptop keyed them.
+  const { plan: fresh } = await getPlan(cookie, created.id);
+  clock = new Date('2026-11-02T12:15:00Z');
+  assert.equal((await savePlan(cookie, model.savePayload(fresh, model.massToItems({ ...back, contentHubItems: [] }, ROWS), {}))).statusCode, 200);
+  assert.deepEqual((await pull()).plans.find((p) => p.id === created.id).items.filter((i) => i.kind === 'reading').map((i) => i.slot), [20, 4, 21, 22]);
+});
+
+test('Populate on an older, empty plan fills the readings and saves them; a plan from another date keeps typed references', async () => {
+  const cookie = await cookieFor('planner');
+  const created = await createFromDay(cookie, { massTime: '9:30 AM', massLanguage: 'English' });
+  const { plan } = await getPlan(cookie, created.id);
+  const state = { ...model.massFromItems(plan.items, ROWS), contentHubItems: [] };
+  assert.equal(dayReadings.readingStatus(state.segments, DAY).empty, 4, 'the banner offers Populate');
+  state.segments = dayReadings.withDayReadings(state.segments, DAY).segments;
+  clock = new Date('2026-11-02T12:05:00Z');
+  assert.equal((await savePlan(cookie, model.savePayload(plan, model.massToItems(state, ROWS), {}))).statusCode, 200);
+  assert.deepEqual((await listPlans(cookie)).find((p) => p.id === created.id).filledSlots.sort((a, b) => a - b), [4, 20, 21, 22]);
+
+  // A reading taken from another date is words the laptop keeps, never a by-name reading for this plan's date.
+  const reading = dayReadings.dayReadingsFor('2026-11-10').readings[0];
+  const elsewhere = dayReadings.withReading(state.segments, reading, '2026-11-10', DAY);
+  const { plan: again } = await getPlan(cookie, created.id);
+  clock = new Date('2026-11-02T12:10:00Z');
+  assert.equal((await savePlan(cookie, model.savePayload(again, model.massToItems({ ...state, segments: elsewhere }, ROWS), {}))).statusCode, 200);
+  const pulled = (await pull()).plans.find((p) => p.id === created.id);
+  const first = pulled.items.find((i) => i.slot === 20);
+  assert.match(first.text, /^First Reading: /);
+  assert.equal(laptopStore.massRowFrom(first, DAY, () => null).module, 'custom', 'kept as words');
+});

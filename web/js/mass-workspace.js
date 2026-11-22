@@ -12,7 +12,8 @@ import { requiredSlotsFor } from './liturgical-calendar.js';
 import { dateOfIso, sundayCycleOf, weekdayCycleOf } from './liturgical-day.js';
 import { liturgicalDay } from './planner-calendar.js';
 import { MAX_MASS_TIME, TIME_PRESETS, normalizeMassTime, scheduleLabel, sortMassSchedules, timeConflictText } from './holy-mass-schedule.js';
-import { slotEntries, withoutEntries } from './plan-model.js';
+import { READING_NAMES, slotEntries, withoutEntries } from './plan-model.js';
+import { READING_SLOT_NUMBER } from './day-readings.js';
 
 const esc = (value) =>
   String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -54,14 +55,19 @@ export const rowFilled = (row, segments, notes) => slotEntries(segments?.[row.id
 export function readiness({ rows, segments, notes, date, nameOf = (row) => row.name }) {
   const slotRows = rows.filter((row) => row.slot);
   const filled = (row) => rowFilled(row, segments, notes);
+  // The Responsorial Psalm row is a song row, but the day's psalm reading in it is a reading, not a song: songs count only songs chosen from the list.
+  const readingSlots = new Set(Object.values(READING_SLOT_NUMBER));
+  const hasSong = (row) => slotEntries(segments?.[row.id]).some((entry) => entry.songId);
+  const hasReading = (row) => slotEntries(segments?.[row.id]).some((entry) => entry.contentType === 'scripture');
   const songs = slotRows.filter((row) => row.kind === 'song');
-  const texts = slotRows.filter((row) => row.kind !== 'song');
+  const texts = slotRows.filter((row) => row.kind !== 'song' || readingSlots.has(row.slot));
+  const textDone = (row) => (row.kind === 'song' ? hasReading(row) : filled(row));
   const required = new Set(date ? requiredSlotsFor(date) : []);
   const needed = slotRows.filter((row) => required.has(slotIdOf(row.slot)));
   const missing = needed.filter((row) => !filled(row)).map((row) => ({ id: row.id, n: row.n, name: nameOf(row) }));
   return {
-    songs: { done: songs.filter(filled).length, total: songs.length },
-    texts: { done: texts.filter(filled).length, total: texts.length },
+    songs: { done: songs.filter(hasSong).length, total: songs.length },
+    texts: { done: texts.filter(textDone).length, total: texts.length },
     slots: { done: slotRows.filter(filled).length, total: slotRows.length },
     needed: { done: needed.length - missing.length, total: needed.length },
     missing,
@@ -70,7 +76,7 @@ export function readiness({ rows, segments, notes, date, nameOf = (row) => row.n
 }
 
 /** The tinted banner under the header: green when every slot the day needs is filled, amber with what is still empty otherwise. */
-export function readinessBannerHtml(ready, { dateText = '', max = 6 } = {}) {
+export function readinessBannerHtml(ready, { dateText = '', max = 6, populate = false } = {}) {
   const counts = `Songs: ${ready.songs.done} of ${ready.songs.total} chosen · Readings/Notes: ${ready.texts.done} of ${ready.texts.total} entered`;
   let detail;
   if (ready.ready) {
@@ -82,7 +88,8 @@ export function readinessBannerHtml(ready, { dateText = '', max = 6 } = {}) {
   }
   return `
       <span class="lp-banner-icon" aria-hidden="true">${ready.ready ? '✓' : '!'}</span>
-      <p class="lp-banner-text"><strong>${esc(counts)}</strong><span>${ready.ready ? esc(detail) : detail}</span></p>`;
+      <p class="lp-banner-text"><strong>${esc(counts)}</strong><span>${ready.ready ? esc(detail) : detail}</span></p>${populate ? `
+      <button type="button" class="lp-banner-btn" data-populate-readings>Populate day's readings</button>` : ''}`;
 }
 
 /** How many items the plan holds across its rows: each song, typed text and Hub entry. */
@@ -102,6 +109,7 @@ export function stripSubtitle(date, items) {
 
 export const LIBRARY_TABS = [
   { id: 'songs', label: 'Songs' },
+  { id: 'lectionary', label: 'Lectionary' },
   { id: 'cues', label: 'Notes & Cues' },
   { id: 'templates', label: 'Templates' },
 ];
@@ -345,15 +353,23 @@ export function timePopoverHtml({ value = '', conflict = null } = {}) {
 
 // ---- The slots ----
 
+/** Whether a described entry is one of the day's readings by name (First Reading, Responsorial Psalm, Second Reading, Gospel). */
+export const isReadingEntry = (entry) => entry?.contentType === 'scripture' && !entry.songId && !entry.contentHubId && READING_NAMES.includes(entry.title);
+
 /** The add button's words: ADD HYMN / ITEM on a song slot, ADD ITEM on any other. */
 export const addLabel = (row) => (row.kind === 'song' ? 'Add hymn / item' : 'Add item');
 
 const ICON = { list: '♪', text: '✎', hub: '◆' };
 
 /** A row's items as pills: ♪ for a song (with its key), ✎ typed text, ◆ a Hub entry; Move up / Move down when there is more than one; × removes. */
-export function entryPillsHtml(entries, rowId, canEdit) {
+export function entryPillsHtml(entries, rowId, canEdit, { readingLabel = (type) => type, referenceOf = () => '' } = {}) {
   const lock = canEdit ? '' : ' disabled';
   return entries.map((entry, at) => {
+    if (isReadingEntry(entry)) {
+      // The day's reading, by name: its title in the plan's language and its reference, with Edit (the slot's note and items) and Clear.
+      const ref = referenceOf(entry.title);
+      return `<li class="lp-reading"><span class="lp-reading-text"><strong class="lp-reading-title">${esc(readingLabel(entry.title))}</strong>${ref ? `<span class="lp-reading-ref">${esc(ref)}</span>` : ''}</span><button type="button" class="lp-pill-btn" data-open-row="${esc(rowId)}" aria-label="${esc(`Edit reference or note: ${readingLabel(entry.title)}`)}" title="Edit reference or note"${lock}>✎</button><button type="button" class="lp-pill-btn is-remove" data-remove-entry="${entry.index}" data-for="${esc(rowId)}" aria-label="${esc(`Clear ${readingLabel(entry.title)}`)}" title="Clear"${lock}>×</button></li>`;
+    }
     const moves = entries.length > 1 && canEdit
       ? `<button type="button" class="lp-pill-btn" data-move-entry="${entry.index}" data-delta="-1" data-for="${esc(rowId)}" aria-label="${esc(`Move up: ${entry.title}`)}"${at === 0 ? ' disabled' : ''}>↑</button><button type="button" class="lp-pill-btn" data-move-entry="${entry.index}" data-delta="1" data-for="${esc(rowId)}" aria-label="${esc(`Move down: ${entry.title}`)}"${at === entries.length - 1 ? ' disabled' : ''}>↓</button>`
       : '';
@@ -366,8 +382,11 @@ export function entryPillsHtml(entries, rowId, canEdit) {
  * One numbered slot row: the number and the slot's name (a button that makes it the active target slot), its items as pills with the
  * note as a cue badge, and + ADD HYMN / ITEM, which opens the quick-assign panel (`panelHtml`) inside the row.
  */
-export function slotRowHtml(row, { active = false, open = false, flash = false, canEdit = true, note = '', panelHtml = '' } = {}) {
-  const pills = entryPillsHtml(row.entries ?? [], row.id, canEdit);
+export function slotRowHtml(row, { active = false, open = false, flash = false, canEdit = true, note = '', panelHtml = '', readingLabel, referenceOf } = {}) {
+  const pills = entryPillsHtml(row.entries ?? [], row.id, canEdit, { readingLabel, referenceOf });
+  const hasReading = (row.entries ?? []).some(isReadingEntry);
+  // The laptop's own conditions on a slot, as small uppercase badges.
+  const condition = [row.sundayOnly ? 'Sundays & Solemnities' : '', row.optional ? 'Optional' : ''].filter(Boolean).map((text) => `<span class="lp-cond">${esc(text)}</span>`).join('');
   const cue = String(note ?? '').trim();
   const items = pills || cue
     ? `<ul class="lp-pills" aria-label="${esc(`In ${row.name}`)}">${pills}${cue ? `<li class="lp-cue" title="Slot note / musician cue"><span aria-hidden="true">✎</span><span class="sr-only">Note: </span>${esc(cue)}</li>` : ''}</ul>`
@@ -375,11 +394,11 @@ export function slotRowHtml(row, { active = false, open = false, flash = false, 
   const english = row.english && row.english !== row.name ? `<span class="lp-slot-english">${esc(row.english)}</span>` : '';
   const number = row.slot ? row.n : '•';
   return `
-          <div class="lp-slot${active ? ' is-active' : ''}${open ? ' is-open' : ''}${flash ? ' is-flash' : ''}" data-row="${esc(row.id)}"${row.slot ? ` data-slot="${row.slot}"` : ''}>
+          <div class="lp-slot${active ? ' is-active' : ''}${open ? ' is-open' : ''}${flash ? ' is-flash' : ''}${hasReading ? ' is-reading' : ''}" data-row="${esc(row.id)}"${row.slot ? ` data-slot="${row.slot}"` : ''}>
             <div class="lp-slot-main">
               <button type="button" class="lp-slot-label" data-select-row="${esc(row.id)}" aria-pressed="${active}" title="${active ? 'The target slot: library songs and cues go here' : 'Make this the target slot'}">
                 <span class="lp-slot-num"><span class="sr-only">${row.slot ? 'Slot ' : 'Step '}</span>${number}</span>
-                <span class="lp-slot-names"><span class="lp-slot-name">${esc(row.name)}</span>${english}</span>
+                <span class="lp-slot-names"><span class="lp-slot-name-line"><span class="lp-slot-name">${esc(row.name)}</span>${condition}</span>${english}</span>
               </button>
               <div class="lp-slot-items">${items}</div>
               <button type="button" class="lp-add" data-open-row="${esc(row.id)}" aria-expanded="${open}"${canEdit ? '' : ' disabled'}><span aria-hidden="true">+</span> ${esc(addLabel(row))}</button>
@@ -428,4 +447,44 @@ export function printLineupHtml({ eyebrow = '', name = '', when = '', sections =
       <thead><tr><th scope="col">#</th><th scope="col">Slot</th><th scope="col">Song or item</th><th scope="col">Cue</th></tr></thead>
       <tbody>${body}</tbody>
     </table>`;
+}
+
+// ---- The Lectionary tab ----
+
+/** The reading cards for a date, filtered by the search (reading title, liturgical day or reference). `readings` are from dayReadingsFor. */
+export function filterReadings(readings, dayName, query, titleOf = (type) => type) {
+  const needle = lower(query);
+  if (!needle) return readings;
+  return readings.filter((r) => [r.type, titleOf(r.type), dayName, r.citation].some((field) => lower(field).includes(needle)));
+}
+
+/**
+ * The Lectionary tab: Populate day's readings, Search, the DATE picker (the plan's date to start with), and a card for each reading of the date:
+ * the READING badge, its title, the liturgical day and reference, and + (put it in its slot; ✓ when the plan holds it). References only.
+ */
+export function lectionaryPanelHtml({ date, planDate, dayName = '', readings = [], query = '', canEdit = true, titleOf = (type) => type, held = new Set(), empty = 0 } = {}) {
+  const lock = canEdit ? '' : ' disabled';
+  const shown = filterReadings(readings, dayName, query, titleOf);
+  const other = date !== planDate;
+  const cards = shown.length
+    ? `<ul class="lp-songs lp-readings">${shown.map((r) => {
+        const has = !other && held.has(r.type);
+        return `<li class="lp-song lp-reading-card${has ? ' is-added' : ''}">
+          <span class="lp-reading-badge">Reading</span>
+          <span class="lp-song-text"><strong>${esc(titleOf(r.type))}</strong><span>${esc([dayName, r.citation].filter(Boolean).join(' · '))}</span></span>
+          <button type="button" class="lp-song-add" data-lib-reading="${esc(r.type)}" aria-pressed="${has}" aria-label="${has ? 'Update' : 'Add'} ${esc(titleOf(r.type))}" title="${has ? 'In the plan. Press to put it back as the first item.' : other ? 'Add as a typed reference (the laptop finds readings by the plan date)' : 'Add to its slot'}"${lock}>${has ? '✓' : '+'}</button>
+        </li>`;
+      }).join('')}</ul>`
+    : `<p class="lp-empty">${readings.length ? 'No reading matches the search.' : date ? 'The Ordo has no readings for this date.' : 'Pick a date.'}</p>`;
+  return `
+      <button type="button" class="btn-primary lp-lib-wide" data-populate-readings${lock}>Populate day's readings${empty ? ` (${empty} empty)` : ''}</button>
+      <label class="lp-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" data-lect-search aria-label="Search readings by title, liturgical day or reference" placeholder="Search" value="${esc(query)}" autocomplete="off">
+      </label>
+      <label class="lp-category"><span>Date</span>
+        <input type="date" data-lect-date aria-label="Date of the readings" value="${esc(date)}" class="lp-date-input">
+      </label>
+      ${other ? `<p class="lp-lib-hint">This is not the plan's date (${esc(mdyDate(planDate))}). A reading added from it is kept as a typed reference, because the laptop finds the plan's readings by the plan's date. <button type="button" class="lp-link-btn" data-lect-today>Back to the plan's date</button></p>` : ''}
+      <div data-lect-list class="lp-lib-list">${cards}</div>`;
 }

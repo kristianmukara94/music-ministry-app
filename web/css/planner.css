@@ -4851,3 +4851,102 @@ button.bc-switch {
     color: #444;
   }
 }
+
+/* The Lectionary tab, the reading rows (gold number badge, title and reference) and the slot condition badges. */
+.lp-banner-btn {
+  flex: none;
+  align-self: center;
+  margin-left: auto;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--bc-gold);
+  border-radius: 8px;
+  background: var(--bc-gold);
+  color: var(--bc-on-gold);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.lp-date-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.lp-reading-card {
+  align-items: flex-start;
+}
+.lp-reading-badge {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--status-disabled-text);
+  border-radius: 6px;
+  background: var(--status-disabled-bg);
+  color: var(--status-disabled-text);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.lp-slot-name-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.lp-cond {
+  padding: 1px 7px;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 6px;
+  background: var(--bc-badge);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.lp-slot.is-reading .lp-slot-num {
+  border-color: var(--bc-gold);
+  background: var(--bc-gold);
+  color: var(--bc-on-gold);
+}
+.lp-reading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.lp-reading-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lp-reading-title {
+  color: var(--text);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.lp-reading-ref {
+  color: var(--muted);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .lp-banner {
+    flex-wrap: wrap;
+  }
+  .lp-banner-btn {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+}

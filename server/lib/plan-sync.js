@@ -326,16 +326,22 @@ const sameSource = (a, b) => (a.songId ? a.songId === b.songId : Boolean(a.conte
 /**
  * What a laptop push cannot carry, put back from the stored plan. A laptop knows nothing of a song's key for the plan, a Content Hub link or a step's
  * web id; it makes new keys for Holy Mass songs, sends a web note back as a note, and sends a prayer segment with no words at all. So an item is matched
- * by its key, or else by its song or Content Hub entry and its group, each stored item once. A laptop slot holds one item, so the second song of a slot comes back with no slot
+ * by its key, or else by its song or Content Hub entry and its group, or a reading by its slot and name, each stored item once. A laptop slot holds one item, so the second song of a slot comes back with no slot
  * while another item holds that slot, and it gets its slot back. Anything the laptop really changed (another song, other words) keeps the laptop's version.
  */
 export function restoreWebFields(items, stored) {
   const byKey = new Map(stored.map((item) => [item.key, item]));
   const pushed = new Set(items.map((item) => item.key));
   const spare = stored.filter((item) => (item.songId || item.contentHubId) && !pushed.has(item.key));
+  // The day's readings: the laptop keeps each as a Lectionary row with its own key, so a reading is matched by its slot and name too.
+  const spareReadings = stored.filter((item) => item.kind === 'reading' && item.slot && !pushed.has(item.key));
   const heldSlots = new Set(items.map((item) => item.slot).filter(Boolean));
   return items.map((item) => {
     let was = byKey.get(item.key);
+    if (!was && item.kind === 'reading' && item.slot && item.text) {
+      const at = spareReadings.findIndex((s) => s.slot === item.slot && s.text === item.text);
+      if (at >= 0) [was] = spareReadings.splice(at, 1);
+    }
     if (!was && (item.songId || item.contentHubId)) {
       const at = spare.findIndex((s) => sameSource(item, s));
       if (at >= 0) [was] = spare.splice(at, 1);

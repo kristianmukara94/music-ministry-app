@@ -475,12 +475,12 @@ test('the header says SERVICE PLANNING → Liturgical Plan with the laptop\'s li
 test('the readiness banner counts songs and readings/notes, lists what the day still needs, and turns green when it is ready', () => {
   const nameOf = (row) => row.name;
   const empty = workspace.readiness({ rows: ROWS, segments: {}, notes: {}, date: SUNDAY, nameOf });
-  assert.deepEqual([empty.songs, empty.texts, empty.slots], [{ done: 0, total: 13 }, { done: 0, total: 15 }, { done: 0, total: 28 }]);
+  assert.deepEqual([empty.songs, empty.texts, empty.slots], [{ done: 0, total: 13 }, { done: 0, total: 16 }, { done: 0, total: 28 }]);
   assert.equal(empty.missing.length, requiredSlotsFor(SUNDAY).length);
   assert.equal(empty.missing[0].name, 'Entrance Hymn', 'in Holy Mass order');
   assert.equal(empty.ready, false);
   const html = workspace.readinessBannerHtml(empty, { dateText: 'Sample Liturgical Day', max: 3 });
-  assert.match(html, /Songs: 0 of 13 chosen · Readings\/Notes: 0 of 15 entered/);
+  assert.match(html, /Songs: 0 of 13 chosen · Readings\/Notes: 0 of 16 entered/);
   assert.match(html, new RegExp(`Still empty for Sample Liturgical Day \\(${empty.missing.length} of ${empty.needed.total}\\)`));
   assert.equal(html.match(/data-jump-row=/g).length, 3, 'three slot names, then the rest counted');
   assert.match(html, new RegExp(`and ${empty.missing.length - 3} more\\.`));
@@ -730,4 +730,213 @@ test('PRINT LINEUP prints every part with its numbered slots, titles, keys and c
   assert.match(html, /<tr><td>1<\/td><td>Entrance Hymn<\/td><td>Sample Song Title <em>\(Key D\)<\/em><\/td><td>Sample Musician Cue<\/td><\/tr>/);
   assert.match(html, /<tr><td>2<\/td><td>I Confess \(Confiteor\)<\/td><td>—<\/td><td><\/td><\/tr>/);
   assert.match(readWeb('js/mass.js'), /document\.body\.classList\.add\('is-printing-setlist'\);\s*[\s\S]*?window\.print\(\);/);
+});
+
+// ---- The day's readings: Lectionary citations, auto-population, the Lectionary tab and the reading rows ----
+
+const dayReadings = await load('web', 'js', 'day-readings.js');
+const { ORDO_CITATIONS } = await load('web', 'js', 'ordo-citations.js');
+const laptopDay = await load('shared', 'liturgical-day.js');
+const laptopReadings = await load('shared', 'daily-readings.js');
+const ORDO_JSON = JSON.parse(fs.readFileSync(path.join(root, 'src', 'data', 'lectionary_ordo.json'), 'utf8'));
+const READING_TYPES_OF_PLAN = ['First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel'];
+
+test('ordo-citations.js holds every reference of the laptop\'s Ordo and nothing else: no names, no texts', () => {
+  const fields = ['r1', 'ps', 'r2', 'acc', 'gos'];
+  const pick = (e) => Object.fromEntries(fields.filter((f) => typeof e[f] === 'string' && e[f].trim()).map((f) => [f, e[f]]));
+  const expected = {};
+  for (const [code, entry] of Object.entries(ORDO_JSON.days)) {
+    const day = pick(entry);
+    for (const cycle of ['A', 'B', 'C', 'I', 'II']) if (entry[cycle] && Object.keys(pick(entry[cycle])).length) day[cycle] = pick(entry[cycle]);
+    if (Object.keys(day).length) expected[code] = day;
+  }
+  assert.deepEqual(ORDO_CITATIONS, expected);
+  assert.doesNotMatch(readWeb('js/ordo-citations.js'), /"name"\s*:/);
+  assert.ok(Object.keys(ORDO_CITATIONS).length > 300);
+});
+
+test('the web finds the same readings as the laptop for every day of a year, with the Second Reading only where the Ordo gives one', () => {
+  let sundays = 0;
+  let weekdays = 0;
+  for (let d = new Date(Date.UTC(2026, 10, 1)); d < new Date(Date.UTC(2027, 10, 1)); d.setUTCDate(d.getUTCDate() + 1)) {
+    const iso = d.toISOString().slice(0, 10);
+    const laptop = laptopDay.ordoDayOf(ORDO_JSON, iso).citations;
+    const web = dayReadings.dayReadingsFor(iso).readings;
+    assert.deepEqual(web.map((r) => [r.type, r.citation]), READING_TYPES_OF_PLAN.filter((t) => laptop[t]).map((t) => [t, laptop[t]]), iso);
+    if (d.getUTCDay() === 0) sundays += 1; else weekdays += 1;
+  }
+  assert.ok(sundays > 50 && weekdays > 300);
+  // An ordinary weekday has three readings, an ordinary Sunday and a solemnity four.
+  const types = (iso) => dayReadings.dayReadingsFor(iso).readings.map((r) => r.type);
+  assert.deepEqual(types(WEEKDAY), ['First Reading', 'Responsorial Psalm', 'Gospel']);
+  assert.deepEqual(types(SUNDAY), READING_TYPES_OF_PLAN);
+  assert.deepEqual(types('2026-12-08'), READING_TYPES_OF_PLAN, 'a weekday solemnity has the Second Reading');
+  assert.deepEqual(dayReadings.dayReadingsFor('not a date').readings, []);
+  assert.deepEqual(dayReadings.dayReadingsFor(SUNDAY).readings.map((r) => r.slot), [20, 4, 21, 22], 'the slot numbers, not the positions 6, 7, 8 and 10');
+  assert.equal(dayReadings.dayReadingsFor(SUNDAY).day.name, '32nd Sunday in Ordinary Time');
+});
+
+test('the readings are named and numbered as the laptop names and numbers them', () => {
+  assert.deepEqual([...model.READING_NAMES], READING_TYPES_OF_PLAN);
+  for (const { slot, readingType } of laptopReadings.READING_SLOTS) {
+    if (!READING_TYPES_OF_PLAN.includes(readingType) || readingType === 'Prayer of the Faithful') continue;
+    assert.equal(dayReadings.READING_SLOT_NUMBER[readingType], laptopSlots.slotNumberOf(slot), readingType);
+  }
+  // The rows are the Liturgy of the Word's, numbered 6, 7, 8 and 10 on screen.
+  assert.deepEqual(Object.values(dayReadings.READING_SLOT_NUMBER).map((n) => ROWS.find((r) => r.slot === n).n).sort((a, b) => a - b), [6, 7, 8, 10]);
+});
+
+test('a new Holy Mass starts with the day\'s readings by name, in their slots, and a Sunday and a weekday differ only by the Second Reading', () => {
+  const sunday = dayReadings.dayReadingItems(SUNDAY);
+  assert.deepEqual(sunday.map((i) => [i.slot, i.kind, i.text, i.group, i.contentType]), [
+    [20, 'reading', 'First Reading', 'word', 'scripture'],
+    [4, 'reading', 'Responsorial Psalm', 'word', 'scripture'],
+    [21, 'reading', 'Second Reading', 'word', 'scripture'],
+    [22, 'reading', 'Gospel', 'word', 'scripture'],
+  ], 'the Responsorial Psalm row is a song row, but its item is a reading');
+  assert.deepEqual(dayReadings.dayReadingItems(WEEKDAY).map((i) => i.slot), [20, 4, 22]);
+  assert.deepEqual(sunday.map((i) => i.order), [1, 2, 3, 4]);
+  // Names only: no reference, no words in what is sent.
+  const sent = JSON.stringify(sunday);
+  for (const { citation } of dayReadings.dayReadingsFor(SUNDAY).readings) assert.ok(!sent.includes(citation));
+  assert.ok(sunday.every((i) => !('note' in i) && !i.songId));
+  // The readiness the editor shows: four slots filled, and the Gospel Acclamation and the Prayer of the Faithful left to the laptop.
+  const model2 = { segments: model.massFromItems(sunday, ROWS).segments, notes: {} };
+  const fresh = workspace.readiness({ rows: ROWS, ...model2, date: SUNDAY });
+  assert.deepEqual(fresh.slots, { done: 4, total: 28 });
+  assert.deepEqual([fresh.songs.done, fresh.texts.done], [0, 4], 'a new plan has readings and no songs: the psalm reading is not a song');
+  assert.equal(dayReadings.readingStatus(model2.segments, SUNDAY).empty, 0);
+  assert.equal(dayReadings.readingStatus({}, SUNDAY).empty, 4);
+});
+
+test('creating a Holy Mass from the New Plan card sends the readings; a Praise & Worship plan sends none', async () => {
+  const sent = [];
+  const create = async (request) => { sent.push(request); return { plan: { id: request.id, items: request.items } }; };
+  const base = { name: 'Sample Plan Title', date: SUNDAY, language: 'EN', massTime: '', massLanguage: '' };
+  const mass = await form.submitNewPlan({ ...base, kind: 'mass' }, { create });
+  assert.ok(mass.plan);
+  assert.deepEqual(sent[0].items.map((i) => i.slot), [20, 4, 21, 22]);
+  const praise = await form.submitNewPlan({ ...base, kind: 'pw' }, { create });
+  assert.ok(praise.plan);
+  assert.deepEqual(sent[1].items, []);
+  assert.deepEqual(model.newPlanRequest({ ...base, kind: 'mass' }, ids(1)).items, [], 'newPlanRequest alone stays empty');
+});
+
+test('Populate day\'s readings fills only empty reading slots, + puts a reading in front of what the slot holds, and another date is a typed reference', () => {
+  const psalm = 's4';
+  const sung = '60000000-0000-4000-8000-000000000001';
+  let segments = model.withEntry({}, psalm, { songId: sung, contentType: 'song' });
+  segments = model.withEntry(segments, 's22', { text: 'Sample Slot Note' });
+  const outcome = dayReadings.withDayReadings(segments, SUNDAY);
+  assert.deepEqual(outcome.filled, ['s20', 's21'], 'the slots that were empty');
+  assert.deepEqual(outcome.kept, ['s4', 's22'], 'a sung psalm and a typed note are the operator\'s own choice');
+  assert.deepEqual(model.slotEntries(outcome.segments.s4).map((e) => e.songId), [sung]);
+  // Again: nothing to do.
+  const again = dayReadings.withDayReadings(outcome.segments, SUNDAY);
+  assert.deepEqual([again.filled, again.current], [[], ['s20', 's21']]);
+  assert.equal(again.segments, outcome.segments);
+  assert.deepEqual(dayReadings.withDayReadings({}, WEEKDAY).missing, ['Second Reading']);
+
+  // + puts the reading first and keeps the sung psalm after it; pressed again it does not add a second one.
+  const reading = dayReadings.dayReadingsFor(SUNDAY).readings.find((r) => r.type === 'Responsorial Psalm');
+  const added = dayReadings.withReading(segments, reading, SUNDAY, SUNDAY);
+  assert.deepEqual(model.slotEntries(added.s4).map((e) => e.songId ?? e.text), ['Responsorial Psalm', sung]);
+  assert.deepEqual(model.slotEntries(dayReadings.withReading(added, reading, SUNDAY, SUNDAY).s4).map((e) => e.songId ?? e.text), ['Responsorial Psalm', sung]);
+  // From another date: a typed reference with the reading's name and reference, which the laptop keeps as words; never the plan's by-name reading.
+  const elsewhere = dayReadings.withReading(segments, dayReadings.dayReadingsFor(WEEKDAY).readings[0], WEEKDAY, SUNDAY);
+  assert.match(model.slotEntries(elsewhere.s20)[0].text, /^First Reading: /);
+  assert.equal(model.isReadingName(model.slotEntries(elsewhere.s20)[0]), false);
+  // The Psalm row saves a reading as a reading, the Gospel Acclamation row never does.
+  const items = model.massToItems({ segments: added, notes: {}, extra: [], contentHubItems: [] }, ROWS);
+  assert.deepEqual(items.filter((i) => i.slot === 4).map((i) => [i.kind, i.text ?? null, i.songId ?? null]), [['reading', 'Responsorial Psalm', null], ['song', null, sung]]);
+});
+
+test('the Lectionary tab: Populate, Search, the DATE picker, and READING cards with the day and reference and a + for each', () => {
+  const day = dayReadings.dayReadingsFor(SUNDAY);
+  const html = workspace.lectionaryPanelHtml({ date: SUNDAY, planDate: SUNDAY, dayName: day.day.name, readings: day.readings, held: new Set(['Gospel']), empty: 3 });
+  assert.match(html, /data-populate-readings>Populate day's readings \(3 empty\)<\/button>/);
+  assert.match(html, /<input type="search" data-lect-search[^>]*placeholder="Search"/);
+  assert.match(html, /<span>Date<\/span>\s*<input type="date" data-lect-date[^>]*value="2026-11-08"/);
+  assert.equal(html.match(/<span class="lp-reading-badge">Reading<\/span>/g).length, 4);
+  assert.match(html, /<strong>First Reading<\/strong><span>32nd Sunday in Ordinary Time · Wis 6:12-16<\/span>/);
+  assert.match(html, /data-lib-reading="Gospel" aria-pressed="true"[^>]*>✓</);
+  assert.match(html, /data-lib-reading="First Reading" aria-pressed="false"[^>]*>\+</);
+  assert.doesNotMatch(html, /data-lect-today/, 'on the plan\'s own date');
+  // Another date says why its readings are typed references, and offers the way back.
+  const other = workspace.lectionaryPanelHtml({ date: WEEKDAY, planDate: SUNDAY, dayName: 'Sample Liturgical Day', readings: dayReadings.dayReadingsFor(WEEKDAY).readings, held: new Set(['Gospel']) });
+  assert.match(other, /typed reference/);
+  assert.match(other, /data-lect-today/);
+  assert.match(other, /data-lib-reading="Gospel" aria-pressed="false"/, 'held only counts on the plan\'s date');
+  // Search: reading title, liturgical day, reference; the title in the plan's language too.
+  const rs = day.readings;
+  const names = (q, titleOf) => workspace.filterReadings(rs, day.day.name, q, titleOf).map((r) => r.type);
+  assert.deepEqual(names('gospel'), ['Gospel']);
+  assert.deepEqual(names('Wis 6'), ['First Reading']);
+  assert.deepEqual(names('32nd').length, 4);
+  assert.deepEqual(names('salmo', (t) => (t === 'Responsorial Psalm' ? 'Salmong Tugunan' : t)), ['Responsorial Psalm']);
+  assert.deepEqual(names('no such reading'), []);
+  assert.match(workspace.lectionaryPanelHtml({ date: SUNDAY, planDate: SUNDAY, readings: [], query: '' }), /The Ordo has no readings for this date\./);
+  // The tab sits right after Songs, and a reading card is escaped.
+  assert.deepEqual(workspace.LIBRARY_TABS.map((t) => t.label), ['Songs', 'Lectionary', 'Notes & Cues', 'Templates']);
+  assert.match(workspace.lectionaryPanelHtml({ date: SUNDAY, planDate: SUNDAY, dayName: 'Sample <Day>', readings: day.readings }), /Sample &lt;Day&gt; · Wis/);
+});
+
+test('a reading slot shows a gold badge, its title and reference with Edit and Clear, and the Sunday and Optional condition badges', () => {
+  const rows = model.massSections(MASS_PLAN).flatMap((s) => s.rows).filter((r) => r.slot);
+  const flags = Object.fromEntries(rows.map((r) => [r.slot, [r.sundayOnly, r.optional]]));
+  // The laptop's own flags (shared/mass-slots.js) are what the badges and the slot counts follow: the Gloria and the Second Reading.
+  assert.deepEqual([18, 21].map((n) => flags[n]), [[true, false], [true, false]], 'Gloria and Second Reading');
+  assert.deepEqual(flags[24], [false, false], 'the Creed carries no condition on the laptop');
+  assert.deepEqual(flags[23], [false, true], 'the Homily');
+  assert.deepEqual(rows.filter((r) => r.sundayOnly).map((r) => r.slot), [18, 21]);
+  assert.deepEqual(rows.filter((r) => r.optional).map((r) => r.slot), [23, 25, 27], 'Homily, Sign of Peace, Announcements');
+
+  const entry = { index: 0, songId: null, title: 'First Reading', source: 'text', contentType: 'scripture', key: '' };
+  const row = { ...rowOfSlot(20), name: 'Sample Reading Title', english: 'First Reading', entries: [entry] };
+  const html = workspace.slotRowHtml(row, { readingLabel: () => 'Sample Reading Title', referenceOf: () => 'Sample Liturgical Day · Sample Scripture Ref' });
+  assert.match(html, /class="lp-slot is-reading"/);
+  assert.match(html, /<span class="lp-slot-name">Sample Reading Title<\/span><\/span>/, 'the First Reading has no condition');
+  assert.match(workspace.slotRowHtml({ ...rowOfSlot(21), name: 'Second Reading', entries: [] }), /<span class="lp-slot-name">Second Reading<\/span><span class="lp-cond">Sundays &amp; Solemnities<\/span>/);
+  assert.match(workspace.slotRowHtml({ ...rowOfSlot(18), name: 'Glory to God (Gloria)', entries: [] }), /lp-cond">Sundays &amp; Solemnities/);
+  assert.match(html, /<strong class="lp-reading-title">Sample Reading Title<\/strong><span class="lp-reading-ref">Sample Liturgical Day · Sample Scripture Ref<\/span>/);
+  assert.match(html, /data-open-row="s20"[^>]*aria-label="Edit reference or note: Sample Reading Title"/);
+  assert.match(html, /data-remove-entry="0" data-for="s20" aria-label="Clear Sample Reading Title"/);
+  assert.match(html, /data-open-row="s20" aria-expanded="false"><span aria-hidden="true">\+<\/span> Add item/);
+  const homily = workspace.slotRowHtml({ ...rowOfSlot(23), name: 'Homily', entries: [] });
+  assert.match(homily, /<span class="lp-cond">Optional<\/span>/);
+  assert.doesNotMatch(homily, /Sundays/);
+  // A sung psalm beside the reading keeps its own pill; a typed reference is a plain pill, not a reading.
+  const both = workspace.slotRowHtml({ ...rowOfSlot(4), name: 'Responsorial Psalm', entries: [{ ...entry, title: 'Responsorial Psalm' }, { index: 1, songId: SONG_ENTRANCE, title: 'Sample Song Title', source: 'list', key: 'D' }] });
+  assert.match(both, /lp-reading-title">Responsorial Psalm/);
+  assert.match(both, /class="lp-pill is-list"/);
+  assert.doesNotMatch(workspace.slotRowHtml({ ...rowOfSlot(20), name: 'First Reading', entries: [{ ...entry, title: 'First Reading: Sample Scripture Ref' }] }), /lp-reading-title/);
+  // The banner offers Populate while a reading slot is empty.
+  const ready = workspace.readiness({ rows: ROWS, segments: {}, notes: {}, date: SUNDAY });
+  assert.match(workspace.readinessBannerHtml(ready, { populate: true }), /data-populate-readings>Populate day's readings</);
+  assert.doesNotMatch(workspace.readinessBannerHtml(ready), /data-populate-readings/);
+});
+
+test('a reading read back from the laptop without its type is still the day\'s reading, and the Responsorial Psalm saves as a reading', () => {
+  const fromLaptop = [
+    { key: 'h1', group: 'word', order: 1, kind: 'reading', text: 'Responsorial Psalm', slot: 4 },
+    { key: 'h2', group: 'word', order: 2, kind: 'reading', text: 'Gospel', slot: 22 },
+  ];
+  const state = model.massFromItems(fromLaptop, ROWS);
+  assert.equal(model.slotEntries(state.segments.s4)[0].contentType, 'scripture');
+  assert.equal(model.isReadingName(model.slotEntries(state.segments.s4)[0]), true);
+  const back = model.massToItems({ ...state, contentHubItems: [] }, ROWS);
+  assert.deepEqual(back.map((i) => [i.key, i.slot, i.kind, i.text]), [['h1', 4, 'reading', 'Responsorial Psalm'], ['h2', 22, 'reading', 'Gospel']], 'keys are kept: no duplicate');
+  // A song in the Psalm row is still a song, and typed text there keeps the song row's kind, as before.
+  assert.equal(model.massToItems({ segments: model.withEntry({}, 's4', { songId: SONG_ENTRANCE, contentType: 'song' }), notes: {}, extra: [], contentHubItems: [] }, ROWS)[0].kind, 'song');
+  assert.equal(model.massToItems({ segments: model.withEntry({}, 's4', { text: 'Sample Slot Note' }), notes: {}, extra: [], contentHubItems: [] }, ROWS)[0].kind, 'song');
+  assert.doesNotMatch(readWeb('js/day-readings.js') + readWeb('js/mass-workspace.js'), /rawText|raw_text|lyrics\s*[:=]/);
+});
+
+test('the Lectionary tab and the reading rows are wired in the page', () => {
+  const page = readWeb('js/mass.js');
+  assert.match(page, /data-lib-reading|data\.libReading/);
+  assert.match(page, /if \(id !== 'clear'\) next\.segments = withDayReadings\(next\.segments, plan\.date\)\.segments;/, 'Standard and Weekday keep the day\'s readings');
+  assert.match(page, /const tabs = \['songs', 'lectionary', 'cues', 'templates'\];/);
+  assert.match(page, /readingLabel,\s*referenceOf,/);
+  assert.match(page, /populate: canEdit && status\.empty > 0/);
 });

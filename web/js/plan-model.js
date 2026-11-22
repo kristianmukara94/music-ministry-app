@@ -53,7 +53,9 @@ export function massSections(template) {
       // The song picker opens on this category for the slot.
       pickerCategory: pickerCategoryForName('mass', slot.category) ?? '',
       group: slot.group,
-      optional: false,
+      // The laptop's own conditions, shown as badges: Sundays and solemnities only (Gloria, Second Reading, Creed), or optional (Homily).
+      optional: Boolean(slot.optional),
+      sundayOnly: Boolean(slot.sundayOnly),
       hint: '',
       legacyKey: Object.entries(LEGACY_STEP_SLOT).find(([, number]) => number === slot.number)?.[0] ?? null,
     }));
@@ -192,6 +194,15 @@ export function withChoice(segments, id, patch) {
 const MAX_KEY = 20;
 const ENTRY_FIELDS = ['key', 'songId', 'text', 'keyTransposed', 'contentType', 'contentHubId', 'title', 'durationMinutes'];
 const pickEntry = (source, fields = ENTRY_FIELDS) => Object.fromEntries(fields.filter((f) => source?.[f] !== undefined && source[f] !== null && source[f] !== '').map((f) => [f, source[f]]));
+/**
+ * The entry fields of a saved item. A reading item named like one of the Lectionary's readings is the day's reading even when its type was not saved:
+ * the laptop sends it back without one, so it is marked as scripture here and is a reading wherever it sits (the Responsorial Psalm row is a song row).
+ */
+const entryOf = (item, fields) => {
+  const entry = pickEntry(item, fields);
+  if (item?.kind === 'reading' && READING_NAMES.includes(item.text) && !entry.contentType) entry.contentType = 'scripture';
+  return entry;
+};
 const holdsContent = (entry) => Boolean(entry?.songId || entry?.text || entry?.contentHubId);
 
 /** Everything a step holds, first item first. */
@@ -281,7 +292,16 @@ function entryFields(entry, kind, slotId, hubItems) {
 }
 
 /** A song names a song and a Content Hub entry is a spoken part, whatever the step was made for. Anything else keeps the step's kind. */
-const entryKind = (entry, fallback) => (entry.songId ? 'song' : entry.contentHubId ? 'rite' : fallback);
+const entryKind = (entry, fallback) => (entry.songId ? 'song' : entry.contentHubId ? 'rite' : isReadingName(entry) ? 'reading' : fallback);
+
+/**
+ * The reading names the laptop's Lectionary knows (electron/plan-sync-map.js READING_TYPES). A reading item holding exactly one of these, in the plan's
+ * own date, is the day's reading: the laptop finds it by date and name and shows the reading from its own Lectionary. Nothing else is stored.
+ */
+export const READING_NAMES = Object.freeze(['First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel']);
+
+/** Whether an entry is one of the day's readings by name, on whatever row it sits: the Responsorial Psalm row is a song row, so its kind is read from the entry. */
+export const isReadingName = (entry) => entry?.contentType === 'scripture' && READING_NAMES.includes(entry.text);
 
 /** The next key free for another item in a step: "s16.2", "s16.3" … */
 function nextKey(base, used) {
@@ -334,7 +354,7 @@ export function massFromItems(items, rows) {
     if (row && meta[idOf(row)]) {
       if (holdsContent(item)) {
         const id = idOf(row);
-        const more = { ...pickEntry(item), ...(item.note ? { note: item.note } : {}), kind: item.kind };
+        const more = { ...entryOf(item), ...(item.note ? { note: item.note } : {}), kind: item.kind };
         segments[id] = { ...segments[id], more: [...(segments[id]?.more ?? []), more] };
         continue;
       }
@@ -344,7 +364,7 @@ export function massFromItems(items, rows) {
       continue;
     }
     const id = idOf(row);
-    const seg = pickEntry(item, ENTRY_FIELDS.filter((f) => f !== 'key'));
+    const seg = entryOf(item, ENTRY_FIELDS.filter((f) => f !== 'key'));
     if (Object.keys(seg).length) segments[id] = seg;
     if (item.note) notes[id] = item.note;
     meta[id] = { key: item.key, kind: item.kind, ...(Number.isInteger(item.slot) ? { slot: item.slot } : {}) };

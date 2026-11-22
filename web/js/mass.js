@@ -21,6 +21,7 @@ import { deletePlanById, deleteWarning, duplicatePlanById } from './plan-actions
 import { usedHubIds } from './content-hub.js';
 import { entryListHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
 import { mountSongPicker, resetSongPickers } from './song-picker.js';
+import { READING_SLOT_NUMBER, dayReadingsFor, readingStatus, withDayReadings, withReading } from './day-readings.js';
 import {
   PAGE_SUBTITLE,
   PAGE_TITLE,
@@ -29,6 +30,7 @@ import {
   headerActionsHtml,
   itemCount,
   libraryTabOf,
+  lectionaryPanelHtml,
   libraryTabsHtml,
   librarySongs,
   mdyDate,
@@ -134,7 +136,8 @@ let state = fresh(null);
 let dayPlans = [];
 let massPlans = [];
 // The library: its tab, the service filter, the song category and the search.
-const lib = { tab: libraryTabOf(readStored(LIBRARY_TAB_KEY, 'songs')), service: 'mass', category: 'all', query: '' };
+// `date` is the Lectionary tab's date (null: the plan's own) and `lq` its search.
+const lib = { tab: libraryTabOf(readStored(LIBRARY_TAB_KEY, 'songs')), service: 'mass', category: 'all', query: '', date: null, lq: '' };
 
 function fresh(saved) {
   return {
@@ -245,7 +248,9 @@ function renderBanner() {
   if (!plan) return;
   const ready = readiness({ rows: ROWS, segments: state.segments, notes: state.notes, date: plan.date, nameOf: (row) => slotName(row, state.language) });
   box.classList.toggle('is-ready', ready.ready);
-  box.innerHTML = readinessBannerHtml(ready, { dateText: shortDate(plan.date) });
+  // Offered while the day has readings that some reading slot does not hold yet (an older or an emptied plan).
+  const status = readingStatus(state.segments, plan.date);
+  box.innerHTML = readinessBannerHtml(ready, { dateText: shortDate(plan.date), populate: canEdit && status.empty > 0 });
 }
 
 /** The slot numbers this plan has an item in, as the server and the laptop count them: a slot with a song, text or a note. */
@@ -375,6 +380,19 @@ function slotNoteBody(cur) {
           </div>`;
 }
 
+/** A reading's title in the plan's language: the name of the slot it is read in (Unang Pagbasa, Unang Pagbasa …). The stored name stays English. */
+function readingLabel(type) {
+  const row = ROWS.find((r) => r.slot === READING_SLOT_NUMBER[type]);
+  return row ? slotName(row, state.language) : type;
+}
+
+/** The liturgical day and reference shown under a reading in its slot, from the plan's date. */
+function referenceOf(type) {
+  const { day, readings } = dayReadingsFor(plan?.date);
+  const found = readings.find((r) => r.type === type);
+  return found ? [day.name, found.citation].filter(Boolean).join(' · ') : '';
+}
+
 /** The four parts: each one's numbered slots, then any earlier-editor step that still holds something. */
 function renderSteps() {
   const steps = document.getElementById('steps');
@@ -398,6 +416,8 @@ function renderSteps() {
         flash: r.id === state.flash,
         canEdit,
         note: state.notes[r.id],
+        readingLabel,
+        referenceOf,
         panelHtml: r.id === state.open ? panelHtml(cur) : '',
       });
     };
@@ -453,7 +473,7 @@ function libStatus(text) {
 function renderLibrary() {
   document.getElementById('lib-tabs').innerHTML = libraryTabsHtml(lib.tab);
   const target = plan ? targetOf() : null;
-  document.getElementById('lib-target').innerHTML = plan && lib.tab !== 'templates' ? targetLineHtml(target) : '';
+  document.getElementById('lib-target').innerHTML = plan && lib.tab !== 'templates' && lib.tab !== 'lectionary' ? targetLineHtml(target) : '';
   const panel = document.getElementById('lib-panel');
   panel.setAttribute('aria-labelledby', `lib-tab-${lib.tab}`);
   if (!plan) {
@@ -466,6 +486,18 @@ function renderLibrary() {
     refreshSongList();
     if (search) {
       const box = panel.querySelector('[data-lib-search]');
+      box.focus();
+      box.setSelectionRange(box.value.length, box.value.length);
+    }
+  } else if (lib.tab === 'lectionary') {
+    const focus = document.activeElement?.dataset?.lectSearch !== undefined;
+    const date = lib.date ?? plan.date;
+    const { day, readings } = dayReadingsFor(date);
+    const own = dayReadingsFor(plan.date).readings;
+    const held = new Set(own.filter((r) => slotEntries(state.segments[r.rowId]).some((e) => e.text === r.type && e.contentType === 'scripture')).map((r) => r.type));
+    panel.innerHTML = lectionaryPanelHtml({ date, planDate: plan.date, dayName: day.name, readings, query: lib.lq, canEdit, titleOf: readingLabel, held, empty: readingStatus(state.segments, plan.date).empty });
+    if (focus) {
+      const box = panel.querySelector('[data-lect-search]');
       box.focus();
       box.setSelectionRange(box.value.length, box.value.length);
     }
@@ -538,6 +570,34 @@ function addFromLibrary(songId) {
   if (!window.matchMedia(WIDE).matches) showRow(target);
 }
 
+/** + on a Lectionary card: the reading goes in its own slot, in front, replacing a reading already there. */
+function addReading(type) {
+  if (!plan || !canEdit) return;
+  const date = lib.date ?? plan.date;
+  const reading = dayReadingsFor(date).readings.find((r) => r.type === type);
+  if (!reading?.rowId) return;
+  openSectionOf(reading.rowId);
+  flashRow(reading.rowId);
+  changeSegments(withReading(state.segments, reading, date, plan.date));
+  libStatus(date === plan.date ? `${readingLabel(type)} is in its slot.` : `${readingLabel(type)} added as a typed reference.`);
+  document.querySelector(`[data-lib-reading="${CSS.escape(type)}"]`)?.focus({ preventScroll: true });
+  if (!window.matchMedia(WIDE).matches) showRow(reading.rowId);
+}
+
+/** Populate day's readings: the plan's date's readings in the reading slots that hold nothing. A slot that holds something is left as it is. */
+function populateReadings() {
+  if (!plan || !canEdit) return;
+  const outcome = withDayReadings(state.segments, plan.date);
+  if (outcome.filled.length === 0) {
+    libStatus(outcome.kept.length ? 'The reading slots already hold something, so nothing was changed.' : outcome.current.length ? "The day's readings are already in the plan." : 'The Ordo has no readings for this date.');
+    return;
+  }
+  for (const id of outcome.filled) openSectionOf(id);
+  flashRow(outcome.filled[0]);
+  changeSegments(outcome.segments);
+  libStatus(`Filled ${outcome.filled.length} reading${outcome.filled.length === 1 ? '' : 's'}${outcome.kept.length ? `; ${outcome.kept.length} slot${outcome.kept.length === 1 ? ' already holds' : 's already hold'} something and ${outcome.kept.length === 1 ? 'was' : 'were'} left alone` : ''}. Save plan to keep it.`);
+}
+
 /** A cue from Notes & Cues, added to the target slot's note. */
 function addCue(cue) {
   if (!state.sel || !canEdit) return;
@@ -565,6 +625,8 @@ function applyTemplate(id) {
     : `Use ${template.label}? It replaces what this plan holds. Nothing is saved until Save plan.`;
   if ((id === 'clear' || holdsAnything()) && !window.confirm(question)) return;
   const next = templateState(id, ROWS, state.segments);
+  // Standard and Weekday start from the day's readings, as the laptop's Planner does; Clear All Slots leaves everything empty.
+  if (id !== 'clear') next.segments = withDayReadings(next.segments, plan.date).segments;
   state.segments = next.segments;
   state.notes = next.notes;
   state.open = null;
@@ -743,6 +805,7 @@ async function load() {
     rememberPlan({ id: plan.id, kind: 'mass', name: plan.name, date: plan.date });
     mountHeader();
     resetSongPickers();
+    lib.date = null;
   } catch (err) {
     if (plan) state.error = err.message;
     else state = { ...fresh(null), error: err.message };
@@ -898,6 +961,13 @@ document.querySelector('main').addEventListener('click', (event) => {
     document.querySelector(`[data-lib-service="${lib.service}"]`)?.focus();
   } else if (data.libAdd) {
     addFromLibrary(data.libAdd);
+  } else if (data.libReading) {
+    addReading(data.libReading);
+  } else if (data.populateReadings !== undefined) {
+    populateReadings();
+  } else if (data.lectToday !== undefined) {
+    lib.date = null;
+    renderLibrary();
   } else if (data.clearTarget !== undefined) {
     state.sel = null;
     renderSteps();
@@ -936,6 +1006,9 @@ document.querySelector('main').addEventListener('input', (event) => {
   if (el.dataset?.libSearch !== undefined) {
     lib.query = el.value;
     refreshSongList();
+  } else if (el.dataset?.lectSearch !== undefined) {
+    lib.lq = el.value;
+    renderLibrary();
   } else if (el.dataset?.tpTime !== undefined) {
     state.popover.value = el.value;
     checkPopover();
@@ -947,7 +1020,10 @@ document.querySelector('main').addEventListener('input', (event) => {
 
 document.querySelector('main').addEventListener('change', (event) => {
   const el = event.target;
-  if (el.dataset?.libCategory !== undefined) {
+  if (el.dataset?.lectDate !== undefined) {
+    lib.date = /^\d{4}-\d{2}-\d{2}$/.test(el.value) && el.value !== plan?.date ? el.value : null;
+    renderLibrary();
+  } else if (el.dataset?.libCategory !== undefined) {
     lib.category = el.value;
     refreshSongList();
   } else if (el.dataset?.role === 'entry-key') {
@@ -1098,7 +1174,7 @@ document.getElementById('lib-tabs').addEventListener('keydown', (event) => {
   const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
   if (!step) return;
   event.preventDefault();
-  const tabs = ['songs', 'cues', 'templates'];
+  const tabs = ['songs', 'lectionary', 'cues', 'templates'];
   document.querySelector(`[data-lib-tab="${tabs[(tabs.indexOf(lib.tab) + step + tabs.length) % tabs.length]}"]`)?.click();
 });
 
