@@ -551,6 +551,8 @@ function describeControl(request) {
   if (request?.action === 'next') return 'Next slide';
   if (request?.action === 'previous') return 'Previous slide';
   if (request?.action === 'jump') return `Jump to slide ${Number(request.index) + 1}`;
+  if (request?.action === 'blackout') return request.on === true ? 'Blackout on' : request.on === false ? 'Blackout off' : 'Toggle blackout';
+  if (request?.action === 'welcome') return request.on === true ? 'Welcome Screen on' : request.on === false ? 'Welcome Screen off' : 'Toggle Welcome Screen';
   return 'Unknown control';
 }
 
@@ -559,7 +561,8 @@ function describeControl(request) {
  * arrow keys send, and it is refused while the projector is paused. Every attempt is recorded, allowed or not.
  */
 function controlFromPhone(request, device) {
-  const result = controlAction(state, request);
+  // The welcome frame carries the church's language, which the desktop top bar reads from the window.
+  const result = controlAction(state, request, { lang: readConfig(app.getPath('userData')).default_language });
   if (result.ok && result.action) apply(result.action);
   remoteActivity.push({
     at: Date.now(),

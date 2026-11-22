@@ -234,6 +234,82 @@ main {
   cursor: not-allowed;
 }
 
+/* Screen controls: Welcome Screen and Blackout. Kept apart from Previous and Next, behind a rule and a gap, so a thumb advancing the lyrics cannot hit them. */
+.screen-controls {
+  margin-top: 28px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.screen-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.screen-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 52px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+  color: var(--fg);
+  background: #111;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.screen-button svg {
+  flex: none;
+}
+
+.screen-button.welcome[aria-pressed='true'] {
+  color: #000;
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.screen-button.blackout[aria-pressed='true'] {
+  color: #fff;
+  background: #c62828;
+  border-color: #ffb300;
+  box-shadow: 0 0 0 2px #ffb300;
+}
+
+.screen-button:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* Says why the projector is blank (or showing the welcome), so the operator never wonders. */
+.screen-banner {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #000;
+  background: var(--gold);
+  border-radius: 10px;
+}
+
+.screen-banner.blackout {
+  color: #fff;
+  background: #c62828;
+  border: 2px solid #ffb300;
+}
+
 .control-error {
   min-height: 1.4em;
   margin: 8px 0 0;

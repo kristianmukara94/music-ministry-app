@@ -39,6 +39,10 @@ test('a phone sees the live text, the item title, and the next item', () => {
     lineup: null,
     paused: false,
     updatedAt: 5,
+    blackoutActive: false,
+    welcomeActive: false,
+    projectorPaused: false,
+    projectorLive: true,
   });
 });
 

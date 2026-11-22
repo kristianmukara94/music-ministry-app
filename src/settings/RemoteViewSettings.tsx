@@ -32,7 +32,7 @@ const randomPin = () => generatePin((max) => crypto.getRandomValues(new Uint32Ar
 const ROLE_TEXT: Record<RemoteRole, { title: string; help: string }> = {
   primary: {
     title: 'Primary viewer',
-    help: 'For the person running the service. Shows the current and next slide large, and lets a phone move to the next or previous slide, or jump to a slide. The buttons stop while the projector is paused.',
+    help: 'For the person running the service. Shows the current and next slide large, and lets a phone move to the next or previous slide, or jump to a slide. The same phone can also switch the Welcome Screen and Blackout on and off. The slide buttons stop while the projector is paused; Blackout and Welcome Screen keep working, as they do on the top bar.',
   },
   secondary: {
     title: 'Secondary viewer',
@@ -558,7 +558,7 @@ export function RemoteViewSettings() {
         <ul className="flex list-disc flex-col gap-2 pl-5 text-sm text-muted">
           <li>Anyone on this WiFi who has a viewer's address can open it, unless that viewer has a PIN.</li>
           <li>Each viewer is served only on this laptop's local network address. Nothing is sent to the internet.</li>
-          <li>Only the Primary viewer can change the slide, and only while the projector is not paused. The Secondary viewer has no controls.</li>
+          <li>Only the Primary viewer can change the slide (and only while the projector is not paused), or switch the Welcome Screen or Blackout on or off. The Secondary viewer has no controls.</li>
           <li>Only the live text, the item titles, and the next item are shared. The rest of the app is not.</li>
           <li>PINs are saved on this laptop in plain text. They stop casual viewing, not someone who can open the laptop's files.</li>
         </ul>

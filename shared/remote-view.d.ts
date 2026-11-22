@@ -10,6 +10,11 @@ export interface RemoteViewSnapshot {
   nextLines: string[];
   paused: boolean;
   updatedAt: number;
+  /** The Primary viewer's screen controls. Absent from the Secondary viewer's snapshot. */
+  blackoutActive?: boolean;
+  welcomeActive?: boolean;
+  projectorPaused?: boolean;
+  projectorLive?: boolean;
 }
 
 export function remoteViewSnapshot(state: LiveState, now?: number): RemoteViewSnapshot;

@@ -156,7 +156,21 @@ export function sectionsOf(frame) {
  * is where this slide sits in its set. `paused` says the operator has paused the projector. Nothing else is included.
  */
 export function remoteViewSnapshot(state, now = Date.now()) {
-  return snapshotOf(state, { live: primaryDrives(state), frame: state.projector.live, paused: state.projector.paused }, now);
+  return { ...snapshotOf(state, { live: primaryDrives(state), frame: state.projector.live, paused: state.projector.paused }, now), ...screenFlags(state) };
+}
+
+/**
+ * The state the Primary phone's Blackout and Welcome Screen buttons show, read from the same projector frame the desktop top bar reads, so a
+ * press on either one lights both. `projectorLive` is the projector output itself (the Projector switch), `projectorPaused` the pause.
+ */
+export function screenFlags(state) {
+  const kind = state.projector.live?.kind;
+  return {
+    blackoutActive: kind === 'blackout',
+    welcomeActive: kind === 'welcome',
+    projectorPaused: state.projector.paused === true,
+    projectorLive: state.outputs.projector === true,
+  };
 }
 
 /**
@@ -298,8 +312,25 @@ function snapshotOf(state, target, now) {
  */
 export function snapshotForRole(snapshot, role) {
   if (role === 'primary') return snapshot;
-  const { nextLines, sections, paused, lineup, ...viewer } = snapshot;
+  const { nextLines, sections, paused, lineup, blackoutActive, welcomeActive, projectorPaused, projectorLive, ...viewer } = snapshot;
   return viewer;
+}
+
+/**
+ * Blackout and Welcome Screen from the Primary phone: the desktop top bar's own two buttons, as the same reducer actions. They toggle, or take
+ * an explicit `on` (true or false) so a double tap cannot flip the screen back. Like the top bar they ignore the pause: Blackout is the
+ * emergency exit, and the Welcome Screen is a cover, not a slide step. `now` and `lang` are the press time and the church's language, which
+ * the welcome frame carries (the top bar reads them from the window).
+ */
+function screenAction(state, request, { now, lang }) {
+  const live = state.projector.live?.kind;
+  if ('on' in request && typeof request.on !== 'boolean') return { ok: false, status: 400, error: 'The request was not understood.' };
+  const current = request.action === 'blackout' ? live === 'blackout' : live === 'welcome';
+  const want = 'on' in request ? request.on : !current;
+  if (want === current) return { ok: true, action: null };
+  if (request.action === 'blackout') return { ok: true, action: { type: 'projector/blackout' } };
+  if (!want) return { ok: true, action: { type: 'projector/welcome', on: false } };
+  return { ok: true, action: { type: 'projector/welcome', on: true, frame: { kind: 'welcome', lang, shownAt: now, slide: 0, slideAt: now } } };
 }
 
 /**
@@ -307,8 +338,9 @@ export function snapshotForRole(snapshot, role) {
  * exactly as the arrow keys do. Jump moves to a slide by its number, through the same step action. Returns
  * `{ ok: true, action }` (action is null when nothing changes), or `{ ok: false, status, error }` when it is refused.
  */
-export function controlAction(state, request) {
+export function controlAction(state, request, { now = Date.now(), lang = 'en' } = {}) {
   if (!request || typeof request !== 'object') return { ok: false, status: 400, error: 'The request was not understood.' };
+  if (request.action === 'blackout' || request.action === 'welcome') return screenAction(state, request, { now, lang });
   if (!primaryDrives(state)) {
     return { ok: false, status: 409, error: 'Nothing this remote controls is on air. Turn the projector on, or set Remote to follow it.' };
   }

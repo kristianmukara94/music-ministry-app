@@ -10,6 +10,33 @@
   const sectionsList = el('sections');
   const controlError = el('control-error');
   let sectionCount = -1;
+  const welcomeButton = el('welcome');
+  const blackoutButton = el('blackout');
+  const screenBanner = el('screen-banner');
+  // What the laptop last said, so a refused press snaps the buttons back to it.
+  let lastScreen = { welcomeActive: false, blackoutActive: false };
+
+  // Welcome Screen and Blackout: lit from the laptop's state, so a press on the desktop top bar lights them here too. They are not held back
+  // by the pause: Blackout is the emergency exit, and the desktop buttons work while paused.
+  function renderScreenControls(flags) {
+    lastScreen = flags;
+    welcomeButton.setAttribute('aria-pressed', flags.welcomeActive ? 'true' : 'false');
+    blackoutButton.setAttribute('aria-pressed', flags.blackoutActive ? 'true' : 'false');
+    const text = flags.blackoutActive ? 'Blackout is on. The screen is blank.' : flags.welcomeActive ? 'Welcome Screen is on.' : '';
+    screenBanner.hidden = text === '';
+    screenBanner.textContent = text;
+    screenBanner.classList.toggle('blackout', Boolean(flags.blackoutActive));
+  }
+
+  // Sends an explicit on or off, never a bare toggle, so a double tap cannot flip the screen straight back. The button changes at once, and the
+  // next state from the laptop confirms it, or a refusal puts it back.
+  async function pressScreen(action, active) {
+    const want = !active;
+    const key = action === 'welcome' ? 'welcomeActive' : 'blackoutActive';
+    renderScreenControls({ ...lastScreen, [key]: want });
+    const ok = await control({ action, on: want });
+    if (!ok) renderScreenControls({ ...lastScreen, [key]: active });
+  }
 
   function render(snapshot) {
     el('status').textContent = window.ApccmmaRemote.SCREEN_TEXT[snapshot.screen] ?? '';
@@ -23,6 +50,7 @@
     document.querySelector('.coming').hidden = Boolean(snapshot.sections && snapshot.sections.steps);
     el('next-item').textContent = snapshot.next || 'Nothing after this';
 
+    renderScreenControls({ welcomeActive: snapshot.welcomeActive === true, blackoutActive: snapshot.blackoutActive === true });
     el('paused').hidden = !snapshot.paused;
     const section = snapshot.sections;
     const canStep = Boolean(section) && !snapshot.paused;
@@ -116,16 +144,20 @@
       });
     } catch {
       controlError.textContent = 'Cannot reach the laptop. Check that this phone is on the same WiFi.';
-      return;
+      return false;
     }
     if (!response.ok) {
       const reply = await response.json().catch(() => ({}));
       controlError.textContent = reply.error || 'That did not work.';
+      return false;
     }
+    return true;
   }
 
   prev.addEventListener('click', () => control({ action: 'previous' }));
   next.addEventListener('click', () => control({ action: 'next' }));
+  welcomeButton.addEventListener('click', () => pressScreen('welcome', welcomeButton.getAttribute('aria-pressed') === 'true'));
+  blackoutButton.addEventListener('click', () => pressScreen('blackout', blackoutButton.getAttribute('aria-pressed') === 'true'));
 
   window.ApccmmaRemote.start(render);
 })();

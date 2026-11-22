@@ -26,6 +26,7 @@
           <p id="position" class="position"></p>
         </header>
 
+        <p id="screen-banner" class="screen-banner" role="status" hidden></p>
         <p id="paused" class="paused" role="status" hidden>Paused by operator</p>
 
         <div class="controls">
@@ -33,6 +34,20 @@
           <button id="next" type="button" class="big-button">Next slide</button>
         </div>
         <p id="control-error" class="control-error" role="alert"></p>
+
+        <div class="screen-controls" role="group" aria-label="Screen controls">
+          <p class="next-label">Screen controls</p>
+          <div class="screen-buttons">
+            <button id="welcome" type="button" class="screen-button welcome" aria-pressed="false">
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10M10 19.5v-5h4v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              <span>Welcome Screen</span>
+            </button>
+            <button id="blackout" type="button" class="screen-button blackout" aria-pressed="false">
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M3 5h18v12H3zM9 21h6M12 17v4M4 3l16 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              <span>Blackout</span>
+            </button>
+          </div>
+        </div>
 
         <img id="slide-image" class="slide-image" alt="Current slide" hidden />
         <div id="lines" class="lines" aria-label="Current slide"></div>

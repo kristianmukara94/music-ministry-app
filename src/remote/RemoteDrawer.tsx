@@ -18,7 +18,7 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
 export const REMOTE_TAB_ID = 'remote-nav-button';
 
 const ROLES: { role: RemoteRole; label: string; help: string }[] = [
-  { role: 'primary', label: 'Primary', help: 'The phone can move to the next or previous slide, or jump to a slide.' },
+  { role: 'primary', label: 'Primary', help: 'The phone can move to the next or previous slide, jump to a slide, and switch the Welcome Screen and Blackout.' },
   { role: 'secondary', label: 'Secondary', help: 'Read-only. The phone shows the live text and has no buttons.' },
 ];
 
