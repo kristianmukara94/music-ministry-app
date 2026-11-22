@@ -30,6 +30,8 @@ const DEFAULTS = {
   lower_third: LOWER_THIRD_DEFAULTS,
   welcome: WELCOME_DEFAULTS,
   remote_view: REMOTE_VIEW_DEFAULTS,
+  // The network adapter the operator chose for the Remote view addresses (for example "Wi-Fi"). Null: pick the best one automatically.
+  remote_adapter: null,
   // What the sanctuary failover surface draws: 'emblem' or 'blackout' (electron/watchdog.js).
   failover_mode: DEFAULT_FAILOVER_MODE,
   // Outputs pinned to a physical monitor on a physical GPU port (electron/edid-watchdog.js). Null: not pinned.
@@ -118,6 +120,7 @@ function sanitize(raw) {
     lower_third: sanitizeLowerThirdStyle(raw.lower_third),
     welcome: sanitizeWelcomeSettings(raw.welcome),
     remote_view: sanitizeRemoteView(raw.remote_view),
+    remote_adapter: typeof raw.remote_adapter === 'string' && raw.remote_adapter.trim() ? raw.remote_adapter.trim().slice(0, 120) : null,
     failover_mode: sanitizeFailoverMode(raw.failover_mode),
     display_locks: sanitizeDisplayLocks(raw.display_locks),
     update_channel: UPDATE_CHANNELS.includes(raw.update_channel) ? raw.update_channel : DEFAULTS.update_channel,

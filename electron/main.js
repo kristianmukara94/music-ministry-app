@@ -49,7 +49,11 @@ import { sanitizeProjectorSettings } from '../shared/projector-settings.js';
 import { sanitizeWelcomeSettings } from '../shared/welcome-settings.js';
 import { sanitizeLowerThirdStyle } from '../shared/lower-third-style.js';
 import { createLowerThirdServer, LOWER_THIRD_PORT, lanAddress } from './lower-third-server.js';
-import { createRemoteViewServer, localNetworkAddress, networkInfo } from './remote-view-server.js';
+import dgram from 'node:dgram';
+import { createDiscovery } from './tv-cast-discovery.js';
+import { createTvCastManager, isFeed } from './tv-cast-manager.js';
+import { createRemoteViewServer, firewallState, localNetworkAddress as pickNetworkAddress, networkAdapters, networkInfo, probePort } from './remote-view-server.js';
+import { lanVerdict } from '../shared/remote-view-ui.js';
 import { mediaFileFor, slideFileFor } from './protocol.js';
 import {
   REMOTE_DEVICE_LIMIT,
@@ -508,7 +512,12 @@ function placeLowerThirdWindow() {
   apply({ type: 'output/set', output: 'lowerThird', on: true });
 }
 
-const REMOTE_NO_NETWORK = 'No WiFi or local network was found. Connect this laptop to the same WiFi as the phones. The page starts by itself once a network is found.';
+/** The laptop's address for the viewers: the adapter the operator chose in Remote view settings while it is up, else the best WiFi or cable one. */
+function localNetworkAddress() {
+  return pickNetworkAddress(readConfig(app.getPath('userData')).remote_adapter);
+}
+
+const REMOTE_NO_NETWORK ='No WiFi or local network was found. Connect this laptop to the same WiFi as the phones. The page starts by itself once a network is found.';
 const ACTIVITY_LIMIT = 30;
 /** The two viewers' pages. Each is its own server on its own port: Primary controls the output, Secondary only watches. */
 const remoteViews = {
@@ -595,6 +604,9 @@ async function syncRemoteView() {
   const anyOn = REMOTE_ROLES.some((role) => config[role].enabled);
   const address = anyOn ? localNetworkAddress() : null;
   for (const role of REMOTE_ROLES) await syncRemoteViewRole(role, config[role], address);
+  // apccmma.local is answered while the TV page is up, so a TV browser can open it without typing numbers.
+  if (remoteViews.secondary.running()) void tvDiscovery.startHostnameResponder();
+  else tvDiscovery.stopHostnameResponder();
 }
 
 /** One viewer's status for the settings. The PIN itself is never sent; only whether one is set. */
@@ -622,6 +634,10 @@ function remoteViewStatus() {
     secondary: remoteViewRoleStatus('secondary', config.secondary),
     devices: phonesConnected(),
     deviceLimit: REMOTE_DEVICE_LIMIT,
+    adapters: networkAdapters(),
+    // The adapter name the operator chose (null: automatic), and the address in use right now.
+    adapter: readConfig(app.getPath('userData')).remote_adapter,
+    address: address ?? null,
     // Windows' laptop hotspot hands out 192.168.137.x addresses. Its warning is for that case only.
     hotspot: address?.startsWith('192.168.137.') === true,
     hotspotWarnAbove: REMOTE_HOTSPOT_WARN_ABOVE,
@@ -630,8 +646,130 @@ function remoteViewStatus() {
 }
 
 function stopRemoteViews() {
-  return Promise.all(REMOTE_ROLES.map((role) => remoteViews[role].stop()));
+  // The TV cast stops with the viewers: its TVs are told to stop, its picture server and name responder close.
+  tvDiscovery.close();
+  return Promise.all([...REMOTE_ROLES.map((role) => remoteViews[role].stop()), tvCast.shutdown()]);
 }
+
+
+// ---- Nearby TV Cast (Smart TV / DLNA and Chromecast) ---------------------------------------------------------------------------------
+// Each feed is drawn in its own hidden 1920x1080 window (offscreen, so it never takes a display) and handed to the TVs as a JPEG by the
+// manager (electron/tv-cast-manager.js). The windows are not in `windows`, so reconcileWindows and the watchdog never touch them.
+const CAST_ROUTES = { projector: 'cast-projector', stage: 'cast-stage' };
+const CAST_SIZE = { width: 1920, height: 1080 };
+const CAST_SETTLE_MS = 90;
+const castWindows = new Map();
+
+function castWindow(feed) {
+  const existing = castWindows.get(feed);
+  if (existing && !existing.win.isDestroyed()) return existing;
+  const win = new BrowserWindow({
+    ...CAST_SIZE,
+    useContentSize: true,
+    show: false,
+    frame: false,
+    skipTaskbar: true,
+    focusable: false,
+    backgroundColor: '#000000',
+    title: 'APCCMMA - TV cast',
+    webPreferences: { ...webPreferences, offscreen: true, backgroundThrottling: false, partition: `cast-${feed}` },
+  });
+  const entry = { win, image: null, lastPaint: 0 };
+  win.webContents.setFrameRate(15);
+  win.webContents.on('paint', (_event, _dirty, image) => {
+    entry.image = image;
+    entry.lastPaint = Date.now();
+  });
+  win.on('closed', () => {
+    if (castWindows.get(feed) === entry) castWindows.delete(feed);
+  });
+  castWindows.set(feed, entry);
+  load(win, CAST_ROUTES[feed]);
+  return entry;
+}
+
+/** One feed as a 1920x1080 JPEG: the newest picture the hidden window painted, once it has been still for a moment. Null when nothing painted. */
+async function captureCastFrame(feed) {
+  const entry = castWindow(feed);
+  const limit = Date.now() + (entry.image ? 600 : 4000);
+  while (Date.now() < limit && !(entry.image && Date.now() - entry.lastPaint >= CAST_SETTLE_MS)) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  if (!entry.image) return null;
+  const size = entry.image.getSize();
+  const image = size.width === CAST_SIZE.width && size.height === CAST_SIZE.height ? entry.image : entry.image.resize(CAST_SIZE);
+  return image.toJPEG(88);
+}
+
+function closeCastWindows() {
+  for (const { win } of castWindows.values()) if (!win.isDestroyed()) win.destroy();
+  castWindows.clear();
+}
+
+const tvDiscovery = createDiscovery({ dgram, localAddress: localNetworkAddress });
+const tvCast = createTvCastManager({
+  discovery: tvDiscovery,
+  captureFrame: captureCastFrame,
+  address: localNetworkAddress,
+  isExpired: () => licenseManager.isExpired(),
+  // With nothing casting, the hidden windows are closed: they cost a renderer each.
+  onChange: () => {
+    if (tvCast.activeCount() === 0) closeCastWindows();
+  },
+});
+
+/** What the TV settings show, with the apccmma.local address when its name is answered and the TV page is on. */
+function tvCastStatus() {
+  const base = tvCast.status();
+  const secondary = remoteViews.secondary;
+  const url = base.hostname.running && secondary.running() ? `http://apccmma.local:${secondary.port()}/tv` : null;
+  return { ...base, hostnameUrl: url };
+}
+
+/** Only these Windows pages can be opened from the app. The page asks by name, never by address. */
+const WINDOWS_DISPLAY_PAGES = ['ms-settings-connectabledevices:devicediscovery', 'ms-settings:connecteddevices'];
+
+const castId = (value) => (typeof value === 'string' ? value.slice(0, 120) : '');
+const castReply = (result) => ({ ok: result.ok, error: result.error ?? null, status: tvCastStatus() });
+
+ipcMain.handle('tvCast:status', () => tvCastStatus());
+ipcMain.handle('tvCast:scan', async () => {
+  await tvDiscovery.scan();
+  return tvCastStatus();
+});
+ipcMain.handle('tvCast:addByIp', async (_event, input) => castReply(await tvDiscovery.addByIp(typeof input === 'string' ? input : '')));
+ipcMain.handle('tvCast:cast', async (_event, request) => castReply(await tvCast.castTo(castId(request?.id), { feed: isFeed(request?.feed) ? request.feed : undefined })));
+ipcMain.handle('tvCast:castAll', async () => castReply(await tvCast.castAll()));
+ipcMain.handle('tvCast:disconnect', async (_event, id) => {
+  await tvCast.disconnect(castId(id));
+  return tvCastStatus();
+});
+ipcMain.handle('tvCast:stopAll', async () => {
+  await tvCast.stopAll();
+  return tvCastStatus();
+});
+ipcMain.handle('tvCast:setFeed', async (_event, request) => castReply(await tvCast.setFeed(castId(request?.id), request?.feed)));
+ipcMain.handle('tvCast:openWindowsDisplay', async () => {
+  if (process.platform !== 'win32') return false;
+  for (const page of WINDOWS_DISPLAY_PAGES) {
+    try {
+      await shell.openExternal(page);
+      return true;
+    } catch {
+      // The next page is tried.
+    }
+  }
+  return false;
+});
+
+let tvCastStopped = false;
+app.on('before-quit', (event) => {
+  if (tvCastStopped || tvCast.activeCount() === 0) return;
+  // The TVs are told to stop (capped at 1.5 s in all), then the quit goes on.
+  event.preventDefault();
+  tvCastStopped = true;
+  void tvCast.shutdown().finally(() => app.quit());
+});
 
 function broadcast() {
   lowerThirdServer?.push({ lowerThird: state.lowerThird.live, lowerStyle: state.lowerStyle, churchLogoVersion, churchLogoFrame });
@@ -644,6 +782,10 @@ function broadcast() {
   for (const win of editorWindows.values()) {
     if (!win.isDestroyed()) win.webContents.send('live:state', state);
   }
+  for (const { win } of castWindows.values()) {
+    if (!win.isDestroyed()) win.webContents.send('live:state', state);
+  }
+  tvCast.frameChanged();
 }
 
 /** Saves which plan is loaded and where the operator is in it. A failed write is logged, not fatal. */
@@ -1306,6 +1448,47 @@ ipcMain.handle('remoteView:disconnect', async (_event, request) => {
   return remoteViewStatus();
 });
 
+/** Chooses the network adapter the viewers are served on (null: automatic). Both viewers restart on the new address, so their phones reconnect. */
+ipcMain.handle('remoteView:setAdapter', async (_event, name) => {
+  if (name !== null && !networkAdapters().some((a) => a.name === name)) throw new Error('That network adapter is not available.');
+  writeConfig(app.getPath('userData'), { remote_adapter: name });
+  await Promise.all(REMOTE_ROLES.map((role) => remoteViews[role].stop()));
+  await syncRemoteView();
+  return remoteViewStatus();
+});
+
+/** Drops every phone and TV from both viewers. They stay blocked until the viewers restart. */
+ipcMain.handle('remoteView:disconnectAll', async () => {
+  for (const role of REMOTE_ROLES) remoteViews[role].disconnectAll();
+  return remoteViewStatus();
+});
+
+/** Opens a running viewer's own address in the laptop's default browser. The renderer names the viewer; it never supplies the URL. */
+ipcMain.handle('remoteView:open', async (_event, request) => {
+  const { role, tv } = request ?? {};
+  if (!REMOTE_ROLES.includes(role)) throw new Error('Choose the Primary or the Secondary viewer.');
+  const view = remoteViews[role];
+  if (!view.running()) throw new Error('Turn this viewer on first.');
+  const base = `http://${view.address()}:${view.port()}`;
+  await shell.openExternal(tv === true && role === 'secondary' ? `${base}/tv` : base);
+  return true;
+});
+
+/** Probes each running viewer on the laptop's LAN address and reads the Windows Firewall state, then explains the result. */
+ipcMain.handle('remoteView:checkLan', async () => {
+  const ip = remoteViews.primary.address() ?? remoteViews.secondary.address() ?? localNetworkAddress();
+  const names = { primary: 'Primary', secondary: 'Secondary' };
+  const viewers = [];
+  for (const role of REMOTE_ROLES) {
+    const view = remoteViews[role];
+    if (!view.running()) continue;
+    const probe = await probePort(view.address(), view.port());
+    viewers.push({ name: names[role], port: view.port(), listening: probe.ok, devices: view.devices() });
+  }
+  const firewall = await firewallState();
+  return { ip, ...lanVerdict({ ip, viewers, firewall }) };
+});
+
 /** Every connected display, numbered as the identify overlay numbers them. Physical pixels, so 1920x1080 is 1920x1080. */
 function displayList() {
   const primaryId = screen.getPrimaryDisplay().id;
@@ -1812,6 +1995,7 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
   closeSessionStore();
   void stopRemoteViews();
+  closeCastWindows();
   media?.close();
   announcements?.close();
 });

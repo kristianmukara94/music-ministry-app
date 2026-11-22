@@ -1,6 +1,7 @@
 import { OperatorApp } from './operator/OperatorApp';
 import { LowerThirdView } from './output/LowerThirdView';
 import { ProjectorView } from './output/ProjectorView';
+import { CastStageView } from './output/CastStageView';
 import { MirrorWindow } from './output/MirrorWindow';
 import { PdfConverter } from './announcements/PdfConverter';
 import { VideoThumbnailer } from './media/VideoThumbnailer';
@@ -21,6 +22,11 @@ export function App() {
       return <ProjectorView />;
     case 'preview':
       return <MirrorWindow />;
+    // Nearby TV Cast renders these two in hidden 1920x1080 windows and sends them to TVs as pictures (electron/tv-cast-manager.js).
+    case 'cast-projector':
+      return <ProjectorView />;
+    case 'cast-stage':
+      return <CastStageView />;
     // The sanctuary failover surface: a hidden window kept over the projector by the watchdog (electron/watchdog.js).
     case 'failover':
       return <FailoverOverlay />;

@@ -120,6 +120,22 @@ export interface RemoteClient {
   since: number;
   /** Pages it has open on this viewer. */
   tabs: number;
+  /** True when the browser is a Smart TV or casting stick. */
+  tv?: boolean;
+}
+
+/** One active network adapter a viewer can be served on. */
+export interface RemoteAdapter {
+  name: string;
+  address: string;
+  kind: 'wifi' | 'wired' | 'virtual' | 'other';
+}
+
+/** The result of Check LAN & Firewall. */
+export interface RemoteLanCheck {
+  ip: string | null;
+  level: 'ok' | 'warn' | 'bad';
+  text: string;
 }
 
 /** The network a viewer is served on. `ssid` is set only for `wifi`. */
@@ -150,6 +166,12 @@ export interface RemoteViewStatus {
   hotspotWarnAbove: number;
   /** Control actions from phones, newest first. */
   activity: RemoteActivity[];
+  /** Active private IPv4 adapters, best first (Wi-Fi, cable, other, virtual). */
+  adapters: RemoteAdapter[];
+  /** The adapter the operator chose, or null for automatic. */
+  adapter: string | null;
+  /** The address the viewers are served on right now. Null when none. */
+  address: string | null;
 }
 
 export interface RemoteViewPatch {
@@ -167,6 +189,51 @@ export interface RemoteViewApi {
   getNetworkInfo(role: RemoteRole): Promise<RemoteNetworkInfo>;
   /** Drops the phone at `ip` from a viewer; it is refused until that viewer restarts. */
   disconnect(role: RemoteRole, ip: string): Promise<RemoteViewStatus>;
+  /** Drops every phone and TV from both viewers. */
+  disconnectAll(): Promise<RemoteViewStatus>;
+  /** Serves the viewers on this adapter (null: automatic). Both restart on the new address. */
+  setAdapter(name: string | null): Promise<RemoteViewStatus>;
+  /** Opens a running viewer's address (or the Secondary TV page) in the laptop's default browser. */
+  open(role: RemoteRole, tv?: boolean): Promise<boolean>;
+  /** Probes the running viewers on the LAN address and reads the Windows Firewall state. */
+  checkLan(): Promise<RemoteLanCheck>;
+}
+
+/** One TV in Nearby TV Cast, with its cast state (see shared/tv-cast-view.js for the wording). */
+export type { TvCastTv } from '../../shared/tv-cast-view.js';
+import type { TvCastTv } from '../../shared/tv-cast-view.js';
+
+export interface TvCastStatus {
+  tvs: TvCastTv[];
+  /** TVs with a cast session, in any state. */
+  casting: number;
+  scanning: boolean;
+  /** Whether this laptop answers the name apccmma.local, and why not when it does not. */
+  hostname: { running: boolean; note: string | null };
+  /** The TV page address by name (http://apccmma.local:8788/tv) while the name is answered and the TV page is on. */
+  hostnameUrl: string | null;
+  /** The picture server address while casting. */
+  server: { address: string; port: number } | null;
+}
+
+/** The answer to a cast action: whether it worked, why not when it did not, and the new status. */
+export interface TvCastReply {
+  ok: boolean;
+  error: string | null;
+  status: TvCastStatus;
+}
+
+export interface TvCastApi {
+  status(): Promise<TvCastStatus>;
+  scan(): Promise<TvCastStatus>;
+  addByIp(input: string): Promise<TvCastReply>;
+  cast(id: string, feed?: 'projector' | 'stage'): Promise<TvCastReply>;
+  castAll(): Promise<TvCastReply>;
+  disconnect(id: string): Promise<TvCastStatus>;
+  stopAll(): Promise<TvCastStatus>;
+  setFeed(id: string, feed: 'projector' | 'stage'): Promise<TvCastReply>;
+  /** Opens the Windows Wireless Display (Win+K) page. False when it cannot open. */
+  openWindowsDisplay(): Promise<boolean>;
 }
 
 /** One System Health reading (see electron/system-health.js). */
@@ -298,6 +365,7 @@ interface ElectronApi {
   license: LicenseApi;
   vault: VaultApi;
   remoteView: RemoteViewApi;
+  tvCast: TvCastApi;
   library: LibraryApi;
   /** Print Lineup through the desktop app's Print dialog and PDF writer. Absent in the browser preview, which prints the preview frame. */
   lineup?: LineupPrintApi;
@@ -870,10 +938,27 @@ const offlineLicense: LicenseApi = {
 };
 
 const offlineRemoteView: RemoteViewApi = {
-  get: async () => ({ primary: offlineRole, secondary: offlineRole, devices: 0, deviceLimit: 20, hotspot: false, hotspotWarnAbove: 8, activity: [] }),
+  get: async () => ({ primary: offlineRole, secondary: offlineRole, devices: 0, deviceLimit: 20, hotspot: false, hotspotWarnAbove: 8, activity: [], adapters: [], adapter: null, address: null }),
   save: async () => offlineError(),
   getNetworkInfo: async () => ({ kind: 'none', ssid: null, ip: null, port: null }),
   disconnect: async () => offlineError(),
+  disconnectAll: async () => offlineError(),
+  setAdapter: async () => offlineError(),
+  open: async () => offlineError(),
+  checkLan: async () => offlineError(),
+};
+
+const offlineTvStatus: TvCastStatus = { tvs: [], casting: 0, scanning: false, hostname: { running: false, note: null }, hostnameUrl: null, server: null };
+const offlineTvCast: TvCastApi = {
+  status: async () => offlineTvStatus,
+  scan: async () => offlineTvStatus,
+  addByIp: async () => offlineError(),
+  cast: async () => offlineError(),
+  castAll: async () => offlineError(),
+  disconnect: async () => offlineTvStatus,
+  stopAll: async () => offlineTvStatus,
+  setFeed: async () => offlineError(),
+  openWindowsDisplay: async () => false,
 };
 
 const offlineProjector: ProjectorApi = {
@@ -1058,6 +1143,7 @@ function createBrowserBridge(): LiveBridge {
     license: offlineLicense,
     vault: offlineVault,
     remoteView: offlineRemoteView,
+    tvCast: offlineTvCast,
     library: offlineLibrary,
     whiteboard: offlineWhiteboard,
     config: offlineConfig,

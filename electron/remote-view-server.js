@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { Readable } from 'node:stream';
 import http from 'node:http';
+import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -80,22 +81,50 @@ const ROLE_FILES = {
   secondary: ['viewer.html', 'common.js', 'viewer.js', 'remote.css'],
 };
 
+// Names a WiFi adapter goes by on Windows (Wi-Fi, WLAN), Linux (wlan0, wlp3s0) and macOS (en0 is WiFi on a laptop, so macOS falls to "other").
+const WIFI_ADAPTER = /wi-?fi|wlan|wireless|airport|^wl[a-z0-9]/i;
+const ADAPTER_RANK = { wifi: 0, wired: 1, other: 2, virtual: 3 };
+
+/** What kind of adapter `name` is: `wifi`, `wired`, `virtual` (switches, VPNs, containers) or `other`. */
+export function adapterKind(name) {
+  const n = String(name ?? '');
+  if (VIRTUAL_ADAPTER.test(n)) return 'virtual';
+  if (WIFI_ADAPTER.test(n)) return 'wifi';
+  if (WIRED_ADAPTER.test(n)) return 'wired';
+  return 'other';
+}
+
 /**
- * The address phones on this network use. `entries` are the interfaces as Node lists them. Prefers a 192.168 address,
- * then any other private one. Null when there is no private address, which means no WiFi or local network.
+ * Every active private IPv4 adapter, best first: WiFi, then cable, then the rest, with virtual adapters (Hyper-V, WSL, VirtualBox, VPNs) last.
+ * Within a kind a 192.168 address goes first. Public addresses are never listed, so a viewer is never served outside the local network.
  */
-export function pickLocalAddress(entries) {
-  const found = entries
-    .filter((e) => e.family === 'IPv4' && !e.internal && !VIRTUAL_ADAPTER.test(e.name ?? ''))
-    .map((e) => e.address)
-    .filter((ip) => PRIVATE_IPV4.some((range) => range.test(ip)));
-  return found.find((ip) => ip.startsWith('192.168.')) ?? found[0] ?? null;
+export function listAdapters(entries) {
+  return entries
+    .filter((e) => e.family === 'IPv4' && !e.internal && PRIVATE_IPV4.some((range) => range.test(e.address)))
+    .map((e) => ({ name: String(e.name ?? ''), address: e.address, kind: adapterKind(e.name) }))
+    .sort((a, b) => ADAPTER_RANK[a.kind] - ADAPTER_RANK[b.kind] || Number(b.address.startsWith('192.168.')) - Number(a.address.startsWith('192.168.')));
+}
+
+/**
+ * The address phones on this network use. `entries` are the interfaces as Node lists them. `preferred` is the adapter name the operator chose:
+ * it wins while that adapter is up (even a virtual one, since the operator chose it), else the best adapter that is not virtual.
+ * Null when there is none, which means no WiFi or local network.
+ */
+export function pickLocalAddress(entries, preferred = null) {
+  const all = listAdapters(entries);
+  const chosen = preferred ? all.find((a) => a.name === preferred) : null;
+  return (chosen ?? all.find((a) => a.kind !== 'virtual'))?.address ?? null;
 }
 
 const interfaceEntries = () => Object.entries(os.networkInterfaces()).flatMap(([name, list]) => (list ?? []).map((info) => ({ name, ...info })));
 
-export function localNetworkAddress() {
-  return pickLocalAddress(interfaceEntries());
+export function localNetworkAddress(preferred = null) {
+  return pickLocalAddress(interfaceEntries(), preferred);
+}
+
+/** The adapters up right now, for the settings dropdown. */
+export function networkAdapters() {
+  return listAdapters(interfaceEntries());
 }
 
 /** The name of the adapter that has `address`, for example "Wi-Fi", "Ethernet" or "en0". Null when no adapter has it. */
@@ -158,8 +187,14 @@ export async function networkInfo(address, { entries = interfaceEntries(), platf
   return { kind: ssid ? 'wifi' : 'wired', ssid, ip: address };
 }
 
+/** True for the browsers a Smart TV or casting stick reports: Tizen, webOS, Android TV, Fire TV, Chromecast and the like. */
+export function isSmartTvAgent(userAgent = '') {
+  return /smart-?tv|tizen|web0s|webos|hbbtv|netcast|crkey|googletv|android tv|bravia|viera|roku|appletv/i.test(userAgent) || /\bAFT[A-Z0-9]+\b/.test(userAgent);
+}
+
 /** A short name for the phone, from its browser's user agent. It is shown in the activity list only. */
 export function deviceLabel(userAgent = '') {
+  if (isSmartTvAgent(userAgent)) return 'Smart TV';
   if (/iPad/.test(userAgent)) return 'iPad';
   if (/iPhone/.test(userAgent)) return 'iPhone';
   if (/Android/.test(userAgent)) return 'Android';
@@ -490,9 +525,10 @@ export function createRemoteViewServer({ distDir, role = 'primary', isExpired = 
         const row = byIp.get(s.ip);
         if (row) {
           row.tabs += 1;
+          if (isSmartTvAgent(s.userAgent)) Object.assign(row, { tv: true, label: 'Smart TV' });
           row.since = Math.min(row.since, s.since);
         } else {
-          byIp.set(s.ip, { ip: s.ip, label: deviceLabel(s.userAgent), userAgent: s.userAgent, since: s.since, tabs: 1 });
+          byIp.set(s.ip, { ip: s.ip, label: deviceLabel(s.userAgent), userAgent: s.userAgent, since: s.since, tabs: 1, tv: isSmartTvAgent(s.userAgent) });
         }
       }
       return [...byIp.values()].sort((a, b) => a.since - b.since);
@@ -514,6 +550,13 @@ export function createRemoteViewServer({ distDir, role = 'primary', isExpired = 
         closed += 1;
       }
       return closed;
+    },
+
+    /** Drops every phone: the same as `disconnect` for each address. Returns how many addresses were dropped. */
+    disconnectAll() {
+      const ips = [...new Set([...streams].map((s) => s.ip))];
+      for (const ip of ips) this.disconnect(ip);
+      return ips.length;
     },
 
     /**
@@ -580,4 +623,32 @@ export function createRemoteViewServer({ distDir, role = 'primary', isExpired = 
       for (const s of streams) s.res.write(data);
     },
   };
+}
+
+/**
+ * Tries to open a TCP connection to `host:port`, as a phone would. Resolves `{ ok, code }`. This runs on the laptop itself, so it proves the
+ * viewer is listening on that adapter but cannot prove another device gets past Windows Firewall.
+ */
+export function probePort(host, port, timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port });
+    const done = (result) => {
+      socket.destroy();
+      resolve(result);
+    };
+    socket.setTimeout(timeoutMs, () => done({ ok: false, code: 'ETIMEDOUT' }));
+    socket.once('connect', () => done({ ok: true, code: null }));
+    socket.once('error', (err) => done({ ok: false, code: err.code ?? 'ERROR' }));
+  });
+}
+
+/** The Windows Firewall state of the active network profile: `{ profile, enabled }`, or null when it cannot be read (not Windows, or no access). */
+export async function firewallState(platform = process.platform, exec = run) {
+  if (platform !== 'win32') return null;
+  const out = await exec('netsh', ['advfirewall', 'show', 'currentprofile']);
+  if (!out) return null;
+  const profile = /^\s*(\w+)\s+Profile Settings/im.exec(out)?.[1] ?? null;
+  const state = /^\s*State\s+(\w+)/im.exec(out)?.[1] ?? '';
+  if (!state) return null;
+  return { profile, enabled: /^on$/i.test(state) };
 }

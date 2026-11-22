@@ -8,6 +8,9 @@ import { displayCombo } from '../../shared/shortcuts.js';
 import { mainLiveStatus, welcomeCover } from '../../shared/main-live.js';
 import { goToMainLive } from '../golive/mainLive';
 import type { ShortcutActionId } from './shortcuts';
+import { TvCastBadge } from './TvCastBadge';
+import { bridge, type RemoteViewStatus } from '../live/bridge';
+import { remotePillLabel } from '../../shared/remote-view-ui.js';
 import { liveCommands, stepWelcomeSlide, welcomeSlidePosition } from './actions';
 
 /**
@@ -502,20 +505,51 @@ function ProjectorMaster() {
   );
 }
 
+/** Whether either Remote view viewer is listening on the local WiFi, and how many devices are connected. Read every 3 seconds. */
+function useRemoteSummary() {
+  const [status, setStatus] = useState<RemoteViewStatus | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const read = () =>
+      bridge.remoteView
+        .get()
+        .then((next) => alive && setStatus(next))
+        .catch(() => alive && setStatus(null));
+    void read();
+    const timer = window.setInterval(read, 3000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+  return remotePillLabel(status);
+}
+
 /**
- * The Remote switch: starts and stops the Secondary stream that TV and phone viewers on the network see. It never opens or closes
- * the local Projector window.
+ * The Remote pill: `Remote · ON` (with the device count) while the Primary or the Secondary viewer listens on the local WiFi, `Remote · OFF`
+ * when both are off. Clicking it opens or closes the Remote drawer. The Secondary output switch is in the Praise and Worship controls.
  */
 function RemoteMaster() {
-  const on = useLive((s) => s.state.display.targets.secondary.live);
+  const { on, text } = useRemoteSummary();
+  const open = useUi((s) => s.remoteOpen);
   const t = useT();
   return (
-    <MasterSwitch
-      on={on}
-      label={t('top.remote')}
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-label={text}
       title={on ? t('top.tipRemoteLive') : t('top.tipRemoteOff')}
-      onClick={() => dispatch({ type: 'display/live', value: !on })}
-    />
+      onClick={() => setUi({ remoteOpen: !useUi.getState().remoteOpen })}
+      className={`${BASE} ${NO_DRAG} rounded-full border px-2.5 py-1.5 tracking-wide ${
+        on ? 'border-ok/50 bg-ok/15 text-ok hover:bg-ok/25' : 'border-line-strong bg-panel-2 text-muted hover:border-fg/30 hover:text-fg'
+      }`}
+    >
+      <span
+        className={`size-2 shrink-0 rounded-full ${on ? 'animate-pulse bg-ok shadow-[0_0_6px_var(--color-ok)]' : 'border border-current bg-transparent'}`}
+        aria-hidden
+      />
+      <span className="whitespace-nowrap">{text}</span>
+    </button>
   );
 }
 
@@ -653,6 +687,7 @@ export function TopBar() {
 
       {/* Zone C: the hardware and connection switches, pinned to the right edge of the same row. */}
       <div role="group" aria-label={t('top.groupConnections')} className="ml-auto flex h-9 shrink-0 flex-nowrap items-center gap-1.5">
+        <TvCastBadge />
         <RemoteMaster />
         <ProjectorMaster />
       </div>

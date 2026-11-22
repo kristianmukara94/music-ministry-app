@@ -286,6 +286,23 @@ contextBridge.exposeInMainWorld('apcc', {
     save: (patch) => ipcRenderer.invoke('remoteView:save', patch),
     getNetworkInfo: (role) => ipcRenderer.invoke('remoteView:getNetworkInfo', role),
     disconnect: (role, ip) => ipcRenderer.invoke('remoteView:disconnect', { role, ip }),
+    disconnectAll: () => ipcRenderer.invoke('remoteView:disconnectAll'),
+    setAdapter: (name) => ipcRenderer.invoke('remoteView:setAdapter', name),
+    open: (role, tv) => ipcRenderer.invoke('remoteView:open', { role, tv }),
+    checkLan: () => ipcRenderer.invoke('remoteView:checkLan'),
+  },
+
+  // Nearby TV Cast (electron/tv-cast-manager.js).
+  tvCast: {
+    status: () => ipcRenderer.invoke('tvCast:status'),
+    scan: () => ipcRenderer.invoke('tvCast:scan'),
+    addByIp: (input) => ipcRenderer.invoke('tvCast:addByIp', input),
+    cast: (id, feed) => ipcRenderer.invoke('tvCast:cast', { id, feed }),
+    castAll: () => ipcRenderer.invoke('tvCast:castAll'),
+    disconnect: (id) => ipcRenderer.invoke('tvCast:disconnect', id),
+    stopAll: () => ipcRenderer.invoke('tvCast:stopAll'),
+    setFeed: (id, feed) => ipcRenderer.invoke('tvCast:setFeed', { id, feed }),
+    openWindowsDisplay: () => ipcRenderer.invoke('tvCast:openWindowsDisplay'),
   },
 
   // Print Lineup (electron/print-lineup.js): the system Print dialog, or Save as PDF.

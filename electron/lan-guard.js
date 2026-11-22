@@ -21,7 +21,8 @@ export function hostAllowed(hostHeader, { hostname = os.hostname() } = {}) {
   const name = String(hostHeader).trim().replace(/:\d+$/, '').replace(/^\[|\]$/g, '').toLowerCase();
   if (net.isIP(name)) return true;
   const own = String(hostname ?? '').toLowerCase();
-  return name === 'localhost' || (own !== '' && (name === own || name === `${own}.local`));
+  // `apccmma.local` is the name the laptop answers on the local network (electron/tv-cast-discovery.js), so a TV can open it without numbers.
+  return name === 'localhost' || name === 'apccmma.local' || (own !== '' && (name === own || name === `${own}.local`));
 }
 
 /**
