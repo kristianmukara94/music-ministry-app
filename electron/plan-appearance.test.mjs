@@ -207,11 +207,13 @@ test('an import keeps the local look when the file is from before Plan Appearanc
   assert.equal(createPlanAppearanceService(target).get('mass', planId).enabled, false);
 });
 
-test('Cloud Sync never reads or writes the appearance, and its pull updates name their columns, so the look is kept', () => {
+test('Cloud Sync carries the appearance only through plan-appearance-sync.js, and a pull own update still names its columns, so the look is kept', () => {
   const store = readFileSync(new URL('./plan-sync-store.js', import.meta.url), 'utf8');
   const sync = readFileSync(new URL('./plan-sync.js', import.meta.url), 'utf8');
   const map = readFileSync(new URL('./plan-sync-map.js', import.meta.url), 'utf8');
-  for (const source of [store, sync, map]) assert.doesNotMatch(source, /appearance/i);
+  // The engine and the item mapper know nothing of it; the store reads and writes the look through the one small module.
+  for (const source of [sync, map]) assert.doesNotMatch(source, /appearance/i);
+  assert.match(store, /from '\.\/plan-appearance-sync\.js'/);
   assert.doesNotMatch(store, /INSERT OR REPLACE INTO (mass_plans|pw_sessions)/);
   assert.match(store, /UPDATE mass_plans SET name = \?, liturgical_date = \?, updated_at = \? WHERE id = \?/);
 

@@ -793,3 +793,144 @@ test('Praise & Worship segments added on the web (a prayer, a Scripture referenc
   const viewer = await cookieFor('viewer');
   assert.equal((await savePlan(viewer, model.savePayload(last, trimmed, {}))).statusCode, 403);
 });
+
+// ---- Plan Appearance: the plan's own slide look, set on the web and carried with the plan ----
+
+const lookUi = await web('plan-appearance-ui.js');
+const push = (plans) => sync().pushPlans({ httpMethod: 'POST', headers: { authorization: `Bearer ${laptop}` }, body: JSON.stringify({ plans }) });
+const SAMPLE_LOOK = lookUi.editAppearance(lookUi.editAppearance(null, 'bg-color', '#1B3B2B'), 'size', 1.25);
+
+test('Create a plan with a Plan Appearance: kept by the server, returned by plan-get, and a plan made without one has none', async () => {
+  const cookie = await cookieFor('planner');
+  const withLook = randomUUID();
+  const res = await createPlan(cookie, model.newPlanRequest({ name: 'Sample Plan Title', date: DAY, kind: 'mass', language: 'EN', massTime: '9:30 AM', appearance: SAMPLE_LOOK }, withLook));
+  assert.equal(res.statusCode, 201, res.body);
+  assert.deepEqual(body(res).plan.appearance, SAMPLE_LOOK);
+  assert.deepEqual((await getPlan(cookie, withLook)).plan.appearance, SAMPLE_LOOK);
+
+  const without = randomUUID();
+  assert.equal((await createPlan(cookie, model.newPlanRequest({ name: 'Sample Praise Night', date: DAY, kind: 'pw' }, without))).statusCode, 201);
+  assert.equal((await getPlan(cookie, without)).plan.appearance, null, 'no look of its own: the Global Appearance');
+  // The laptop's pull sees the same two plans, each with its look (or null).
+  const pulled = (await pull()).plans;
+  assert.deepEqual(pulled.find((p) => p.id === withLook).appearance, SAMPLE_LOOK);
+  assert.equal(pulled.find((p) => p.id === without).appearance, null);
+});
+
+test('only the look\'s own keys are kept: a bad colour, a made-up key or a file address cannot ride in', async () => {
+  const cookie = await cookieFor('planner');
+  const id = randomUUID();
+  const dirty = {
+    enabled: true,
+    lyrics: 'Sample lyric words',
+    background: { type: 'image', color: 'red', dimOpacity: 9, mediaPath: 'file:///C:/sample.png' },
+    typography: { fontFamily: 'Comic Sans', fontSizeScale: 7, textColor: '#12', textShadow: 'yes', extra: 1 },
+  };
+  const res = await createPlan(cookie, { ...model.newPlanRequest({ name: 'Sample Plan Title', date: DAY, kind: 'mass', language: 'EN' }, id), appearance: dirty });
+  assert.equal(res.statusCode, 201, res.body);
+  const { appearance } = (await getPlan(cookie, id)).plan;
+  assert.deepEqual(appearance, { enabled: true, background: { type: 'image', color: '#000000', dimOpacity: 0.8 }, typography: {} });
+  assert.ok(!JSON.stringify(appearance).includes('lyric'));
+});
+
+test('the Plan Editor saves a look and a save that leaves it out keeps it; "Use Global Default" is kept as the plan\'s choice', async () => {
+  const cookie = await cookieFor('planner');
+  const created = await createFromDay(cookie, { massTime: '9:30 AM', massLanguage: 'English' });
+  let { plan } = await getPlan(cookie, created.id);
+  assert.equal(plan.appearance, null);
+  const items = model.massToItems({ segments: {}, notes: {}, extra: [], meta: {}, contentHubItems: [] }, ROWS);
+
+  clock = new Date('2026-11-02T12:05:00Z');
+  const saved = await savePlan(cookie, model.savePayload(plan, items, { appearance: SAMPLE_LOOK }));
+  assert.equal(saved.statusCode, 200, saved.body);
+  assert.deepEqual(body(saved).appearance, SAMPLE_LOOK);
+  plan = (await getPlan(cookie, created.id)).plan;
+  assert.deepEqual(plan.appearance, SAMPLE_LOOK);
+
+  // A save from an editor that does not mention it (an older page) leaves the look alone.
+  clock = new Date('2026-11-02T12:06:00Z');
+  assert.equal((await savePlan(cookie, model.savePayload(plan, items, { name: 'Sample Renamed Plan' }))).statusCode, 200);
+  plan = (await getPlan(cookie, created.id)).plan;
+  assert.deepEqual(plan.appearance, SAMPLE_LOOK);
+
+  // Use Global Default is a choice the laptop must hear about, so it is stored (turned off), not forgotten.
+  clock = new Date('2026-11-02T12:07:00Z');
+  const off = lookUi.editAppearance(SAMPLE_LOOK, 'mode', 'global');
+  assert.equal((await savePlan(cookie, model.savePayload(plan, items, { appearance: off }))).statusCode, 200);
+  plan = (await getPlan(cookie, created.id)).plan;
+  assert.equal(plan.appearance.enabled, false);
+  assert.equal(plan.appearance.background.color, '#1B3B2B', 'the colours wait for Custom Plan Look to be turned on again');
+
+  // A viewer cannot change the look.
+  const viewer = await cookieFor('viewer');
+  assert.equal((await savePlan(viewer, model.savePayload(plan, items, { appearance: SAMPLE_LOOK }))).statusCode, 403);
+});
+
+test('a copy of a plan keeps its look', async () => {
+  const cookie = await cookieFor('planner');
+  const created = await createFromDay(cookie, { massTime: '9:30 AM', massLanguage: 'English' });
+  const { plan } = await getPlan(cookie, created.id);
+  const saved = await savePlan(cookie, model.savePayload(plan, plan.items, { appearance: SAMPLE_LOOK }));
+  assert.equal(saved.statusCode, 200, saved.body);
+  const { plan: source } = await getPlan(cookie, created.id);
+  const copyId = randomUUID();
+  const copy = await createPlan(cookie, { ...model.duplicateRequest(source, copyId), massTime: '6:00 AM' });
+  assert.equal(copy.statusCode, 201, copy.body);
+  assert.deepEqual((await getPlan(cookie, copyId)).plan.appearance, SAMPLE_LOOK);
+});
+
+test('the laptop\'s push: a laptop with no Plan Appearance keeps the web\'s look; one that has it replaces it, and the web shows it', async () => {
+  const cookie = await cookieFor('planner');
+  const created = await createFromDay(cookie, { massTime: '9:30 AM', massLanguage: 'English' });
+  const { plan } = await getPlan(cookie, created.id);
+  clock = new Date('2026-11-02T12:05:00Z');
+  assert.equal((await savePlan(cookie, model.savePayload(plan, plan.items, { appearance: SAMPLE_LOOK }))).statusCode, 200);
+  let pulled = (await pull()).plans.find((p) => p.id === created.id);
+  assert.deepEqual(pulled.appearance, SAMPLE_LOOK, 'the laptop pulls the web\'s look');
+
+  // An older laptop sends no appearance key: the look stays.
+  clock = new Date('2026-11-02T12:10:00Z');
+  let pushed = await push([{ id: created.id, name: pulled.name, date: DAY, kind: 'mass', baseUpdatedAt: pulled.updatedAt, massTime: '9:30 AM', massLanguage: 'English', items: pulled.items }]);
+  assert.equal(body(pushed).results[0].status, 'accepted', pushed.body);
+  pulled = (await pull()).plans.find((p) => p.id === created.id);
+  assert.deepEqual(pulled.appearance, SAMPLE_LOOK, 'an older laptop\'s push does not wipe the look');
+
+  // A laptop that keeps Plan Appearance sends its own, picture address and all, and the web reads it back untouched.
+  const booth = { enabled: true, background: { type: 'image', color: '#0F2A4A', dimOpacity: 0.3, mediaPath: 'apcc-media://media/42', mediaId: '42' }, typography: { fontFamily: 'playfair', fontSizeScale: 'max', textColor: '#ECC98A' } };
+  clock = new Date('2026-11-02T12:15:00Z');
+  pushed = await push([{ id: created.id, name: pulled.name, date: DAY, kind: 'mass', baseUpdatedAt: pulled.updatedAt, massTime: '9:30 AM', massLanguage: 'English', appearance: booth, items: pulled.items }]);
+  assert.equal(body(pushed).results[0].status, 'accepted', pushed.body);
+  const onWeb = (await getPlan(cookie, created.id)).plan;
+  assert.deepEqual(onWeb.appearance, booth, 'the web shows the booth\'s look, picture reference included');
+  assert.deepEqual(lookUi.appearanceSummary(onWeb.appearance), { custom: true, label: 'Custom Look · All Slides', color: '#0F2A4A', media: { type: 'image', id: '42', path: 'apcc-media://media/42' } });
+
+  // A colour edit on the web keeps the booth's picture, and the laptop pulls the colour with the picture still named.
+  clock = new Date('2026-11-02T12:20:00Z');
+  const edited = lookUi.editAppearance(onWeb.appearance, 'bg-color', '#4A1E2E');
+  assert.equal((await savePlan(cookie, model.savePayload(onWeb, onWeb.items, { appearance: edited }))).statusCode, 200);
+  const after = (await pull()).plans.find((p) => p.id === created.id);
+  assert.equal(after.appearance.background.color, '#4A1E2E');
+  assert.equal(after.appearance.background.mediaPath, 'apcc-media://media/42');
+  assert.equal(after.appearance.typography.fontFamily, 'playfair');
+});
+
+test('Praise & Worship plans carry the look the same way, and a laptop push for one cannot change its kind or lose it', async () => {
+  const cookie = await cookieFor('planner');
+  const id = randomUUID();
+  assert.equal((await createPlan(cookie, model.newPlanRequest({ name: 'Sample Praise Night', date: DAY, kind: 'pw', appearance: SAMPLE_LOOK }, id))).statusCode, 201);
+  const { plan } = await getPlan(cookie, id);
+  assert.deepEqual(plan.appearance, SAMPLE_LOOK);
+  const pulled = (await pull()).plans.find((p) => p.id === id);
+  assert.equal(pulled.kind, 'pw');
+  assert.equal('massTime' in pulled, false);
+  clock = new Date('2026-11-02T12:10:00Z');
+  const pushed = await push([{ id, name: pulled.name, date: DAY, kind: 'pw', baseUpdatedAt: pulled.updatedAt, items: pulled.items }]);
+  assert.equal(body(pushed).results[0].status, 'accepted', pushed.body);
+  assert.deepEqual((await getPlan(cookie, id)).plan.appearance, SAMPLE_LOOK);
+  // The laptop turns the look back to the Global Default: the web hears it as an explicit choice.
+  const again = (await pull()).plans.find((p) => p.id === id);
+  clock = new Date('2026-11-02T12:15:00Z');
+  const cleared = await push([{ id, name: again.name, date: DAY, kind: 'pw', baseUpdatedAt: again.updatedAt, appearance: null, items: again.items }]);
+  assert.equal(body(cleared).results[0].status, 'accepted', cleared.body);
+  assert.equal((await getPlan(cookie, id)).plan.appearance.enabled, false);
+});

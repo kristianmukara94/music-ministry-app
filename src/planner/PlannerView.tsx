@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
-import { CalendarDays, ClipboardList, Copy, Guitar, Lock } from 'lucide-react';
+import { Archive, CalendarDays, ClipboardList, Copy, Guitar, Lock } from 'lucide-react';
 import { monthGrid } from '../../shared/liturgical-calendar.js';
 import { DEFAULT_TEMPLATE, readiness } from '../../shared/pw.js';
 import { calendarForPlan, calendarPlans, type PlannerCalendar } from '../../shared/planner-calendars.js';
@@ -13,8 +13,19 @@ import { MassPlanner, createMassPlan, templateFor, todayIn } from './MassPlanner
 import { PlannerCalendarView, type CalendarMonth, type PlanKind, type PlanRef, type PwProgress } from './PlannerCalendarView';
 import { usePlannerT } from './strings';
 import { PlanAppearanceButton } from './PlanAppearance';
+import { AnnualCleanupBanner, PlannerCleanupDialog, cleanupNotice } from './PlannerCleanup';
+import { annualCleanupPrompt, dismissCleanupPrompt, readDismissedYear } from '../../shared/planner-cleanup.js';
 import { NO_DRAG } from '../components/appRegion';
-import type { DayNotes, MassSchedule, PlanSummary } from './types';
+import type { DayNotes, MassSchedule, PlanSummary, PlannerCleanupResult } from './types';
+
+/** localStorage, or null where it cannot be read (a private window, blocked site data). */
+function safeStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
 
 const monthOfIso = (iso: string): CalendarMonth => ({ year: Number(iso.slice(0, 4)), month: Number(iso.slice(5, 7)) - 1 });
 
@@ -55,6 +66,17 @@ export function PlannerView() {
   const [dayNotes, setDayNotes] = useState<DayNotes>({});
   const [pwProgress, setPwProgress] = useState<ReadonlyMap<number, PwProgress>>(new Map());
   const [error, setError] = useState<string | null>(null);
+  // Annual Planner Cleanup: the dialog (opened on a year), the once-a-year reminder's dismissal, and the line shown after a cleanup.
+  const [cleanup, setCleanup] = useState<{ year: number | null } | null>(null);
+  const [dismissedYear, setDismissedYear] = useState<number | null>(() => readDismissedYear(safeStorage()));
+  const [cleanupDone, setCleanupDone] = useState<string | null>(null);
+
+  const currentYear = Number(today.slice(0, 4));
+  const reminder = annualCleanupPrompt({ mass: massPlans, pw: sessions }, currentYear, dismissedYear);
+  const dismissReminder = () => {
+    dismissCleanupPrompt(safeStorage(), currentYear);
+    setDismissedYear(currentYear);
+  };
 
   const showPw = view === 'praiseWorship';
   const showMass = !showPw && mode === 'editor' && active?.kind === 'mass';
@@ -215,6 +237,21 @@ export function PlannerView() {
     }
   };
 
+  /**
+   * A cleanup has deleted plans: the calendars read again, an editor that held a deleted plan is closed (its Go Live plan was never deleted),
+   * this year's reminder counts as done, and a line says what went.
+   */
+  const cleanupDeleted = (result: PlannerCleanupResult) => {
+    setCleanup(null);
+    dismissReminder();
+    if (active && (active.kind === 'mass' ? result.massIds : result.pwIds).includes(active.id)) {
+      if (active.kind === 'pw') setPwState({ session: null, sessionId: null });
+      setNav({ mode: 'calendar', active: null });
+    }
+    reloadLists();
+    setCleanupDone(cleanupNotice(t, lang, result));
+  };
+
   // The open plan's name, for the Plan Appearance drawer's header.
   const pwSessionName = usePw((s) => s.session?.name);
   const activeName = active?.kind === 'mass' ? massPlans.find((p) => p.id === active.id)?.name : active?.kind === 'pw' ? pwSessionName : undefined;
@@ -261,7 +298,21 @@ export function PlannerView() {
               </button>
             </div>
           )}
-          <div role="group" aria-label={t('viewSwitch')} className={`${editorOpen && active ? '' : 'ml-auto '}flex rounded-full border border-fg/15 bg-panel-2 p-1 shadow-inner shadow-black/20 backdrop-blur`}>
+          {/* Clean Up Plans: only on a calendar, so the plan open in the editor is never the one that is deleted from under it. */}
+          {!editorOpen && (
+            <div className="ml-auto flex items-center" style={NO_DRAG}>
+              <button
+                type="button"
+                onClick={() => setCleanup({ year: null })}
+                title={t('cleanup_button_tip')}
+                className="inline-flex h-10 items-center gap-2 rounded-full border border-fg/20 bg-surface px-4 text-sm font-bold text-fg shadow-sm transition hover:border-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+              >
+                <Archive size={15} aria-hidden />
+                {t('cleanup_button')}
+              </button>
+            </div>
+          )}
+          <div role="group" aria-label={t('viewSwitch')} className={`${editorOpen && active ? '' : editorOpen ? 'ml-auto ' : ''}flex rounded-full border border-fg/15 bg-panel-2 p-1 shadow-inner shadow-black/20 backdrop-blur`}>
             <button
               type="button"
               aria-pressed={!editorOpen && calendar === 'mass'}
@@ -309,6 +360,18 @@ export function PlannerView() {
 
       {error && <div role="alert" className="mx-5 mt-3 rounded-lg border border-danger/50 bg-danger/10 px-4 py-2 text-sm text-danger">{error}</div>}
 
+      {!editorOpen && reminder.show && cleanup == null && (
+        <AnnualCleanupBanner t={t} count={reminder.count} beforeYear={currentYear} onReview={() => setCleanup({ year: reminder.year })} onDismiss={dismissReminder} />
+      )}
+      {cleanupDone && (
+        <div role="status" style={NO_DRAG} className="mx-5 mt-3 flex items-center gap-3 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-semibold text-fg">
+          <span className="min-w-0 flex-1">{cleanupDone}</span>
+          <button type="button" style={NO_DRAG} onClick={() => setCleanupDone(null)} className="text-xs font-bold text-accent hover:underline">
+            {t('cleanup_close')}
+          </button>
+        </div>
+      )}
+
       {!editorOpen && (
         <div key="calendar" className="planner-view-in px-5 pt-3 pb-6">
           <PlannerCalendarView
@@ -355,6 +418,19 @@ export function PlannerView() {
         <div key="pw-editor" className="planner-view-in flex flex-1 flex-col">
           <PraiseWorship />
         </div>
+      )}
+
+      {cleanup && (
+        <PlannerCleanupDialog
+          t={t}
+          lang={lang}
+          massPlans={massPlans}
+          pwSessions={sessions}
+          initialYear={cleanup.year}
+          currentYear={currentYear}
+          onClose={() => setCleanup(null)}
+          onDeleted={cleanupDeleted}
+        />
       )}
     </div>
   );

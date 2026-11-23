@@ -156,6 +156,12 @@ contextBridge.exposeInMainWorld('apcc', {
     deleteTemplate: (id) => ipcRenderer.invoke('plans:deleteTemplate', id),
   },
 
+  // Annual Planner Cleanup: deletes a year's (or chosen months') plans, and writes them to a backup first when asked.
+  plannerCleanup: {
+    deletePlans: (request) => ipcRenderer.invoke('plannerCleanup:delete', request),
+    exportBackup: (request) => ipcRenderer.invoke('plannerCleanup:exportBackup', request),
+  },
+
   // Each plan's own default look for its slides (Plan Appearance): `kind` is 'mass' or 'pw'.
   planAppearance: {
     get: (kind, id) => ipcRenderer.invoke('planAppearance:get', kind, id),

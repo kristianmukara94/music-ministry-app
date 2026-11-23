@@ -22,6 +22,7 @@ import {
   MapRefused, massEntries, massBody, mergeEntries, praiseBody, praiseEntries, PRAISE_READING_TYPES, READING_TYPES, WEB_NOTE_PREFIX, WEB_REFERENCE_PREFIX,
 } from './plan-sync-map.js';
 import { createWebHubNotes } from './web-hub-notes.js';
+import { appearanceToSend, hasAppearanceColumn, pulledAppearance } from './plan-appearance-sync.js';
 
 const GUARD = 'transfer_import_guard';
 const CURSOR = 'plans_cursor';
@@ -130,6 +131,24 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
   const scheduleOf = (id) =>
     hasSchedule ? one("SELECT COALESCE(mass_time, '') AS massTime, COALESCE(mass_language, '') AS massLanguage FROM mass_plans WHERE id = ?", id) : null;
 
+  // Whether each plan table keeps Plan Appearance (PLAN_APPEARANCE_MIGRATIONS). The look rides with the plan, both ways.
+  const hasLook = { mass_plans: hasAppearanceColumn(db, 'mass_plans'), pw_sessions: hasAppearanceColumn(db, 'pw_sessions') };
+  const lookOf = (table, id) => (hasLook[table] ? one(`SELECT appearance_json AS json FROM ${table} WHERE id = ?`, id)?.json ?? null : null);
+  // A database with no Media Library table holds no pictures, so a pulled picture falls back to its colour.
+  const hasMedia = (mediaId) => {
+    try {
+      return Boolean(one('SELECT 1 AS n FROM media_assets WHERE id = ?', Number(mediaId)));
+    } catch {
+      return false;
+    }
+  };
+  /** Stores a pulled plan's look. Leaves the column alone for an older server or a plan the website never gave a look. */
+  const applyLook = (table, id, incoming) => {
+    if (!hasLook[table]) return;
+    const next = pulledAppearance(incoming, lookOf(table, id), hasMedia);
+    if (next !== undefined) run(`UPDATE ${table} SET appearance_json = ? WHERE id = ?`, next, id);
+  };
+
   const hymnUuidOf = (id) => one('SELECT uuid FROM hymns WHERE id = ?', Number(id))?.uuid ?? null;
   const hymnByUuid = (uuid) => one('SELECT id, title FROM hymns WHERE uuid = ?', uuid) ?? null;
   // The laptop's own Bible row for a Scripture reference from the web, or null when the reference is not a passage this laptop's Bible has. The book is
@@ -192,9 +211,11 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
       // schedules ignores them.
       const schedule = scheduleOf(plan.id);
       const items = massBody(massEntries(massRows(plan.id), hymnUuidOf, (noteId) => webHub.entryIdOf(plan.uuid, noteId))).items;
-      return { ...head, kind: 'mass', ...(schedule ? { massTime: normalizeMassTime(schedule.massTime), massLanguage: normalizeMassLanguage(schedule.massLanguage) } : {}), items };
+      const look = appearanceToSend(lookOf('mass_plans', plan.id), hasLook.mass_plans);
+      return { ...head, kind: 'mass', ...(schedule ? { massTime: normalizeMassTime(schedule.massTime), massLanguage: normalizeMassLanguage(schedule.massLanguage) } : {}), ...(look ? { appearance: look } : {}), items };
     }
-    return { ...head, kind: 'pw', items: praiseBody(praiseEntries(segmentRows(plan.id), hymnUuidOf)).items };
+    const look = appearanceToSend(lookOf('pw_sessions', plan.id), hasLook.pw_sessions);
+    return { ...head, kind: 'pw', ...(look ? { appearance: look } : {}), items: praiseBody(praiseEntries(segmentRows(plan.id), hymnUuidOf)).items };
   }
 
   const cursor = () => one('SELECT value FROM sync_state WHERE key = ?', CURSOR)?.value ?? null;
@@ -306,6 +327,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
     if (hasSchedule && typeof sp.massLanguage === 'string') {
       run('UPDATE mass_plans SET mass_time = ?, mass_language = ? WHERE id = ?', normalizeMassTime(sp.massTime), normalizeMassLanguage(sp.massLanguage), id);
     }
+    applyLook('mass_plans', id, sp.appearance);
     run('UPDATE mass_plans SET server_updated_at = ?, synced_updated_at = ? WHERE id = ?', sp.updatedAt, sp.updatedAt, id);
     return unresolved.length;
   }
@@ -435,6 +457,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
         JSON.stringify(values.content), values.arrangement, values.cues, values.notes,
       );
     }
+    applyLook('pw_sessions', id, sp.appearance);
     run('UPDATE pw_sessions SET server_updated_at = ?, synced_updated_at = ? WHERE id = ?', sp.updatedAt, sp.updatedAt, id);
     return unresolved.length;
   }

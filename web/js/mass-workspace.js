@@ -436,30 +436,6 @@ export function sectionCardHtml(section, { title, open = true, filled = 0, total
 /** COLLAPSE ALL while any part is open, EXPAND ALL once all are closed. */
 export const collapseLabel = (collapsedCount, total) => (collapsedCount >= total ? 'Expand all' : 'Collapse all');
 
-// ---- PRINT LINEUP ----
-
-/**
- * The printable lineup, on white paper: every part with its numbered slots, each item's title and key, and the slot's cue. Titles only: no
- * lyrics or readings are on the web. `sections` are [{ title, rows: [{ n, name, entries, note }] }].
- */
-export function printLineupHtml({ eyebrow = '', name = '', when = '', sections = [] }) {
-  const body = sections.map((section) => {
-    const rows = section.rows.map((row) => {
-      const items = (row.entries ?? []).map((entry) => `${esc(entry.title)}${entry.songId && entry.key ? ` <em>(Key ${esc(entry.key)})</em>` : ''}`).join('<br>');
-      return `<tr><td>${esc(row.n)}</td><td>${esc(row.name)}</td><td>${items || '—'}</td><td>${esc(row.note ?? '')}</td></tr>`;
-    }).join('');
-    return `<tr class="lineup-part"><th colspan="4" scope="colgroup">${esc(section.title)}</th></tr>${rows}`;
-  }).join('');
-  return `
-    <p class="setlist-eyebrow">${esc(eyebrow)}</p>
-    <h1>${esc(name)}</h1>
-    <p class="setlist-when">${esc(when)}</p>
-    <table>
-      <thead><tr><th scope="col">#</th><th scope="col">Slot</th><th scope="col">Song or item</th><th scope="col">Cue</th></tr></thead>
-      <tbody>${body}</tbody>
-    </table>`;
-}
-
 // ---- The Lectionary tab ----
 
 /** The reading cards for a date, filtered by the search (reading title, liturgical day or reference). `readings` are from dayReadingsFor. */

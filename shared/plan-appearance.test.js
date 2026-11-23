@@ -358,6 +358,36 @@ test('the plan’s weight, colour and shadow reach only the words', () => {
   assert.match(css, /\.apcc-plan-text\[data-plan-flat\] \[data-slide-words\] \* \{\n  text-shadow: none !important;/);
 });
 
+test('the Plan Appearance drawer scrolls with a touchpad: no-drag everywhere, bounded flex column, wide scrollbar, focused body', () => {
+  const ui = read('src/planner/PlanAppearance.tsx');
+  const css = read('src/styles.css');
+  // NO_DRAG on the root, backdrop, dialog, header, nav, scroll body and footer (7+), so Windows never swallows two-finger pan/wheel.
+  assert.ok((ui.match(/NO_DRAG/g) ?? []).length >= 9, 'NO_DRAG is applied across the whole drawer');
+  assert.match(ui, /<header [^>]*style=\{NO_DRAG\}/);
+  assert.match(ui, /<footer [^>]*style=\{NO_DRAG\}/);
+  assert.match(ui, /style=\{\{ \.\.\.NO_DRAG, touchAction: 'pan-y' \}\}\n\s+className="plan-appearance-scroll min-h-0 flex-1 [^"]*overflow-y-auto overscroll-contain/, 'scroll body');
+  assert.match(ui, /flex max-h-screen [^"]*flex-col overflow-hidden/, 'viewport-bounded shell');
+  assert.match(ui, /type="range"[\s\S]{0,300}touchAction: 'pan-y'/, 'the dim slider leaves vertical pans to the scroller');
+  assert.match(ui, /bodyRef\.current \?\? dialogRef\.current\)\?\.focus\(\{ preventScroll: true \}\)/, 'keyboard scrolling works on open');
+  assert.match(css, /\.plan-appearance-scroll::-webkit-scrollbar \{\n  width: 12px;/);
+  assert.match(css, /\.plan-appearance-scroll::-webkit-scrollbar-thumb:hover/);
+});
+
+test('the Plan Appearance drawer has quick-jump pills and a collapsible compact preview', () => {
+  const ui = read('src/planner/PlanAppearance.tsx');
+  for (const key of ['background', 'size', 'color']) assert.ok(ui.includes(`data-jump="${key}"`) || ui.includes(`jump="${key}"`), `jump target ${key}`);
+  assert.match(ui, /data-jump-pill=\{key\} onClick=\{\(\) => jumpTo\(key\)\}/);
+  assert.match(ui, /body\.scrollTo\(\{ top: Math\.max\(0, top\), behavior: calm \? 'auto' : 'smooth' \}\)/);
+  assert.match(ui, /useState\(true\)/, 'preview shown by default');
+  assert.match(ui, /data-preview-toggle aria-pressed=\{!showPreview\}/);
+  assert.match(ui, /\{showPreview && \(/);
+  assert.match(ui, /'calc\(34vh \* 16 \/ 9\)'/, 'compact height cap');
+  // Existing controls survive.
+  for (const hook of ['appearance_dim', 'appearance_font_size', 'appearance_font_family', 'appearance_text_color', 'appearance_shadow', 'appearance_overwrite']) assert.ok(ui.includes(hook), hook);
+  const strings = read('shared/planner-i18n.js');
+  for (const key of ['appearance_hide_preview', 'appearance_show_preview', 'appearance_jump_background', 'appearance_jump_size', 'appearance_jump_color']) assert.ok(strings.includes(`${key}:`), key);
+});
+
 test('the Planner offers Plan Appearance on both kinds of plan, with no-drag controls', () => {
   const view = read('src/planner/PlannerView.tsx');
   assert.match(view, /<PlanAppearanceButton key=\{`\$\{active\.kind\}:\$\{active\.id\}`\} kind=\{active\.kind\} planId=\{active\.id\} planName=\{activeName\} \/>/);
@@ -365,4 +395,28 @@ test('the Planner offers Plan Appearance on both kinds of plan, with no-drag con
   assert.match(ui, /style=\{\{ \.\.\.NO_DRAG, top: TITLE_BAR_CLEARANCE \}\}/, 'the drawer clears the title bar and is no-drag');
   assert.match(ui, /<PlanLookOverride\.Provider value=\{preview\}>/, 'the live preview draws the draft through the projector’s renderer');
   for (const label of ['Sample Song Line', 'Sample Prayer Line', 'Sample Plan Title', 'Sample Segment']) assert.ok(ui.includes(label), `synthetic sample: ${label}`);
+});
+
+test('the Plan Appearance preview floats (sticky, compact) once the body scrolls, without blocking touchpad scrolling', () => {
+  const ui = read('src/planner/PlanAppearance.tsx');
+  assert.match(ui, /onScroll=\{onBodyScroll\}/, 'the scroll body reports its scroll position');
+  assert.match(ui, /bodyRef\.current\?\.scrollTop/);
+  assert.match(ui, /const DOCK_ON = 24;/);
+  assert.match(ui, /top > DOCK_ON/);
+  assert.match(ui, /const docked = scrolled && floatOn;/);
+  assert.match(ui, /'sticky top-0 z-20 /, 'docked preview is sticky at the top of the scroll area');
+  assert.match(ui, /backdrop-blur/);
+  assert.match(ui, /border-accent/);
+  assert.match(ui, /shadow-lg/);
+  assert.match(ui, /DOCK_PREVIEW_HEIGHT = 145/, 'compact height');
+  assert.match(ui, /aspect-video/, '16:9 is kept');
+  assert.match(ui, /marginBottom: docked && spacer \? spacer : undefined/, 'layout below keeps its place: no jump');
+  assert.match(ui, /data-preview-pin/, 'float/dock pin toggle');
+  assert.match(ui, /data-preview-toggle/, 'hide toggle stays on the floating header');
+  assert.match(ui, /setSample\(s\)/, 'song/prayer pills stay on the floating header');
+  // The floating card stays no-drag and pans vertically, as does the scroll body.
+  assert.match(ui, /style=\{\{ \.\.\.NO_DRAG, touchAction: 'pan-y', marginBottom/);
+  assert.match(ui, /data-plan-scroll[\s\S]*?style=\{\{ \.\.\.NO_DRAG, touchAction: 'pan-y' \}\}/);
+  const strings = read('shared/planner-i18n.js');
+  for (const key of ['appearance_preview_pin', 'appearance_preview_unpin']) assert.ok(strings.includes(`${key}:`), key);
 });

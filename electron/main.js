@@ -31,6 +31,7 @@ import { setupWhiteboard } from './whiteboard.js';
 import { setupLectionary } from './lectionary.js';
 import { setupMedia } from './media.js';
 import { setupMassPlans } from './mass-plans.js';
+import { setupPlannerCleanup } from './planner-cleanup.js';
 import { setupCalendarNotes } from './calendar-notes.js';
 import { setupPwSessions } from './pw-sessions.js';
 import { setupPlanAppearance } from './plan-appearance.js';
@@ -1883,6 +1884,8 @@ app.whenReady().then(() => {
   setupCalendarNotes(announcements.db);
   const pwService = setupPwSessions(announcements.db);
   setupPlanAppearance(announcements.db);
+  // Annual Planner Cleanup: its cloud deletions (tombstones) are sent at once, so the website drops the plans without waiting for the next sync.
+  setupPlannerCleanup(announcements.db, { afterDelete: (result) => result.deletedFromCloud && planSync?.runOnce('cleanup') });
   // Packaged builds copy resources/bible next to the app; in development it is read from the project.
   const bibleDataDir = app.isPackaged
     ? path.join(process.resourcesPath, 'bible')

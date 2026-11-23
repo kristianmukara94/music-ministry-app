@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { bridge } from '../live/bridge';
 import { liveLyrics } from '../live/liveSongEdits';
 import { dispatch, useLive } from '../live/store';
+import { openQuickLivePreview } from '../golive/quickLiveSession';
 import { stanzaFrame } from '../lyrics/frames';
 import type { Hymn } from '../lyrics/types';
 import { livePosition } from '../../shared/pw.js';
-import type { LowerThird } from '../../shared/live.js';
+import type { Frame, LowerThird } from '../../shared/live.js';
 import { frameFor, liveDeck, lowerThirdFor } from './live';
 import { usePw } from './store';
 import { isTextEntry } from './textEntry';
@@ -32,6 +33,11 @@ export interface OffPlanSong {
 /** The lower third for a song sent from search: its category as the tag, then its title and composer. */
 export function quickLiveBand(hymn: Pick<Hymn, 'title' | 'composer' | 'songCategory'>): LowerThird {
   return { template: 'segment', tag: hymn.songCategory || 'Song', line1: hymn.title, ...(hymn.composer ? { line2: hymn.composer } : {}) };
+}
+
+/** Every stanza with words, as the Quick-Live popup walks them: blank ones are skipped. */
+export function songPreviewFrames(hymn: Hymn): Frame[] {
+  return hymn.stanzas.flatMap((s, i) => (s.lyricsText.trim() ? [stanzaFrame(hymn, i)] : [])).filter((f): f is Frame => f !== null);
 }
 
 /** The first stanza with words in it. A song whose first stanza is blank starts on the next one rather than on an empty screen. */
@@ -125,10 +131,11 @@ export function useQuickLiveController() {
           say({ hymnId, kind: 'empty', text: `"${hymn.title}" has no lyrics to show. Open it in Song Lyrics to add them.` });
           return false;
         }
+        // The run on air now is read before the take: it is the one the popup's Return to Main Live puts back.
+        const before = useLive.getState().state;
         dispatch({ type: 'projector/show', frame, source: 'DIRECT_DECK' });
-        setCue(hymn);
-        // The song is on air: its cues take the whole workspace until the operator closes the focus view.
-        setGoLiveFocused(true);
+        // The song opens the same Quick-Live popup as a prayer's LIVE (src/golive/QuickLivePreview.tsx), over the lineup, which stays as it is.
+        openQuickLivePreview(before, { title: hymn.title, frames: songPreviewFrames(hymn) });
         // The band naming the song is staged, not turned on: the operator shows it with the Lower third toggle when ready.
         bandRef.current = quickLiveBand(hymn);
         dispatch({ type: 'lowerThird/stage', value: bandRef.current });

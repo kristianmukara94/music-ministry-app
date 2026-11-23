@@ -715,21 +715,264 @@ test('Notes & Cues add to the target slot\'s note, and Templates replace what th
   assert.match(readWeb('js/mass.js'), /if \(\(id === 'clear' \|\| holdsAnything\(\)\) && !window\.confirm\(question\)\) return;/);
 });
 
-test('PRINT LINEUP prints every part with its numbered slots, titles, keys and cues, and nothing more', () => {
-  const html = workspace.printLineupHtml({
-    eyebrow: 'Holy Mass lineup',
-    name: 'Sample <Plan> Title',
-    when: 'Sample Liturgical Day · 9:30 AM',
-    sections: [{ title: '1. Introductory Rites', rows: [
-      { n: 1, name: 'Entrance Hymn', entries: [{ songId: SONG_ENTRANCE, title: 'Sample Song Title', key: 'D' }], note: 'Sample Musician Cue' },
-      { n: 2, name: 'I Confess (Confiteor)', entries: [], note: '' },
-    ] }],
-  });
-  assert.match(html, /<h1>Sample &lt;Plan&gt; Title<\/h1>/);
-  assert.match(html, /<tr class="lineup-part"><th colspan="4" scope="colgroup">1\. Introductory Rites<\/th><\/tr>/);
-  assert.match(html, /<tr><td>1<\/td><td>Entrance Hymn<\/td><td>Sample Song Title <em>\(Key D\)<\/em><\/td><td>Sample Musician Cue<\/td><\/tr>/);
-  assert.match(html, /<tr><td>2<\/td><td>I Confess \(Confiteor\)<\/td><td>—<\/td><td><\/td><\/tr>/);
-  assert.match(readWeb('js/mass.js'), /document\.body\.classList\.add\('is-printing-setlist'\);\s*[\s\S]*?window\.print\(\);/);
+// ---- PRINT LINEUP: one desktop-parity sheet for the Holy Mass editor, the Praise & Worship editor and the calendar cards ----
+
+const sheet = await load('web', 'js', 'print-lineup-sheet.js');
+const prayerScripture = await load('web', 'js', 'prayer-scripture.js');
+const lineupModel = await load('web', 'js', 'praise-lineup.js');
+const SAMPLE_CHURCH = 'Sample Parish Name';
+const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** A Holy Mass plan as plan-get returns it: a song with a transposed key and a cue, a prayer, a Scripture reference, the day's First Reading and a typed note. */
+function samplePrintMass(over = {}) {
+  const prayer = prayerScripture.PRAYER_CATALOG[0];
+  const scripture = prayerScripture.buildScripture({ book: 'Sample Book', chapter: 3, verses: '1-6', version: 'WEB' }).text;
+  let segments = {};
+  segments = model.withEntry(segments, rowOfSlot(1).id, { songId: SONG_ENTRANCE, contentType: 'song', keyTransposed: 'E' });
+  segments = model.withEntry(segments, rowOfSlot(2).id, prayerScripture.prayerEntry(prayer));
+  segments = model.withEntry(segments, rowOfSlot(3).id, prayerScripture.scriptureEntry(scripture));
+  segments = model.withEntry(segments, rowOfSlot(20).id, { text: 'First Reading', contentType: 'scripture' });
+  segments = model.withEntry(segments, rowOfSlot(10).id, { text: 'Sample <b>Typed</b> Note', contentType: 'text_note' });
+  const notes = { [rowOfSlot(1).id]: 'Sample Musician Cue' };
+  const items = model.massToItems({ segments, notes, extra: [], meta: {}, contentHubItems: [] }, ROWS);
+  return { plan: { id: ids(7), kind: 'mass', name: 'Sample Plan Title', date: SUNDAY, language: 'EN', massTime: '9:30 AM', massLanguage: 'English', items, contentHubItems: [], ...over }, prayer, scripture };
+}
+
+test('PRINT LINEUP, Holy Mass: parish and plan header, Ordo day and season, schedule, parts with numbered slots, type pills, citations, keys and cues', () => {
+  const { plan, prayer, scripture } = samplePrintMass();
+  const lineup = sheet.printLineupFromPlan(plan, LIBRARY, { church: SAMPLE_CHURCH });
+  assert.equal(lineup.type, 'mass');
+  assert.equal(lineup.dayName, '32nd Sunday in Ordinary Time');
+  assert.equal(lineup.season, 'Ordinary Time');
+  assert.match(lineup.schedule, /9:30 AM/);
+  assert.match(lineup.schedule, /\bEN\b/, 'the language its texts are in');
+  const html = sheet.sheetHtml(lineup);
+  assert.match(html, /<span class="pl-parish">Sample Parish Name<\/span><span class="pl-badge">HOLY MASS LITURGICAL PLAN<\/span>/);
+  assert.match(html, /<h1 class="pl-title">Sample Plan Title<\/h1>/);
+  assert.match(html, /32nd Sunday in Ordinary Time/);
+  assert.match(html, /<span>Ordinary Time<\/span>/);
+  // Grouped by the parts of the Holy Mass, each with its slots in slot order, numbered as the editor numbers them.
+  const parts = [...html.matchAll(/<h2>([^<]+)<\/h2>/g)].map((m) => m[1]);
+  assert.equal(parts[0], '1. Introductory Rites');
+  assert.ok(parts.includes('2. Liturgy of the Word'), parts.join('|'));
+  assert.match(html, /<li class="pl-row"><span class="pl-num">01<\/span>/);
+  // The five kinds of item, each with its pill.
+  assert.match(html, /<span class="pl-pill is-song">SONG<\/span><span class="pl-item-title">Sample Song Title<\/span><span class="pl-key">Key E<\/span>/, 'the key this plan sings it in');
+  assert.match(html, new RegExp(`<span class="pl-pill is-prayer">PRAYER</span><span class="pl-item-title">${escapeRe(prayer.title)}</span>`));
+  assert.match(html, /<span class="pl-pill is-scripture">SCRIPTURE<\/span>/);
+  assert.ok(html.includes(scripture.replace(/&/g, '&amp;')), 'the Scripture citation');
+  assert.match(html, /<span class="pl-pill is-reading">READING<\/span><span class="pl-item-title">First Reading<\/span><span class="pl-cite">[^<]+<\/span>/, 'the day\'s reading with its Ordo reference');
+  assert.match(html, /<span class="pl-pill is-note">NOTE<\/span><span class="pl-item-title">Sample &lt;b&gt;Typed&lt;\/b&gt; Note<\/span>/, 'typed text is escaped');
+  assert.match(html, /<p class="pl-cue"><span>Cue<\/span>Sample Musician Cue<\/p>/);
+  assert.ok(!html.includes('<b>'), 'nothing typed reaches the page as markup');
+  assert.equal(lineup.totals.items, 5);
+  assert.match(html, /5 items/);
+});
+
+test('PRINT LINEUP, Praise & Worship: sections with their minutes, numbered rows, badges, durations and cues', () => {
+  const prayer = prayerScripture.PRAYER_CATALOG[0];
+  const segs = lineupModel.lineupFromPlan([]).segs;
+  const first = segs[0].id;
+  const second = segs[1].id;
+  let segments = {};
+  segments = model.withEntry(segments, first, prayerScripture.prayerEntry(prayer));
+  segments = model.withEntry(segments, second, { songId: SONG_ENTRANCE, contentType: 'song' });
+  const items = model.praiseToItems({ segments, notes: { [second]: 'Sample Worship Leader Cue' }, extra: [], present: new Set(segs.map((x) => x.id)) }, segs);
+  const plan = { id: ids(8), kind: 'pw', name: 'Sample Praise Night', date: SUNDAY, items, contentHubItems: [] };
+  const lineup = sheet.printLineupFromPlan(plan, LIBRARY, { church: SAMPLE_CHURCH });
+  assert.equal(lineup.type, 'pw');
+  assert.deepEqual(lineup.sections.map((x) => x.heading), ['Opening', 'Praise & Worship', 'Word & Offering']);
+  assert.deepEqual(lineup.sections.map((x) => x.minutes), [15, 39, 20], 'the laptop\'s own section minutes');
+  assert.equal(lineup.totals.minutes, 74);
+  const html = sheet.sheetHtml(lineup);
+  assert.match(html, /<span class="pl-badge">PRAISE &amp; WORSHIP LINEUP<\/span>/);
+  assert.match(html, /<h2>Opening<\/h2><span class="pl-section-min">15 MIN<\/span>/);
+  assert.match(html, /<span class="pl-section-min">39 MIN<\/span>/);
+  assert.match(html, /<span class="pl-section-min">20 MIN<\/span>/);
+  assert.match(html, /74 min total/);
+  assert.match(html, /<li class="pl-row"><span class="pl-num">01<\/span>/);
+  assert.match(html, /<li class="pl-row"><span class="pl-num">02<\/span>/);
+  assert.match(html, /<span class="pl-pill is-song">SONG<\/span><span class="pl-item-title">Sample Song Title<\/span>/);
+  assert.match(html, /<span class="pl-pill is-prayer">PRAYER<\/span>/);
+  assert.match(html, /<span class="pl-min">\d+ min<\/span>/);
+  assert.match(html, /<p class="pl-cue"><span>Cue<\/span>Sample Worship Leader Cue<\/p>/);
+  assert.doesNotMatch(html, /Holy Mass/i, 'a Praise & Worship sheet is not headed as a Holy Mass');
+});
+
+test('PRINT LINEUP carries titles only: no lyrics, prayer words or Bible text can reach the sheet', () => {
+  const { plan } = samplePrintMass();
+  // A song's words, a prayer's words and a verse are not fields the sheet reads, so even an item that carried them prints without them.
+  const loaded = { ...plan, items: plan.items.map((i) => ({ ...i, lyrics: 'Sample lyric words', verseText: 'Sample verse words', prayerText: 'Sample prayer words' })) };
+  const html = sheet.sheetHtml(sheet.printLineupFromPlan(loaded, LIBRARY, { church: SAMPLE_CHURCH }));
+  for (const words of ['Sample lyric words', 'Sample verse words', 'Sample prayer words']) assert.ok(!html.includes(words), words);
+  // An empty plan prints a plain line, not a broken sheet.
+  const empty = sheet.sheetHtml(sheet.printLineupFromPlan({ ...plan, items: [] }, LIBRARY, { church: '' }));
+  assert.match(empty, /Nothing is planned yet\./);
+  // The parish name and every title are escaped.
+  const risky = sheet.sheetHtml(sheet.printLineupFromPlan({ ...plan, name: '<img src=x>' }, LIBRARY, { church: 'Sample <i>Parish</i>' }));
+  assert.doesNotMatch(risky, /<img|<i>/);
+});
+
+test('every Print Lineup button prints the same sheet: both editors and the calendar cards', () => {
+  for (const file of ['js/mass.js', 'js/praise.js', 'js/plans.js']) {
+    const source = readWeb(file);
+    assert.match(source, /from '\.\/print-lineup-sheet\.js'/, `${file} uses the shared sheet`);
+    assert.match(source, /printLineupFromPlan/, `${file} builds the lineup from a plan`);
+  }
+  assert.match(readWeb('js/mass.js'), /printSheet\(currentLineup\(\)\)/);
+  assert.match(readWeb('js/praise.js'), /printSheet\(currentLineup\(\)\)/);
+  assert.match(readWeb('js/plans.js'), /printSheet\(lineup, \{ host: setlistPrint \}\)/);
+  assert.match(readWeb('js/plans.js'), /'Print Lineup'/, 'the card menu says Print Lineup');
+  assert.match(readWeb('plan/praise.html'), /id="print"[\s\S]*?Print Lineup/);
+  // The browser's own Print command (Ctrl+P) gets the sheet too, in both editors.
+  for (const file of ['js/mass.js', 'js/praise.js']) assert.match(readWeb(file), /addEventListener\('beforeprint'/);
+  // The app is hidden while it prints; the sheet is laid out for A4 or Letter without a page break inside a row.
+  const css = readWeb('css/planner.css');
+  assert.match(css, /body\.is-printing-setlist \.shell/);
+  assert.match(css, /\.pl-row \{[^}]*break-inside: avoid/);
+  assert.match(css, /\.pl-section-head \{[^}]*break-after: avoid/);
+});
+
+test('printSheet fills the print section, marks the page and puts both back when printing ends', () => {
+  const classes = new Set();
+  const doc = { title: 'Page', body: { classList: { add: (c) => classes.add(c), remove: (c) => classes.delete(c) } } };
+  const host = { innerHTML: '' };
+  let printed = 0;
+  const listeners = [];
+  const win = { print: () => { printed += 1; }, addEventListener: (type, fn) => listeners.push([type, fn]) };
+  const { plan } = samplePrintMass();
+  const lineup = sheet.printLineupFromPlan(plan, LIBRARY, { church: SAMPLE_CHURCH });
+  assert.equal(sheet.printSheet(lineup, { host, doc, win }), true);
+  assert.match(host.innerHTML, /class="pl-sheet"/);
+  assert.ok(classes.has('is-printing-setlist'));
+  assert.equal(doc.title, 'Lineup - Sample Plan Title', 'the name the browser offers for the PDF');
+  assert.equal(printed, 1);
+  listeners.find(([type]) => type === 'afterprint')[1]();
+  assert.equal(classes.size, 0);
+  assert.equal(doc.title, 'Page');
+  assert.equal(sheet.printSheet(lineup, { host: null, doc, win }), false, 'no print section, nothing printed');
+});
+
+// ---- PLAN APPEARANCE on the web ----
+
+const lookUi = await load('web', 'js', 'plan-appearance-ui.js');
+
+test('the web\'s Plan Appearance schema is the laptop\'s: byte-for-byte copies of shared/', () => {
+  for (const file of ['plan-appearance.js', 'projector-settings.js', 'text-style.js', 'text-fit.js']) {
+    assert.ok(fs.readFileSync(path.join(root, 'shared', file)).equals(fs.readFileSync(path.join(root, 'web', 'js', file))), `copy shared/${file} over web/js/${file}`);
+  }
+});
+
+test('Plan Appearance controls: every change is sanitized to the laptop\'s schema, and the laptop\'s picture is never lost', () => {
+  let look = lookUi.sanitizePlanAppearance(null);
+  assert.equal(look.enabled, false);
+  assert.deepEqual(lookUi.appearanceSummary(look), { custom: false, label: 'Global Default', color: null, media: null });
+  look = lookUi.editAppearance(look, 'bg-color', '#1b3b2b');
+  assert.equal(look.enabled, true, 'a change turns Custom Plan Look on');
+  assert.equal(look.background.color, '#1B3B2B');
+  look = lookUi.editAppearance(look, 'dim', 0.55);
+  assert.equal(look.background.dimOpacity, 0.55);
+  look = lookUi.editAppearance(look, 'dim', 3);
+  assert.equal(look.background.dimOpacity, 0.8, 'the dim stops at 80%');
+  look = lookUi.editAppearance(look, 'size', '1.25');
+  assert.equal(look.typography.fontSizeScale, 1.25);
+  look = lookUi.editAppearance(look, 'size-step', 1);
+  assert.equal(look.typography.fontSizeScale, 1.5);
+  look = lookUi.editAppearance(look, 'size', 'max');
+  assert.equal(look.typography.fontSizeScale, 'max');
+  look = lookUi.editAppearance(look, 'size-step', 1);
+  assert.equal(look.typography.fontSizeScale, 'max', 'MAX is the top');
+  look = lookUi.editAppearance(look, 'font', 'playfair');
+  look = lookUi.editAppearance(look, 'font', 'not-a-font');
+  assert.equal(look.typography.fontFamily, undefined, 'an unknown font falls back to the global one');
+  look = lookUi.editAppearance(look, 'font', 'serif');
+  look = lookUi.editAppearance(look, 'weight', 'semibold');
+  look = lookUi.editAppearance(look, 'case', 'upper');
+  look = lookUi.editAppearance(look, 'align', 'left');
+  look = lookUi.editAppearance(look, 'text-color', '#fff');
+  look = lookUi.editAppearance(look, 'text-color', 'javascript:1');
+  look = lookUi.editAppearance(look, 'shadow', false);
+  assert.deepEqual(look.typography, { fontFamily: 'serif', fontSizeScale: 'max', fontWeight: 'semibold', textCase: 'upper', textAlign: 'left', textColor: '#FFFFFF', textShadow: false });
+  assert.deepEqual(lookUi.appearanceSummary(look), { custom: true, label: 'Custom Look · All Slides', color: '#1B3B2B', media: null });
+
+  // A picture or clip from the laptop rides along untouched through every edit and a reset, and a bad address is refused.
+  const withPicture = { ...look, background: { ...look.background, type: 'image', mediaPath: 'apcc-media://media/42', mediaId: '42' } };
+  for (const [action, value] of [['bg-color', '#000000'], ['font', 'mono'], ['dim', 0.3], ['mode', 'global']]) {
+    const next = lookUi.editAppearance(withPicture, action, value);
+    assert.equal(next.background.mediaPath, 'apcc-media://media/42', action);
+    assert.equal(next.background.mediaId, '42');
+  }
+  assert.equal(lookUi.editAppearance(withPicture, 'reset').background.mediaPath, 'apcc-media://media/42', 'Reset to Default keeps the picture attached');
+  assert.equal(lookUi.editAppearance(withPicture, 'reset').enabled, false);
+  assert.equal(lookUi.sanitizePlanAppearance({ enabled: true, background: { mediaPath: 'file:///C:/secret.png' } }).background.mediaPath, undefined);
+  assert.deepEqual(lookUi.laptopMediaOf(withPicture), { type: 'image', id: '42', path: 'apcc-media://media/42' });
+
+  // Reset to Default with nothing attached is exactly the default, so an untouched plan sends nothing.
+  assert.ok(lookUi.samePlanAppearance(lookUi.editAppearance(look, 'reset'), lookUi.PLAN_APPEARANCE_DEFAULT));
+  assert.equal(lookUi.appearanceForCreate(lookUi.sanitizePlanAppearance(null)), undefined);
+  assert.equal(lookUi.appearanceForCreate(look).enabled, true);
+  assert.equal(lookUi.applyToAll(lookUi.sanitizePlanAppearance(null)).enabled, true, 'Apply to All Slides turns the plan\'s look on');
+});
+
+test('the Plan Appearance drawer: preview, mode, background, size pills, fonts, weight, case, alignment, text colour and shadow', () => {
+  const look = lookUi.editAppearance(null, 'bg-color', '#0F2A4A');
+  const html = lookUi.controlsHtml(look);
+  assert.match(html, /Use Global Default/);
+  assert.match(html, /Custom Plan Look \(All Slides\)/);
+  for (const label of ['85%', '100%', '115%', '125%', '150%', '200%', 'MAX']) assert.match(html, new RegExp(`>${label}</button>`), label);
+  assert.match(html, /aria-label="Smaller text">A−</);
+  assert.match(html, /aria-label="Larger text">A\+</);
+  for (const label of ['Regular', 'Semi-Bold', 'Bold', 'As Typed', 'UPPERCASE', 'Center', 'Left', 'Right', 'Drop shadow', 'Dim overlay']) assert.ok(html.includes(label), label);
+  assert.match(html, /max="80"/, 'the dim reaches 80%');
+  assert.match(html, /<option value="sans" selected>Inter \(Default\)<\/option>/);
+  assert.match(html, /data-pa="bg-color" data-value="#0F2A4A" aria-pressed="true"/, 'the colour in use is marked');
+  // Global Default: the controls are switched off until Custom is chosen.
+  assert.match(lookUi.controlsHtml(null), /<fieldset class="pa-group" disabled>/);
+  assert.doesNotMatch(html, /<fieldset class="pa-group" disabled>/);
+  // A viewer sees the look and cannot change it.
+  assert.match(lookUi.controlsHtml(look, { canEdit: false }), /<fieldset class="pa-group" disabled>/);
+  // The laptop's picture shows as a read-only note.
+  const picture = { ...look, background: { ...look.background, type: 'motion', mediaPath: 'apcc-media://media/7' } };
+  assert.match(lookUi.controlsHtml(picture), /data-pa-media>A looping motion background/);
+  // The live 16:9 slide: the colour, the dim, the sample, the safe-area guide.
+  const stage = lookUi.previewHtml(lookUi.editAppearance(look, 'dim', 0.4), { sample: 'prayer', safe: true });
+  assert.match(stage, /pa-stage-bg" style="background:#0F2A4A"/);
+  assert.match(stage, /pa-stage-dim" style="opacity:0.4"/);
+  assert.match(stage, /Sample Prayer Title/);
+  assert.match(stage, /pa-stage-safe/);
+  assert.doesNotMatch(lookUi.previewHtml(look, { safe: false }), /pa-stage-safe/);
+  assert.match(lookUi.previewHtml(look, { sample: 'song' }), /Sample Song Title/);
+  // The header button: the swatch and the status.
+  assert.match(lookUi.appearanceButtonHtml(null), /pa-dot is-global[\s\S]*Plan Appearance[\s\S]*Global Default/);
+  assert.match(lookUi.appearanceButtonHtml(look), /background:#0F2A4A[\s\S]*is-custom">Custom Look · All Slides/);
+  // The compact section of the Create a plan card.
+  assert.match(lookUi.compactSectionHtml(), /Plan Appearance \(All Slides\)/);
+  const compact = lookUi.controlsHtml(null, { compact: true });
+  for (const part of ['Slide background', 'Text color', 'Font', 'Font size']) assert.ok(compact.includes(part), part);
+  assert.doesNotMatch(compact, /<fieldset/, 'the card\'s controls are live without a mode switch');
+});
+
+test('both editors and the Create a plan card carry the Plan Appearance button, and the plan\'s look is saved, copied and created with it', () => {
+  assert.match(readWeb('plan/mass.html'), /id="print-lineup"[\s\S]*?id="plan-appearance"/);
+  assert.match(readWeb('plan/praise.html'), /id="plan-appearance"[\s\S]*?id="print"[\s\S]*?id="duplicate"[\s\S]*?id="save"/);
+  for (const file of ['js/mass.js', 'js/praise.js']) {
+    const source = readWeb(file);
+    assert.match(source, /mountAppearanceButton\(document\.getElementById\('plan-appearance'\)/, file);
+    assert.match(source, /appearance: state\.appearance/, `${file} saves the look`);
+    assert.match(source, /state\.appearance = next;/, `${file} keeps an applied look as a change`);
+  }
+  const look = lookUi.editAppearance(null, 'bg-color', '#1A1A1A');
+  const plan = { id: ids(9), name: 'Sample Plan Title', updatedAt: '2026-11-02T12:00:00.000Z', date: SUNDAY, kind: 'mass', items: [], appearance: look };
+  assert.deepEqual(model.savePayload(plan, [], { appearance: look }).appearance, look);
+  assert.equal('appearance' in model.savePayload(plan, [], {}), false, 'a save that does not mention it leaves the server\'s look alone');
+  assert.deepEqual(model.duplicateRequest(plan, ids(10)).appearance, look, 'a copy keeps the look');
+  assert.equal('appearance' in model.duplicateRequest({ ...plan, appearance: null }, ids(10)), false);
+  const base = { name: 'Sample Plan Title', date: SUNDAY, kind: 'mass', language: 'EN' };
+  assert.deepEqual(model.newPlanRequest({ ...base, appearance: look }, ids(11)).appearance, look);
+  assert.equal('appearance' in model.newPlanRequest({ ...base, appearance: lookUi.sanitizePlanAppearance(null) }, ids(11)), false, 'the Global Default sends nothing');
+  assert.equal('appearance' in model.newPlanRequest(base, ids(11)), false);
+  assert.match(form.newPlanFormHtml(), /id="np-appearance"[\s\S]*Plan Appearance \(All Slides\)[\s\S]*id="new-plan-status"/);
+  assert.match(readWeb('js/new-plan-form.js'), /massLanguage: schedule\.massLanguage,\r?\n    appearance,\r?\n  \}\);/, 'the card hands its look to the new plan');
 });
 
 // ---- The day's readings: Lectionary citations, auto-population, the Lectionary tab and the reading rows ----

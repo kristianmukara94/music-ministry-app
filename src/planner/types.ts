@@ -78,6 +78,38 @@ export interface LibraryItem {
   categories?: string[];
 }
 
+/** What the Planner sends to clean up plans (shared/planner-cleanup.js holds the matching rules). */
+export interface PlannerCleanupRequest {
+  year: number;
+  /** 0 (January) to 11. Null: the entire year. */
+  months: number[] | null;
+  planType: 'all' | 'mass' | 'pw';
+  /** Also delete the plans from the cloud / Web Planner (records the sync deletions). */
+  deleteFromCloud?: boolean;
+  /** Plans loaded on air in Go Live. They are skipped and reported, never deleted. */
+  protectedMassIds?: number[];
+  protectedPwIds?: number[];
+}
+
+export interface PlannerCleanupResult {
+  year: number;
+  months: number[] | null;
+  deletedMass: number;
+  deletedPw: number;
+  deleted: number;
+  skipped: { kind: 'mass' | 'pw'; id: number; name: string; liturgicalDate: string }[];
+  deletedFromCloud: boolean;
+  /** The ids that were deleted, so the Planner can close an editor that held one. */
+  massIds: number[];
+  pwIds: number[];
+}
+
+export interface PlannerCleanupApi {
+  deletePlans(request: PlannerCleanupRequest): Promise<PlannerCleanupResult>;
+  /** Null when the operator cancels the save dialog, or nothing matches. */
+  exportBackup(request: PlannerCleanupRequest): Promise<{ path: string; counts: Record<string, number> } | null>;
+}
+
 export interface PlansApi {
   list(): Promise<PlanSummary[]>;
   /** Makes a plan. A plan with a time and language that another plan on the same day already has is refused. */

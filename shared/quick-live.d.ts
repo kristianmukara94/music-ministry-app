@@ -16,5 +16,12 @@ export function quickLiveIndex(session: QuickLiveSession | null, projector: Live
 export function quickLiveNextFrame(session: QuickLiveSession | null, projector: LiveState['projector'] | null | undefined): Frame | null;
 export function quickLiveStepAction(session: QuickLiveSession | null, projector: LiveState['projector'] | null | undefined, delta: 1 | -1): LiveAction | null;
 export function quickLiveCounter(session: QuickLiveSession | null, projector: LiveState['projector'] | null | undefined): string | null;
+export interface QuickLiveJumpItem {
+  index: number;
+  label: string;
+  current: boolean;
+}
+export function quickLiveJumpItems(session: QuickLiveSession | null, projector: LiveState['projector'] | null | undefined): QuickLiveJumpItem[];
+export function quickLiveJumpAction(session: QuickLiveSession | null, projector: LiveState['projector'] | null | undefined, index: number): LiveAction | null;
 export function quickLiveExit(session: QuickLiveSession | null, state: LiveState | null): QuickLiveExit;
 export function quickLiveShouldClose(session: QuickLiveSession | null, state: LiveState | null, seen: boolean): boolean;

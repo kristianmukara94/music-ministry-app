@@ -22,7 +22,9 @@ test('the flag starts off and is never persisted', () => {
 });
 
 test('Go Live turns focus on: a song from search, the header button and the Live tab button', () => {
-  assert.match(hook, /setCue\(hymn\);\n\s+\/\/[^\n]*\n\s+setGoLiveFocused\(true\);/, 'on after the song is on air, not before');
+  // A song from Library search no longer takes the focus view: it opens the Quick-Live popup, the same as a prayer's LIVE.
+  assert.doesNotMatch(hook, /setCue\(hymn\);/);
+  assert.match(hook, /openQuickLivePreview\(before, \{ title: hymn\.title, frames: songPreviewFrames\(hymn\) \}\);/);
   assert.match(shell, /setPwState\(\{ tab: 'live', isGoLiveFocused: true \}\);\n\s+goLive\(\);/);
   assert.match(shell, /setPwState\(\{ tab: id, isGoLiveFocused: false \}\)/, 'switching tabs starts the new view in its normal layout');
   assert.match(liveView, /setGoLiveFocused\(true\);\n\s+goLive\(\);/);

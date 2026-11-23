@@ -14,6 +14,7 @@ import { checkNewPlan, dateShortcut, newPlanRequest, suggestPlanName } from './p
 import { liturgicalDay } from './planner-calendar.js';
 import { createPlan } from './plan-api.js';
 import { dayReadingItems } from './day-readings.js';
+import { compactSectionHtml, mountCompactAppearance, sanitizePlanAppearance } from './plan-appearance-ui.js';
 
 /** The action card at the foot of the card, per kind, in the laptop's words. */
 export const ACTIONS = {
@@ -84,7 +85,7 @@ export function newPlanCard({ kind = 'mass', date = '', name = '', massTime = ''
 }
 
 /**
- * Makes the plan the card describes. `input` is { name, date, kind, language, massTime, massLanguage }; `create(request)` posts it (the
+ * Makes the plan the card describes. `input` is { name, date, kind, language, massTime, massLanguage, appearance }; `create(request)` posts it (the
  * server's answer has `plan`). Returns { plan }, { problem } (a message for the card) or { conflict } (the Holy Mass already at that time,
  * from `known` or from the server). Nothing is sent for a problem or a known conflict.
  */
@@ -142,6 +143,8 @@ export function newPlanFormHtml() {
           <div id="schedule-conflict" hidden></div>
         </div>
 
+        ${compactSectionHtml()}
+
         <p id="new-plan-status" class="np-error" role="alert"></p>
 
         <button id="new-plan-submit" type="submit" class="np-action">
@@ -182,6 +185,14 @@ export function mountNewPlanForm(root, { kind = 'mass', date = '', plans = [], o
   // The church's plans, for the taken-time warning. Until they load (or if they cannot), the server still refuses a taken time.
   let known = plans ?? [];
   let schedule = { massTime: '', massLanguage: '' };
+  // The plan's own slide look (Plan Appearance), when the planner opens that section and sets one.
+  let appearance = sanitizePlanAppearance(null);
+  const look = mountCompactAppearance(byId('np-appearance'), {
+    onChange: (next) => {
+      appearance = next;
+      status.textContent = '';
+    },
+  });
   const fields = mountScheduleFields(byId('schedule-fields'), {
     id: 'new-schedule',
     onChange: (next) => {
@@ -200,6 +211,7 @@ export function mountNewPlanForm(root, { kind = 'mass', date = '', plans = [], o
     language: textsLanguageFor(schedule.massLanguage),
     massTime: schedule.massTime,
     massLanguage: schedule.massLanguage,
+    appearance,
   });
 
   function suggestName() {
@@ -288,6 +300,9 @@ export function mountNewPlanForm(root, { kind = 'mass', date = '', plans = [], o
     dateInput.value = day || dateShortcut('sunday');
     schedule = { massTime: '', massLanguage: '' };
     fields.set(schedule);
+    look.reset();
+    appearance = look.get();
+    byId('np-appearance').open = false;
     suggestName();
     render();
   }

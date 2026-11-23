@@ -75,9 +75,8 @@ export const LibrarySearchContainer = forwardRef<LibrarySearchHandle, Props>(fun
 
   const goLive = (row: LibraryRow, immediate: boolean) => {
     if (row.hymnId == null) return;
-    // The song already on screen: its button brings the cue panel back into view instead of showing stanza 1 again.
-    if (row.hymnId === quick.liveHymnId && !immediate) quick.focusCue();
-    else quick.goLive(row.hymnId, row.title, immediate);
+    // The song opens the Quick-Live popup (src/golive/QuickLivePreview.tsx), the same as a prayer's LIVE.
+    quick.goLive(row.hymnId, row.title, immediate);
   };
 
   const onRowKey = (e: KeyboardEvent<HTMLButtonElement>, row: LibraryRow, i: number) => {

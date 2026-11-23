@@ -12,6 +12,8 @@ import {
   quickLiveCounter,
   quickLiveExit,
   quickLiveIndex,
+  quickLiveJumpAction,
+  quickLiveJumpItems,
   quickLiveNextFrame,
   quickLiveSession,
   quickLiveShouldClose,
@@ -273,4 +275,51 @@ test('every popup label is in English, Tagalog and Cebuano', () => {
   assert.equal(goLiveT('en', 'quickLiveEnd'), 'End Live & Close');
   assert.notEqual(goLiveT('tl', 'quickLiveReturn'), goLiveT('en', 'quickLiveReturn'));
   assert.notEqual(goLiveT('ceb', 'quickLiveEndOfItem'), goLiveT('en', 'quickLiveEndOfItem'));
+});
+
+// --- A Library song's LIVE opens this same popup (Sample strings only) ---
+
+const withLineupParked = () => {
+  const onAir = massOnAir();
+  return run(onAir, { type: 'projector/stage', frame: SONG[0] }, { type: 'projector/take', source: 'DIRECT_DECK' });
+};
+
+test('song LIVE: the popup lists a jump pill per stanza, marks the one on air, and a pill jumps without touching the parked run', () => {
+  const before = massOnAir();
+  const state = withLineupParked();
+  const session = quickLiveSession(before, { title: 'Sample Song Title', frames: SONG });
+  assert.equal(session.parked, 'mass');
+  const pills = quickLiveJumpItems(session, state.projector);
+  assert.deepEqual(pills.map((p) => p.label), ['1 · Verse 1', '2 · Verse 2', '3 · Verse 3']);
+  assert.deepEqual(pills.map((p) => p.current), [true, false, false]);
+  const jumped = run(state, quickLiveJumpAction(session, state.projector, 2));
+  assert.equal(quickLiveIndex(session, jumped.projector), 2);
+  assert.equal(quickLiveCounter(session, jumped.projector), '03 / 03');
+  assert.equal(quickLiveNextFrame(session, jumped.projector), null, 'the last stanza ends the item');
+  assert.equal(jumped.queue.cursor, state.queue.cursor, 'the lineup keeps its place');
+  assert.equal(quickLiveExit(session, jumped), 'restore');
+});
+
+test('song LIVE: Back and Next step the stanzas; a prayer gets no jump pills; off screen there are none', () => {
+  const session = quickLiveSession(massOnAir(), { title: 'Sample Song Title', frames: SONG });
+  let s = withLineupParked();
+  s = run(s, quickLiveStepAction(session, s.projector, 1));
+  assert.equal(quickLiveIndex(session, s.projector), 1);
+  s = run(s, quickLiveStepAction(session, s.projector, -1));
+  assert.equal(quickLiveIndex(session, s.projector), 0);
+  assert.equal(quickLiveStepAction(session, s.projector, -1), null, 'Back stops at the first stanza');
+  const prayer = quickLiveSession(null, { title: 'Sample Prayer', frames: PRAYER });
+  assert.deepEqual(quickLiveJumpItems(prayer, run(projectorOn(), { type: 'projector/stage', frame: PRAYER[0] }, { type: 'projector/take', source: 'DIRECT_DECK' }).projector), []);
+  assert.deepEqual(quickLiveJumpItems(session, projectorOn().projector), []);
+  assert.equal(quickLiveJumpAction(session, projectorOn().projector, 1), null);
+});
+
+test('song LIVE: the Library song button opens the popup, not the focus view, and the pills are no-drag', () => {
+  const hook = read('src/praise-worship/useQuickLiveController.ts');
+  assert.match(hook, /openQuickLivePreview\(before, \{ title: hymn\.title, frames: songPreviewFrames\(hymn\) \}\);/);
+  assert.doesNotMatch(hook, /setGoLiveFocused\(true\)/);
+  const popup = read('src/golive/QuickLivePreview.tsx');
+  assert.match(popup, /data-testid="quick-live-jump"/);
+  assert.match(popup, /data-testid="quick-live-jump-pill"[\s\S]*?style=\{NO_DRAG\}/);
+  for (const lang of GOLIVE_LANGS) assert.notEqual(goLiveT(lang, 'quickLiveJump'), 'quickLiveJump', `quickLiveJump in ${lang}`);
 });

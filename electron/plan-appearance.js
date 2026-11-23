@@ -1,9 +1,10 @@
 // Plan Appearance storage: each plan's own default look for its slides (shared/plan-appearance.js), kept as JSON on the plan's row:
 // `mass_plans.appearance_json` for a Holy Mass plan and `pw_sessions.appearance_json` for a Praise & Worship plan. NULL is Use Global Default.
 //
-// It is the laptop's own: Cloud Sync never sends or overwrites it (the sync payloads name their columns, and this is not one of them), so a
-// Media Library id that exists only on this laptop never reaches the website. Its statements are prepared on first use and check for the
-// column, so a database built from part of the migration list (the tests) still opens every other plan query.
+// Cloud Sync carries it with the plan, both ways (electron/plan-appearance-sync.js): the website's Plan Editors set the same JSON. A picture or
+// clip is only a Media Library address, so a pull keeps this laptop's own picture when the website edits colours or type, and a picture this
+// laptop does not hold falls back to the plan's colour. Its statements are prepared on first use and check for the column, so a database
+// built from part of the migration list (the tests) still opens every other plan query.
 
 import { ipcMain } from 'electron';
 import { parsePlanAppearance, serializePlanAppearance } from '../shared/plan-appearance.js';

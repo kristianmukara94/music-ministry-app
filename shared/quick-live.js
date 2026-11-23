@@ -92,6 +92,24 @@ export function quickLiveCounter(session, projector) {
 }
 
 /**
+ * The slide jump strip: one pill per slide of a multi-slide song ("1 · Verse 1"), with the one on air marked, so the operator can go straight
+ * to any stanza. Only for a song (lyrics frames); a prayer, reading or passage steps with Back and Next alone. Empty when the item is off screen.
+ */
+export function quickLiveJumpItems(session, projector) {
+  if (!session || session.frames.length < 2 || !session.frames.every((f) => f?.kind === 'lyrics')) return [];
+  const current = quickLiveIndex(session, projector);
+  if (current < 0) return [];
+  return session.frames.map((f, index) => ({ index, label: `${index + 1} · ${f.label || ''}`.replace(/ · $/, ''), current: index === current }));
+}
+
+/** The action for a jump pill: that slide as a direct show, so the parked run's place is never touched. Null when the item is off screen. */
+export function quickLiveJumpAction(session, projector, index) {
+  if (quickLiveIndex(session, projector) < 0) return null;
+  const frame = session.frames[index];
+  return frame ? { type: 'projector/show', frame, source: 'DIRECT_DECK' } : null;
+}
+
+/**
  * What leaving the popup does (its Return / End button, the × and Escape):
  *   'restore': a run was parked by this item and is still parked, so it goes back on air at its slide (Back to Main Live).
  *   'clear':   nothing was parked and the item is still on the projector (or behind Blackout), so the screen is cleared.

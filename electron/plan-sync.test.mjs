@@ -1275,3 +1275,124 @@ test('a segment added on the website arrives as a card of that name, keeps its n
   assert.equal(cards().find((c) => c.key === 'seg_1').name, 'Sample Renamed Segment');
   assert.equal(cards().length, 3);
 });
+
+// ---- Plan Appearance: the plan's own slide look, both ways ----
+
+const { PLAN_APPEARANCE_MIGRATIONS } = await import('./plan-appearance.js');
+const { appearanceToSend, pulledAppearance } = await import('./plan-appearance-sync.js');
+const { parsePlanAppearance } = await import('../shared/plan-appearance.js');
+
+/** A laptop that keeps Plan Appearance, with Media Library item 42 in its library. */
+function lookLaptop(token = laptopToken) {
+  const l = laptop(token);
+  for (const sqlText of PLAN_APPEARANCE_MIGRATIONS) l.db.exec(sqlText);
+  l.db.exec('CREATE TABLE media_assets (id INTEGER PRIMARY KEY)');
+  l.db.prepare('INSERT INTO media_assets (id) VALUES (42)').run();
+  // The store reads which columns exist when it opens, so it is made again now.
+  const store = createPlanSyncStore(l.db);
+  const engine = createPlanSync({ store, cloud: l.cloud, setTimer: () => 1, clearTimer: () => {} });
+  return { ...l, store, engine };
+}
+const lookOf = (db, uuid, table = 'mass_plans') => parsePlanAppearance(db.prepare(`SELECT appearance_json AS json FROM ${table} WHERE uuid = ?`).get(uuid).json);
+const WEB_LOOK = { enabled: true, background: { type: 'color', color: '#1B3B2B', dimOpacity: 0 }, typography: { fontFamily: 'playfair', fontSizeScale: 1.25 } };
+const BOOTH_LOOK = { enabled: true, background: { type: 'image', color: '#0F2A4A', dimOpacity: 0.3, mediaPath: 'apcc-media://media/42', mediaId: '42' }, typography: { textColor: '#ECC98A' } };
+
+test('pulledAppearance: absent or null keeps the laptop\'s look; a web edit keeps the laptop\'s own picture; a picture this laptop lacks falls back to the colour', () => {
+  const has = (id) => String(id) === '42';
+  const local = JSON.stringify(BOOTH_LOOK);
+  assert.equal(pulledAppearance(undefined, local, has), undefined, 'a server from before Plan Appearance');
+  assert.equal(pulledAppearance(null, local, has), undefined, 'a plan nobody gave a look on the website');
+  // The website changed the colour and the font and says nothing of the picture: this laptop keeps it.
+  const edited = { enabled: true, background: { type: 'image', color: '#4A1E2E', dimOpacity: 0.3 }, typography: { fontFamily: 'serif' } };
+  const kept = parsePlanAppearance(pulledAppearance(edited, local, has));
+  assert.equal(kept.background.color, '#4A1E2E');
+  assert.equal(kept.background.mediaPath, 'apcc-media://media/42');
+  assert.equal(kept.typography.fontFamily, 'serif');
+  // The website switched to a plain colour: the picture goes.
+  const plain = parsePlanAppearance(pulledAppearance({ enabled: true, background: { type: 'color', color: '#000000', dimOpacity: 0 }, typography: {} }, local, has));
+  assert.equal(plain.background.mediaPath, undefined);
+  // Another laptop's picture is only a number here: without that item in the library it is the colour.
+  const foreign = { enabled: true, background: { type: 'motion', color: '#2E1A47', dimOpacity: 0, mediaPath: 'apcc-media://media/99', mediaId: '99' }, typography: {} };
+  const fallback = parsePlanAppearance(pulledAppearance(foreign, null, has));
+  assert.deepEqual([fallback.background.type, fallback.background.color, fallback.background.mediaPath], ['color', '#2E1A47', undefined]);
+  // The default look (Use Global Default, nothing else) is stored as NULL, and anything unreadable is the default too.
+  assert.equal(pulledAppearance({ enabled: false, background: { type: 'color', color: '#000000', dimOpacity: 0 }, typography: {} }, local, has), null);
+  assert.equal(pulledAppearance({ enabled: 'yes', typography: 'x' }, local, has), null);
+});
+
+test('appearanceToSend: always an object for a laptop that keeps Plan Appearance, nothing for one that does not', () => {
+  assert.equal(appearanceToSend(null, false), undefined);
+  assert.equal(appearanceToSend(JSON.stringify(BOOTH_LOOK), false), undefined);
+  assert.deepEqual(appearanceToSend(null, true), { enabled: false, background: { type: 'color', color: '#000000', dimOpacity: 0 }, typography: {} });
+  assert.deepEqual(appearanceToSend(JSON.stringify(BOOTH_LOOK), true), BOOTH_LOOK);
+  assert.deepEqual(appearanceToSend('not json', true).enabled, false);
+});
+
+test('a look set on the website reaches a Holy Mass and a Praise & Worship plan on the laptop, and is not sent back', async () => {
+  const mass = await serverCreate(laptopToken, { name: 'Sample Plan Title', appearance: WEB_LOOK });
+  const pw = await serverCreate(laptopToken, { name: 'Sample Praise Night', kind: 'pw', appearance: WEB_LOOK });
+  const l = lookLaptop();
+  await l.engine.runOnce();
+  assert.deepEqual(lookOf(l.db, mass.id), WEB_LOOK);
+  assert.deepEqual(lookOf(l.db, pw.id, 'pw_sessions'), WEB_LOOK);
+  assert.equal(l.store.dirtyPlans().length, 0, 'a pulled look is not a laptop edit');
+  network.bodies.length = 0;
+  await l.engine.runOnce();
+  assert.equal(network.bodies.filter((b) => b.name === 'plan-sync-push').length, 0, 'nothing to send back');
+});
+
+test('a look set at the booth is sent with the plan and read back by the website, picture reference included', async () => {
+  const l = lookLaptop();
+  const uuid = localMassPlan(l.db, { name: 'Sample Plan Title', date: '2026-12-06', at: T1 });
+  await l.engine.runOnce();
+  assert.deepEqual((await serverRow(uuid)).body.appearance, { enabled: false, background: { type: 'color', color: '#000000', dimOpacity: 0 }, typography: {} }, 'a plan with no look sends the default');
+
+  // What the Plan Appearance drawer does: it only writes the column, and the touch trigger marks the plan as changed.
+  l.db.prepare('UPDATE mass_plans SET appearance_json = ? WHERE uuid = ?').run(JSON.stringify(BOOTH_LOOK), uuid);
+  assert.equal(l.store.dirtyPlans().length, 1, 'a look change alone makes the plan dirty');
+  serverNow = new Date(T3);
+  await l.engine.runOnce();
+  assert.deepEqual((await serverRow(uuid)).body.appearance, BOOTH_LOOK);
+  assert.equal(l.store.dirtyPlans().length, 0);
+
+  // The website edits the colour only; the booth keeps its picture and takes the colour.
+  const row = await serverRow(uuid);
+  serverNow = new Date('2026-10-27T13:00:00.000Z');
+  await serverEdit(laptopToken, uuid, { appearance: { ...row.body.appearance, background: { type: 'image', color: '#4A1E2E', dimOpacity: 0.3 } } });
+  await l.engine.runOnce();
+  const now = lookOf(l.db, uuid);
+  assert.equal(now.background.color, '#4A1E2E');
+  assert.equal(now.background.mediaPath, 'apcc-media://media/42', 'the website cannot see the picture, and does not remove it');
+  assert.equal(now.typography.textColor, '#ECC98A');
+});
+
+test('a laptop that keeps no Plan Appearance still syncs, sends no look and leaves the website\'s look as it is', async () => {
+  const created = await serverCreate(laptopToken, { name: 'Sample Plan Title', appearance: WEB_LOOK });
+  const old = laptop();
+  await old.engine.runOnce();
+  editLocal(old.db, created.id, { name: 'Sample Renamed Plan', at: T3 });
+  serverNow = new Date(T3);
+  network.bodies.length = 0;
+  await old.engine.runOnce();
+  const sent = network.bodies.flatMap((b) => JSON.parse(b.body)?.plans ?? []).find((p) => p.id === created.id);
+  assert.equal(sent && 'appearance' in sent, false, 'no appearance key from an older laptop');
+  const stored = await serverRow(created.id);
+  assert.equal(stored.name, 'Sample Renamed Plan');
+  assert.deepEqual(stored.body.appearance, WEB_LOOK);
+});
+
+test('a plan the website never gave a look leaves the booth\'s own look alone when pulled', async () => {
+  const created = await serverCreate(laptopToken, { name: 'Sample Plan Title' });
+  const l = lookLaptop();
+  await l.engine.runOnce();
+  // Written the way a sync writes (touch triggers off), so the booth's look is there and the plan is still in step with the website.
+  l.db.exec('INSERT INTO transfer_import_guard (active) VALUES (1)');
+  l.db.prepare('UPDATE mass_plans SET appearance_json = ? WHERE uuid = ?').run(JSON.stringify(BOOTH_LOOK), created.id);
+  l.db.exec('DELETE FROM transfer_import_guard');
+  assert.equal(l.store.dirtyPlans().length, 0);
+  serverNow = new Date(T2);
+  await serverEdit(laptopToken, created.id, { name: 'Sample Renamed Plan' });
+  await l.engine.runOnce();
+  assert.equal(localMass(l.db, created.id).name, 'Sample Renamed Plan');
+  assert.deepEqual(lookOf(l.db, created.id), BOOTH_LOOK);
+});

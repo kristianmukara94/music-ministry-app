@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Radio, X } from 'lucide-react';
 import { lyricBottomOf } from '../../shared/lyric-area.js';
-import { type QuickLiveSession, heldFrame, quickLiveCounter, quickLiveIndex, quickLiveNextFrame, quickLiveShouldClose, quickLiveStepAction } from '../../shared/quick-live.js';
+import { type QuickLiveSession, heldFrame, quickLiveCounter, quickLiveIndex, quickLiveJumpAction, quickLiveJumpItems, quickLiveNextFrame, quickLiveShouldClose, quickLiveStepAction } from '../../shared/quick-live.js';
 import { NO_DRAG, DRAG, TITLE_BAR_CLEARANCE } from '../components/appRegion';
 import { dispatch, useLive } from '../live/store';
 import { FramePreview } from '../output/ProjectorView';
@@ -21,6 +21,12 @@ const exit = () => void exitQuickLivePreview(restoreMainLive).catch((err) => win
 /** Back (-1) or Next (+1) through the item on air. Read from the live state at the press, so a key held down never steps from a stale place. */
 function step(delta: 1 | -1) {
   const action = quickLiveStepAction(useQuickLivePreview.getState().session, useLive.getState().state.projector, delta);
+  if (action) dispatch(action);
+}
+
+/** A slide jump pill: that slide of the song as a direct show. Read from the live state at the press. */
+function jump(index: number) {
+  const action = quickLiveJumpAction(useQuickLivePreview.getState().session, useLive.getState().state.projector, index);
   if (action) dispatch(action);
 }
 
@@ -77,6 +83,7 @@ export function QuickLivePreview() {
   const blackout = live.projector.live.kind === 'blackout';
   const hidden = live.projector.textHidden === true;
   const band = live.lowerThird.live;
+  const pills = quickLiveJumpItems(session, live.projector);
   const parkedNote = session.parked === 'mass' ? t('quickLiveParkedMass') : session.parked === 'pw' ? t('quickLiveParkedPw') : t('quickLiveIdle');
 
   return (
@@ -176,6 +183,24 @@ export function QuickLivePreview() {
               )}
             </figure>
           </div>
+
+          {pills.length > 0 && (
+            <nav aria-label={t('quickLiveJump')} data-testid="quick-live-jump" className={`${CONTROL} flex flex-wrap gap-1.5 border-t border-line px-4 py-2.5`} style={NO_DRAG}>
+              {pills.map((p) => (
+                <button
+                  key={p.index}
+                  type="button"
+                  onClick={() => jump(p.index)}
+                  aria-current={p.current ? 'true' : undefined}
+                  data-testid="quick-live-jump-pill"
+                  className={`${CONTROL} rounded-full border px-2.5 py-1 text-[11px] font-bold transition focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none ${p.current ? 'border-accent bg-accent text-black' : 'border-line bg-panel-2 text-fg/80 hover:border-accent/60 hover:text-fg'}`}
+                  style={NO_DRAG}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </nav>
+          )}
 
           <footer className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
             <button type="button" onClick={() => step(-1)} disabled={atStart} data-testid="quick-live-back" className={`${CONTROL} ${BTN}`} style={NO_DRAG}>

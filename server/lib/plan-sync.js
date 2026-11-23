@@ -12,6 +12,7 @@ import { hit } from './rate-limit.js';
 import { EDITING_ROLES } from './rules.js';
 import { applyPushedTheme } from './theme-sync.js';
 import { describeDbError, withColumnFallback } from './schema-guard.js';
+import { sanitizePlanAppearance } from '../../shared/plan-appearance.js';
 import { MAX_MASS_LANGUAGE, MAX_MASS_TIME, canonicalMassTime, findTimeConflict, normalizeMassLanguage, normalizeMassTime, timeConflictText } from '../../shared/mass-schedule.js';
 
 export const MAX_ITEMS = 200;
@@ -90,6 +91,20 @@ export function planDetails(body) {
   return out;
 }
 
+/**
+ * A plan's own slide look (Plan Appearance, shared/plan-appearance.js), kept in the JSONB body like the schedule, so no column is added. It is
+ * kept as a sanitized object (only known keys with valid values, so nothing else can ride along), or absent when the plan never had one.
+ * `input` undefined keeps `current`; null or anything unreadable stores the default look (Use Global Default), which is an object too so a
+ * laptop can tell "cleared" from "never set".
+ */
+export function checkAppearance(input, current) {
+  if (input === undefined) return current ? sanitizePlanAppearance(current) : undefined;
+  return sanitizePlanAppearance(input);
+}
+
+/** The `appearance` part of a stored body: `{ appearance }`, or nothing when the plan never had one. */
+export const appearanceOf = (body) => (body?.appearance && typeof body.appearance === 'object' ? { appearance: sanitizePlanAppearance(body.appearance) } : {});
+
 /** One schedule field from a request: text up to `max` characters, tidied; null or '' clears it. Throws for anything else. */
 function scheduleField(value, max, label) {
   if (value === null || value === '') return '';
@@ -166,7 +181,7 @@ export function planOut(row) {
     name: row.name,
     date: dateText(row.liturgical_date),
     kind: body.kind ?? null,
-    ...(body.deleted ? {} : { ...schedule, ...planDetails(body), ...hubOf(body) }),
+    ...(body.deleted ? {} : { ...schedule, ...planDetails(body), ...hubOf(body), appearance: appearanceOf(body).appearance ?? null }),
     items: body.deleted ? [] : Array.isArray(body.items) ? body.items : [],
     updatedAt: new Date(row.updated_at).toISOString(),
     ...(body.deleted ? { deleted: true } : {}),
@@ -477,7 +492,9 @@ export async function pushOnePlan({ sql, transaction, churchId, userId, input, s
       // The language and the plan's Content Hub are set on the web; a laptop push keeps them. The Holy Mass time and language come from a
       // laptop that keeps them, and otherwise stay as stored (pushedSchedule).
       const details = fields.kind === 'pw' ? planDetails(row.body) : pushedSchedule(input, row.body);
-      const stored = JSON.stringify({ kind: fields.kind, ...details, ...hubOf(row.body), items: kept });
+      // The plan's look: a laptop that keeps Plan Appearance sends it (null or an object), and an older laptop sends none, so the stored one stays.
+      const appearance = checkAppearance(input.appearance, row.body?.appearance);
+      const stored = JSON.stringify({ kind: fields.kind, ...details, ...hubOf(row.body), ...(appearance ? { appearance } : {}), items: kept });
       if (withSyncedAt) {
         await tx`
           UPDATE plans SET name = ${fields.name}, liturgical_date = ${fields.date}, body = ${stored}::jsonb, updated_at = ${at}, synced_at = ${at}
@@ -583,7 +600,8 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
     checkHubReferences(items, contentHubItems);
     const at = now().toISOString();
     let taken = null;
-    const stored = JSON.stringify({ kind: fields.kind, ...details, ...hubOf({ contentHubItems }), items });
+    const appearance = checkAppearance(body.appearance, undefined);
+    const stored = JSON.stringify({ kind: fields.kind, ...details, ...hubOf({ contentHubItems }), ...(appearance ? { appearance } : {}), items });
     const insert = (withSyncedAt) => transaction(async (tx) => {
         const existing = await tx`SELECT id FROM plans WHERE id = ${id}`;
         if (existing.length) throw new ApiError(409, NOT_SAVED);
@@ -611,7 +629,7 @@ export function createPlanSyncApi({ sql, transaction, secret, now = () => new Da
       throw err;
     }
     const schedule = fields.kind === 'pw' ? {} : { massTime: '', massLanguage: '' };
-    return json(201, { plan: { id, name: fields.name, date: fields.date, kind: fields.kind, ...schedule, ...details, items, updatedAt: at } });
+    return json(201, { plan: { id, name: fields.name, date: fields.date, kind: fields.kind, ...schedule, ...details, appearance: appearance ?? null, items, updatedAt: at } });
   });
 
   /**

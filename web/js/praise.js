@@ -16,6 +16,8 @@ import { calendarHref, lastPlan, mountPlannerHeader, newPlanFlowHref, rememberPl
 import { deletePlanById, deleteWarning, duplicatePlanById } from './plan-actions.js';
 import { usedHubIds } from './content-hub.js';
 import { entryListHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
+import { mountAppearanceButton, samePlanAppearance, sanitizePlanAppearance } from './plan-appearance-ui.js';
+import { printLineupFromPlan, printSheet, sheetHtml } from './print-lineup-sheet.js';
 import { ALL_CATEGORIES } from './lineup-templates.js';
 import {
   PRAYER_CATALOG,
@@ -120,6 +122,8 @@ function fresh(saved) {
     // The segments the saved plan has an item for, so a card taken out on the laptop is not put back by a save here.
     present: saved?.present ?? new Set(),
     contentHubItems: structuredClone(plan?.contentHubItems ?? []),
+    // The plan's own slide look (Plan Appearance), as it is being edited; saved with the plan.
+    appearance: sanitizePlanAppearance(plan?.appearance),
     // The plan's title as it is being edited; saved with the plan.
     name: plan?.name ?? '',
     // The segment the Library adds to (the gold pill), and the segment whose panel is open.
@@ -197,7 +201,10 @@ function renderHeader(view) {
   saveEl.disabled = !plan || !canEdit || save.disabled;
   saveEl.textContent = save.label;
   document.getElementById('discard').disabled = !plan || state.saving;
-  document.getElementById('print').disabled = !plan || setlist().length === 0;
+  document.getElementById('print').disabled = !plan;
+  const lookButton = document.getElementById('plan-appearance');
+  lookButton.disabled = !plan;
+  if (plan) look.refresh();
   const note = document.getElementById('view-only');
   note.textContent = VIEW_ONLY;
   note.hidden = !plan || canEdit;
@@ -572,8 +579,9 @@ async function save({ onlyIfChanged = false } = {}) {
   renderHeader(compute());
   try {
     const sentName = state.name;
-    const response = await savePlan(savePayload(plan, praiseToItems(state, SEGMENTS), { name: sentName, contentHubItems: state.contentHubItems }));
+    const response = await savePlan(savePayload(plan, praiseToItems(state, SEGMENTS), { name: sentName, contentHubItems: state.contentHubItems, appearance: state.appearance }));
     plan.updatedAt = response.savedAt;
+    plan.appearance = response.appearance ?? state.appearance;
     plan.name = response.name ?? sentName.trim();
     if (state.name === sentName) state.name = plan.name;
     if (state.edits === sent) state.dirty = false;
@@ -587,28 +595,26 @@ async function save({ onlyIfChanged = false } = {}) {
   }
 }
 
-/** Fills the print-only setlist from what is on the page, unsaved changes included. Without a setlist, the browser prints the page as it is. */
-function prepareSetlist() {
-  const entries = setlist();
-  if (!plan || entries.length === 0) return;
-  const hasKeys = entries.some((entry) => entry.key);
-  document.getElementById('setlist-print').innerHTML = `
-    <p class="setlist-eyebrow">${esc(parishLine())}</p>
-    <h1>${esc(plan.name)}</h1>
-    <p class="setlist-when">${esc(`${dateLabel(plan.date)} · ${durationLabel(compute().total)}`)}</p>
-    <table>
-      <thead><tr><th scope="col">#</th><th scope="col">Part</th><th scope="col">Song or text</th>${hasKeys ? '<th scope="col">Key</th>' : ''}</tr></thead>
-      <tbody>${entries.map((entry, index) => `<tr><td>${index + 1}</td><td>${esc(entry.label)}</td><td>${esc(entry.title)}</td>${hasKeys ? `<td>${esc(entry.key)}</td>` : ''}</tr>`).join('')}</tbody>
-    </table>`;
-  document.body.classList.add('is-printing-setlist');
-  // The browser offers this as the name of the saved PDF.
-  document.title = `Setlist - ${plan.name}`;
+/** The lineup as it is on screen, unsaved changes included: the same plan the desktop prints, as the Print Lineup sheet. */
+function currentLineup() {
+  const items = praiseToItems(state, SEGMENTS);
+  return printLineupFromPlan({ ...plan, name: state.name || plan.name, items, contentHubItems: state.contentHubItems }, songs, { church: parishLine() });
 }
 
-// The browser's own Print command gets the same clean setlist as the button.
+/** Fills the print-only sheet from what is on the page. Without a plan, the browser prints the page as it is. */
+function prepareSetlist() {
+  if (!plan) return;
+  document.getElementById('setlist-print').innerHTML = sheetHtml(currentLineup());
+  document.body.classList.add('is-printing-setlist');
+  // The browser offers this as the name of the saved PDF.
+  document.title = `Lineup - ${state.name || plan.name}`;
+}
+
+// The browser's own Print command gets the same sheet as the button.
 window.addEventListener('beforeprint', prepareSetlist);
 window.addEventListener('afterprint', () => {
   document.body.classList.remove('is-printing-setlist');
+  document.title = `${state.name || plan?.name || 'Praise & Worship'} · APCCMMA Web Planner`;
   renderHeader(compute());
 });
 
@@ -732,8 +738,7 @@ document.querySelector('main').addEventListener('click', (event) => {
     document.getElementById('library')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     document.querySelector('[data-lib-search]')?.focus({ preventScroll: true });
   } else if (button.id === 'print') {
-    prepareSetlist();
-    window.print();
+    if (plan) printSheet(currentLineup());
   } else if (button.id === 'discard') {
     if (!planId) return;
     if (state.dirty && !window.confirm('Discard your unsaved changes and go back to the saved plan?')) return;
@@ -927,6 +932,18 @@ document.addEventListener('keydown', (event) => {
   if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key?.toLowerCase() !== 's') return;
   event.preventDefault();
   if (!event.repeat) void save({ onlyIfChanged: true });
+});
+
+// Plan Appearance: the button in the header opens the drawer; an applied look is a change like any other (Save plan, Ctrl+S, Discard changes).
+const look = mountAppearanceButton(document.getElementById('plan-appearance'), {
+  get: () => state.appearance,
+  set: (next) => {
+    if (samePlanAppearance(next, state.appearance)) return;
+    state.appearance = next;
+    markEdited();
+    renderHeader(compute());
+  },
+  canEdit: () => canEdit,
 });
 
 const user = await guard();

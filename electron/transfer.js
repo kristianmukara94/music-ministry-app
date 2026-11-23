@@ -252,7 +252,7 @@ function stanzaIdsOf(db, hymnId) {
  * chosen setlist, plan or session uses always comes with it, so the file stands on its own. Lyrics are included only
  * when asked for; without them, no lyric text leaves the laptop and song arrangements are left out.
  */
-export function collectLibrary(db, options, { laptop, exportedAt = new Date().toISOString() } = {}) {
+export function collectLibrary(db, options, { laptop, exportedAt = new Date().toISOString(), only } = {}) {
   const hymns = db
     .prepare(
       `SELECT id, uuid, title, composer, category, language, musical_key AS musicalKey, song_category AS songCategory, primary_category AS primaryCategory,
@@ -261,8 +261,9 @@ export function collectLibrary(db, options, { laptop, exportedAt = new Date().to
     .all();
   const hymnById = new Map(hymns.map((h) => [h.id, h]));
   const setlists = options.setlists ? readSetlists(db) : [];
-  const plans = options.plans ? readPlans(db) : [];
-  const sessions = options.praiseWorship ? readSessions(db) : [];
+  // `only` narrows the plans and sessions to the ids named (the Planner's cleanup backup); without it every one is exported.
+  const plans = options.plans ? readPlans(db).filter((p) => !only?.planIds || only.planIds.includes(p.id)) : [];
+  const sessions = options.praiseWorship ? readSessions(db).filter((w) => !only?.sessionIds || only.sessionIds.includes(w.id)) : [];
   // The parish's Holy Mass Order words when asked for; a parish item a chosen plan uses always comes with it, as its songs do.
   const usedItems = new Set(plans.flatMap((p) => p.items.filter((i) => i.sourceModule === 'mass_order' && isCustomId(i.sourceId)).map((i) => i.sourceId)));
   const massOrder = options.massOrder ? readMassOrder(db) : usedItems.size > 0 ? readMassOrder(db, usedItems) : [];

@@ -5,7 +5,7 @@
 import { ApiError } from './admin.js';
 import { sessionFrom } from './session.js';
 import { EDITING_ROLES } from './rules.js';
-import { checkContentHubItems, checkHubReferences, checkItems, checkPlanDetails, checkPlanFields, dateText, hubOf, planOut, timeConflictOn, timeConflictResponse } from './plan-sync.js';
+import { checkAppearance, checkContentHubItems, checkHubReferences, checkItems, checkPlanDetails, checkPlanFields, dateText, hubOf, planOut, timeConflictOn, timeConflictResponse } from './plan-sync.js';
 import { sameMassTime } from '../../shared/mass-schedule.js';
 import { withColumnFallback } from './schema-guard.js';
 import { pickerFilterOf } from '../../shared/lineup-templates.js';
@@ -161,12 +161,14 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
       // A request that leaves the Content Hub out keeps what the plan has.
       const hub = body.contentHubItems === undefined ? hubOf(row.body) : hubOf({ contentHubItems: checkContentHubItems(body.contentHubItems) });
       checkHubReferences(items, hub.contentHubItems ?? []);
-      const stored = JSON.stringify({ kind, ...details, ...hub, items });
+      // A request that leaves the look out keeps the plan's own; one that sends it (even null, the default look) replaces it.
+      const appearance = checkAppearance(body.appearance, row.body?.appearance);
+      const stored = JSON.stringify({ kind, ...details, ...hub, ...(appearance ? { appearance } : {}), items });
       const newName = name ?? row.name;
       if (withSyncedAt) await tx`UPDATE plans SET name = ${newName}, body = ${stored}::jsonb, updated_at = ${at}, synced_at = NULL WHERE id = ${planId}`;
       else await tx`UPDATE plans SET name = ${newName}, body = ${stored}::jsonb, updated_at = ${at} WHERE id = ${planId}`;
       await tx`INSERT INTO audit_log (church_id, actor_user_id, action, target_plan_id) VALUES (${who.churchId}, ${who.userId}, 'plan.saved', ${planId})`;
-      return { savedAt: at, name: newName };
+      return { savedAt: at, name: newName, appearance: appearance ?? null };
     });
     const result = await withColumnFallback('synced_at', () => save(true), () => save(false));
     if (result.taken) return timeConflictResponse(result.taken);
@@ -176,7 +178,7 @@ export function createPlanEditingApi({ sql, transaction, secret, now = () => new
         serverVersion: result.conflict,
       });
     }
-    return json(200, { ok: true, savedAt: result.savedAt, name: result.name });
+    return json(200, { ok: true, savedAt: result.savedAt, name: result.name, appearance: result.appearance });
   });
 
   return { getPlan, listSongs, songUsage, savePlan };

@@ -13,7 +13,9 @@ import { MASS_LANGUAGES, languageName, massLanguageOf, sectionName, slotName } f
 import { isScheduleLanguage, normalizeMassLanguage, scheduleLanguageForPlan, schedulesOn } from './holy-mass-schedule.js';
 import { asSchedulePlan, conflictIn, onOpenExisting, openExistingHref, showConflict } from './schedule-ui.js';
 import { esc, mountSidebar } from './shell.js';
-import { guard } from './auth.js';
+import { guard, parishLine } from './auth.js';
+import { mountAppearanceButton, samePlanAppearance, sanitizePlanAppearance } from './plan-appearance-ui.js';
+import { printLineupFromPlan, printSheet, sheetHtml } from './print-lineup-sheet.js';
 import { getPlan, listPlans, listSongs, savePlan, watchSongList } from './plan-api.js';
 import { calendarHref, lastPlan, mountPlannerHeader, newPlanFlowHref, rememberPlan } from './planner-header.js';
 import { massProgress } from './planner-calendar.js';
@@ -49,7 +51,6 @@ import {
   librarySongs,
   mdyDate,
   planSwitchOptionsHtml,
-  printLineupHtml,
   readiness,
   readinessBannerHtml,
   rowFilled,
@@ -168,6 +169,8 @@ function fresh(saved) {
     extra: saved?.extra ?? [],
     meta: saved?.meta ?? {},
     contentHubItems: structuredClone(plan?.contentHubItems ?? []),
+    // The plan's own slide look (Plan Appearance), as it is being edited; saved with the plan.
+    appearance: sanitizePlanAppearance(plan?.appearance),
     // The language its readings and responses are in (EN, TL, CEB), and its Holy Mass schedule as the laptop keeps it: the time as typed
     // ("6:00 AM") and the schedule language ('English', 'Cebuano', 'Tagalog' or the parish's own), '' for none.
     language: massLanguageOf(saved?.language),
@@ -245,6 +248,8 @@ function renderHeader() {
   discard.hidden = !plan || !state.dirty;
   discard.disabled = !plan || state.saving;
   document.getElementById('print-lineup').disabled = !plan;
+  document.getElementById('plan-appearance').disabled = !plan;
+  if (plan) look.refresh();
   document.getElementById('open-templates').disabled = !plan;
   const note = document.getElementById('view-only');
   note.textContent = VIEW_ONLY;
@@ -874,33 +879,28 @@ function openHub(mode) {
   });
 }
 
-/** PRINT LINEUP: the lineup as it is on screen, on white paper (or saved as a PDF). Titles, keys and cues only. */
-function printLineup() {
-  if (!plan) return;
-  const sections = SECTIONS.map((section) => ({
-    title: `${section.number}. ${sectionName(section, state.language)}`,
-    rows: visibleRows(section).map((r) => {
-      const cur = stepOf(r.id);
-      return { n: r.slot ? r.n : '•', name: cur.name, entries: cur.entries, note: state.notes[r.id] ?? '' };
-    }),
-  }));
-  const languageLabel = (isCustomLanguage() && state.massLanguage.trim()) || languageName(state.language);
-  document.getElementById('setlist-print').innerHTML = printLineupHtml({
-    eyebrow: 'Holy Mass lineup',
-    name: state.name || plan.name,
-    when: [shortDate(plan.date), state.massTime, languageLabel].filter(Boolean).join(' · '),
-    sections,
-  });
-  document.body.classList.add('is-printing-setlist');
-  const title = document.title;
-  // The browser offers this as the name of the saved PDF.
-  document.title = `Lineup - ${state.name || plan.name}`;
-  window.addEventListener('afterprint', () => {
-    document.body.classList.remove('is-printing-setlist');
-    document.title = title;
-  }, { once: true });
-  window.print();
+/** The lineup as it is on screen, unsaved changes included: the same sheet the desktop prints, titles, keys, readings' references and cues only. */
+function currentLineup() {
+  const items = massToItems(state, ROWS);
+  return printLineupFromPlan(
+    { ...plan, name: state.name || plan.name, language: state.language, massTime: state.massTime, massLanguage: state.massLanguage, items, contentHubItems: state.contentHubItems },
+    songs,
+    { church: parishLine() },
+  );
 }
+
+/** PRINT LINEUP: the lineup on white paper (or saved as a PDF). */
+function printLineup() {
+  if (plan) printSheet(currentLineup());
+}
+
+// The browser's own Print command gets the same sheet as the button.
+window.addEventListener('beforeprint', () => {
+  if (!plan) return;
+  document.getElementById('setlist-print').innerHTML = sheetHtml(currentLineup());
+  document.body.classList.add('is-printing-setlist');
+});
+window.addEventListener('afterprint', () => document.body.classList.remove('is-printing-setlist'));
 
 /** Reads the saved plan and the song list from the server. A failure keeps what was on screen and shows the plain message. */
 async function load() {
@@ -944,9 +944,10 @@ async function save() {
   state.error = '';
   renderHeader();
   try {
-    const details = { name: state.name, language: state.language, massTime: state.massTime.trim() || null, massLanguage: state.massLanguage.trim() || null, contentHubItems: state.contentHubItems };
+    const details = { name: state.name, language: state.language, massTime: state.massTime.trim() || null, massLanguage: state.massLanguage.trim() || null, contentHubItems: state.contentHubItems, appearance: state.appearance };
     const response = await savePlan(savePayload(plan, massToItems(state, ROWS), details));
     Object.assign(plan, details, { massTime: details.massTime ?? '', massLanguage: details.massLanguage ?? '' });
+    plan.appearance = response.appearance ?? state.appearance;
     plan.name = response.name ?? state.name.trim();
     state.name = plan.name;
     plan.updatedAt = response.savedAt;
@@ -1308,6 +1309,19 @@ document.getElementById('lib-tabs').addEventListener('keydown', (event) => {
   event.preventDefault();
   const tabs = ['songs', 'lectionary', 'cues', 'templates'];
   document.querySelector(`[data-lib-tab="${tabs[(tabs.indexOf(lib.tab) + step + tabs.length) % tabs.length]}"]`)?.click();
+});
+
+// Plan Appearance: the button in the strip opens the drawer; an applied look is a change like any other (Save plan, Ctrl+S, Discard changes).
+const look = mountAppearanceButton(document.getElementById('plan-appearance'), {
+  get: () => state.appearance,
+  set: (next) => {
+    if (samePlanAppearance(next, state.appearance)) return;
+    state.appearance = next;
+    state.dirty = true;
+    state.error = '';
+    renderHeader();
+  },
+  canEdit: () => canEdit,
 });
 
 const user = await guard();

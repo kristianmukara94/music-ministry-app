@@ -2,9 +2,9 @@
 // background and type of every slide in a Holy Mass or Praise & Worship plan, with a live 16:9 preview drawn by the projector's own renderer.
 // Changes show at once in the drawer and are saved (and sent to the screens, when the plan is loaded in Go Live) a moment later.
 // The rules are in shared/plan-appearance.js; the saving and the live state in ./planAppearanceStore.ts.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { AlignCenter, AlignLeft, AlignRight, Check, ChevronDown, Film, ImageIcon, Minus, Palette, Plus, RotateCcw, Sparkles, Upload, X } from 'lucide-react';
+import { AlignCenter, AlignLeft, AlignRight, Check, ChevronDown, Eye, EyeOff, Film, ImageIcon, Minus, Palette, Pin, PinOff, Plus, RotateCcw, Sparkles, Upload, X } from 'lucide-react';
 import {
   PLAN_APPEARANCE_DEFAULT,
   PLAN_COLOR_PRESETS,
@@ -38,6 +38,7 @@ import { changePlanAppearance, clearPlanSlideOverrides, flushPlanAppearance, loa
 import { usePlannerT, type PlannerT } from './strings';
 
 type Sample = 'song' | 'prayer';
+type JumpKey = 'background' | 'size' | 'color';
 
 // Synthetic sample slides only: the preview never shows a real song, prayer or reading.
 const SAMPLE_LINES = ['Sample Song Line', 'Sample Song Line Two', 'Sample Song Line Three', 'Sample Song Line Four'];
@@ -62,6 +63,10 @@ const PW_SAMPLES: Record<Sample, Shown> = {
 const FOCUS = 'focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none';
 const CHIP = `inline-flex h-8 items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
 const chipClass = (on: boolean) => `${CHIP} ${on ? 'border-accent bg-accent text-on-accent shadow' : 'border-fg/20 bg-surface text-fg hover:border-fg/40'}`;
+// The preview docks (sticky, compact) once the body is scrolled past DOCK_ON, and undocks near the top (DOCK_OFF) so it never flickers.
+const DOCK_ON = 24;
+const DOCK_OFF = 8;
+const DOCK_PREVIEW_HEIGHT = 145; // px, 16:9 kept by the aspect ratio
 const LABEL = 'text-xs font-bold tracking-wider text-fg/80 uppercase';
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------
@@ -119,7 +124,41 @@ function PlanAppearanceDrawer({ kind, planId, planName, onClose }: { kind: PlanK
   const [sample, setSample] = useState<Sample>('song');
   const [cleared, setCleared] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLElement>(null);
+  const fullHeight = useRef(0);
+  const [scrolled, setScrolled] = useState(false);
+  const [floatOn, setFloatOn] = useState(true);
+  const [spacer, setSpacer] = useState(0);
+  const docked = scrolled && floatOn;
+
+  const onBodyScroll = () => {
+    const top = bodyRef.current?.scrollTop ?? 0;
+    // Remember the full-size height just before docking, so the layout below can keep its place.
+    if (!docked && top > DOCK_ON && previewRef.current) fullHeight.current = previewRef.current.offsetHeight;
+    setScrolled((was) => (was ? top > DOCK_OFF : top > DOCK_ON));
+  };
+  // While docked the card is shorter than it was; the difference is kept as bottom margin so nothing below jumps up or down.
+  useLayoutEffect(() => {
+    if (!docked) {
+      setSpacer(0);
+      return;
+    }
+    const now = previewRef.current?.offsetHeight ?? 0;
+    setSpacer(Math.max(0, fullHeight.current - now));
+  }, [docked, showPreview, sample]);
+
+  // Quick-jump: scrolls the drawer body to a section in one tap (no mouse wheel needed). Smooth unless the system asks for less motion.
+  const jumpTo = (key: JumpKey) => {
+    const body = bodyRef.current;
+    const target = body?.querySelector<HTMLElement>(`[data-jump="${key}"]`);
+    if (!body || !target) return;
+    const top = body.scrollTop + target.getBoundingClientRect().top - body.getBoundingClientRect().top - 8;
+    const calm = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    body.scrollTo({ top: Math.max(0, top), behavior: calm ? 'auto' : 'smooth' });
+  };
 
   // Any change saves (after a short pause) and turns on Custom Plan Look: a choice made here is meant to be seen.
   const change = (next: Partial<PlanAppearance>, keepMode = false) => {
@@ -145,7 +184,8 @@ function PlanAppearanceDrawer({ kind, planId, planName, onClose }: { kind: PlanK
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
-    dialogRef.current?.focus();
+    // The scroll body takes focus (not a control), so Page Up/Down and the arrow keys scroll the drawer straight away.
+    (bodyRef.current ?? dialogRef.current)?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || dialogRef.current?.querySelector('[data-font-list]')) return;
       e.stopPropagation();
@@ -163,7 +203,8 @@ function PlanAppearanceDrawer({ kind, planId, planName, onClose }: { kind: PlanK
 
   return createPortal(
     <div className="fixed inset-0 z-[80]" style={NO_DRAG}>
-      <div aria-hidden className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" onClick={onClose} />
+      <div aria-hidden className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" style={NO_DRAG} onClick={onClose} />
+      {/* A viewport-bounded flex column (top and bottom pinned, so it can never be taller than the window): only the body scrolls. */}
       <div
         ref={dialogRef}
         role="dialog"
@@ -171,9 +212,9 @@ function PlanAppearanceDrawer({ kind, planId, planName, onClose }: { kind: PlanK
         aria-labelledby="plan-appearance-title"
         tabIndex={-1}
         style={{ ...NO_DRAG, top: TITLE_BAR_CLEARANCE }}
-        className="absolute right-0 bottom-0 flex w-[min(620px,100vw)] flex-col border-l border-fg/15 bg-surface text-fg shadow-2xl shadow-black/50 outline-none"
+        className="absolute right-0 bottom-0 flex max-h-screen w-[min(620px,100vw)] flex-col overflow-hidden border-l border-fg/15 bg-surface text-fg shadow-2xl shadow-black/50 outline-none"
       >
-        <header className="flex items-start gap-3 border-b border-fg/10 px-5 py-4">
+        <header className="flex items-start gap-3 border-b border-fg/10 px-5 py-3" style={NO_DRAG}>
           <div className="min-w-0 flex-1">
             <h2 id="plan-appearance-title" className="text-xl font-extrabold tracking-tight">
               {t('appearance_title')}
@@ -185,27 +226,85 @@ function PlanAppearanceDrawer({ kind, planId, planName, onClose }: { kind: PlanK
           </button>
         </header>
 
-        <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
+        {/* Quick-jump pills: one tap to Background, Size & Font or Color & Shadow, so a touchpad never has to scroll far. */}
+        <nav aria-label={t('appearance_jump')} className="flex flex-wrap items-center gap-1.5 border-b border-fg/10 px-5 py-2" style={NO_DRAG}>
+          {(
+            [
+              ['background', t('appearance_jump_background')],
+              ['size', t('appearance_jump_size')],
+              ['color', t('appearance_jump_color')],
+            ] as const
+          ).map(([key, label]) => (
+            <button key={key} type="button" data-jump-pill={key} onClick={() => jumpTo(key)} className={chipClass(false)}>
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <div
+          ref={bodyRef}
+          data-plan-scroll
+          tabIndex={-1}
+          onScroll={onBodyScroll}
+          style={{ ...NO_DRAG, touchAction: 'pan-y' }}
+          className="plan-appearance-scroll min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-4 outline-none"
+        >
           {/* Live 16:9 preview, drawn by the projector's own renderer with the draft look. */}
-          <section aria-label={t('appearance_preview')} className="space-y-2">
+          <section
+            ref={previewRef}
+            aria-label={t('appearance_preview')}
+            data-plan-preview-dock={docked ? 'floating' : 'full'}
+            style={{ ...NO_DRAG, touchAction: 'pan-y', marginBottom: docked && spacer ? spacer : undefined }}
+            className={
+              docked
+                ? 'sticky top-0 z-20 -mx-5 -mt-4 space-y-1.5 border-b border-accent/50 bg-surface px-5 py-2 shadow-lg shadow-black/40 ring-1 ring-accent/30 backdrop-blur-md transition-shadow'
+                : 'space-y-1.5'
+            }
+          >
             <div className="flex items-center justify-between gap-2">
               <span className={LABEL}>{t('appearance_preview')}</span>
-              <div role="radiogroup" aria-label={t('appearance_sample')} className="flex gap-1">
-                {(['song', 'prayer'] as const).map((s) => (
-                  <button key={s} type="button" role="radio" aria-checked={sample === s} onClick={() => setSample(s)} className={chipClass(sample === s)}>
-                    {s === 'song' ? t('appearance_sample_song') : t('appearance_sample_prayer')}
-                  </button>
-                ))}
+              <div className="flex items-center gap-1">
+                <button type="button" data-preview-toggle aria-pressed={!showPreview} aria-expanded={showPreview} aria-controls="plan-appearance-preview" onClick={() => setShowPreview((v) => !v)} className={chipClass(false)}>
+                  {showPreview ? <EyeOff size={14} aria-hidden /> : <Eye size={14} aria-hidden />}
+                  {showPreview ? t('appearance_hide_preview') : t('appearance_show_preview')}
+                </button>
+                <button
+                  type="button"
+                  data-preview-pin
+                  aria-pressed={floatOn}
+                  title={floatOn ? t('appearance_preview_unpin') : t('appearance_preview_pin')}
+                  onClick={() => setFloatOn((v) => !v)}
+                  className={chipClass(false)}
+                >
+                  {floatOn ? <PinOff size={14} aria-hidden /> : <Pin size={14} aria-hidden />}
+                  {floatOn ? t('appearance_preview_unpin') : t('appearance_preview_pin')}
+                </button>
+                <div role="radiogroup" aria-label={t('appearance_sample')} className="flex gap-1">
+                  {(['song', 'prayer'] as const).map((s) => (
+                    <button key={s} type="button" role="radio" aria-checked={sample === s} onClick={() => setSample(s)} className={chipClass(sample === s)}>
+                      {s === 'song' ? t('appearance_sample_song') : t('appearance_sample_prayer')}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-            <div data-plan-preview className="relative aspect-video w-full overflow-hidden rounded-lg border border-fg/20 bg-black [container-type:size]">
-              <PlanLookOverride.Provider value={preview}>
-                {kind === 'mass' ? <FramePreview frame={MASS_SAMPLES[sample]} /> : <PwStageFace shown={PW_SAMPLES[sample]} />}
-              </PlanLookOverride.Provider>
-              {/* Title Safe guide: the words stay inside it at every size and font. */}
-              <div aria-hidden className="pointer-events-none absolute inset-[5%] rounded-sm border border-dashed border-white/40" />
-            </div>
-            <p className="text-xs text-fg/75">{t('appearance_title_safe')}</p>
+            {showPreview && (
+              <div id="plan-appearance-preview" className="space-y-1.5">
+                {/* Full size: capped near a third of the window height. Docked: a fixed compact height. Width follows, keeping 16:9. */}
+                <div
+                  data-plan-preview
+                  className="relative mx-auto aspect-video w-full overflow-hidden rounded-lg border border-fg/20 bg-black [container-type:size]"
+                  style={{ maxWidth: docked ? `${(DOCK_PREVIEW_HEIGHT * 16) / 9}px` : 'calc(34vh * 16 / 9)' }}
+                >
+                  <PlanLookOverride.Provider value={preview}>
+                    {kind === 'mass' ? <FramePreview frame={MASS_SAMPLES[sample]} /> : <PwStageFace shown={PW_SAMPLES[sample]} />}
+                  </PlanLookOverride.Provider>
+                  {/* Title Safe guide: the words stay inside it at every size and font. */}
+                  <div aria-hidden className="pointer-events-none absolute inset-[5%] rounded-sm border border-dashed border-white/40" />
+                </div>
+                {!docked && <p className="text-xs text-fg/75">{t('appearance_title_safe')}</p>}
+              </div>
+            )}
           </section>
 
           {/* Mode and quick actions */}
@@ -257,7 +356,7 @@ function PlanAppearanceDrawer({ kind, planId, planName, onClose }: { kind: PlanK
           <TypographySection t={t} typography={appearance.typography} setType={setType} />
         </div>
 
-        <footer className="space-y-1 border-t border-fg/10 px-5 py-3 text-xs">
+        <footer className="space-y-1 border-t border-fg/10 px-5 py-2 text-xs" style={NO_DRAG}>
           {error ? (
             <p role="alert" className="font-semibold text-danger">
               {error}
@@ -327,7 +426,7 @@ function BackgroundSection({ t, appearance, setBackground }: { t: PlannerT; appe
   const assets = (media ?? []).filter((m) => m.mediaType === kindOf(bg.type));
 
   return (
-    <section className="space-y-3">
+    <section className="space-y-3" data-jump="background">
       <span className={LABEL}>{t('appearance_background')}</span>
       <div role="tablist" aria-label={t('appearance_background')} className="grid grid-cols-3 gap-1 rounded-full border border-fg/20 bg-panel-2 p-1">
         {tabs.map((tab) => (
@@ -371,7 +470,7 @@ function BackgroundSection({ t, appearance, setBackground }: { t: PlannerT; appe
               {bg.type === 'image' ? t('appearance_no_images') : t('appearance_no_motion')}
             </p>
           ) : (
-            <div role="listbox" aria-label={bg.type === 'image' ? t('appearance_bg_image') : t('appearance_bg_motion')} className="grid max-h-56 grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-4">
+            <div role="listbox" aria-label={bg.type === 'image' ? t('appearance_bg_image') : t('appearance_bg_motion')} className="plan-appearance-scroll grid max-h-56 grid-cols-3 gap-2 overflow-y-auto overscroll-auto pr-1 sm:grid-cols-4">
               {assets.map((asset) => {
                 const on = bg.mediaId === String(asset.id);
                 const thumb = asset.thumbSrc ?? (asset.mediaType === 'image' ? asset.src : null);
@@ -424,7 +523,7 @@ function BackgroundSection({ t, appearance, setBackground }: { t: PlannerT; appe
           value={bg.dimOpacity ?? 0}
           onChange={(e) => setBackground({ dimOpacity: Number(e.target.value) })}
           className="w-full accent-[var(--color-accent)]"
-          style={NO_DRAG}
+          style={{ ...NO_DRAG, touchAction: 'pan-y' }}
         />
         <span className="block text-xs text-fg/75">{t('appearance_dim_hint')}</span>
       </label>
@@ -501,7 +600,7 @@ function TypographySection({ t, typography, setType }: { t: PlannerT; typography
     <section className="space-y-4">
       <span className={LABEL}>{t('appearance_typography')}</span>
 
-      <Field label={t('appearance_font_size')}>
+      <Field label={t('appearance_font_size')} jump="size">
         <div className="flex flex-wrap items-center gap-1.5">
           {globalChip(size === undefined, () => setType({ fontSizeScale: undefined }))}
           <button type="button" aria-label={t('appearance_smaller')} title={t('appearance_smaller')} disabled={size === PLAN_FONT_SIZES[0]} onClick={() => setType({ fontSizeScale: stepPlanFontSize(size, -1) })} className={chipClass(false)}>
@@ -563,7 +662,7 @@ function TypographySection({ t, typography, setType }: { t: PlannerT; typography
         </div>
       </Field>
 
-      <Field label={t('appearance_text_color')}>
+      <Field label={t('appearance_text_color')} jump="color">
         <ColorRow
           label={t('appearance_text_color')}
           value={typography.textColor ?? null}
@@ -589,9 +688,9 @@ function TypographySection({ t, typography, setType }: { t: PlannerT; typography
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, children, jump }: { label: string; children: ReactNode; jump?: JumpKey }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5" data-jump={jump}>
       <div className="text-sm font-semibold">{label}</div>
       {children}
     </div>

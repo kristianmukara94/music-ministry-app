@@ -12,7 +12,7 @@ import type { RosaryApi } from '../rosary/types';
 import type { LyricsApi } from '../lyrics/types';
 import type { LectionaryApi } from '../lectionary/types';
 import type { MediaApi, ThumbnailJob } from '../media/types';
-import type { CalendarApi, PlanAppearanceApi, PlansApi } from '../planner/types';
+import type { CalendarApi, PlanAppearanceApi, PlannerCleanupApi, PlansApi } from '../planner/types';
 import type { NotesApi } from '../notes/types';
 import type { MassOrderEntry, MassOrderLang } from '../../shared/mass-order-text';
 import type { PwApi } from '../praise-worship/types';
@@ -352,6 +352,8 @@ interface ElectronApi {
   plans: PlansApi;
   /** Each plan's own default look for its slides (Plan Appearance). */
   planAppearance: PlanAppearanceApi;
+  /** Annual Planner Cleanup: bulk delete of a year's or chosen months' plans. */
+  plannerCleanup: PlannerCleanupApi;
   calendar: CalendarApi;
   pw: PwApi;
   notes: NotesApi;
@@ -556,6 +558,11 @@ const offlinePlans: PlansApi = {
 };
 
 /** Browser preview has no database: every plan follows the Global Appearance, and none can be changed. */
+const offlinePlannerCleanup: PlannerCleanupApi = {
+  deletePlans: async () => offlineError(),
+  exportBackup: async () => offlineError(),
+};
+
 const offlinePlanAppearance: PlanAppearanceApi = {
   get: async () => sanitizePlanAppearance(null),
   set: async () => offlineError(),
@@ -1130,6 +1137,7 @@ function createBrowserBridge(): LiveBridge {
     media: offlineMedia,
     plans: offlinePlans,
     planAppearance: offlinePlanAppearance,
+    plannerCleanup: offlinePlannerCleanup,
     calendar: offlineCalendar,
     pw: offlinePw,
     notes: offlineNotes,

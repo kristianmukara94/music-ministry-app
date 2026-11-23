@@ -3,15 +3,14 @@
 // Calendar with their time, language and slots filled ("9:30 AM · EN 8/23"), Praise & Worship plans on theirs. A click on an empty day opens
 // the New Plan modal for it, on a day with one plan opens that plan in the Plan Editor, and on a day with several lists them (Available Holy
 // Mass Schedules, with + Add Another Holy Mass Schedule). Each day can carry a memo. The list and grid views show the same calendar's plans
-// with search, sort and each plan's ··· menu (Edit, Duplicate, Export PDF Setlist, Delete).
+// with search, sort and each plan's ··· menu (Edit, Duplicate, Print Lineup, Delete).
 //
 // The address keeps the calendar and month (?cal=pw&month=2026-12), and ?new=mass|pw&date= opens the New Plan modal (+ New Plan from the Plan
 // Editor). Nothing is made up: the plans and memos come from the server.
 import { esc, mountSidebar } from './shell.js';
 import { guard, parishLine } from './auth.js';
 import { getPlan, listDayNotes, listPlans, saveDayNote } from './plan-api.js';
-import { MASS_PLAN, PRAISE_PLAN } from './sample-data.js';
-import { languageName, slotName } from './mass-language.js';
+import { printLineupFromPlan, printSheet } from './print-lineup-sheet.js';
 import { openExistingHref, scheduleText } from './schedule-ui.js';
 import { monthOf, shiftMonth } from './plan-calendar.js';
 import { calendarHtml, calendarKindOf, calendarMonth, chooserRowHtml, dayClick, liturgicalDay, longDate, massProgress, plannerViewOf, plansOnCalendarDay } from './planner-calendar.js';
@@ -22,12 +21,7 @@ import {
   DEFAULT_SORT,
   canCreatePlans,
   localDate,
-  massFromItems,
-  massRows,
   planTiming,
-  praiseFromItems,
-  praiseSegmentsFor,
-  setlistEntries,
   shortDate,
   sortPlans,
   visiblePlans,
@@ -37,7 +31,6 @@ mountSidebar();
 
 const EMPTY = 'No plans on this calendar yet. Pick a day on the calendar to start one, or create plans on the church laptop.';
 const VIEW_KEY = 'apccmma.planner.view';
-const PAGE_TITLE = document.title;
 const params = new URLSearchParams(location.search);
 
 function readView() {
@@ -220,7 +213,7 @@ function openMenu(button) {
   menu.innerHTML = [
     menuItem('edit', state.canEdit ? ICON_EDIT : ICON_VIEW, state.canEdit ? 'Edit Plan' : 'View Plan'),
     state.canEdit ? menuItem('duplicate', ICON_COPY, 'Duplicate Plan', { disabled: busy }) : '',
-    menuItem('export', ICON_PRINT, 'Export PDF Setlist', { disabled: busy }),
+    menuItem('export', ICON_PRINT, 'Print Lineup', { disabled: busy }),
     state.canEdit ? `<hr>${menuItem('delete', ICON_TRASH, 'Delete Plan', { disabled: busy, danger: true })}` : '',
   ].join('');
   menu.hidden = false;
@@ -272,45 +265,14 @@ function duplicatePlan(plan) {
   });
 }
 
-/** What the setlist holds: the filled places of the plan, named as its editor names them. */
-function setlistOf(plan, songs) {
-  if (plan.kind === 'pw') {
-    // The laptop's lineup, or the earlier editor's layout for a plan it laid out: the same choice the editor makes.
-    const segments = praiseSegmentsFor(plan.items, PRAISE_PLAN);
-    return setlistEntries(praiseFromItems(plan.items, segments), segments, songs);
-  }
-  const rows = massRows(MASS_PLAN);
-  return setlistEntries(massFromItems(plan.items, rows), rows, songs, (row) => slotName(row, plan.language));
-}
-
-function setlistMarkup(plan, entries) {
-  const when = [shortDate(plan.date), plan.kind !== 'pw' ? scheduleText(plan) : '', plan.kind !== 'pw' && !plan.massLanguage && plan.language ? languageName(plan.language) : ''].filter(Boolean).join(' · ');
-  const hasKeys = entries.some((entry) => entry.key);
-  return `
-    <p class="setlist-eyebrow">${esc(parishLine())}</p>
-    <h1>${esc(plan.name)}</h1>
-    <p class="setlist-when">${esc(when)}</p>
-    <table>
-      <thead><tr><th scope="col">#</th><th scope="col">Part</th><th scope="col">Song or text</th>${hasKeys ? '<th scope="col">Key</th>' : ''}</tr></thead>
-      <tbody>${entries.map((entry, index) => `<tr><td>${index + 1}</td><td>${esc(entry.label)}</td><td>${esc(entry.title)}</td>${hasKeys ? `<td>${esc(entry.key)}</td>` : ''}</tr>`).join('')}</tbody>
-    </table>`;
-}
-
+/** Print Lineup from a calendar card: the same sheet the Plan Editors print (print-lineup-sheet.js), made from the saved plan. */
 function exportSetlist(listed) {
-  return runAction(`Preparing the setlist for ${listed.name}…`, async () => {
+  return runAction(`Preparing the lineup for ${listed.name}…`, async () => {
     const { plan, songs } = await getPlan(listed.id);
-    const entries = setlistOf(plan, songs);
-    if (entries.length === 0) throw new Error(`${plan.name} has no songs or text yet, so there is no setlist to export.`);
-    setlistPrint.innerHTML = setlistMarkup(plan, entries);
-    document.body.classList.add('is-printing-setlist');
-    // The browser offers this as the name of the saved PDF.
-    document.title = `Setlist - ${plan.name}`;
-    window.addEventListener('afterprint', () => {
-      document.body.classList.remove('is-printing-setlist');
-      document.title = PAGE_TITLE;
-    }, { once: true });
+    const lineup = printLineupFromPlan(plan, songs, { church: parishLine() });
+    if (lineup.totals.items === 0) throw new Error(`${plan.name} has no songs or text yet, so there is no lineup to print.`);
     say('Choose Save as PDF in the print window.');
-    window.print();
+    printSheet(lineup, { host: setlistPrint });
     focusPlan(listed.id);
   });
 }

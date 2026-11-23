@@ -5,6 +5,7 @@
 import { LEGACY_STEP_SLOT, MASS_SECTIONS, MASS_SLOTS, slotOfNumber } from './mass-slots.js';
 import { PW_LINEUP, PW_SEGMENT_KEYS, pickerCategoryForName, pickerCategoryLabel, serviceTypeOfPlanKind } from './lineup-templates.js';
 import { entryBadge } from './prayer-scripture.js';
+import { sanitizePlanAppearance } from './plan-appearance.js';
 // praise-lineup.js reads this file's exports only inside its functions, so the two importing each other is safe.
 import { lineupFromPlan } from './praise-lineup.js';
 
@@ -651,6 +652,8 @@ export function savePayload(plan, items, details = {}) {
   if (details.massTime !== undefined) payload.massTime = details.massTime || null;
   if (details.massLanguage !== undefined) payload.massLanguage = details.massLanguage || null;
   if (details.contentHubItems !== undefined) payload.contentHubItems = details.contentHubItems;
+  // The plan's own slide look (Plan Appearance). Left out, the server keeps the one it has.
+  if (details.appearance !== undefined) payload.appearance = sanitizePlanAppearance(details.appearance);
   return payload;
 }
 
@@ -737,6 +740,8 @@ export const duplicateRequest = (plan, id) => ({
   kind: plan.kind === 'pw' ? 'pw' : 'mass',
   items: plan.items,
   ...(plan.contentHubItems?.length ? { contentHubItems: plan.contentHubItems } : {}),
+  // A copy keeps the plan's slide look.
+  ...(plan.appearance ? { appearance: sanitizePlanAppearance(plan.appearance) } : {}),
 });
 
 /**
@@ -824,7 +829,7 @@ export function suggestPlanName({ kind, date, dayName } = {}) {
  * The plan-create body for a new, empty plan. The language and the schedule (time and language) belong to a Holy Mass plan; a time or a
  * schedule language left blank is not sent.
  */
-export const newPlanRequest = ({ name, date, kind, language, massTime, massLanguage }, id) => {
+export const newPlanRequest = ({ name, date, kind, language, massTime, massLanguage, appearance }, id) => {
   const time = String(massTime ?? '').replace(/\s+/g, ' ').trim();
   const scheduleLanguage = String(massLanguage ?? '').replace(/\s+/g, ' ').trim();
   return {
@@ -833,6 +838,8 @@ export const newPlanRequest = ({ name, date, kind, language, massTime, massLangu
     date,
     kind,
     items: [],
+    // The look chosen on the card, only when its own look is on: a plan that follows the Global Appearance sends none.
+    ...(sanitizePlanAppearance(appearance).enabled ? { appearance: sanitizePlanAppearance(appearance) } : {}),
     ...(kind === 'mass' ? { language, ...(time ? { massTime: time } : {}), ...(scheduleLanguage ? { massLanguage: scheduleLanguage } : {}) } : {}),
   };
 };

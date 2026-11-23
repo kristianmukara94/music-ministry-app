@@ -5638,3 +5638,499 @@ button.bc-switch {
     flex: 1 1 auto;
   }
 }
+
+/* ---------------------------------------------------------------------------------------------------------------------------------------- */
+/* PLAN APPEARANCE: the header button, the slide-over drawer with its live 16:9 preview, and the compact section of the Create a plan card. */
+
+.pa-btn {
+  gap: 10px;
+}
+.pa-btn .pa-btn-text {
+  white-space: nowrap;
+}
+.pa-dot {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1px solid var(--bc-border-hover);
+}
+.pa-dot.is-global {
+  background: repeating-linear-gradient(45deg, transparent 0 3px, var(--bc-border-hover) 3px 4px);
+}
+.pa-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.pa-badge.is-custom {
+  border-color: var(--bc-gold);
+  color: var(--bc-gold);
+}
+
+.pa-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(480px, 100vw);
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--bc-border-hover);
+  background: var(--surface);
+  color: var(--text);
+  overflow: hidden;
+}
+.pa-drawer::backdrop {
+  background: color-mix(in srgb, black 55%, transparent);
+}
+.pa-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.pa-head,
+.pa-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+}
+.pa-head {
+  border-bottom: 1px solid var(--border);
+}
+.pa-foot {
+  border-top: 1px solid var(--border);
+}
+.pa-eyebrow {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bc-gold);
+}
+.pa-title {
+  margin: 2px 0 0;
+  font-size: 18px;
+}
+.pa-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0 20px 24px;
+}
+/* The preview docks at the top while the controls scroll under it, so a change stays in view. */
+.pa-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 16px 0 10px;
+  background: var(--surface);
+}
+.pa-preview-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pa-stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  container-type: inline-size;
+  overflow: hidden;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 10px;
+}
+.pa-stage-bg,
+.pa-stage-dim,
+.pa-stage-text,
+.pa-stage-safe {
+  position: absolute;
+  inset: 0;
+}
+.pa-stage-dim {
+  background: black;
+}
+.pa-stage-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35em;
+  padding: 8% 10%;
+  font-size: calc(var(--pa-scale, 1) * 4.6cqw);
+  line-height: 1.2;
+}
+.pa-stage-text p {
+  margin: 0;
+}
+.pa-stage-title {
+  opacity: 0.85;
+  font-size: 0.7em;
+  letter-spacing: 0.08em;
+}
+.pa-stage-safe {
+  inset: 5%;
+  border: 1px dashed color-mix(in srgb, white 60%, transparent);
+  pointer-events: none;
+}
+.pa-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.pa-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.pa-group:disabled {
+  opacity: 0.45;
+}
+.pa-mode,
+.pa-pills,
+.pa-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pa-pill {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.pa-size-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pa-size-row .pa-pills {
+  flex: 1 1 auto;
+}
+.pa-step {
+  flex: none;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.pa-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pa-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pa-swatch {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 2px solid var(--bc-border-hover);
+  border-radius: 8px;
+  background: var(--sw);
+  cursor: pointer;
+}
+.pa-swatch[aria-pressed="true"] {
+  border-color: var(--bc-gold);
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--bc-gold);
+}
+.pa-hex {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pa-hex input {
+  width: 110px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  font: 600 13px var(--font-mono, monospace);
+  text-transform: uppercase;
+}
+.pa-range {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.pa-range span {
+  display: flex;
+  justify-content: space-between;
+}
+.pa-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.pa-media,
+.pa-view-only {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.pa-drawer :is(button, input, select):focus-visible {
+  outline: 2px solid var(--bc-gold);
+  outline-offset: 2px;
+}
+.np-appearance {
+  border: 1px solid var(--bc-border-hover);
+  border-radius: 12px;
+  padding: 0 14px;
+}
+.np-appearance > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+.np-appearance[open] > summary {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.np-appearance .pa-controls {
+  padding-bottom: 12px;
+}
+.np-appearance > .bc-btn-quiet {
+  margin-bottom: 12px;
+}
+@media (max-width: 560px) {
+  .pa-drawer {
+    width: 100vw;
+    border-left: 0;
+  }
+  .pa-btn .pa-btn-text {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------------------------------------------------------------------- */
+/* PRINT LINEUP: the one sheet every Print Lineup button prints (print-lineup-sheet.js). A4 or Letter, ink-friendly: black on white, no app chrome. */
+
+@media print {
+  body.is-printing-setlist .setlist-print {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.3;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .pl-sheet {
+    color: #000;
+  }
+  .pl-head {
+    padding-bottom: 3mm;
+    margin-bottom: 4mm;
+    border-bottom: 1.5pt solid #000;
+    break-after: avoid;
+  }
+  .pl-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6mm;
+    margin-bottom: 2mm;
+  }
+  .pl-parish {
+    font-size: 9.5pt;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .pl-badge {
+    margin-left: auto;
+    padding: 1pt 6pt;
+    border: 1pt solid #000;
+    border-radius: 3pt;
+    font-size: 8pt;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+  }
+  .pl-title {
+    margin: 0;
+    font-size: 19pt;
+    font-weight: 800;
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+  }
+  .pl-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 6pt;
+    margin: 2mm 0 0;
+    font-size: 10pt;
+    color: #222;
+  }
+  .pl-totals {
+    margin: 1mm 0 0;
+    font-size: 9pt;
+    font-weight: 700;
+    color: #333;
+  }
+  .pl-section {
+    margin-top: 5mm;
+  }
+  .pl-section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4mm;
+    padding: 1.2mm 2.5mm;
+    border-top: 1.5pt solid #000;
+    border-bottom: 0.75pt solid #000;
+    background: #eee;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .pl-section-head h2 {
+    margin: 0;
+    font-size: 9.5pt;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .pl-section-min {
+    font-family: "Cascadia Mono", Consolas, monospace;
+    font-size: 9pt;
+    font-weight: 700;
+  }
+  .pl-rows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .pl-row {
+    display: grid;
+    grid-template-columns: 9mm minmax(0, 1fr) auto;
+    column-gap: 3mm;
+    align-items: start;
+    padding: 2mm 0;
+    border-bottom: 0.5pt solid #999;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .pl-num {
+    font-family: "Cascadia Mono", Consolas, monospace;
+    font-weight: 700;
+    text-align: right;
+  }
+  .pl-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1mm;
+    min-width: 0;
+  }
+  .pl-name {
+    font-size: 8pt;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .pl-items {
+    display: flex;
+    flex-direction: column;
+    gap: 1mm;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .pl-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 3mm;
+  }
+  .pl-item[data-type="song"] .pl-item-title {
+    font-weight: 800;
+    font-size: 11pt;
+  }
+  .pl-pill {
+    flex: none;
+    padding: 0.5pt 5pt;
+    border: 0.75pt solid #000;
+    border-radius: 99pt;
+    font-size: 7pt;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+  }
+  .pl-pill.is-song {
+    background: #000;
+    color: #fff;
+  }
+  .pl-pill.is-scripture,
+  .pl-pill.is-reading {
+    border-style: double;
+    border-width: 1.5pt;
+  }
+  .pl-pill.is-note {
+    border-style: dashed;
+  }
+  .pl-cite,
+  .pl-key {
+    font-size: 9pt;
+    color: #222;
+  }
+  .pl-key {
+    font-weight: 700;
+    padding: 0 4pt;
+    border: 0.75pt solid #000;
+    border-radius: 3pt;
+  }
+  .pl-cue {
+    margin: 0;
+    font-size: 9pt;
+    font-style: italic;
+    color: #222;
+  }
+  .pl-cue span {
+    margin-right: 2mm;
+    font-size: 7.5pt;
+    font-style: normal;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .pl-min {
+    font-family: "Cascadia Mono", Consolas, monospace;
+    font-size: 9pt;
+    white-space: nowrap;
+  }
+  .pl-empty-line {
+    display: block;
+    height: 6mm;
+    border-bottom: 0.75pt solid #000;
+    margin-right: 6mm;
+  }
+  .pl-empty {
+    font-style: italic;
+  }
+}

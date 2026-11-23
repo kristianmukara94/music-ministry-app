@@ -39,7 +39,7 @@ test('the panel lists every stanza, marks the one on air, and shows a stanza whe
   assert.match(panel, /onAirStanza === i/);
   assert.match(panel, /animate-pulse border-danger/);
   assert.match(panel, /quick\.showStanza\(i\)/);
-  assert.match(hook, /setCue\(hymn\);/, 'Go Live loads the song into the panel');
+  assert.doesNotMatch(hook, /setCue\(hymn\);/, 'Library song LIVE opens the Quick-Live popup, not this panel');
   assert.match(library, /<QuickCuePanel quick=\{quick\} t=\{t\} \/>/);
 });
 
@@ -54,7 +54,8 @@ test('the keys step, black out and clear, and ignore typing, the result list, ta
 });
 
 test('the On screen button brings the panel back into view, and a keyboard Go Live moves focus out of the list', () => {
-  assert.match(container, /row\.hymnId === quick\.liveHymnId && !immediate\) quick\.focusCue\(\)/);
+  assert.doesNotMatch(container, /quick\.focusCue\(\)/, 'the song button always goes through the Quick-Live popup');
+  assert.match(container, /quick\.goLive\(row\.hymnId, row\.title, immediate\)/);
   assert.match(container, /e\.currentTarget\.blur\(\)/);
   assert.match(hook, /scrollIntoView\(\{ block: 'nearest'/);
 });
@@ -80,7 +81,6 @@ test('the exit action is one step in the hook, a button in the panel header, and
   assert.match(hook, /const exitQuickLiveAndRestore = useCallback/);
   assert.match(hook, /Returned to Lineup: \$\{result\.name\}/);
   assert.match(hook, /if \(songUp\) dispatch\(\{ type: 'projector\/clear' \}\)/, 'only a screen that still shows the song is cleared');
-  assert.match(hook, /setCue\(null\);\n  \}, \[restoreLineup, tell\]\);/, 'the cue panel is reset');
   assert.match(hook, /e\.key === 'Escape' && !e\.shiftKey/, 'plain Escape still only clears');
   assert.match(panel, /onClick=\{exit\}/);
   assert.match(panel, /aria-keyshortcuts="Shift\+Escape"/);

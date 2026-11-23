@@ -14,7 +14,6 @@ import { bibleT } from '../../shared/bible-i18n.js';
 import { setUi, useUi } from '../state/ui';
 import { slideFramesOf, stagePrayer, takePrayer } from '../notes/present';
 import type { Note } from '../notes/types';
-import { stanzaFrame } from '../lyrics/frames';
 import { openQuickLivePreview } from '../golive/quickLiveSession';
 import { songTitleFrame, textRowActions } from '../../shared/stage-plan-row.js';
 import { slotById } from '../../shared/mass-slots.js';
@@ -22,7 +21,7 @@ import { announcementFrame } from '../announcements/frames';
 import { frameForWhiteboardSlide } from '../whiteboard/projectSlide';
 import { uiLangOf } from '../../shared/mass-language.js';
 import { goLiveNowActions } from '../../shared/lyrics-live.js';
-import { quickLiveBand } from '../praise-worship/useQuickLiveController';
+import { quickLiveBand, songPreviewFrames } from '../praise-worship/useQuickLiveController';
 import { planLanguage } from './plan-api';
 import { noteSource } from '../../shared/notes.js';
 import { assetFrame } from '../media/frame';
@@ -346,9 +345,7 @@ export async function goLiveLibraryItem(item: { module: string; sourceId: string
       const actions = hymn && !hymn.deletedAt ? goLiveNowActions({ hymn, band: quickLiveBand(hymn), bandStageOnly: true }) : null;
       if (!hymn || !actions) return 'empty';
       actions.forEach(dispatch);
-      // The verses with words, as the song's own stepping walks them: blank ones are skipped.
-      const frames = hymn.stanzas.flatMap((s, i) => (s.lyricsText.trim() ? [stanzaFrame(hymn, i)] : [])).filter((f): f is Frame => f !== null);
-      openQuickLivePreview(before, { title: hymn.title, frames });
+      openQuickLivePreview(before, { title: hymn.title, frames: songPreviewFrames(hymn) });
       return 'shown';
     }
     case 'notes': {
