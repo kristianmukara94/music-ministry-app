@@ -26,8 +26,7 @@ import {
   massRows,
   planTiming,
   praiseFromItems,
-  praiseSegments,
-  praiseTemplateFor,
+  praiseSegmentsFor,
   setlistEntries,
   shortDate,
   sortPlans,
@@ -277,7 +276,7 @@ function duplicatePlan(plan) {
 function setlistOf(plan, songs) {
   if (plan.kind === 'pw') {
     // The laptop's lineup, or the earlier editor's layout for a plan it laid out: the same choice the editor makes.
-    const segments = praiseSegments(praiseTemplateFor(plan.items, PRAISE_PLAN));
+    const segments = praiseSegmentsFor(plan.items, PRAISE_PLAN);
     return setlistEntries(praiseFromItems(plan.items, segments), segments, songs);
   }
   const rows = massRows(MASS_PLAN);

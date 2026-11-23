@@ -877,7 +877,7 @@ test('the Lectionary tab: Populate, Search, the DATE picker, and READING cards w
   assert.deepEqual(names('no such reading'), []);
   assert.match(workspace.lectionaryPanelHtml({ date: SUNDAY, planDate: SUNDAY, readings: [], query: '' }), /The Ordo has no readings for this date\./);
   // The tab sits right after Songs, and a reading card is escaped.
-  assert.deepEqual(workspace.LIBRARY_TABS.map((t) => t.label), ['Songs', 'Lectionary', 'Notes & Cues', 'Templates']);
+  assert.deepEqual(workspace.LIBRARY_TABS.map((t) => t.label), ['Songs', 'Lectionary', 'Prayers', 'Scripture', 'Notes & Cues', 'Templates']);
   assert.match(workspace.lectionaryPanelHtml({ date: SUNDAY, planDate: SUNDAY, dayName: 'Sample <Day>', readings: day.readings }), /Sample &lt;Day&gt; · Wis/);
 });
 
@@ -939,4 +939,461 @@ test('the Lectionary tab and the reading rows are wired in the page', () => {
   assert.match(page, /const tabs = \['songs', 'lectionary', 'cues', 'templates'\];/);
   assert.match(page, /readingLabel,\s*referenceOf,/);
   assert.match(page, /populate: canEdit && status\.empty > 0/);
+});
+
+// ---- Prayers and Scripture ----
+
+const ps = await load('web', 'js', 'prayer-scripture.js');
+// slot-ui.js imports the page shell, which listens on the document when it loads: a stub with nothing in it is all the markup builders need.
+globalThis.document ??= { addEventListener() {}, querySelectorAll: () => [], documentElement: { dataset: {} } };
+const slotUi = await load('web', 'js', 'slot-ui.js');
+const laptopParts = await load('shared', 'mass-parts.js');
+const laptopBibleRef = await load('shared', 'bible-ref.js');
+const laptopWebRef = await load('shared', 'bible-web-ref.js');
+const { checkItems } = await load('server', 'lib', 'plan-sync.js');
+const { MASS_PLAN: SAMPLE_MASS } = await load('web', 'js', 'sample-data.js');
+const PS_ROWS = model.massRows(SAMPLE_MASS);
+
+test('the Prayers catalog names slots by id, and a prayer with a Holy Mass Order part carries exactly the laptop name for it', () => {
+  const slotIds = new Set(webSlots.MASS_SLOTS.map((s) => s.id));
+  const laptopIds = new Set(laptopSlots.MASS_SLOTS.map((s) => s.id));
+  for (const prayer of ps.PRAYER_CATALOG) {
+    if (prayer.slotId) assert.ok(slotIds.has(prayer.slotId) && laptopIds.has(prayer.slotId), `${prayer.id} names a real slot`);
+    if (prayer.part) assert.equal(prayer.title, laptopParts.MASS_PARTS[prayer.part], `${prayer.id} is the laptop's ${prayer.part}`);
+  }
+  assert.equal(new Set(ps.PRAYER_CATALOG.map((p) => p.id)).size, ps.PRAYER_CATALOG.length);
+  // The numbers are the laptop's own: Confiteor 2, Kyrie 3, Gloria 18, Creed 24, Prayer of the Faithful 6, Sanctus 9, Our Father 12, Lamb of God 14.
+  const numberOf = (prayerId) => PS_ROWS.find((r) => r.massSlotId === ps.PRAYER_CATALOG.find((p) => p.id === prayerId).slotId).slot;
+  assert.deepEqual(['confiteor', 'kyrie', 'gloria', 'apostles-creed', 'prayer-faithful', 'sanctus', 'lords-prayer', 'agnus-dei'].map(numberOf), [2, 3, 18, 24, 6, 9, 12, 14]);
+  // Titles and search only: no prayer words are in the catalog.
+  assert.ok(ps.PRAYER_CATALOG.every((p) => Object.keys(p).every((k) => ['id', 'title', 'slotId', 'part', 'group'].includes(k))));
+});
+
+test('a prayer goes to the target slot, else to its own Holy Mass slot, and a devotional prayer needs a slot', () => {
+  const gloria = ps.PRAYER_CATALOG.find((p) => p.id === 'gloria');
+  assert.equal(ps.slotForPrayer(gloria, PS_ROWS), 's18', 'auto-matched');
+  assert.equal(ps.slotForPrayer(gloria, PS_ROWS, 's1'), 's1', 'the target wins');
+  assert.equal(ps.slotForPrayer(gloria, PS_ROWS, 'nope'), 's18', 'an unknown target is ignored');
+  const hail = ps.PRAYER_CATALOG.find((p) => p.id === 'hail-mary');
+  assert.equal(ps.slotForPrayer(hail, PS_ROWS), null);
+  assert.equal(ps.slotForPrayer(hail, PS_ROWS, 's1'), 's1');
+  assert.deepEqual(ps.filterPrayers('lamb').map((p) => p.id), ['agnus-dei']);
+  assert.ok(ps.filterPrayers('', 'devotional').every((p) => p.group === 'devotional'));
+  assert.deepEqual(ps.filterPrayers('zzz'), []);
+});
+
+test('the Scripture builder makes one reference form, which the laptop reads back, with the versions the laptop Bible has', () => {
+  assert.deepEqual(ps.SCRIPTURE_VERSIONS.map((v) => v.id), laptopBibleRef.BIBLE_TRANSLATION_IDS);
+  assert.deepEqual(ps.buildScripture({ book: 'Sample Book', chapter: 3, verses: '1-6', version: 'WEB' }), { text: 'Sample Book 3:1-6 (WEB)', reference: 'Sample Book 3:1-6', version: 'WEB' });
+  assert.equal(ps.buildScripture({ book: 'Sample Book', chapter: '2', verses: '16', version: 'tgl' }).text, 'Sample Book 2:16 (TGL)');
+  assert.equal(ps.buildScripture({ book: '', chapter: 1, verses: '1' }).error, 'Choose a book.');
+  assert.match(ps.buildScripture({ book: 'Sample Book', chapter: 0, verses: '1' }).error, /chapter/);
+  assert.match(ps.buildScripture({ book: 'Sample Book', chapter: 1, verses: '6-1' }).error, /after the first/);
+  assert.match(ps.buildScripture({ book: 'Sample Book', chapter: 1, verses: 'x' }).error, /verse/);
+  assert.match(ps.buildScripture({ book: 'Sample Book', chapter: 1, verses: '1', version: 'NIV' }).error, /version/, 'a copyrighted version the laptop does not have is not offered');
+  // Typed references, with or without a version.
+  assert.equal(ps.scriptureFromTyped('Sample Book 1:1-6').text, 'Sample Book 1:1-6 (WEB)');
+  assert.equal(ps.scriptureFromTyped('Sample Book 1:1-6 (CEB)').text, 'Sample Book 1:1-6 (CEB)');
+  assert.match(ps.scriptureFromTyped('not a reference').error, /Type a reference/);
+  // The website and the laptop read every reference the same way.
+  for (const text of ['Sample Book 1:1-6 (WEB)', '1 Sample Book 12:4 (TGL)', 'Sample Book 3:16']) {
+    const web = ps.parseScripture(text);
+    const laptop = laptopWebRef.parseWebReference(text);
+    assert.deepEqual([web.book, web.chapter, web.version], [laptop.book, laptop.chapter, laptop.translationId], text);
+    assert.equal(laptopWebRef.webReferenceText(laptop), text);
+  }
+  // Every book it offers is one the laptop Bible knows by name.
+  assert.equal(ps.SCRIPTURE_BOOKS.length, 73);
+  for (const book of ps.SCRIPTURE_BOOKS) assert.ok(laptopBibleRef.resolveBookCode(book.name), `${book.name} is a book the laptop knows`);
+  assert.equal(new Set(ps.SCRIPTURE_BOOKS.map((b) => laptopBibleRef.resolveBookCode(b.name))).size, 73, 'each book is a different one');
+});
+
+test('prayers and Scripture saved from the editor are items the server accepts, on any kind of slot, and read back with their badges', () => {
+  const state = { ...model.massFromItems([], PS_ROWS), contentHubItems: [] };
+  state.segments = model.withEntry(state.segments, 's18', ps.prayerEntry(ps.PRAYER_CATALOG.find((p) => p.id === 'gloria')));
+  state.segments = model.withEntry(state.segments, 's2', ps.prayerEntry(ps.PRAYER_CATALOG.find((p) => p.id === 'confiteor')));
+  state.segments = model.withEntry(state.segments, 's3', ps.prayerEntry(ps.PRAYER_CATALOG.find((p) => p.id === 'kyrie')));
+  state.segments = model.withEntry(state.segments, 's2', ps.scriptureEntry('Sample Book 3:1-6 (WEB)'));
+  state.segments = model.withEntry(state.segments, 's1', ps.scriptureEntry('Sample Book 1:1 (CEB)'));
+  const items = model.massToItems(state, PS_ROWS);
+  const bySlot = (n) => items.filter((i) => i.slot === n);
+  assert.deepEqual([bySlot(18)[0].kind, bySlot(18)[0].text, bySlot(18)[0].contentType], ['rite', 'Gloria', 'prayer']);
+  assert.deepEqual(bySlot(2).map((i) => [i.kind, i.text, i.contentType]), [['rite', 'I Confess (Confiteor)', 'prayer'], ['reading', 'Sample Book 3:1-6 (WEB)', 'scripture']]);
+  assert.deepEqual([bySlot(3)[0].kind, bySlot(3)[0].contentType], ['rite', 'prayer'], 'a prayer on a song slot is never a song');
+  assert.deepEqual([bySlot(1)[0].kind, bySlot(1)[0].contentType], ['reading', 'scripture'], 'a reference on a song slot is a reading');
+  // The server takes every one of them, and a prayer type on a song is still refused.
+  assert.doesNotThrow(() => checkItems(items, new Set()));
+  assert.throws(() => checkItems([{ key: 'a', group: 'word', order: 1, kind: 'song', text: 'Sample Prayer Title', contentType: 'prayer' }], new Set()));
+  assert.throws(() => checkItems([{ key: 'a', group: 'word', order: 1, kind: 'rite', text: 'Sample Scripture Ref', contentType: 'scripture' }], new Set()), 'a reference is always a reading');
+  // Read back: the same entries, badged, one per place.
+  const back = model.massFromItems(items, PS_ROWS);
+  const described = model.describeEntries(back.segments.s2, [], []);
+  assert.deepEqual(described.map((e) => [e.title, e.badge]), [['I Confess (Confiteor)', 'prayer'], ['Sample Book 3:1-6 (WEB)', 'scripture']]);
+  assert.deepEqual(model.massToItems({ ...back, contentHubItems: [] }, PS_ROWS).map((i) => [i.key, i.slot, i.text, i.contentType]), items.map((i) => [i.key, i.slot, i.text, i.contentType]), 'saving again changes nothing');
+});
+
+test('an item the laptop sent back with no type is still told apart: a Holy Mass part name is a prayer, a reference with a version is Scripture', () => {
+  assert.equal(ps.entryBadge({ text: 'Gloria' }), 'prayer');
+  assert.equal(ps.entryBadge({ text: 'Gloria', contentType: 'text_note' }), 'prayer');
+  assert.equal(ps.entryBadge({ text: 'Sample Book 1:1-6 (WEB)' }), 'scripture');
+  assert.equal(ps.entryBadge({ text: 'Sample Book 1:1-6' }), '', 'a bare reference is left as the typed text it is');
+  assert.equal(ps.entryBadge({ text: 'Sample Note' }), '');
+  assert.equal(ps.entryBadge({ songId: 'x', text: 'Gloria' }), '');
+  assert.equal(ps.entryBadge({ contentHubId: 'h', contentType: 'hub_item', text: 'Gloria' }), '');
+});
+
+test('a slot shows its prayers and Scripture with PRAYER and SCRIPTURE badges, language tags, reorder and remove', () => {
+  let segments = {};
+  segments = model.withEntry(segments, 's2', ps.prayerEntry(ps.PRAYER_CATALOG.find((p) => p.id === 'confiteor')));
+  segments = model.withEntry(segments, 's2', ps.scriptureEntry('Sample Book 3:1-6 (TGL)'));
+  const row = { ...PS_ROWS.find((r) => r.id === 's2'), english: 'x', entries: model.describeEntries(segments.s2, [], []) };
+  const html = workspace.slotRowHtml(row, { canEdit: true, language: 'CEB' });
+  assert.match(html, /<span class="lp-kind-badge is-prayer">Prayer<\/span><span class="lp-lang-tag">CEB<\/span><span class="lp-pill-title">I Confess \(Confiteor\)/);
+  assert.match(html, /<span class="lp-kind-badge is-scripture">Scripture<\/span><span class="lp-lang-tag">TL<\/span><span class="lp-pill-title">Sample Book 3:1-6 \(TGL\)/, 'a reference shows the language of its version');
+  assert.match(html, /data-move-entry="0" data-delta="1"/);
+  assert.match(html, /data-move-entry="1" data-delta="-1"/);
+  assert.equal((html.match(/data-remove-entry/g) ?? []).length, 2);
+  // Typed words are escaped, and a plain note keeps its own look with no badge.
+  const note = workspace.slotRowHtml({ ...row, entries: [{ index: 0, source: 'text', title: '<b>Sample Note</b>', badge: '' }] }, { canEdit: true });
+  assert.ok(!note.includes('lp-kind-badge') && note.includes('&lt;b&gt;Sample Note'));
+  // The slot panel and the Praise & Worship summary use the same badges.
+  assert.match(slotUi.entryListHtml(row.entries, 's2', true), /lp-kind-badge is-prayer/);
+  assert.match(slotUi.entrySummaryHtml(row.entries), /lp-kind-badge is-scripture/);
+  assert.ok(!slotUi.entrySummaryHtml(row.entries).includes('lp-lang-tag">CEB'), 'a plan with no language shows none');
+});
+
+test('the Prayers and Scripture tabs: search, groups, + on each card, the reference builder, and a held prayer shown as added', () => {
+  const html = ps.prayersPanelHtml({ query: '', group: 'mass', held: new Set(['gloria']), planLanguage: 'EN', slotNameOf: (id) => `Slot ${id}` });
+  assert.match(html, /data-prayer-search/);
+  assert.match(html, /data-prayer-group="devotional"/);
+  assert.match(html, /data-lib-prayer="gloria" aria-pressed="true"[^>]*>✓<\/button>/);
+  assert.match(html, /data-lib-prayer="kyrie" aria-pressed="false"[^>]*>\+<\/button>/);
+  assert.ok(!html.includes('data-lib-prayer="hail-mary"'), 'the Holy Mass group leaves the devotional prayers out');
+  assert.match(html, /Goes to Slot confess/);
+  assert.match(ps.prayersPanelHtml({ query: 'zzz' }), /No prayers match/);
+  assert.match(ps.prayersPanelHtml({ into: 's5' }), /data-lib-prayer="confiteor" data-into="s5"/, 'inside a slot the + names its slot');
+  assert.match(ps.prayersPanelHtml({ canEdit: false }), /data-lib-prayer="confiteor"[^>]*disabled/);
+
+  const sf = ps.scripturePanelHtml({ draft: { book: 'John', chapter: '3', verses: '16-17', version: 'TGL' }, into: 's5' });
+  assert.match(sf, /<option value="John" selected>/);
+  assert.match(sf, /<optgroup label="Old Testament">[\s\S]*<optgroup label="New Testament">/);
+  assert.match(sf, /data-sf-version="TGL" aria-pressed="true"/);
+  assert.match(sf, /data-sf-version="WEB" aria-pressed="false"/);
+  assert.match(sf, /Adds <strong>John 3:16-17 \(TGL\)<\/strong>/);
+  assert.match(sf, /data-add-scripture data-into="s5"/);
+  assert.match(ps.scripturePanelHtml({ draft: {} }), /data-sf-preview hidden/);
+  assert.match(ps.scripturePanelHtml({ error: 'Choose a book.' }), /role="alert" data-sf-error>Choose a book\./);
+  assert.match(ps.scripturePanelHtml({ draft: { typed: '<b>' } }), /value="&lt;b&gt;"/, 'typed text is escaped');
+  assert.equal(ps.scripturePreview({ typed: 'Sample Book 4:2 (CEB)', version: 'WEB' }), 'Sample Book 4:2 (CEB)', 'a typed reference wins over the fields');
+});
+
+test('Praise & Worship saves a prayer and a reference as items the server accepts, on every kind of segment', () => {
+  const segs = model.praiseSegments(model.PRAISE_TEMPLATE);
+  const state = { ...model.praiseFromItems([], segs), contentHubItems: [] };
+  const pray = segs.find((s) => s.kind === 'rite');
+  const song = segs.find((s) => s.kind === 'song');
+  const reading = segs.find((s) => s.kind === 'reading');
+  state.segments = model.withEntry(state.segments, pray.id, ps.prayerEntry(ps.PRAYER_CATALOG.find((p) => p.id === 'hail-mary')));
+  state.segments = model.withEntry(state.segments, song.id, ps.prayerEntry(ps.PRAYER_CATALOG.find((p) => p.id === 'angelus')));
+  state.segments = model.withEntry(state.segments, reading.id, ps.scriptureEntry('Sample Book 2:1-3 (WEB)'));
+  state.segments = model.withEntry(state.segments, pray.id, ps.scriptureEntry('Sample Book 5:5 (CEB)'));
+  const items = model.praiseToItems(state, segs);
+  const of = (id) => items.filter((i) => i.slotId === id);
+  assert.deepEqual(of(pray.id).map((i) => [i.kind, i.text, i.contentType]), [['rite', 'Hail Mary', 'prayer'], ['reading', 'Sample Book 5:5 (CEB)', 'scripture']]);
+  assert.deepEqual([of(song.id)[0].kind, of(song.id)[0].contentType], ['rite', 'prayer']);
+  assert.deepEqual([of(reading.id)[0].kind, of(reading.id)[0].contentType], ['reading', 'scripture']);
+  assert.doesNotThrow(() => checkItems(items, new Set()));
+  const back = model.praiseFromItems(items, segs);
+  assert.deepEqual(model.describeEntries(back.segments[pray.id], [], []).map((e) => e.badge), ['prayer', 'scripture']);
+  assert.deepEqual(model.praiseToItems({ ...back, contentHubItems: [] }, segs).map((i) => [i.key, i.text, i.contentType]), items.map((i) => [i.key, i.text, i.contentType]));
+});
+
+test('laptop items that fill no slot (an unslotted Bible passage or prayer) are listed as "Also in this plan", with badges, and kept on save', () => {
+  const items = [
+    { key: 'hbible0001', group: 'word', order: 1, kind: 'reading', text: 'Sample Book 3:1-6 (WEB)', contentType: 'scripture' },
+    { key: 'hprayer001', group: 'word', order: 2, kind: 'rite', text: 'Sample Prayer Title', contentType: 'prayer' },
+  ];
+  const filled = model.massFromItems(items, PS_ROWS);
+  assert.equal(filled.extra.length, 2, 'they fill no slot');
+  const entries = filled.extra.flatMap((item) => model.describeEntries(item, [], []));
+  const html = ps.extraItemsHtml(entries, 'EN');
+  assert.match(html, /Also in this plan/);
+  assert.match(html, /lp-kind-badge is-scripture">Scripture<\/span><span class="lp-lang-tag">EN<\/span><span class="lp-pill-title">Sample Book 3:1-6 \(WEB\)/);
+  assert.match(html, /lp-kind-badge is-prayer">Prayer<\/span>[\s\S]*Sample Prayer Title/);
+  assert.equal(ps.extraItemsHtml([]), '', 'nothing is drawn when there are none');
+  // Saving the plan sends them back as they were.
+  const saved = model.massToItems({ ...filled, contentHubItems: [] }, PS_ROWS);
+  assert.deepEqual(saved.map((i) => [i.key, i.text, i.contentType]), items.map((i) => [i.key, i.text, i.contentType]));
+});
+
+// ---- The Praise & Worship Library + LINEUP ----
+
+const pwWork = await load('web', 'js', 'praise-workspace.js');
+const lineup = await load('web', 'js', 'praise-lineup.js');
+const PW_SONG = { id: '40000000-0000-4000-8000-000000000001', title: 'Sample Song Title', category: 'Joyful / Fast Praise', language: 'English', key: 'G' };
+const escRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+test('the Praise & Worship page is the two-column Library + LINEUP, and every id its script looks up is on the page', () => {
+  const html = readWeb('plan/praise.html');
+  const js = readWeb('js/praise.js');
+  for (const id of [...js.matchAll(/getElementById\('([a-z-]+)'\)/g)].map((m) => m[1])) assert.match(html, new RegExp(`id="${id}"`), `${id} is on the page`);
+  assert.match(html, /class="lp-workspace pw-workspace"/);
+  assert.match(html, /<h2 class="pw-lib-title">Library<\/h2>/);
+  assert.match(html, /id="browse-library"/, 'a jump to the Library for phones and tablets');
+  for (const id of ['duplicate', 'discard', 'save', 'plan-title', 'date-badge']) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(html, /aria-keyshortcuts="Control\+S Meta\+S"/);
+  // The grid is two columns from 1024px wide (about 380px for the Library) and one column below it.
+  const css = readWeb('css/planner.css');
+  assert.match(css, /@media \(min-width: 1024px\) \{\s*\.pw-workspace \{\s*grid-template-columns: minmax\(320px, 380px\) minmax\(0, 1fr\);/);
+});
+
+test('the Library: Songs, Prayers (with its count) and Scripture tabs, the gold target pill, and INSERT INTO SEGMENT / ADD SELECTED', () => {
+  const tabs = pwWork.pwTabsHtml('prayers', { prayers: 26 });
+  assert.deepEqual([...tabs.matchAll(/data-lib-tab="(\w+)"/g)].map((m) => m[1]), ['songs', 'prayers', 'scripture']);
+  assert.match(tabs, /pw-tab is-on" data-lib-tab="prayers">Prayers<span class="pw-tab-count">26<\/span>/);
+  assert.equal(pwWork.pwTabOf('nonsense'), 'songs');
+  assert.match(pwWork.pwTargetPillHtml({ n: 1, name: 'Sample Segment Title' }), /Adds to segment 01 · <strong>Sample Segment Title<\/strong>/);
+  assert.match(pwWork.pwTargetPillHtml({ n: 2, name: '<b>x</b>' }), /&lt;b&gt;x&lt;\/b&gt;/, 'escaped');
+  assert.match(pwWork.pwTargetPillHtml(null), /Pick a segment/);
+  const bar = pwWork.pwActionBarHtml({ hasPick: true, hasTarget: true });
+  assert.match(bar, /data-pw-insert>Insert into segment/);
+  assert.match(bar, /data-pw-add-selected>Add selected/);
+  assert.match(pwWork.pwActionBarHtml({ hasPick: false, hasTarget: true }), /data-pw-insert disabled>[\s\S]*data-pw-add-selected disabled>/, 'nothing highlighted: both wait');
+  assert.match(pwWork.pwActionBarHtml({ hasPick: true, hasTarget: false }), /data-pw-insert disabled>[\s\S]*data-pw-add-selected>/, 'no target: only ADD SELECTED, which makes its own segment');
+  assert.match(pwWork.pwActionBarHtml({ hasPick: true, hasTarget: true, canEdit: false }), /data-pw-insert disabled>[\s\S]*data-pw-add-selected disabled>/, 'a viewer cannot add');
+  assert.match(pwWork.pwSearchHtml('', 'songs'), /placeholder="Search title, category, composer"/);
+});
+
+test('the Library cards: songs and prayers have ADD (no LIVE), a held card says Added, and the picked card is highlighted', () => {
+  const songs = pwWork.pwSongCardsHtml([PW_SONG], { picked: `song:${PW_SONG.id}`, held: new Set(), songs: [PW_SONG] });
+  assert.match(songs, /pw-card is-picked" data-pw-pick="song:40000000-0000-4000-8000-000000000001"/);
+  assert.match(songs, /data-pw-add-song="40000000-[\w-]+" aria-pressed="false"[^>]*>Add<\/button>/);
+  assert.match(songs, /Sample Song Title/);
+  assert.doesNotMatch(songs, /LIVE|Live/);
+  assert.match(pwWork.pwSongCardsHtml([PW_SONG], { held: new Set([PW_SONG.id]), songs: [PW_SONG] }), /pw-card is-added[\s\S]*aria-pressed="true"[^>]*>Added</);
+  assert.match(pwWork.pwSongCardsHtml([], { songs: [] }), /No songs yet/);
+  assert.match(pwWork.pwSongCardsHtml([], { songs: [PW_SONG] }), /No songs match/);
+  const prayers = pwWork.pwPrayerCardsHtml({});
+  assert.equal([...prayers.matchAll(/data-pw-add-prayer="/g)].length, ps.PRAYER_CATALOG.length, 'every prayer of the catalog is listed');
+  assert.match(prayers, /Liturgical Prayer/);
+  assert.match(prayers, /Community Prayer/);
+  const first = ps.PRAYER_CATALOG[0];
+  assert.match(pwWork.pwPrayerCardsHtml({ held: new Set([first.title.toLowerCase()]) }), new RegExp(`data-pw-add-prayer="${first.id}" aria-pressed="true"`));
+  assert.match(pwWork.pwPrayerCardsHtml({ query: 'zzzz-no-such-prayer' }), /No prayers match/);
+  assert.ok([...pwWork.pwPrayerCardsHtml({ query: first.title.slice(0, 5) }).matchAll(/data-pw-add-prayer="/g)].length >= 1, 'the search narrows by title');
+});
+
+test("the Scripture tab builds a citation (book across both testaments, chapter, verses, version) with INSERT INTO SEGMENT and ADD AS NEW SEGMENT; only the laptop's Bibles are offered", () => {
+  const html = ps.scripturePanelHtml({ draft: { book: 'Sample Book', chapter: '3', verses: '1-6', version: 'WEB', title: 'Sample Segment Title' }, newSegment: true });
+  assert.match(html, /<optgroup label="Old Testament">/);
+  assert.match(html, /<optgroup label="New Testament">/);
+  assert.match(html, /data-sf="chapter"/);
+  assert.match(html, /data-sf="verses"/);
+  assert.match(html, /data-sf="title"[^>]*value="Sample Segment Title"/, 'the optional display title');
+  assert.match(html, /data-add-scripture[^>]*>Insert into segment</);
+  assert.match(html, /data-add-scripture-new[^>]*>Add as new segment</);
+  assert.deepEqual([...html.matchAll(/data-sf-version="(\w+)"/g)].map((m) => m[1]), ['WEB', 'TGL', 'CEB'], 'a version the laptop has no Bible for would only reach it as words');
+  // The Holy Mass library's single button is unchanged.
+  const mass = ps.scripturePanelHtml({ draft: {} });
+  assert.match(mass, />Add Scripture</);
+  assert.doesNotMatch(mass, /data-add-scripture-new/);
+});
+
+function pwSections(segs, state, songs = [PW_SONG]) {
+  return lineup.templateFor(segs).sections.map((section) => {
+    const rows = segs.filter((s) => s.group === section.group).map((s) => model.praiseRow(s, state, songs));
+    return { group: section.group, title: section.title, rows, minutes: rows.reduce((n, r) => n + r.minutes, 0) };
+  });
+}
+
+test('the LINEUP: sections with their minutes, numbered rows, the status of each, the target highlighted, Edit and Delete', () => {
+  const { segs } = lineup.lineupFromPlan([]);
+  const prayer = ps.PRAYER_CATALOG[0];
+  const state = { segments: model.withEntry(model.withEntry({}, 'marian_song', { songId: PW_SONG.id, contentType: 'song' }), 'prayer_authority', ps.prayerEntry(prayer)), notes: {}, extra: [], present: new Set() };
+  const sections = pwSections(segs, state);
+  assert.deepEqual(sections.map((s) => [s.title, s.minutes]), [['Opening', 15], ['Praise & Worship', 39], ['Word & Offering', 20]]);
+  const html = pwWork.pwLineupHtml(sections, (row, first, last) => pwWork.pwRowHtml(row, { active: row.id === 'marian_song', first, last }));
+  assert.deepEqual([...html.matchAll(/class="pw-section-title">([^<]+)</g)].map((m) => m[1]), ['Opening', 'Praise &amp; Worship', 'Word &amp; Offering']);
+  assert.deepEqual([...html.matchAll(/data-section-minutes="\w+">(\d+) min/g)].map((m) => m[1]), ['15', '39', '20']);
+  assert.deepEqual([...html.matchAll(/class="pw-num">(\d\d)</g)].map((m) => m[1]).slice(0, 3), ['01', '02', '03']);
+  assert.match(html, /pw-row is-active" data-seg="marian_song"/);
+  // Statuses: a prayer waiting, a held prayer and song, a title slide the laptop fills.
+  const status = (id) => html.match(new RegExp(`data-seg="${id}"[\\s\\S]*?pw-status is-(\\w+)">([^<]+)<`)).slice(1);
+  assert.deepEqual(status('consecration_mary'), ['needs', 'Needs prayer']);
+  assert.deepEqual(status('joyful_song'), ['needs', 'Needs song']);
+  assert.deepEqual(status('prayer_authority'), ['ready', 'Ready']);
+  assert.deepEqual(status('marian_song'), ['ready', 'Ready']);
+  assert.deepEqual(status('bible_enthronement'), ['auto', 'Auto']);
+  assert.match(html, new RegExp(`${escRe(prayer.title)}</span>`), 'what a ready row holds is its subtitle');
+  assert.match(html, /\[Select prayer\]/);
+  assert.match(html, /\[Select song\]/);
+  assert.match(html, /Title slide/);
+  assert.match(html, /data-drag-seg="marian_song"/, 'drag handle');
+  assert.match(html, /data-seg-move="prayer_authority" data-delta="-1"[^>]*disabled>/, 'the first segment cannot go up');
+  assert.match(html, /data-edit-seg="marian_song"/);
+  assert.match(html, /data-delete-seg="marian_song"/);
+  assert.match(html, /class="pw-min" data-minutes="marian_song">5 min</);
+  // A viewer, and a plan from the earlier layout, cannot restructure.
+  assert.match(pwWork.pwRowHtml(sections[0].rows[0], { canEdit: false }), /data-delete-seg[^>]*disabled>/);
+  assert.match(pwWork.pwRowHtml(sections[0].rows[1], { structure: false }), /data-delete-seg[^>]*disabled>/);
+  assert.doesNotMatch(pwWork.pwRowHtml(sections[0].rows[1], { structure: false }), /data-edit-seg="[^"]+" aria-expanded="false" aria-label="[^"]+" title="Edit" disabled/, 'Edit still works');
+  assert.match(pwWork.lineupHeadHtml({ count: 12 }), /pw-count" aria-label="12 segments">12<[\s\S]*\+ Add segment/);
+});
+
+test("a segment's name and what it holds are escaped in the LINEUP", () => {
+  const built = lineup.buildSegment({ name: '<img src=x onerror=alert(1)>', type: 'prayer' }, []);
+  const row = model.praiseRow(built.seg, { segments: { [built.seg.id]: { text: '"><script>x</script>', contentType: 'prayer' } }, notes: {} }, []);
+  const html = pwWork.pwRowHtml(row, {});
+  assert.doesNotMatch(html, /<img|<script/);
+  assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+});
+
+test('the segment statuses and subtitles', () => {
+  const row = (kind, over = {}) => ({ kind, entries: [], note: '', value: '', optional: false, ...over });
+  assert.deepEqual(lineup.segmentStatus(row('rite')), { tone: 'needs', label: 'Needs prayer' });
+  assert.deepEqual(lineup.segmentStatus(row('song')), { tone: 'needs', label: 'Needs song' });
+  assert.deepEqual(lineup.segmentStatus(row('reading')), { tone: 'needs', label: 'Needs reading' });
+  assert.deepEqual(lineup.segmentStatus(row('reading', { optional: true })), { tone: 'auto', label: 'Auto' });
+  assert.deepEqual(lineup.segmentStatus(row('song', { entries: [{ title: 'Sample Song Title' }] })), { tone: 'ready', label: 'Ready' });
+  assert.deepEqual(lineup.segmentStatus(row('rite', { note: 'Sample Musician Cue' })), { tone: 'needs', label: 'Needs prayer' }, 'a cue alone is not an assignment');
+  assert.equal(lineup.segmentSubtitle(row('song', { entries: [{ title: 'Sample Song Title' }, { title: 'Sample Prayer Title' }] })), 'Sample Song Title + Sample Prayer Title');
+});
+
+test('the lineup: add, rename, move, drag and delete a segment; an earlier layout is left alone', () => {
+  let { segs } = lineup.lineupFromPlan([]);
+  assert.equal(segs.length, 12);
+  assert.deepEqual(lineup.groupOrder(segs), ['opening', 'praise', 'word']);
+  // Add: neutral key, the section asked for, at the end of it; a blank or long title and a bad length are refused in words.
+  assert.match(lineup.buildSegment({ name: '  ', type: 'song' }, segs).error, /title/);
+  assert.match(lineup.buildSegment({ name: 'x'.repeat(81) }, segs).error, /80/);
+  assert.match(lineup.buildSegment({ name: 'Sample Segment Title', minutes: 0 }, segs).error, /1 to 60/);
+  const built = lineup.buildSegment({ name: ' Sample   Segment Title ', type: 'scripture', group: 'opening', minutes: 4 }, segs);
+  assert.equal(built.seg.id, 'seg_1');
+  assert.equal(built.seg.name, 'Sample Segment Title');
+  assert.equal(built.seg.kind, 'reading');
+  assert.equal(built.seg.optional, true, 'a title slide behind it, so never "needs"');
+  segs = lineup.withSegmentAdded(segs, built.seg);
+  assert.equal(segs.length, 13);
+  assert.equal(segs.findIndex((s) => s.id === 'seg_1'), 4, 'the end of Opening');
+  assert.deepEqual(segs.map((s) => s.n), segs.map((_, i) => i + 1), 'numbered 1 upward');
+  assert.equal(lineup.buildSegment({ name: 'Sample Segment Title' }, segs, ['seg_2']).seg.id, 'seg_3', 'a key an item already has is not reused');
+  // Rename: only a segment of its own.
+  assert.equal(lineup.withSegmentRenamed(segs, 'seg_1', 'Sample Renamed Segment').find((s) => s.id === 'seg_1').name, 'Sample Renamed Segment');
+  assert.equal(lineup.withSegmentRenamed(segs, 'worship', 'Anything').find((s) => s.id === 'worship').name, 'Worship', 'the laptop names its own');
+  // Move across a section edge, and swap inside one.
+  const down = lineup.withSegmentMoved(segs, 'seg_1', 1);
+  assert.equal(down.find((s) => s.id === 'seg_1').group, 'praise');
+  assert.equal(down.findIndex((s) => s.id === 'seg_1'), 4);
+  const swapped = lineup.withSegmentMoved(segs, 'marian_song', -1);
+  assert.deepEqual(swapped.slice(0, 3).map((s) => s.id), ['prayer_authority', 'marian_song', 'consecration_mary']);
+  assert.equal(lineup.withSegmentMoved(segs, 'prayer_authority', -1), segs, 'the first stays');
+  // Drag: before another segment, in its section.
+  const dropped = lineup.withSegmentDropped(segs, 'finale', 'joyful_song', false);
+  assert.equal(dropped.find((s) => s.id === 'finale').group, 'praise');
+  assert.equal(dropped.findIndex((s) => s.id === 'finale'), dropped.findIndex((s) => s.id === 'joyful_song') - 1);
+  assert.equal(lineup.withSegmentDropped(segs, 'finale', 'finale'), segs);
+  // Delete, and put back.
+  const fewer = lineup.withoutSegment(segs, 'finale');
+  assert.equal(fewer.length, 12);
+  assert.equal(lineup.withSegmentRestored(fewer, 'finale').length, 13);
+  assert.equal(lineup.withSegmentRestored(segs, 'finale'), segs, 'already there');
+  // An earlier layout is left alone.
+  const earlier = [{ key: '2', group: 'opening', order: 1, kind: 'song', minutes: 5 }];
+  assert.equal(lineup.lineupFromPlan(earlier).template, model.PRAISE_TEMPLATE);
+  assert.equal(lineup.lineupFromPlan(earlier).segs.length, 12);
+});
+
+test("a plan opens as it was saved: segments in their saved order and section, a laptop segment taken out is offered back, and the laptop's own cards show as segments", () => {
+  const items = [
+    { key: 'worship', group: 'praise', order: 1, kind: 'song', minutes: 15 },
+    { key: 'seg_1', slotId: 'seg_1', group: 'opening', order: 2, kind: 'rite', text: 'Sample Prayer Title', contentType: 'prayer', title: 'Sample Segment Title', minutes: 4 },
+    { key: 'custom_abc123', group: 'word', order: 3, kind: 'reading', minutes: 2 },
+    { key: 'seg_2.2', slotId: 'seg_2', group: 'praise', order: 4, kind: 'song', songId: '40000000-0000-4000-8000-000000000001' },
+    { key: 'seg_2', slotId: 'seg_2', group: 'praise', order: 5, kind: 'song', minutes: 6 },
+  ];
+  const opened = lineup.lineupFromPlan(items, () => 'Sample Song Title');
+  // Sections in the laptop's order, each segment in the order its first item had.
+  assert.deepEqual(opened.segs.map((s) => [s.id, s.group]), [['seg_1', 'opening'], ['worship', 'praise'], ['seg_2', 'praise'], ['custom_abc123', 'word']]);
+  assert.deepEqual(opened.segs.map((s) => s.name), ['Sample Segment Title', 'Worship', 'Sample Song Title', 'Scripture']);
+  assert.equal(opened.removed.length, 12 - 1, 'the other laptop segments were taken out');
+  assert.ok(opened.removed.some((s) => s.id === 'finale'));
+  assert.deepEqual(opened.template.sections.map((s) => s.group), ['opening', 'praise', 'word']);
+  const back = model.praiseFromItems(items, opened.segs);
+  assert.deepEqual(back.extra, [], 'nothing is hidden under "Also in this plan"');
+  assert.equal(model.slotEntries(back.segments.seg_1)[0].title, undefined, "the segment's name is not the prayer's");
+  assert.equal(model.slotEntries(back.segments.seg_1)[0].text, 'Sample Prayer Title');
+  // Another section's name from a laptop that has one of its own.
+  const other = lineup.lineupFromPlan([{ key: 'custom_xyz', group: 'sample_part', order: 1, kind: 'rite', title: 'Sample Segment Title' }]);
+  assert.deepEqual(other.template.sections.map((s) => s.title), ['Opening', 'Praise & Worship', 'Word & Offering', 'Sample part']);
+});
+
+test('prayer and Scripture items are visible in both web editors, with their badges and controls, never filtered out', () => {
+  const prayer = ps.PRAYER_CATALOG[0];
+  const text = ps.buildScripture({ book: 'Sample Book', chapter: 3, verses: '1-6', version: 'WEB' }).text;
+  // Praise & Worship: both are the segment's entries, with badges, and the edit panel carries the minutes, the cue and the entry list.
+  const { segs } = lineup.lineupFromPlan([]);
+  let segments = model.withEntry({}, 'worship', ps.prayerEntry(prayer));
+  segments = model.withEntry(segments, 'worship', ps.scriptureEntry(text));
+  const row = model.praiseRow(segs.find((s) => s.id === 'worship'), { segments, notes: {} }, []);
+  assert.deepEqual(row.entries.map((e) => e.badge), ['prayer', 'scripture']);
+  const panel = pwWork.pwEditPanelHtml(row, { entriesHtml: '<ul>entries</ul>' });
+  assert.match(panel, /<ul>entries<\/ul>/);
+  assert.match(panel, /data-role="panel-minutes"/);
+  assert.match(panel, /data-role="panel-note"/);
+  assert.match(panel, /The laptop names this segment/, 'a laptop segment cannot be renamed here');
+  assert.match(pwWork.pwEditPanelHtml({ ...row, custom: true }, {}), /data-role="panel-name" maxlength="80" value="Worship">/);
+  assert.match(pwWork.pwRowHtml(row, {}), new RegExp(`${escRe(prayer.title)} \\+ ${escRe(text)}`));
+  // Holy Mass: the slot's pills carry the same badges, reorder, and remove.
+  const pills = workspace.entryPillsHtml(row.entries, 's18', true, {});
+  assert.match(pills, /lp-kind-badge is-prayer">Prayer</);
+  assert.match(pills, /lp-kind-badge is-scripture">Scripture</);
+  assert.match(pills, /data-move-entry="0" data-delta="1"/);
+  assert.match(pills, /data-move-entry="1" data-delta="-1"/);
+  assert.match(pills, /data-remove-entry="1" data-for="s18"/);
+  assert.deepEqual(workspace.LIBRARY_TABS.map((t) => t.id), ['songs', 'lectionary', 'prayers', 'scripture', 'cues', 'templates']);
+});
+
+test('the add-segment form lists the sections and any laptop segment taken out; long titles wrap instead of widening a phone', () => {
+  const removed = lineup.lineupFromPlan([{ key: 'worship', group: 'praise', order: 1, kind: 'song' }]).removed;
+  const html = pwWork.addSegmentFormHtml({ groups: ['opening', 'praise', 'word'], removed, error: 'Give the segment a title.' });
+  assert.match(html, /data-asf="name"/);
+  assert.deepEqual([...html.matchAll(/<option value="(prayer|song|scripture)"/g)].map((m) => m[1]), ['prayer', 'song', 'scripture']);
+  assert.match(html, /<option value="praise" selected>Praise &amp; Worship<\/option>/);
+  assert.match(html, /data-restore-segment="finale"/);
+  assert.match(html, /role="alert" data-asf-error>Give the segment a title\./);
+  const css = readWeb('css/planner.css');
+  assert.match(css, /\.pw-row-select \{[^}]*min-width: 0;/);
+  assert.match(css, /\.pw-card-text strong \{[^}]*overflow-wrap: anywhere;/);
+});
+
+test("adding a song from the Songs page, and the printed setlist, keep a lineup the planner changed instead of putting it back in the template's order", async () => {
+  const { PRAISE_PLAN: EARLIER } = await load('web', 'js', 'sample-data.js');
+  const templates = { mass: MASS_PLAN, praise: EARLIER };
+  const NEW_SONG = '40000000-0000-4000-8000-0000000000a1';
+  const HELD_SONG = '40000000-0000-4000-8000-0000000000a2';
+  // A segment of the planner's own first, a laptop segment moved to another section, and the rest of the laptop's twelve taken out.
+  const items = [
+    { key: 'seg_1', slotId: 'seg_1', group: 'opening', order: 1, kind: 'song', minutes: 6, title: 'Sample Song Segment' },
+    { key: 'prayer_authority', slotId: 'prayer_authority', group: 'opening', order: 2, kind: 'rite', minutes: 3 },
+    { key: 'worship', slotId: 'worship', group: 'word', order: 3, kind: 'song', songId: HELD_SONG, minutes: 15 },
+  ];
+  const plan = { kind: 'pw', items, contentHubItems: [] };
+  const steps = model.songSteps(plan, templates, NEW_SONG);
+  assert.deepEqual(steps.map((s) => s.id), ['seg_1', 'worship'], 'the planner\'s own song segment is offered, the segments taken out are not');
+  const next = model.itemsWithSong(plan, templates, 'seg_1', NEW_SONG);
+  assert.deepEqual(next.map((i) => [i.key, i.group, i.order]), [['seg_1', 'opening', 1], ['prayer_authority', 'opening', 2], ['worship', 'word', 3]], 'same keys, sections and order');
+  assert.deepEqual([next[0].songId, next[0].title, next[0].minutes], [NEW_SONG, 'Sample Song Segment', 6], 'the segment keeps its name and minutes');
+  assert.equal(next.length, 3, 'no laptop segment is put back and nothing falls under "Also in this plan"');
+  // A second song in the moved laptop segment stays in its section.
+  const more = model.itemsWithSong(plan, templates, 'worship', NEW_SONG);
+  assert.deepEqual(more.filter((i) => i.slotId === 'worship').map((i) => [i.songId, i.group]), [[HELD_SONG, 'word'], [NEW_SONG, 'word']]);
+  // The printed setlist names the segment of the planner's own.
+  const segs = model.praiseSegmentsFor(next, EARLIER);
+  assert.deepEqual(segs.map((s) => s.id), ['seg_1', 'prayer_authority', 'worship']);
+  const entries = model.setlistEntries(model.praiseFromItems(next, segs), segs, [{ id: NEW_SONG, title: 'Sample Song Title', key: 'G' }]);
+  assert.deepEqual([entries[0].label, entries[0].title, entries[1].label], ['Sample Song Segment', 'Sample Song Title', 'Worship']);
+  // A plan from the earlier layout is still read in that layout.
+  const earlier = [{ key: '2', group: 'opening', order: 1, kind: 'song', minutes: 5 }];
+  assert.equal(model.praiseSegmentsFor(earlier, EARLIER).length, model.praiseSegments(EARLIER).length);
+  assert.equal(model.praiseSegmentsFor([], EARLIER).length, 12, 'a new plan is the laptop\'s twelve');
 });

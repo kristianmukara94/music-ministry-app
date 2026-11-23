@@ -128,7 +128,9 @@ test('a reading can name its type, only from the list and only with a title', as
   const base = await latest();
   assert.equal((await save(cookie, { baseUpdatedAt: base, items: [item(1, 1, { kind: 'reading', text: 'x', contentType: 'homily' })] })).statusCode, 400);
   assert.equal((await save(cookie, { baseUpdatedAt: base, items: [item(1, 1, { kind: 'reading', contentType: 'prayer' })] })).statusCode, 400, 'no title');
-  assert.equal((await save(cookie, { baseUpdatedAt: base, items: [item(1, 1, { kind: 'rite', text: 'x', contentType: 'prayer' })] })).statusCode, 400, 'not a reading');
+  assert.equal((await save(cookie, { baseUpdatedAt: base, items: [item(1, 1, { kind: 'rite', text: 'x', contentType: 'scripture' })] })).statusCode, 400, 'a reference or an announcement is a reading');
+  assert.equal((await save(cookie, { baseUpdatedAt: base, items: [item(1, 1, { kind: 'song', text: 'x', contentType: 'prayer' })] })).statusCode, 400, 'a prayer is never a song');
+  assert.equal((await save(cookie, { baseUpdatedAt: base, items: [item(1, 1, { kind: 'rite', text: 'Sample Prayer Title', contentType: 'prayer' })] })).statusCode, 200, 'a prayer can be kept on a spoken part');
   assert.equal((await save(cookie, { baseUpdatedAt: base, items: [item(1, 1, { kind: 'reading', text: 'x', announcement: 'the words' })] })).statusCode, 400, 'a field that would carry the words is still refused');
 });
 

@@ -272,6 +272,8 @@ export interface LiveState {
   lowerThird: { live: LowerThird | null; staged: LowerThird | null; paused: boolean; choice: 'on' | 'off' | null };
   /** The secondary display (the TV). `mode` dual mirrors the projector; independent shows the secondary's own frame. */
   display: DisplayState;
+  /** True while one or more TVs are casting (Nearby TV Cast). Set by the main process. Absent in older saved states. */
+  tvCasting?: boolean;
   queue: QueueItem[];
   /** The Mass plan the queue was loaded from; persisted so the queue survives a restart. */
   queuePlanId: number | null;
@@ -334,6 +336,7 @@ export type LiveAction =
   | { type: 'projector/step'; delta: number }
   | { type: 'display/mode'; value: DisplayState['mode'] }
   | { type: 'display/live'; value: boolean }
+  | { type: 'display/cast'; value: boolean }
   | { type: 'display/show'; frame: Frame }
   /**
    * Without `manual` (Go Live, Take Live, a slide's cue) it never turns the lower third on: it stages `value`, or replaces a band already on air.

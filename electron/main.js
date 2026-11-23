@@ -718,6 +718,8 @@ const tvCast = createTvCastManager({
   // With nothing casting, the hidden windows are closed: they cost a renderer each.
   onChange: () => {
     if (tvCast.activeCount() === 0) closeCastWindows();
+    // Casting is an output of its own: Go Live and the Remote Primary read it, so slides flow with the projector off.
+    apply({ type: 'display/cast', value: tvCast.activeCount() > 0 });
   },
 });
 

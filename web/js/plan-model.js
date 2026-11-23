@@ -4,6 +4,9 @@
 
 import { LEGACY_STEP_SLOT, MASS_SECTIONS, MASS_SLOTS, slotOfNumber } from './mass-slots.js';
 import { PW_LINEUP, PW_SEGMENT_KEYS, pickerCategoryForName, pickerCategoryLabel, serviceTypeOfPlanKind } from './lineup-templates.js';
+import { entryBadge } from './prayer-scripture.js';
+// praise-lineup.js reads this file's exports only inside its functions, so the two importing each other is safe.
+import { lineupFromPlan } from './praise-lineup.js';
 
 export const MIN_MINUTES = 1;
 export const MAX_MINUTES = 60;
@@ -47,6 +50,8 @@ export function massSections(template) {
       id: `s${slot.number}`,
       n: slot.position,
       slot: slot.number,
+      // The laptop's id for the slot ("confess"), which the Prayers catalog names its slots by.
+      massSlotId: slot.id,
       name: slot.name,
       kind: slot.kind === 'text' ? 'slot-text' : slot.kind,
       category: slot.category ?? '',
@@ -266,6 +271,8 @@ export function describeEntries(segment, songs, hubItems = []) {
       keyTransposed,
       key: keyTransposed || originalKey,
       contentType: entry.contentType ?? '',
+      // 'prayer' or 'scripture' for an entry that is one, so the page can badge it; '' for anything else.
+      badge: entryBadge(entry),
     };
   });
 }
@@ -285,14 +292,23 @@ function entryFields(entry, kind, slotId, hubItems) {
   if (entry.durationMinutes !== undefined) item.durationMinutes = entry.durationMinutes;
   if (entry.songId) item.contentType = 'song';
   else if (entry.contentHubId) item.contentType = 'hub_item';
-  else if (kind === 'reading') {
+  else if (kind === 'reading' || (kind === 'rite' && entry.contentType === 'prayer')) {
+    // A prayer is also kept on a spoken part (a rite), so it keeps its type there instead of becoming a typed note.
     if (text && READING_TYPE_VALUES.includes(entry.contentType)) item.contentType = entry.contentType;
+    else if (text && kind === 'rite') item.contentType = 'text_note';
   } else if (text) item.contentType = 'text_note';
   return item;
 }
 
 /** A song names a song and a Content Hub entry is a spoken part, whatever the step was made for. Anything else keeps the step's kind. */
-const entryKind = (entry, fallback) => (entry.songId ? 'song' : entry.contentHubId ? 'rite' : isReadingName(entry) ? 'reading' : fallback);
+// A scripture reference is a reading wherever it sits; a prayer is a reading or a spoken part, never a song.
+const entryKind = (entry, fallback) => {
+  if (entry.songId) return 'song';
+  if (entry.contentHubId) return 'rite';
+  if (isReadingName(entry) || (entry.contentType === 'scripture' && entry.text)) return 'reading';
+  if (entry.contentType === 'prayer' && entry.text) return fallback === 'song' ? 'rite' : fallback;
+  return fallback;
+};
 
 /**
  * The reading names the laptop's Lectionary knows (electron/plan-sync-map.js READING_TYPES). A reading item holding exactly one of these, in the plan's
@@ -413,6 +429,7 @@ export function massToItems({ segments, notes, extra, meta = {}, contentHubItems
 /** Turns a saved Praise & Worship plan's items into the editor's state, with the minutes of each segment. */
 export function praiseFromItems(items, segs) {
   const known = new Set(segs.map((s) => s.id));
+  const customIds = new Set(segs.filter((s) => s.custom).map((s) => s.id));
   // A laptop numbers a segment's songs ("5.1", "5.2"), and this editor numbers a further item the same way, so the number is not part of the segment.
   const segmentOf = (item) => {
     if (known.has(item.slotId)) return item.slotId;
@@ -442,6 +459,8 @@ export function praiseFromItems(items, segs) {
       continue;
     }
     const seg = pickEntry(item, ENTRY_FIELDS.filter((f) => f !== 'key'));
+    // A segment added outside the template carries its own name on its first item's title; that is the segment's name, not the item's.
+    if (customIds.has(id) && !item.contentHubId) delete seg.title;
     if (item.key !== id) seg.key = item.key;
     if (item.minutes !== undefined) seg.minutes = item.minutes;
     if (Object.keys(seg).length) segments[id] = { ...segments[id], ...seg };
@@ -469,6 +488,8 @@ export function praiseToItems({ segments, notes, extra, present, contentHubItems
       const key = entry.key ?? (first ? seg.id : nextKey(seg.id, used));
       used.add(key);
       const item = { key, group: seg.group, order: 0, kind, ...(first ? { minutes: current.minutes ?? seg.defaultMinutes } : {}), ...entryFields(entry, kind, seg.id, contentHubItems) };
+      // A segment added outside the template is named on its first item, which is how the laptop and the next load learn the name.
+      if (first && seg.custom && seg.name && !item.title) item.title = seg.name.slice(0, 200);
       const note = first ? (notes[seg.id] ?? '').trim() : entry.note;
       if (note) item.note = note;
       return item;
@@ -560,12 +581,23 @@ export function praiseBreakdown(template, segs, state, songs) {
 }
 
 /**
+ * The Praise & Worship segments a saved plan is read with, in the order and the sections the plan was saved in (segments added on the web or the
+ * laptop included, laptop segments taken out left out), or the earlier editor's `legacy` layout for a plan it laid out. Everything that reads or
+ * rewrites a Praise & Worship plan outside its editor (add a song from the Songs page, the printed setlist) goes through this, so none of them
+ * puts a reordered lineup back in the template's order or hides a segment of its own under "Also in this plan".
+ */
+export function praiseSegmentsFor(items, legacy) {
+  const template = praiseTemplateFor(items, legacy);
+  return template === PRAISE_TEMPLATE ? lineupFromPlan(items).segs : praiseSegments(template);
+}
+
+/**
  * A saved plan read the way its editor reads it. `templates` is { mass, praise }: `praise` is the earlier Praise & Worship editor's
  * template, for the plans it laid out. Every other Praise & Worship plan is read as the laptop's lineup.
  */
 function readPlan(plan, templates) {
   if (plan.kind === 'pw') {
-    const rows = praiseSegments(praiseTemplateFor(plan.items, templates.praise));
+    const rows = praiseSegmentsFor(plan.items, templates.praise);
     return { rows, filled: praiseFromItems(plan.items, rows), toItems: (state) => praiseToItems(state, rows) };
   }
   const rows = massRows(templates.mass);

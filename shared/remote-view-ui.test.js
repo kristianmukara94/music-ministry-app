@@ -82,3 +82,16 @@ test('Check LAN and Firewall explains each outcome', () => {
   assert.equal(lanVerdict({ ip: '192.168.1.20', viewers: [viewer()], firewall: { profile: 'Private', enabled: false } }).level, 'ok');
   assert.equal(lanVerdict({ ip: '192.168.1.20', viewers: [viewer()], firewall: null }).level, 'ok');
 });
+
+// The TopBar Remote pill is a pure output switch, like the Projector pill: it toggles the Remote output and never opens the QR drawer.
+test('clicking the TopBar Remote pill toggles the Remote output and does not open the QR drawer', async () => {
+  const { readFileSync } = await import('node:fs');
+  const topBar = readFileSync(new URL('../src/operator/TopBar.tsx', import.meta.url), 'utf8');
+  const start = topBar.indexOf('function RemoteMaster()');
+  const body = topBar.slice(start, topBar.indexOf('/** A thin vertical rule', start));
+  assert.match(body, /role="switch"/, 'it is a switch, as the Projector pill is');
+  assert.match(body, /type: 'display\/live', value: next/, 'it flips the Secondary display live switch');
+  assert.match(body, /bridge\.remoteView\.save\(\{ role, enabled: next \}\)/, 'it turns both viewers on or off');
+  assert.doesNotMatch(body, /remoteOpen/, 'it no longer opens the QR drawer (the REMOTE edge tab does)');
+  assert.doesNotMatch(body, /aria-expanded/);
+});

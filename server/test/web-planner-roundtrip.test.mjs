@@ -591,3 +591,205 @@ test('Populate on an older, empty plan fills the readings and saves them; a plan
   assert.match(first.text, /^First Reading: /);
   assert.equal(laptopStore.massRowFrom(first, DAY, () => null).module, 'custom', 'kept as words');
 });
+
+// ---- Prayers and Scripture ----
+
+const prayerScripture = await web('prayer-scripture.js');
+
+/** The laptop's side of a pull: each item becomes a laptop row (a Bible passage when `bibleSourceOf` finds one), and the rows go back as the push. */
+function laptopRowsWith(pulled, date, bibleSourceOf) {
+  const rows = pulled.items
+    .map((item) => ({ item, row: laptopStore.massRowFrom(item, date, () => null, () => null, bibleSourceOf) }))
+    .filter(({ row }) => row)
+    .map(({ row, item }, order) => ({ ...row, order, slot: laptopSlotId(item.slot) }));
+  return { rows, sent: laptopMap.massEntries(rows, () => null).filter((e) => e.item).map((e, i) => ({ key: e.key, order: i + 1, ...e.item })) };
+}
+
+test('prayers from the Prayers tab (picked slot and its own slot) and a Scripture reference are saved, mapped by the laptop and pushed back without a duplicate or a lost note', async () => {
+  const cookie = await cookieFor('planner');
+  const created = await createFromDay(cookie, { massTime: '9:30 AM', massLanguage: 'English' });
+  const { plan } = await getPlan(cookie, created.id);
+  const state = { ...model.massFromItems(plan.items, ROWS), contentHubItems: [] };
+  const prayer = (id) => prayerScripture.PRAYER_CATALOG.find((p) => p.id === id);
+  // A devotional prayer into the slot the planner picked, a Holy Mass prayer into its own slot, and a Scripture reference built in the tab.
+  const picked = prayerScripture.slotForPrayer(prayer('holy-spirit'), ROWS, 's19');
+  const own = prayerScripture.slotForPrayer(prayer('gloria'), ROWS, null);
+  assert.deepEqual([picked, own], ['s19', 's18']);
+  state.segments = model.withEntry(state.segments, picked, prayerScripture.prayerEntry(prayer('holy-spirit')));
+  state.segments = model.withEntry(state.segments, own, prayerScripture.prayerEntry(prayer('gloria')));
+  state.segments = model.withEntry(state.segments, 's23', prayerScripture.scriptureEntry(prayerScripture.buildScripture({ book: 'Sample Book', chapter: 3, verses: '1-6', version: 'WEB' }).text));
+  state.notes.s18 = 'Sample Musician Cue';
+  clock = new Date('2026-11-02T12:05:00Z');
+  assert.equal((await savePlan(cookie, model.savePayload(plan, model.massToItems(state, ROWS), {}))).statusCode, 200);
+
+  // Saved: a reload gives the same three items, a note and their badges.
+  const reloaded = model.massFromItems((await getPlan(cookie, created.id)).plan.items, ROWS);
+  assert.deepEqual(['s18', 's19', 's23'].map((id) => model.describeEntries(reloaded.segments[id], [], [])[0].badge), ['prayer', 'prayer', 'scripture']);
+  assert.equal(reloaded.notes.s18, 'Sample Musician Cue');
+  assert.deepEqual((await listPlans(cookie)).find((p) => p.id === created.id).filledSlots.sort((a, b) => a - b), [18, 19, 23]);
+
+  // The laptop pulls it: the Gloria is its Holy Mass Order part, the other prayer its title, the passage a Bible row (its own Bible found it).
+  const pulled = (await pull()).plans.find((p) => p.id === created.id);
+  const findPassage = (text) => (text === 'Sample Book 3:1-6 (WEB)' ? 'WEB|Sample Book|3|1-6' : null);
+  const { rows, sent } = laptopRowsWith(pulled, DAY, findPassage);
+  assert.deepEqual(rows.map((r) => [r.module, r.sourceId]), [['mass_order', 'gloria'], ['custom', `webref:${pulled.items.find((i) => i.slot === 19).key}`], ['bible', 'WEB|Sample Book|3|1-6']]);
+  assert.equal(sent.length, 3);
+  // A laptop whose Bible has no such passage keeps the same reference as words, and sends the same item back.
+  assert.deepEqual(laptopRowsWith(pulled, DAY, () => null).sent.map((i) => [i.slot, i.text]), sent.map((i) => [i.slot, i.text]));
+
+  clock = new Date('2026-11-02T12:10:00Z');
+  const pushed = await sync().pushPlans({
+    httpMethod: 'POST',
+    headers: { authorization: `Bearer ${laptop}` },
+    body: JSON.stringify({ plans: [{ id: created.id, name: pulled.name, date: DAY, kind: 'mass', baseUpdatedAt: pulled.updatedAt, massTime: '9:30 AM', massLanguage: 'English', items: sent }] }),
+  });
+  assert.equal(body(pushed).results[0].status, 'accepted', pushed.body);
+  const after = (await pull()).plans.find((p) => p.id === created.id);
+  assert.deepEqual(after.items.map((i) => [i.slot, i.text, i.contentType]).sort((a, b) => a[0] - b[0]), [
+    [18, 'Gloria', 'prayer'],
+    [19, 'Prayer to the Holy Spirit', 'prayer'],
+    [23, 'Sample Book 3:1-6 (WEB)', 'scripture'],
+  ], 'one item each, still a prayer and a reference');
+  assert.equal(after.items.find((i) => i.slot === 18).note, 'Sample Musician Cue', 'the web note survives the laptop\'s push');
+  assert.ok(!JSON.stringify(after.items).includes('Sample verse'), 'no Bible text or prayer words on the server');
+
+  // The editor shows them all again, saved once more it changes nothing, and the laptop gets the same plan.
+  const { plan: fresh } = await getPlan(cookie, created.id);
+  const back = { ...model.massFromItems(fresh.items, ROWS), contentHubItems: [] };
+  assert.deepEqual(['s18', 's19', 's23'].map((id) => model.describeEntries(back.segments[id], [], [])[0].badge), ['prayer', 'prayer', 'scripture']);
+  clock = new Date('2026-11-02T12:15:00Z');
+  assert.equal((await savePlan(cookie, model.savePayload(fresh, model.massToItems(back, ROWS), {}))).statusCode, 200);
+  const last = (await pull()).plans.find((p) => p.id === created.id);
+  assert.deepEqual(last.items.map((i) => [i.slot, i.text, i.contentType]).sort((a, b) => a[0] - b[0]), after.items.map((i) => [i.slot, i.text, i.contentType]).sort((a, b) => a[0] - b[0]));
+  assert.equal(last.items.find((i) => i.slot === 18).note, 'Sample Musician Cue');
+});
+
+test('a Bible passage on the laptop reaches the web planner as a SCRIPTURE item, and a viewer cannot save prayers or references', async () => {
+  const cookie = await cookieFor('planner');
+  const created = await createFromDay(cookie, { massTime: '9:30 AM', massLanguage: 'English' });
+  const { plan } = await getPlan(cookie, created.id);
+  const rows = [{ block: 'word', module: 'bible', sourceId: 'WEB|Sample Book|3|1-6', label: 'Sample Book 3:1-6', order: 0, slot: laptopSlotId(23) }];
+  const items = laptopMap.massEntries(rows, () => null).filter((e) => e.item).map((e, i) => ({ key: e.key, order: i + 1, ...e.item }));
+  clock = new Date('2026-11-02T12:05:00Z');
+  const pushed = await sync().pushPlans({
+    httpMethod: 'POST',
+    headers: { authorization: `Bearer ${laptop}` },
+    body: JSON.stringify({ plans: [{ id: created.id, name: plan.name, date: DAY, kind: 'mass', baseUpdatedAt: plan.updatedAt, items }] }),
+  });
+  assert.equal(body(pushed).results[0].status, 'accepted', pushed.body);
+  const { plan: seen } = await getPlan(cookie, created.id);
+  const filled = model.massFromItems(seen.items, ROWS);
+  assert.deepEqual(model.describeEntries(filled.segments.s23, [], []).map((e) => [e.title, e.badge]), [['Sample Book 3:1-6 (WEB)', 'scripture']]);
+
+  const viewer = await cookieFor('viewer');
+  const state = { ...filled, contentHubItems: [] };
+  state.segments = model.withEntry(state.segments, 's18', prayerScripture.prayerEntry(prayerScripture.PRAYER_CATALOG.find((p) => p.id === 'gloria')));
+  assert.equal((await savePlan(viewer, model.savePayload(seen, model.massToItems(state, ROWS), {}))).statusCode, 403);
+});
+
+// ---- The Praise & Worship lineup: Library, segments added, moved and taken out ----
+
+const lineupModel = await web('praise-lineup.js');
+
+test('Praise & Worship segments added on the web (a prayer, a Scripture reference, a song), moved and renamed, round-trip through the server and the laptop push without a duplicate or a lost name', async () => {
+  const cookie = await cookieFor('planner');
+  const id = randomUUID();
+  const res = await createPlan(cookie, model.newPlanRequest({ name: 'Sample Plan Title', date: DAY, kind: 'pw' }, id));
+  assert.equal(res.statusCode, 201, res.body);
+  const { plan } = await getPlan(cookie, id);
+
+  // The editor's lineup for a new plan is the laptop's twelve segments; add three of its own and put one first.
+  let segs = lineupModel.lineupFromPlan(plan.items).segs;
+  assert.equal(segs.length, 12);
+  const prayerCard = prayerScripture.PRAYER_CATALOG[0];
+  const addSeg = (draft, entry) => {
+    const built = lineupModel.buildSegment(draft, segs);
+    assert.ok(built.seg, built.error);
+    segs = lineupModel.withSegmentAdded(segs, built.seg);
+    return built.seg.id;
+  };
+  const prayerId = addSeg({ name: 'Sample Segment Title', type: 'prayer', group: 'opening', minutes: 4 });
+  const readingId = addSeg({ name: 'Sample Scripture Segment', type: 'scripture', group: 'word', minutes: 3 });
+  const songId = addSeg({ name: 'Sample Song Segment', type: 'song', group: 'praise', minutes: 6 });
+  assert.deepEqual([prayerId, readingId, songId], ['seg_1', 'seg_2', 'seg_3']);
+  segs = lineupModel.withSegmentMoved(segs, prayerId, -1);
+  segs = lineupModel.withSegmentMoved(segs, prayerId, -1);
+  segs = lineupModel.withSegmentMoved(segs, prayerId, -1);
+  segs = lineupModel.withSegmentMoved(segs, prayerId, -1);
+  segs = lineupModel.withSegmentMoved(segs, prayerId, -1);
+  assert.equal(segs[0].id, prayerId, 'the segment is first in its section');
+  const scriptureText = prayerScripture.buildScripture({ book: 'Sample Book', chapter: 3, verses: '1-6', version: 'WEB' }).text;
+  let segments = {};
+  segments = model.withEntry(segments, prayerId, prayerScripture.prayerEntry(prayerCard));
+  segments = model.withEntry(segments, readingId, prayerScripture.scriptureEntry(scriptureText));
+  segments = model.withEntry(segments, songId, { songId: SONG, contentType: 'song' });
+  segments = model.withEntry(segments, 'prayer_authority', prayerScripture.prayerEntry(prayerScripture.PRAYER_CATALOG[1]));
+  const notes = { [prayerId]: 'Sample Musician Cue' };
+  const present = new Set(segs.map((s) => s.id));
+  const state = { segments, notes, extra: [], present };
+  const items = model.praiseToItems(state, segs);
+  assert.equal(new Set(items.map((i) => i.key)).size, items.length, 'one key each');
+  assert.equal(items.find((i) => i.key === prayerId).title, 'Sample Segment Title', 'the segment is named on its first item');
+  assert.equal(items[0].key, prayerId);
+  clock = new Date('2026-11-02T12:05:00Z');
+  const saved = await savePlan(cookie, model.savePayload(plan, items, {}));
+  assert.equal(saved.statusCode, 200, saved.body);
+
+  // Reloaded: the same segments in the same order, with the names, the sections, what each holds and the note.
+  const check = async () => {
+    const { plan: fresh } = await getPlan(cookie, id);
+    const lineup = lineupModel.lineupFromPlan(fresh.items, () => 'Sample Song Title');
+    assert.deepEqual(lineup.segs.map((s) => [s.id, s.name, s.group]), segs.map((s) => [s.id, s.name, s.group]));
+    const back = model.praiseFromItems(fresh.items, lineup.segs);
+    assert.deepEqual(back.extra, [], 'nothing is left over');
+    const rows = (seg) => model.praiseRow(lineup.segs.find((s) => s.id === seg), back, []);
+    assert.deepEqual(rows(prayerId).entries.map((e) => [e.title, e.badge]), [[prayerCard.title, 'prayer']]);
+    assert.deepEqual(rows(readingId).entries.map((e) => [e.title, e.badge]), [[scriptureText, 'scripture']]);
+    assert.equal(rows(songId).entries[0].songId, SONG);
+    assert.equal(rows(prayerId).note, 'Sample Musician Cue');
+    assert.equal(rows(prayerId).minutes, 4);
+    return { fresh, lineup, back };
+  };
+  const first = await check();
+
+  // Saved again unchanged, it is the same plan.
+  clock = new Date('2026-11-02T12:06:00Z');
+  const again = model.praiseToItems(first.back, first.lineup.segs);
+  assert.deepEqual(again.map((i) => [i.key, i.title ?? null, i.text ?? null, i.slotId]), first.fresh.items.map((i) => [i.key, i.title ?? null, i.text ?? null, i.slotId]));
+  assert.equal((await savePlan(cookie, model.savePayload(first.fresh, again, {}))).statusCode, 200);
+
+  // The laptop pulls it and pushes it back the way it does: a prayer and a title slide with no words, the name on the first item of a card of its own.
+  const pulled = (await pull()).plans.find((p) => p.id === id);
+  // A segment's note never leaves the laptop, so it is not in the push; the server puts it back.
+  const sentBack = pulled.items.map(({ note, ...i }) => {
+    const { text, contentType, ...rest } = i;
+    return i.kind === 'song' ? i : rest;
+  });
+  clock = new Date('2026-11-02T12:10:00Z');
+  const pushed = await sync().pushPlans({
+    httpMethod: 'POST',
+    headers: { authorization: `Bearer ${laptop}` },
+    body: JSON.stringify({ plans: [{ id, name: pulled.name, date: DAY, kind: 'pw', baseUpdatedAt: pulled.updatedAt, items: sentBack }] }),
+  });
+  assert.equal(body(pushed).results[0].status, 'accepted', pushed.body);
+  const after = await check();
+  assert.equal(after.fresh.items.length, first.fresh.items.length, 'no item added or lost by the laptop');
+  assert.equal(new Set(after.fresh.items.map((i) => i.key)).size, after.fresh.items.length);
+
+  // Deleting a segment of its own, and one of the laptop's twelve: both are gone on reload, and the laptop's is offered to be put back.
+  segs = lineupModel.withoutSegment(segs, readingId);
+  segs = lineupModel.withoutSegment(segs, 'finale');
+  clock = new Date('2026-11-02T12:15:00Z');
+  const trimmed = model.praiseToItems({ ...after.back, present: new Set(segs.map((s) => s.id)) }, segs);
+  assert.equal((await savePlan(cookie, model.savePayload(after.fresh, trimmed, {}))).statusCode, 200);
+  const { plan: last } = await getPlan(cookie, id);
+  const reopened = lineupModel.lineupFromPlan(last.items);
+  assert.deepEqual(reopened.segs.map((s) => s.id), segs.map((s) => s.id));
+  assert.deepEqual(reopened.removed.map((s) => s.id), ['finale']);
+  assert.equal(lineupModel.withSegmentRestored(reopened.segs, 'finale').length, segs.length + 1);
+  assert.ok(!JSON.stringify(last.items).includes('verse text'), 'no Bible text or prayer words on the server');
+
+  // A viewer cannot save segments.
+  const viewer = await cookieFor('viewer');
+  assert.equal((await savePlan(viewer, model.savePayload(last, trimmed, {}))).statusCode, 403);
+});

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ChevronRight, Image as WelcomeIcon, Megaphone, Monitor, MonitorOff, Pause, Play, Radio, Square, Tag, type LucideIcon } from 'lucide-react';
 import { dispatch, useLive } from '../live/store';
 import { LICENSE_LOCKED_TIP, useProjectionLocked } from '../live/license';
@@ -508,39 +508,62 @@ function ProjectorMaster() {
 /** Whether either Remote view viewer is listening on the local WiFi, and how many devices are connected. Read every 3 seconds. */
 function useRemoteSummary() {
   const [status, setStatus] = useState<RemoteViewStatus | null>(null);
+  const read = useCallback(
+    () =>
+      bridge.remoteView
+        .get()
+        .then((next) => setStatus(next))
+        .catch(() => setStatus(null)),
+    [],
+  );
   useEffect(() => {
     let alive = true;
-    const read = () =>
+    const poll = () =>
       bridge.remoteView
         .get()
         .then((next) => alive && setStatus(next))
         .catch(() => alive && setStatus(null));
-    void read();
-    const timer = window.setInterval(read, 3000);
+    void poll();
+    const timer = window.setInterval(poll, 3000);
     return () => {
       alive = false;
       window.clearInterval(timer);
     };
   }, []);
-  return remotePillLabel(status);
+  return { ...remotePillLabel(status), refresh: read };
 }
 
 /**
  * The Remote pill: `Remote · ON` (with the device count) while the Primary or the Secondary viewer listens on the local WiFi, `Remote · OFF`
- * when both are off. Clicking it opens or closes the Remote drawer. The Secondary output switch is in the Praise and Worship controls.
+ * when both are off. Like the Projector pill it is a pure output switch: it turns the Remote output (both viewers and the Secondary display's
+ * live switch) on or off, and never opens a drawer (the REMOTE edge tab opens the QR drawer). With it on, Go Live reaches the phones and the TV
+ * even while the projector is off. The Secondary display's own switch is in the Praise and Worship controls.
  */
 function RemoteMaster() {
-  const { on, text } = useRemoteSummary();
-  const open = useUi((s) => s.remoteOpen);
+  const { on, text, refresh } = useRemoteSummary();
   const t = useT();
+  const locked = useProjectionLocked() && !on;
+  const toggle = async () => {
+    const next = !on;
+    // The shared live switch first, so slides flow the moment the viewers are up (and stop the moment they are down).
+    dispatch({ type: 'display/live', value: next });
+    try {
+      for (const role of ['primary', 'secondary'] as const) await bridge.remoteView.save({ role, enabled: next });
+    } finally {
+      await refresh();
+    }
+  };
   return (
     <button
       type="button"
-      aria-expanded={open}
+      role="switch"
+      aria-checked={on}
       aria-label={text}
-      title={on ? t('top.tipRemoteLive') : t('top.tipRemoteOff')}
-      onClick={() => setUi({ remoteOpen: !useUi.getState().remoteOpen })}
-      className={`${BASE} ${NO_DRAG} rounded-full border px-2.5 py-1.5 tracking-wide ${
+      data-testid="remote-master"
+      title={locked ? LICENSE_LOCKED_TIP : on ? t('top.tipRemoteLive') : t('top.tipRemoteOff')}
+      disabled={locked}
+      onClick={() => void toggle()}
+      className={`${BASE} ${NO_DRAG} rounded-full border px-2.5 py-1.5 tracking-wide ${locked ? DISABLED : ''} ${
         on ? 'border-ok/50 bg-ok/15 text-ok hover:bg-ok/25' : 'border-line-strong bg-panel-2 text-muted hover:border-fg/30 hover:text-fg'
       }`}
     >

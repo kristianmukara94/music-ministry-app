@@ -21,6 +21,20 @@ import { deletePlanById, deleteWarning, duplicatePlanById } from './plan-actions
 import { usedHubIds } from './content-hub.js';
 import { entryListHtml, hubButtonsHtml, openContentHub } from './slot-ui.js';
 import { mountSongPicker, resetSongPickers } from './song-picker.js';
+import {
+  PRAYER_CATALOG,
+  buildScripture,
+  prayerEntry,
+  prayerGroupOf,
+  prayerListHtml,
+  extraItemsHtml,
+  prayersPanelHtml,
+  scriptureEntry,
+  scriptureFromTyped,
+  scripturePanelHtml,
+  scripturePreview,
+  slotForPrayer,
+} from './prayer-scripture.js';
 import { READING_SLOT_NUMBER, dayReadingsFor, readingStatus, withDayReadings, withReading } from './day-readings.js';
 import {
   PAGE_SUBTITLE,
@@ -137,7 +151,10 @@ let dayPlans = [];
 let massPlans = [];
 // The library: its tab, the service filter, the song category and the search.
 // `date` is the Lectionary tab's date (null: the plan's own) and `lq` its search.
-const lib = { tab: libraryTabOf(readStored(LIBRARY_TAB_KEY, 'songs')), service: 'mass', category: 'all', query: '', date: null, lq: '' };
+const lib = { tab: libraryTabOf(readStored(LIBRARY_TAB_KEY, 'songs')), service: 'mass', category: 'all', query: '', date: null, lq: '', pq: '', pg: 'all' };
+// The Scripture builder's draft, shared by the library tab and every slot's panel, and the plain line for the last add that was refused.
+let sf = { book: '', chapter: '', verses: '', version: 'WEB', typed: '' };
+let sfError = '';
 
 function fresh(saved) {
   return {
@@ -334,31 +351,38 @@ function panelHtml(cur) {
                 <span class="lp-panel-title">${cur.slot ? `Slot ${cur.n}` : 'Step'} · ${esc(cur.name)}</span>
                 <button type="button" class="lp-panel-close" data-open-row="${esc(cur.id)}" aria-label="Close ${esc(cur.name)}">×</button>
               </div>
-              ${entryListHtml(cur.entries, cur.id, canEdit)}${addBody(cur)}${slotNoteBody(cur)}`;
+              ${entryListHtml(cur.entries, cur.id, canEdit, { language: state.language })}${addBody(cur)}${slotNoteBody(cur)}`;
 }
 
-/** Everything that adds to a row: the song list or typed text, and the two ways into the Content Hub. Any row takes any of them. */
+/** Everything that adds to a row: the song list, a prayer, a scripture reference or typed text, and the two ways into the Content Hub. Any row takes any of them. */
 function addBody(cur) {
-  const list = state.mode === 'list';
+  const mode = ['list', 'prayer', 'scripture', 'text'].includes(state.mode) ? state.mode : 'list';
   const reading = cur.kind === 'reading';
   const lock = canEdit ? '' : 'disabled';
+  const tab = (id, label) => `<button type="button" role="tab" data-mode="${id}" aria-selected="${mode === id}" class="${mode === id ? 'is-on' : ''}">${label}</button>`;
   const tabs = `
             <div role="tablist" aria-label="How to fill this slot" class="lp-panel-tabs">
-              <button type="button" role="tab" data-mode="list" aria-selected="${list}" class="${list ? 'is-on' : ''}">Song list</button>
-              <button type="button" role="tab" data-mode="text" aria-selected="${!list}" class="${list ? '' : 'is-on'}">Type text</button>
+              ${tab('list', 'Song')}${tab('prayer', 'Prayer')}${tab('scripture', 'Scripture')}${tab('text', 'Note / text')}
             </div>`;
-  const panel = list
-    ? `
-              <div data-inline-picker="${esc(cur.id)}"></div>`
-    : `
+  let panel;
+  if (mode === 'list') {
+    panel = `
+              <div data-inline-picker="${esc(cur.id)}"></div>`;
+  } else if (mode === 'prayer') {
+    panel = `<div class="lp-panel-text">${prayersPanelHtml(prayerOptions(cur.id))}</div>`;
+  } else if (mode === 'scripture') {
+    panel = `<div class="lp-panel-text">${scripturePanelHtml({ draft: sf, error: sfError, canEdit, into: cur.id })}</div>`;
+  } else {
+    panel = `
               <div class="lp-panel-text">
                 <label class="lp-field">
                   <span>${reading ? 'Reading reference' : 'Words or a short note'}</span>
                   <textarea id="typed-text" rows="3" maxlength="500" placeholder="${reading ? 'e.g. the reading reference' : 'e.g. sung by the cantor'}" ${lock}></textarea>
                 </label>
-                <p class="lp-lib-hint">Typed text is a note for the operator on the church laptop. It does not appear on the projector.${reading ? ' To show the Bible text, pick the verses in the desktop app.' : ''}</p>
+                <p class="lp-lib-hint">Typed text is a note for the operator on the church laptop. It does not appear on the projector.${reading ? ' For the Bible text, use the Scripture tab or pick the verses in the desktop app.' : ''}</p>
                 <button type="button" data-action="use-text" ${lock} class="btn-primary">Add this text</button>
               </div>`;
+  }
   return `<div class="lp-panel-add">${tabs}${panel}${hubButtonsHtml(canEdit)}</div>`;
 }
 
@@ -418,6 +442,7 @@ function renderSteps() {
         note: state.notes[r.id],
         readingLabel,
         referenceOf,
+        language: state.language,
         panelHtml: r.id === state.open ? panelHtml(cur) : '',
       });
     };
@@ -426,6 +451,7 @@ function renderSteps() {
       : '';
     return sectionCardHtml(section, { title: sectionName(section, state.language), open, filled, total: slotRows.length, rowsHtml });
   }).join('');
+  steps.innerHTML += extraItemsHtml(state.extra.flatMap((item) => describeEntries(item, songs, state.contentHubItems)), state.language);
   const typedBox = document.getElementById('typed-text');
   if (typedBox && typed !== undefined) typedBox.value = typed;
   const noteBox = document.getElementById('rite-note');
@@ -473,7 +499,7 @@ function libStatus(text) {
 function renderLibrary() {
   document.getElementById('lib-tabs').innerHTML = libraryTabsHtml(lib.tab);
   const target = plan ? targetOf() : null;
-  document.getElementById('lib-target').innerHTML = plan && lib.tab !== 'templates' && lib.tab !== 'lectionary' ? targetLineHtml(target) : '';
+  document.getElementById('lib-target').innerHTML = plan && lib.tab !== 'templates' && lib.tab !== 'lectionary' ? targetLineHtml(target, lib.tab === 'prayers' ? 'prayer' : lib.tab === 'scripture' ? 'scripture' : 'song') : '';
   const panel = document.getElementById('lib-panel');
   panel.setAttribute('aria-labelledby', `lib-tab-${lib.tab}`);
   if (!plan) {
@@ -501,10 +527,49 @@ function renderLibrary() {
       box.focus();
       box.setSelectionRange(box.value.length, box.value.length);
     }
+  } else if (lib.tab === 'prayers') {
+    const focus = document.activeElement?.dataset?.prayerSearch !== undefined;
+    panel.innerHTML = prayersPanelHtml(prayerOptions(''));
+    if (focus) {
+      const box = panel.querySelector('[data-prayer-search]');
+      box.focus();
+      box.setSelectionRange(box.value.length, box.value.length);
+    }
+  } else if (lib.tab === 'scripture') {
+    panel.innerHTML = scripturePanelHtml({ draft: sf, error: sfError, canEdit });
   } else if (lib.tab === 'cues') {
     panel.innerHTML = cuesPanelHtml({ target, canEdit });
   } else {
     panel.innerHTML = templatesPanelHtml({ canEdit, otherPlans: massPlans.filter((p) => p.id !== plan.id) });
+  }
+}
+
+/** The Prayers tab's options for the library (`into` empty: the target slot) or for the panel inside slot `into`. */
+function prayerOptions(into) {
+  const rowId = into || state.sel;
+  const held = new Set(rowId ? stepOf(rowId).entries.filter((e) => e.badge === 'prayer').map((e) => e.title.trim().toLowerCase()) : []);
+  const slotNameOf = (massSlotId) => {
+    const row = ROWS.find((r) => r.massSlotId === massSlotId);
+    return row ? slotName(row, state.language) : '';
+  };
+  return { query: lib.pq, group: lib.pg, canEdit, held, into, planLanguage: state.language, slotNameOf };
+}
+
+/** Redraws only the prayer cards (in the library and in an open slot's panel), so typing in Search is never interrupted. */
+function refreshPrayerLists() {
+  for (const box of document.querySelectorAll('[data-prayer-list]')) box.innerHTML = prayerListHtml(prayerOptions(box.dataset.into ?? ''));
+}
+
+/** Redraws only the Scripture builders' preview line, and clears a stale refusal, as the draft is typed. */
+function refreshScripturePreview() {
+  const text = scripturePreview(sf);
+  for (const el of document.querySelectorAll('[data-sf-preview]')) {
+    el.hidden = !text;
+    el.innerHTML = text ? `Adds <strong>${esc(text)}</strong>` : '';
+  }
+  if (sfError) {
+    sfError = '';
+    for (const el of document.querySelectorAll('[data-sf-error]')) el.textContent = '';
   }
 }
 
@@ -567,6 +632,55 @@ function addFromLibrary(songId) {
   changeSegments(at >= 0 ? withoutEntry(state.segments, target, at) : withEntry(state.segments, target, { songId, contentType: 'song' }));
   libStatus(at >= 0 ? `Took ${song.title} out of ${name}.` : `Added ${song.title} to ${name}.`);
   document.querySelector(`[data-lib-add="${CSS.escape(songId)}"]`)?.focus({ preventScroll: true });
+  if (!window.matchMedia(WIDE).matches) showRow(target);
+}
+
+/**
+ * + on a Prayers card: into the slot the panel is for, else the target slot, else the prayer's own Holy Mass slot. A prayer already there is taken out
+ * again (the check mark). A devotional prayer has no slot of its own, so it needs one picked.
+ */
+function addPrayer(id, into = '') {
+  const prayer = PRAYER_CATALOG.find((p) => p.id === id);
+  if (!prayer || !plan || !canEdit) return;
+  const target = slotForPrayer(prayer, ROWS, into || state.sel);
+  if (!target) {
+    libStatus(`Click a slot first: ${prayer.title} has no slot of its own.`);
+    return;
+  }
+  const name = stepOf(target).name;
+  const at = slotEntries(state.segments[target]).findIndex((entry) => entry.contentType === 'prayer' && entry.text === prayer.title);
+  if (at >= 0 && target !== (into || state.sel)) {
+    libStatus(`${prayer.title} is already in ${name}.`);
+    showRow(target);
+    return;
+  }
+  openSectionOf(target);
+  flashRow(target);
+  changeSegments(at >= 0 ? withoutEntry(state.segments, target, at) : withEntry(state.segments, target, prayerEntry(prayer)));
+  libStatus(at >= 0 ? `Took ${prayer.title} out of ${name}.` : `Added ${prayer.title} to ${name}.`);
+  if (!window.matchMedia(WIDE).matches) showRow(target);
+}
+
+/** Add Scripture: the typed reference, or the book, chapter and verses, goes at the end of the slot the panel is for (else the target slot). */
+function addScripture(into = '') {
+  if (!plan || !canEdit) return;
+  const made = sf.typed.trim() ? scriptureFromTyped(sf.typed, sf.version) : buildScripture(sf);
+  const target = into || state.sel;
+  const refuse = (message) => {
+    sfError = message;
+    for (const el of document.querySelectorAll('[data-sf-error]')) el.textContent = message;
+  };
+  if (made.error) return refuse(made.error);
+  if (!target) return refuse('Click a slot first, then add the reference to it.');
+  if (slotEntries(state.segments[target]).some((entry) => entry.contentType === 'scripture' && entry.text === made.text)) {
+    return refuse(`${made.text} is already in ${stepOf(target).name}.`);
+  }
+  sfError = '';
+  sf = { ...sf, chapter: '', verses: '', typed: '' };
+  openSectionOf(target);
+  flashRow(target);
+  changeSegments(withEntry(state.segments, target, scriptureEntry(made.text)));
+  libStatus(`Added ${made.text} to ${stepOf(target).name}.`);
   if (!window.matchMedia(WIDE).matches) showRow(target);
 }
 
@@ -961,6 +1075,18 @@ document.querySelector('main').addEventListener('click', (event) => {
     document.querySelector(`[data-lib-service="${lib.service}"]`)?.focus();
   } else if (data.libAdd) {
     addFromLibrary(data.libAdd);
+  } else if (data.libPrayer) {
+    addPrayer(data.libPrayer, data.into ?? '');
+  } else if (data.prayerGroup) {
+    lib.pg = prayerGroupOf(data.prayerGroup);
+    renderSteps();
+    renderLibrary();
+  } else if (data.addScripture !== undefined) {
+    addScripture(data.into ?? '');
+  } else if (data.sfVersion) {
+    sf.version = data.sfVersion;
+    renderSteps();
+    renderLibrary();
   } else if (data.libReading) {
     addReading(data.libReading);
   } else if (data.populateReadings !== undefined) {
@@ -1009,6 +1135,12 @@ document.querySelector('main').addEventListener('input', (event) => {
   } else if (el.dataset?.lectSearch !== undefined) {
     lib.lq = el.value;
     renderLibrary();
+  } else if (el.dataset?.prayerSearch !== undefined) {
+    lib.pq = el.value;
+    refreshPrayerLists();
+  } else if (el.dataset?.sf !== undefined) {
+    sf[el.dataset.sf] = el.value;
+    refreshScripturePreview();
   } else if (el.dataset?.tpTime !== undefined) {
     state.popover.value = el.value;
     checkPopover();

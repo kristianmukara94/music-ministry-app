@@ -44,3 +44,12 @@ test('Skip still launches without the projector, and the turn-on choice still tu
   assert.match(routing, /skip: \(\) => \{\s*setUi\(\{ projectorPrompt: null, projectorPromptChoice: 'skip' \}\);/);
   assert.match(routing, /turnOnAndGo: \(\) => \{\s*setUi\(\{ projectorPrompt: null \}\);\s*turnOnProjectorAndGo/);
 });
+
+test('Nearby TV Cast alone is enough, and the prompt asks only when the projector, Remote and Cast are all off', () => {
+  const casting = run(initialLiveState(), { type: 'display/cast', value: true });
+  assert.equal(casting.outputs.projector, false);
+  assert.equal(isAnyOutputLive(casting), true);
+  assert.equal(isAnyOutputLive(run(casting, { type: 'display/cast', value: false })), false);
+  const remoteAndCast = run(initialLiveState(), { type: 'display/live', value: true }, { type: 'display/cast', value: true }, { type: 'display/live', value: false });
+  assert.equal(isAnyOutputLive(remoteAndCast), true, 'the cast still counts when Remote goes off');
+});

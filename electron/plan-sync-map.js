@@ -3,7 +3,7 @@
 //
 // Only these fields leave the laptop: a song's uuid, a reading's name, a Mass part's name, a block or group, a minute count, and a
 // note the planner typed into the plan. Item text is never read from a lectionary row, a scripture passage or a prayer's words.
-// Announcements, media, Bible items and the laptop's own custom and note items stay on the laptop. Items that came from the web are the
+// Announcements, media and the laptop's own custom and note items stay on the laptop. A Bible passage goes as its reference only ("Sample Book 1:1-6 (WEB)"), never its verses. Items that came from the web are the
 // exception: a web note, a typed reading reference and a web Content Hub entry each go back to the web as what they were.
 //
 // Keys. A web item keeps the web's key (its step number, for a Mass part; its segment key, for praise). Other items get a key made
@@ -11,9 +11,11 @@
 // every save.
 import crypto from 'node:crypto';
 import { MASS_PARTS, PART_STEP } from '../shared/mass-parts.js';
+import { DEFAULT_TEMPLATE } from '../shared/pw.js';
 import { slotNumberOf } from '../shared/mass-slots.js';
 import { noteSource } from '../shared/notes.js';
 import { PRAYER_OF_THE_FAITHFUL } from '../shared/daily-readings.js';
+import { webReferenceOfRow } from '../shared/bible-web-ref.js';
 
 export const MASS_BLOCKS = ['introductory', 'word', 'eucharist', 'communion', 'concluding'];
 export const READING_TYPES = ['First Reading', 'Responsorial Psalm', 'Second Reading', 'Gospel'];
@@ -64,6 +66,7 @@ const withSlot = (item, row) => {
  */
 export function massEntries(rows, hymnUuidOf, hubEntryOf = () => null) {
   const occurrences = new Map();
+  const partKeys = new Set();
   return [...rows].sort(byOrder).map((row) => {
     const base = [row.module, row.sourceId, row.block].join('|');
     const seen = (occurrences.get(base) ?? 0) + 1;
@@ -83,7 +86,17 @@ export function massEntries(rows, hymnUuidOf, hubEntryOf = () => null) {
     }
     if (row.module === 'mass_order') {
       if (row.label.length > MAX_TEXT) throw new MapRefused('A Holy Mass part name in this plan is too long. Nothing was sent.');
-      return entry(PART_STEP[row.sourceId] ?? derived, row, withSlot({ kind: 'rite', group: row.block, text: row.label }, row));
+      // A part keeps the web's step key for its first occurrence only: the same part in two slots (the website lets a prayer be put in any slot) would
+      // otherwise send two items with one key, which the server refuses for the whole plan.
+      const stepKey = PART_STEP[row.sourceId];
+      const key = stepKey && !partKeys.has(stepKey) ? stepKey : derived;
+      partKeys.add(key);
+      return entry(key, row, withSlot({ kind: 'rite', group: row.block, text: row.label }, row));
+    }
+    if (row.module === 'bible') {
+      // A Bible passage goes to the web as its reference only ("Sample Book 1:1-6 (WEB)"), never its verses. A row whose id is not a passage stays on the laptop.
+      const text = webReferenceOfRow(row.sourceId, row.label);
+      return entry(derived, row, text ? withSlot({ kind: 'reading', group: row.block, text, contentType: 'scripture' }, row) : null);
     }
     if (row.module === 'custom' && row.sourceId.startsWith(WEB_NOTE_PREFIX)) {
       return entry(row.sourceId.slice(WEB_NOTE_PREFIX.length), row, withSlot({ kind: 'rite', group: row.block, note: row.label.slice(0, MAX_NOTE) }, row));
@@ -109,7 +122,19 @@ export function praiseEntries(segments, hymnUuidOf) {
   return [...segments].sort(byOrder).flatMap((seg) => segmentEntries(seg, hymnUuidOf));
 }
 
+const TEMPLATE_KEYS = new Set(DEFAULT_TEMPLATE.segments.map((s) => s.key));
+
+/** A segment that is not one of the lineup's own goes out with its name on its first item, so the web shows it by that name. */
+function named(seg, item) {
+  const name = typeof seg.name === 'string' ? seg.name.trim() : '';
+  return item && !item.contentHubId && name && !TEMPLATE_KEYS.has(seg.key) ? { ...item, title: name.slice(0, 80) } : item;
+}
+
 function segmentEntries(seg, hymnUuidOf) {
+  return segmentItems(seg, hymnUuidOf).map((e, i) => (i === 0 && e.item ? { ...e, item: named(seg, e.item) } : e));
+}
+
+function segmentItems(seg, hymnUuidOf) {
   const content = parseContent(seg.contentRef);
   const minutes = minutesFor(seg.minutes);
   if (seg.type === 'song') {

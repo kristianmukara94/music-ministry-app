@@ -983,6 +983,8 @@ function FramePreviewBody({ shown, counter, background }: { shown: Frame; counte
 function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: boolean; embedded?: boolean }) {
   const projector = useOutput((s) => s.projector);
   const projectorOn = useOutput((s) => s.outputs.projector);
+  const tvCasting = useOutput((s) => s.tvCasting === true);
+  const isCastWindow = window.location.hash.replace(/^#\/?/, '') === 'cast-projector';
   const settings = useOutput((s) => s.settings);
   const calibration = useOutput((s) => s.calibration);
   const counter = useOutput((s) => s.counter);
@@ -1010,7 +1012,8 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
   const textHidden = projector.textHidden === true;
   // The projector output shows nothing while its master switch is OFF, whatever the live buffer holds.
   // The operator mirror is a separate monitor with its own toggle, so it is not gated by this switch.
-  const outputShowing = mirror || projectorOn;
+  // Nearby TV Cast draws this view in its own hidden window (route `cast-projector`): it shows while TVs cast, with the projector off.
+  const outputShowing = mirror || projectorOn || (isCastWindow && tvCasting);
   const liveBackground = blackedOut || !outputShowing ? null : projector.background?.live ?? null;
   // A "play once" clip that has played to its end is off the screen, as after a clear: the idle screen or the slide's own colour shows again,
   // and its shade and dimmer go with it. A new take of the clip carries a new cue, so it is a new showing and plays.

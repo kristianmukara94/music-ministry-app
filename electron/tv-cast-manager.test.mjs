@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { createCastClient, createDlnaClient, decodeCastMessages, didlLite, encodeCastMessage, soapEnvelope } from './tv-cast-clients.js';
 import { createTvCastManager, DEBOUNCE_MS } from './tv-cast-manager.js';
+import { initialLiveState, isAnyOutputLive, liveReducer } from '../shared/live.js';
+import { remoteViewSnapshot } from '../shared/remote-view.js';
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -465,4 +467,40 @@ test('with no network address nothing starts, and the reason is given', async ()
   const result = await manager.castTo('dlna:a');
   assert.equal(result.ok, false);
   assert.match(result.error, /No WiFi or local network/);
+});
+
+test('Go Live pushes slides to a casting TV while the projector is off: casting counts as an output', async () => {
+  const { manager, world, clock } = await makeManager();
+  try {
+    // The main process mirrors the cast count into the shared live state (display/cast) after each change.
+    let state = initialLiveState();
+    assert.equal(isAnyOutputLive(state), false, 'nothing is on: Go Live would ask');
+    await manager.castTo('dlna:a', { feed: 'stage' });
+    state = liveReducer(state, { type: 'display/cast', value: manager.activeCount() > 0 });
+    assert.equal(state.outputs.projector, false, 'the projector stays off');
+    assert.equal(isAnyOutputLive(state), true, 'one TV casting is enough: Go Live proceeds with no prompt');
+
+    await tick();
+    const shownBefore = world.clients.get('dlna:a').shown.length;
+    const show = (text) => {
+      state = liveReducer(state, { type: 'projector/show', source: 'MASS_QUEUE', frame: { kind: 'lyrics', title: 'Sample Slide Title', label: 'Verse 1', text } });
+      // The stage picture is drawn from the Remote snapshot, so what the TV gets is what the snapshot says.
+      const snap = remoteViewSnapshot(state);
+      assert.equal(snap.screen, 'live');
+      world.version = snap.lines.join('|');
+      manager.frameChanged();
+    };
+    show('Sample Verse Line');
+    await clock.advance(DEBOUNCE_MS);
+    assert.equal(world.clients.get('dlna:a').shown.length, shownBefore + 1, 'the first slide reaches the TV');
+    show('Sample Verse Line Two');
+    await clock.advance(DEBOUNCE_MS);
+    assert.equal(world.clients.get('dlna:a').shown.length, shownBefore + 2, 'stepping the slide reaches the TV too');
+
+    await manager.stopAll();
+    state = liveReducer(state, { type: 'display/cast', value: manager.activeCount() > 0 });
+    assert.equal(isAnyOutputLive(state), false, 'with every TV stopped and the other outputs off, Go Live asks again');
+  } finally {
+    await manager.shutdown();
+  }
 });

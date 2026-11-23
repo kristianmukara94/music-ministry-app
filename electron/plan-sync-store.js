@@ -11,6 +11,11 @@ import crypto from 'node:crypto';
 import { DEFAULT_TEMPLATE } from '../shared/pw.js';
 import { slotIdOfNumber } from '../shared/mass-slots.js';
 import { MASS_PARTS, MASS_STEP_PARTS } from '../shared/mass-parts.js';
+import { parseWebReference, sourceIdOf } from '../shared/bible-web-ref.js';
+import { resolveBookCode } from '../shared/bible-ref.js';
+
+/** The Holy Mass Order part a prayer title names, by the laptop's own name for the part. */
+const PART_BY_LABEL = new Map(Object.entries(MASS_PARTS).map(([part, label]) => [label, part]));
 import { noteSource } from '../shared/notes.js';
 import { normalizeMassLanguage, normalizeMassTime } from '../shared/mass-schedule.js';
 import {
@@ -23,6 +28,7 @@ const CURSOR = 'plans_cursor';
 const LAPTOP_BLOCKS = ['introductory', 'word', 'eucharist', 'communion', 'concluding'];
 const SEGMENT_TYPE = { song: 'song', reading: 'scripture', rite: 'prayer' };
 const DEFAULT_GROUP_NAMES = Object.fromEntries(DEFAULT_TEMPLATE.groups.map((g) => [g.key, g.name]));
+const MAX_SEGMENT_NAME = 80;
 const DEFAULT_SEGMENT_NAMES = Object.fromEntries(DEFAULT_TEMPLATE.segments.map((s) => [s.key, s.name]));
 const DEFAULT_SEGMENT_CONTENT = Object.fromEntries(DEFAULT_TEMPLATE.segments.map((s) => [s.key, s.content]));
 export const HOLD_MESSAGE = 'Some items in this plan cannot be shown on this laptop yet, so the plan is not sent.';
@@ -42,7 +48,7 @@ const isCalendarDate = (value) => {
  * otherwise its reference is kept as words, whatever they are; a Mass part step with no song is that part; any other typed text or note is kept as a web note.
  * `noteIdOf(entryId)` finds the note brought in for a Content Hub entry.
  */
-export function massRowFrom(item, date, hymnByUuid, noteIdOf = () => null) {
+export function massRowFrom(item, date, hymnByUuid, noteIdOf = () => null, bibleSourceOf = () => null) {
   if (item.kind === 'song' && item.songId) {
     const hymn = hymnByUuid(item.songId);
     return hymn && LAPTOP_BLOCKS.includes(item.group) ? { block: item.group, module: 'lyrics', sourceId: String(hymn.id), label: hymn.title } : null;
@@ -50,8 +56,18 @@ export function massRowFrom(item, date, hymnByUuid, noteIdOf = () => null) {
   if (!LAPTOP_BLOCKS.includes(item.group)) return null;
   const hubNote = item.contentHubId ? noteIdOf(item.contentHubId) : null;
   if (hubNote !== null) return { block: item.group, module: 'notes', sourceId: String(hubNote), label: item.title || item.text || 'Content Hub entry' };
+  const typed = typeof item.text === 'string' ? item.text.trim() : '';
+  // A prayer typed on the web by title. One that is a Holy Mass Order part is that part, shown from the laptop's own text; any other is kept as its title.
+  if (item.contentType === 'prayer' && typed) {
+    const part = PART_BY_LABEL.get(typed);
+    if (part) return { block: item.group, module: 'mass_order', sourceId: part, label: MASS_PARTS[part] };
+    return { block: item.group, module: 'custom', sourceId: `${WEB_REFERENCE_PREFIX}${item.key}`, label: typed };
+  }
   if (item.kind === 'reading') {
     if (READING_TYPES.includes(item.text)) return { block: item.group, module: 'lectionary', sourceId: `${date}|${item.text}`, label: item.text };
+    // A Scripture reference the web typed or built: the passage in the laptop's own Bible when it has it (its text then comes from there), else its words.
+    const passage = item.contentType === 'scripture' && typed ? bibleSourceOf(typed) : null;
+    if (passage) return { block: item.group, module: 'bible', sourceId: passage, label: typed };
     const label = String(item.text ?? '').trim() || String(item.note ?? '').trim() || 'Reading';
     return { block: item.group, module: 'custom', sourceId: `${WEB_REFERENCE_PREFIX}${item.key}`, label };
   }
@@ -65,8 +81,8 @@ export function massRowFrom(item, date, hymnByUuid, noteIdOf = () => null) {
 }
 
 /** Whether a laptop row already is this Mass item, so the row is kept as it is rather than rewritten. */
-export function sameMassRow(row, item, date, hymnByUuid, noteIdOf = () => null) {
-  const fresh = massRowFrom(item, date, hymnByUuid, noteIdOf);
+export function sameMassRow(row, item, date, hymnByUuid, noteIdOf = () => null, bibleSourceOf = () => null) {
+  const fresh = massRowFrom(item, date, hymnByUuid, noteIdOf, bibleSourceOf);
   if (!fresh || fresh.block !== row.block || fresh.module !== row.module) return false;
   // A row that plays only some of a note's slides is still that note, so the operator's choice of slides stays.
   if (fresh.module === 'notes') return noteSource(row.sourceId)?.id === Number(fresh.sourceId);
@@ -116,6 +132,26 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
 
   const hymnUuidOf = (id) => one('SELECT uuid FROM hymns WHERE id = ?', Number(id))?.uuid ?? null;
   const hymnByUuid = (uuid) => one('SELECT id, title FROM hymns WHERE uuid = ?', uuid) ?? null;
+  // The laptop's own Bible row for a Scripture reference from the web, or null when the reference is not a passage this laptop's Bible has. The book is
+  // found by its code in the translation, then the verses are checked to exist. Only the reference is looked up: no verse text is read or sent.
+  const bibleSourceOf = (text) => {
+    const ref = parseWebReference(text);
+    const code = ref ? resolveBookCode(ref.book) : null;
+    if (!ref || !code) return null;
+    const translationId = ref.translationId ?? 'WEB';
+    try {
+      const book = one('SELECT name FROM bible_books WHERE translation_id = ? AND code = ?', translationId, code);
+      if (!book) return null;
+      const has = one(
+        `SELECT 1 AS found FROM bible_verses v JOIN bible_books b ON b.translation_id = v.translation_id AND b.book_number = v.book_number
+         WHERE v.translation_id = ? AND b.code = ? AND v.chapter = ? AND v.verse BETWEEN ? AND ? LIMIT 1`,
+        translationId, code, ref.chapter, ref.from, ref.to,
+      );
+      return has ? sourceIdOf(ref, translationId, book.name) : null;
+    } catch {
+      return null;
+    }
+  };
 
   const massRows = (planId) =>
     all(`SELECT liturgical_block AS block, source_module AS module, source_id AS sourceId, label, display_order AS "order", slot
@@ -248,7 +284,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
     // rebuilds the steps it shows without a slot, and a server from before slots sends none at all.
     const resolve = (item) => {
       const kept = byKey.get(item.key);
-      const row = kept && sameMassRow(kept.row, item, sp.date, hymnByUuid, noteIdOf) ? kept.row : massRowFrom(item, sp.date, hymnByUuid, noteIdOf);
+      const row = kept && sameMassRow(kept.row, item, sp.date, hymnByUuid, noteIdOf, bibleSourceOf) ? kept.row : massRowFrom(item, sp.date, hymnByUuid, noteIdOf, bibleSourceOf);
       if (!row) return null;
       const slot = slotIdOfNumber(item.slot) ?? kept?.row.slot ?? null;
       return { ...row, slot };
@@ -301,12 +337,22 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
     return row?.content ?? { kind: 'prayer', noteId: null };
   }
 
+  /** An existing card keeps the laptop's name, except a card of the web's own making (no template name), which follows the web when it is renamed there. */
+  function renamedBy(row, items) {
+    const first = items[0];
+    const title = typeof first.title === 'string' && !first.contentHubId ? first.title.trim().slice(0, MAX_SEGMENT_NAME) : '';
+    return title && !DEFAULT_SEGMENT_NAMES[row.key] ? title : row.name;
+  }
+
   /** A new segment's name: the template's name for its key when there is one, so a web prayer reads as the web names it. */
   function nameFor(row, items) {
     if (row?.id) return row.name;
     const first = items[0];
     const templated = DEFAULT_SEGMENT_NAMES[row?.key ?? first.key];
     if (templated) return templated;
+    // A segment added on the web is named on its first item (title), whatever it holds.
+    const named = typeof first.title === 'string' ? first.title.trim().slice(0, MAX_SEGMENT_NAME) : '';
+    if (named) return named;
     if (first.kind === 'song') return (first.songId && hymnByUuid(first.songId)?.title) || 'Song';
     if (first.kind === 'reading') return first.text || 'Scripture';
     return first.title || 'Prayer';
@@ -372,7 +418,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
             leader: row.leader, arrangement: row.arrangement, cues: row.cues, notes: row.notes }
         : { key: row.key ?? items[0].key,
             group: items[0].group,
-            name: owned ? row.name : nameFor(row, items),
+            name: owned ? renamedBy(row, items) : nameFor(row, items),
             type: SEGMENT_TYPE[items[0].kind],
             minutes: items[0].minutes ?? 0,
             content: contentFor(row, items, sp.id),

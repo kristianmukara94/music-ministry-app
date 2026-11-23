@@ -2,6 +2,7 @@
 // written into markup goes through esc().
 import { esc } from './shell.js';
 import { keyChoices } from './song-keys.js';
+import { kindBadgeHtml } from './prayer-scripture.js';
 import {
   HUB_CATEGORIES,
   HUB_TEMPLATES,
@@ -20,9 +21,9 @@ import {
 const SOURCE_LABEL = { list: 'Song', hub: 'Content Hub', text: 'Typed note' };
 
 /** A filled step's short view: each title with its key badge or source tag. A row that already says where its one item came from passes `tags: false`. */
-export function entrySummaryHtml(entries, { tags = true } = {}) {
+export function entrySummaryHtml(entries, { tags = true, language = '' } = {}) {
   return entries.map((entry) => {
-    const badge = entry.songId
+    const badge = entry.badge ? kindBadgeHtml(entry, language) : entry.songId
       ? entry.key ? `<span class="key-badge${entry.keyTransposed ? ' is-transposed' : ''}">Key: ${esc(entry.key)}</span>` : ''
       : tags ? `<span class="content-tag">${esc(SOURCE_LABEL[entry.source])}</span>` : '';
     return `<span class="entry-line"><span class="entry-title">${esc(entry.title)}</span>${badge}</span>`;
@@ -33,8 +34,8 @@ export function entrySummaryHtml(entries, { tags = true } = {}) {
  * What a step holds, in the drawer or panel: each item with its key for this plan (songs only), Move up and Move down when there is more than
  * one, and Remove. The first item is the one that fills the slot on the church laptop.
  */
-export function entryListHtml(entries, rowId, canEdit) {
-  if (entries.length === 0) return '<p class="entry-empty">Nothing here yet. Add a song, type text, or choose from the Hub. A step can hold more than one.</p>';
+export function entryListHtml(entries, rowId, canEdit, { language = '' } = {}) {
+  if (entries.length === 0) return '<p class="entry-empty">Nothing here yet. Add a song, a prayer, a Scripture reference or text, or choose from the Hub. A step can hold more than one.</p>';
   const lock = canEdit ? '' : 'disabled';
   const move = (entry, delta, at) => {
     const edge = at + delta < 0 || at + delta >= entries.length;
@@ -42,7 +43,9 @@ export function entryListHtml(entries, rowId, canEdit) {
     return `<button type="button" class="entry-move" data-move-entry="${entry.index}" data-delta="${delta}" data-for="${esc(rowId)}" aria-label="${esc(label)}" title="${delta < 0 ? 'Move up' : 'Move down'}" ${edge || !canEdit ? 'disabled' : ''}>${delta < 0 ? '↑' : '↓'}</button>`;
   };
   const rows = entries.map((entry, at) => {
-    const key = entry.songId
+    const key = entry.badge
+      ? kindBadgeHtml(entry, language)
+      : entry.songId
       ? `<label class="entry-key">Key
           <select data-role="entry-key" data-for="${esc(rowId)}" data-index="${entry.index}" aria-label="Key for ${esc(entry.title)}" ${lock}>
             ${keyChoices(entry.originalKey, entry.keyTransposed).map((c) => `<option value="${esc(c.value)}" ${c.value === entry.keyTransposed ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}

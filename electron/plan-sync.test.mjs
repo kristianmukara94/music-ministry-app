@@ -1128,3 +1128,150 @@ test('a run reports to the activity log without plan titles', async () => {
   assert.equal(runs[0].counts.sent, 1);
   assert.doesNotMatch(JSON.stringify(runs), /Sample Plan Title/);
 });
+
+// ---- Prayers and Scripture typed on the website ----
+
+/** A laptop Bible with one synthetic passage (Sample verse text only), the shape the offline Bible has: books by code, verses by chapter. */
+function seedBible(db) {
+  db.exec(`CREATE TABLE bible_books (translation_id TEXT NOT NULL, book_number INTEGER NOT NULL, code TEXT NOT NULL, name TEXT NOT NULL, testament TEXT NOT NULL, PRIMARY KEY (translation_id, book_number));
+    CREATE TABLE bible_verses (id INTEGER PRIMARY KEY, translation_id TEXT NOT NULL, book_number INTEGER NOT NULL, chapter INTEGER NOT NULL, verse INTEGER NOT NULL, text TEXT NOT NULL);`);
+  db.prepare("INSERT INTO bible_books VALUES ('WEB', 43, 'JHN', 'John', 'NT')").run();
+  db.prepare("INSERT INTO bible_books VALUES ('TGL', 43, 'JHN', 'Juan', 'NT')").run();
+  for (const translation of ['WEB', 'TGL']) for (const verse of [16, 17]) db.prepare('INSERT INTO bible_verses (translation_id, book_number, chapter, verse, text) VALUES (?, 43, 3, ?, ?)').run(translation, verse, 'Sample verse text');
+}
+
+test('prayers and Scripture references from the website reach the laptop as its own rows, go back as the same items, and are never duplicated', async () => {
+  const l = laptop();
+  seedBible(l.db);
+  const items = [
+    { key: 's18', group: 'introductory', order: 1, kind: 'rite', text: 'Gloria', contentType: 'prayer', slot: 18, note: 'Sample Cue' },
+    { key: 's2', group: 'introductory', order: 2, kind: 'rite', text: 'I Confess (Confiteor)', contentType: 'prayer', slot: 2 },
+    { key: 's23', group: 'word', order: 3, kind: 'reading', text: 'John 3:16-17 (WEB)', contentType: 'scripture', slot: 23 },
+    { key: 's24', group: 'word', order: 4, kind: 'reading', text: 'John 3:16 (TGL)', contentType: 'scripture', slot: 24 },
+    { key: 's25', group: 'eucharist', order: 5, kind: 'reading', text: 'Sample Book 9:9 (WEB)', contentType: 'scripture', slot: 25 },
+  ];
+  const created = await serverCreate(laptopToken, { items });
+  await l.engine.runOnce();
+  assert.equal(l.store.holdOf(created.id), null, 'not held');
+  assert.deepEqual(localMassItems(l.db, created.id).map((i) => [i.module, i.sourceId, i.label]), [
+    ['mass_order', 'gloria', MASS_PARTS.gloria],
+    ['custom', 'webref:s2', 'I Confess (Confiteor)'],
+    ['bible', 'WEB|John|3|16-17', 'John 3:16-17 (WEB)'],
+    ['bible', 'TGL|Juan|3|16', 'John 3:16 (TGL)'],
+    ['custom', 'webref:s25', 'Sample Book 9:9 (WEB)'],
+  ], 'a Holy Mass Order part, a prayer kept by its title, two passages in the laptop Bible (the Tagalog book by its own name), and one it cannot find kept as words');
+
+  // The laptop changes the plan's name, and the whole plan goes back.
+  serverNow = new Date(T2);
+  l.db.prepare('UPDATE mass_plans SET name = ?, updated_at = ? WHERE uuid = ?').run('Sample Plan Title', T2, created.id);
+  serverNow = new Date(T3);
+  await l.engine.runOnce();
+  const row = await serverRow(created.id);
+  assert.equal(row.name, 'Sample Plan Title');
+  assert.equal(row.body.items.length, items.length, 'no item duplicated or lost');
+  const by = (slot) => row.body.items.find((i) => i.slot === slot);
+  assert.deepEqual([by(18).text, by(18).contentType, by(18).note], ['Gloria', 'prayer', 'Sample Cue'], 'the part comes back as the prayer it was, with the web note');
+  assert.deepEqual([by(2).text, by(2).contentType], ['I Confess (Confiteor)', 'prayer']);
+  assert.deepEqual([by(23).text, by(23).contentType, by(23).kind], ['John 3:16-17 (WEB)', 'scripture', 'reading']);
+  assert.deepEqual([by(24).text, by(24).contentType], ['John 3:16 (TGL)', 'scripture']);
+  assert.deepEqual([by(25).text, by(25).contentType], ['Sample Book 9:9 (WEB)', 'scripture']);
+  // Nothing but references and titles was sent: no verse text and no prayer words.
+  assert.ok(!JSON.stringify(row.body.items).includes('Sample verse text'));
+
+  // A second pull and push leave it exactly as it is.
+  serverNow = new Date('2026-10-27T13:00:00.000Z');
+  await l.engine.runOnce();
+  assert.deepEqual((await serverRow(created.id)).body.items.map((i) => [i.slot, i.text, i.contentType]), row.body.items.map((i) => [i.slot, i.text, i.contentType]));
+});
+
+test('a Bible passage added on the laptop reaches the website as its reference only, and comes back without change', async () => {
+  const l = laptop();
+  seedBible(l.db);
+  const uuid = localMassPlan(l.db, { name: 'Sample Plan Title', items: [{ block: 'word', module: 'bible', sourceId: 'WEB|John|3|16-17', label: 'John 3:16-17' }] });
+  await l.engine.runOnce();
+  const row = await serverRow(uuid);
+  assert.deepEqual(row.body.items.map((i) => [i.kind, i.text, i.contentType]), [['reading', 'John 3:16-17 (WEB)', 'scripture']]);
+  assert.ok(!JSON.stringify(row.body).includes('Sample verse text'));
+});
+
+test('a prayer and a Scripture reference on Praise & Worship segments survive the laptop push, and one Holy Mass part in two slots does not break the push', async () => {
+  const l = laptop();
+  seedBible(l.db);
+  const created = await serverCreate(laptopToken, {
+    kind: 'pw',
+    items: [
+      { key: 'prayer_authority', group: 'opening', order: 1, kind: 'rite', text: 'Prayer to Take Authority', contentType: 'prayer', slotId: 'prayer_authority', minutes: 3, note: 'Sample Cue' },
+      { key: 'bible_enthronement', group: 'opening', order: 2, kind: 'reading', text: 'John 3:16-17 (WEB)', contentType: 'scripture', slotId: 'bible_enthronement', minutes: 4 },
+    ],
+  });
+  await l.engine.runOnce();
+  serverNow = new Date(T2);
+  const local = l.db.prepare('SELECT id FROM pw_sessions WHERE uuid = ?').get(created.id);
+  l.db.prepare('UPDATE pw_sessions SET name = ?, updated_at = ? WHERE id = ?').run('Sample Plan Title', T2, local.id);
+  serverNow = new Date(T3);
+  await l.engine.runOnce();
+  const row = await serverRow(created.id);
+  assert.equal(row.name, 'Sample Plan Title', 'the push went through');
+  assert.deepEqual(row.body.items.map((i) => [i.key, i.text, i.contentType, i.slotId ?? null]), [
+    ['prayer_authority', 'Prayer to Take Authority', 'prayer', 'prayer_authority'],
+    ['bible_enthronement', 'John 3:16-17 (WEB)', 'scripture', 'bible_enthronement'],
+  ], 'the prayer title and the reference are not wiped by the laptop, which sends the segment without words');
+  assert.equal(row.body.items[0].note, 'Sample Cue');
+
+  // The same Holy Mass part in two slots: both rows are that part, and the push still goes through with distinct keys.
+  const mass = await serverCreate(laptopToken, {
+    items: [
+      { key: 's18', group: 'introductory', order: 1, kind: 'rite', text: 'Gloria', contentType: 'prayer', slot: 18 },
+      { key: 's1.2', group: 'introductory', order: 2, kind: 'rite', text: 'Gloria', contentType: 'prayer', slot: 1 },
+    ],
+  });
+  serverNow = new Date('2026-10-27T13:00:00.000Z');
+  await l.engine.runOnce();
+  assert.deepEqual(localMassItems(l.db, mass.id).map((i) => [i.module, i.sourceId]), [['mass_order', 'gloria'], ['mass_order', 'gloria']]);
+  l.db.prepare('UPDATE mass_plans SET name = ?, updated_at = ? WHERE uuid = ?').run('Sample Plan Title', '2026-10-27T13:30:00.000Z', mass.id);
+  serverNow = new Date('2026-10-27T14:00:00.000Z');
+  await l.engine.runOnce();
+  const sent = await serverRow(mass.id);
+  assert.equal(sent.name, 'Sample Plan Title', 'the push was accepted');
+  assert.deepEqual(sent.body.items.map((i) => [i.slot, i.text, i.contentType]).sort((a, b) => a[0] - b[0]), [[1, 'Gloria', 'prayer'], [18, 'Gloria', 'prayer']]);
+});
+
+test('a segment added on the website arrives as a card of that name, keeps its name and words on the push, and follows a rename', async () => {
+  const l = laptop();
+  const created = await serverCreate(laptopToken, {
+    kind: 'pw',
+    items: [
+      { key: 'prayer_authority', group: 'opening', order: 1, kind: 'rite', slotId: 'prayer_authority', minutes: 3 },
+      { key: 'seg_1', group: 'praise', order: 2, kind: 'rite', text: 'Sample Prayer Title', contentType: 'prayer', slotId: 'seg_1', minutes: 5, title: 'Sample Segment Title' },
+      { key: 'seg_2', group: 'word', order: 3, kind: 'reading', text: 'Sample Book 1:1-3 (WEB)', contentType: 'scripture', slotId: 'seg_2', minutes: 4, title: 'Sample Scripture Segment' },
+    ],
+  });
+  await l.engine.runOnce();
+  const local = l.db.prepare('SELECT id FROM pw_sessions WHERE uuid = ?').get(created.id);
+  const cards = () => l.db.prepare('SELECT segment_key AS key, name, group_key AS grp, type FROM pw_segments WHERE session_id = ? ORDER BY display_order').all(local.id);
+  assert.deepEqual(cards().slice(1).map((c) => [c.key, c.name, c.grp, c.type]), [
+    ['seg_1', 'Sample Segment Title', 'praise', 'prayer'],
+    ['seg_2', 'Sample Scripture Segment', 'word', 'scripture'],
+  ], 'a card of the website\'s making is named by its first item, in the section it names');
+
+  // The laptop's push carries the name back, and the words the laptop does not keep.
+  serverNow = new Date(T2);
+  l.db.prepare('UPDATE pw_sessions SET name = ?, updated_at = ? WHERE id = ?').run('Sample Plan Title', T2, local.id);
+  serverNow = new Date(T3);
+  await l.engine.runOnce();
+  const row = await serverRow(created.id);
+  assert.equal(row.name, 'Sample Plan Title', 'the push went through');
+  const custom = row.body.items.filter((i) => i.key.startsWith('seg_'));
+  assert.deepEqual(custom.map((i) => [i.key, i.title, i.text ?? null, i.contentType ?? null]), [
+    ['seg_1', 'Sample Segment Title', 'Sample Prayer Title', 'prayer'],
+    ['seg_2', 'Sample Scripture Segment', 'Sample Book 1:1-3 (WEB)', 'scripture'],
+  ]);
+  assert.equal(row.body.items.filter((i) => i.key === 'seg_1').length, 1, 'no duplicate');
+
+  // A rename made on the website reaches the card; the lineup's own cards keep the laptop's names.
+  serverNow = new Date('2026-10-27T13:00:00.000Z');
+  await serverEdit(laptopToken, created.id, { items: row.body.items.map((i) => (i.key === 'seg_1' ? { ...i, title: 'Sample Renamed Segment' } : i)) });
+  await l.engine.runOnce();
+  assert.equal(cards().find((c) => c.key === 'seg_1').name, 'Sample Renamed Segment');
+  assert.equal(cards().length, 3);
+});

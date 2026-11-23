@@ -14,6 +14,7 @@ import { liturgicalDay } from './planner-calendar.js';
 import { MAX_MASS_TIME, TIME_PRESETS, normalizeMassTime, scheduleLabel, sortMassSchedules, timeConflictText } from './holy-mass-schedule.js';
 import { READING_NAMES, slotEntries, withoutEntries } from './plan-model.js';
 import { READING_SLOT_NUMBER } from './day-readings.js';
+import { kindBadgeHtml } from './prayer-scripture.js';
 
 const esc = (value) =>
   String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -110,6 +111,8 @@ export function stripSubtitle(date, items) {
 export const LIBRARY_TABS = [
   { id: 'songs', label: 'Songs' },
   { id: 'lectionary', label: 'Lectionary' },
+  { id: 'prayers', label: 'Prayers' },
+  { id: 'scripture', label: 'Scripture' },
   { id: 'cues', label: 'Notes & Cues' },
   { id: 'templates', label: 'Templates' },
 ];
@@ -177,11 +180,16 @@ export function libraryTabsHtml(active) {
   }).join('');
 }
 
-/** Who + adds to: the active slot, or the slot each song's category picks. */
-export function targetLineHtml(target) {
+/** Who + adds to: the active slot, or (for songs and prayers) the slot each one's own category or catalog slot picks. `what` is 'song', 'prayer' or 'scripture'. */
+export function targetLineHtml(target, what = 'song') {
+  const hint = {
+    song: '+ puts a song in the slot of its category. Click a slot to choose it instead.',
+    prayer: '+ puts a Holy Mass prayer in its own slot. Click a slot to choose another.',
+    scripture: 'Click a slot to choose where the reference goes.',
+  }[what] ?? '';
   return target
     ? `<span class="lp-target-label">Adding to</span><strong class="lp-target-name">${esc(`${target.n} · ${target.name}`)}</strong><button type="button" class="lp-target-clear" data-clear-target aria-label="Clear the target slot">×</button>`
-    : '<span class="lp-target-label">No slot selected.</span><span class="lp-target-hint">+ puts a song in the slot of its category. Click a slot to choose it instead.</span>';
+    : `<span class="lp-target-label">No slot selected.</span><span class="lp-target-hint">${esc(hint)}</span>`;
 }
 
 /** The Songs tab's controls: Search, Holy Mass / Praise & Worship / All, and SONG CATEGORY. */
@@ -360,9 +368,10 @@ export const isReadingEntry = (entry) => entry?.contentType === 'scripture' && !
 export const addLabel = (row) => (row.kind === 'song' ? 'Add hymn / item' : 'Add item');
 
 const ICON = { list: '♪', text: '✎', hub: '◆' };
+const BADGE_ICON = { prayer: '🙏', scripture: '📖' };
 
 /** A row's items as pills: ♪ for a song (with its key), ✎ typed text, ◆ a Hub entry; Move up / Move down when there is more than one; × removes. */
-export function entryPillsHtml(entries, rowId, canEdit, { readingLabel = (type) => type, referenceOf = () => '' } = {}) {
+export function entryPillsHtml(entries, rowId, canEdit, { readingLabel = (type) => type, referenceOf = () => '', language = 'EN' } = {}) {
   const lock = canEdit ? '' : ' disabled';
   return entries.map((entry, at) => {
     if (isReadingEntry(entry)) {
@@ -374,7 +383,9 @@ export function entryPillsHtml(entries, rowId, canEdit, { readingLabel = (type) 
       ? `<button type="button" class="lp-pill-btn" data-move-entry="${entry.index}" data-delta="-1" data-for="${esc(rowId)}" aria-label="${esc(`Move up: ${entry.title}`)}"${at === 0 ? ' disabled' : ''}>↑</button><button type="button" class="lp-pill-btn" data-move-entry="${entry.index}" data-delta="1" data-for="${esc(rowId)}" aria-label="${esc(`Move down: ${entry.title}`)}"${at === entries.length - 1 ? ' disabled' : ''}>↓</button>`
       : '';
     const key = entry.songId && entry.key ? `<span class="lp-pill-key">${esc(entry.key)}</span>` : '';
-    return `<li class="lp-pill is-${entry.source}"><span class="lp-pill-icon" aria-hidden="true">${ICON[entry.source] ?? '•'}</span><span class="lp-pill-title">${esc(entry.title)}</span>${key}${moves}<button type="button" class="lp-pill-btn is-remove" data-remove-entry="${entry.index}" data-for="${esc(rowId)}" aria-label="${esc(`Remove ${entry.title}`)}"${lock}>×</button></li>`;
+    // A prayer or a scripture reference is badged PRAYER or SCRIPTURE, with its language, so it is never mistaken for a typed note.
+    const badge = entry.badge ? kindBadgeHtml(entry, language) : '';
+    return `<li class="lp-pill is-${entry.source}${entry.badge ? ` is-${entry.badge}` : ''}"><span class="lp-pill-icon" aria-hidden="true">${entry.badge ? BADGE_ICON[entry.badge] : ICON[entry.source] ?? '•'}</span>${badge}<span class="lp-pill-title">${esc(entry.title)}</span>${key}${moves}<button type="button" class="lp-pill-btn is-remove" data-remove-entry="${entry.index}" data-for="${esc(rowId)}" aria-label="${esc(`Remove ${entry.title}`)}"${lock}>×</button></li>`;
   }).join('');
 }
 
@@ -382,8 +393,8 @@ export function entryPillsHtml(entries, rowId, canEdit, { readingLabel = (type) 
  * One numbered slot row: the number and the slot's name (a button that makes it the active target slot), its items as pills with the
  * note as a cue badge, and + ADD HYMN / ITEM, which opens the quick-assign panel (`panelHtml`) inside the row.
  */
-export function slotRowHtml(row, { active = false, open = false, flash = false, canEdit = true, note = '', panelHtml = '', readingLabel, referenceOf } = {}) {
-  const pills = entryPillsHtml(row.entries ?? [], row.id, canEdit, { readingLabel, referenceOf });
+export function slotRowHtml(row, { active = false, open = false, flash = false, canEdit = true, note = '', panelHtml = '', readingLabel, referenceOf, language = 'EN' } = {}) {
+  const pills = entryPillsHtml(row.entries ?? [], row.id, canEdit, { readingLabel, referenceOf, language });
   const hasReading = (row.entries ?? []).some(isReadingEntry);
   // The laptop's own conditions on a slot, as small uppercase badges.
   const condition = [row.sundayOnly ? 'Sundays & Solemnities' : '', row.optional ? 'Optional' : ''].filter(Boolean).map((text) => `<span class="lp-cond">${esc(text)}</span>`).join('');

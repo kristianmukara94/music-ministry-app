@@ -11,6 +11,7 @@ import {
   REMOTE_VIEW_DEFAULTS,
   controlAction,
   remoteViewSnapshot,
+  secondaryViewSnapshot,
   sanitizeRemoteView,
   snapshotForRole,
   validateRemoteViewPatch,
@@ -743,4 +744,27 @@ test('the network line names the WiFi, the hotspot, or a plain local network', a
   assert.equal(await wifiName('Wi-Fi', 'win32', async () => null), null);
   assert.equal(await wifiName('en0', 'darwin', async () => 'Current Wi-Fi Network: Choir Loft'), 'Choir Loft');
   assert.equal(await wifiName('wlan0', 'linux', async () => 'Choir Loft\n'), 'Choir Loft');
+});
+
+test('Go Live reaches Remote Primary and the TV with the projector off, when Remote is on or a TV is casting', () => {
+  const frame = { kind: 'lyrics', title: 'Sample Slide Title', label: 'Verse 1', text: 'Sample Verse Line' };
+  const show = (state) => liveReducer(state, { type: 'projector/show', source: 'MASS_QUEUE', frame });
+  const off = show(initialLiveState());
+  assert.equal(off.outputs.projector, false, 'the projector is off');
+  assert.equal(remoteViewSnapshot(off).screen, 'off', 'with no output at all, the phones show nothing');
+
+  // Remote on: the Primary viewer and the Secondary (/tv) both show the slide.
+  const remote = show(liveReducer(initialLiveState(), { type: 'display/live', value: true }));
+  assert.equal(remote.outputs.projector, false);
+  assert.equal(remoteViewSnapshot(remote).screen, 'live');
+  assert.deepEqual(remoteViewSnapshot(remote).lines, ['Sample Verse Line']);
+  assert.equal(secondaryViewSnapshot(remote).frame.lines[0], 'Sample Verse Line');
+
+  // A TV casting (Nearby TV Cast): the Primary viewer is driven too, and the shared flag follows the cast.
+  let cast = liveReducer(initialLiveState(), { type: 'display/cast', value: true });
+  cast = show(cast);
+  assert.equal(cast.outputs.projector, false);
+  assert.equal(remoteViewSnapshot(cast).screen, 'live');
+  assert.deepEqual(remoteViewSnapshot(cast).lines, ['Sample Verse Line']);
+  assert.equal(remoteViewSnapshot(liveReducer(cast, { type: 'display/cast', value: false })).screen, 'off', 'cast stopped, nothing shows');
 });

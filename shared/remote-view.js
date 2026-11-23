@@ -179,7 +179,11 @@ export function screenFlags(state) {
  * these controls do not move, so they stay off rather than appear to work.
  */
 export function primaryDrives(state) {
-  return state.outputs.projector === true || (state.display?.mode === 'dual' && state.display?.targets?.secondary?.live === true);
+  return (
+    state.outputs.projector === true ||
+    state.tvCasting === true ||
+    (state.display?.mode === 'dual' && state.display?.targets?.secondary?.live === true)
+  );
 }
 
 /** The secondary display's snapshot: what the Secondary port shows, the TV and the viewers on it. */

@@ -139,9 +139,9 @@ test("the page meets the site's security policy: no inline handlers, scripts or 
   assert.doesNotMatch(page, /\son[a-z]+\s*=/i, 'no inline event handlers');
   assert.doesNotMatch(page, /<script(?![^>]*\bsrc=)[^>]*>/i, 'no inline scripts');
   assert.doesNotMatch(script, /\beval\(|new Function|\son[a-z]+="/, 'no eval and no handlers in generated markup');
-  for (const id of ['section-bars', 'status-pill', 'print', 'setlist-print']) assert.match(page, new RegExp(`id="${id}"`));
-  // The time bars are drawn for the plan's own sections, so the laptop's lineup and the earlier layout each get theirs.
-  assert.match(script, /id="bar-fill-\$\{esc\(section\.group\)\}"/);
+  for (const id of ['readiness-checks', 'segments', 'lib-panel', 'status-pill', 'print', 'setlist-print']) assert.match(page, new RegExp(`id="${id}"`));
+  // The sections and their minute totals are drawn for the plan's own sections, so the laptop's lineup and the earlier layout each get theirs.
+  assert.match(script, /pwLineupHtml\(view\.sections/);
 });
 
 // ---- The laptop's lineup ----
@@ -190,11 +190,19 @@ test('the song list is drawn inside the step panel, opened on the step’s tab a
   assert.match(picker, /export function mountSongPicker\(root,/);
   assert.doesNotMatch(picker, /showModal|createElement\('dialog'\)/, 'no dialog');
   assert.match(picker, /Show all songs \(\$\{inTab\}\)/, 'an empty category offers every song of the tab');
-  for (const [file, type] of [['web/js/praise.js', 'praise_worship'], ['web/js/mass.js', 'mass']]) {
+  for (const [file, type] of [['web/js/mass.js', 'mass']]) {
     const page = read(file);
     assert.match(page, /data-inline-picker=/, `${file} has the picker in its panel`);
     assert.match(page, new RegExp(`serviceType: '${type}',\\s*category: \\w+\\.pickerCategory \\|\\| 'all'`), `${file} opens on its tab and the step's category`);
     assert.doesNotMatch(page, /data-add-song|open-picker|openSongPicker/, `${file} has no Add song button`);
+  }
+  // The Praise & Worship editor lists the songs in its Library instead, on Praise & Worship and on the target segment's own category.
+  const praise = read('web/js/praise.js');
+  assert.match(praise, /service: 'praise_worship'/);
+  assert.match(praise, /lib\.category = row\.pickerCategory \|\| ALL_CATEGORIES/, "a song segment opens the Library on its category");
+  assert.doesNotMatch(praise, /data-add-song|open-picker|openSongPicker/);
+  for (const file of ['web/js/praise.js', 'web/js/mass.js']) {
+    const page = read(file);
     // A song saved on the laptop while the plan is open shows without a reload.
     assert.match(page, /const songWatch = watchSongList\(/, `${file} reads the song list again`);
     assert.match(page, /songWatch\.seen\(list\)/, `${file} records the list it loaded`);

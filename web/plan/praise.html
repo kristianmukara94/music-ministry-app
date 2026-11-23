@@ -20,7 +20,7 @@
 
   <div data-sidebar="plans"></div>
 
-  <main class="main planner-main">
+  <main class="main planner-main lp-page pw-page">
 
     <div data-planner-header></div>
 
@@ -55,23 +55,36 @@
       </div>
     </header>
 
-    <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px">
-      <section id="segments" aria-label="Segments" style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 22px"></section>
-      <aside id="readiness" aria-label="Readiness" style="flex: 1 1 320px; min-width: 0; position: sticky; top: 16px; display: flex; flex-direction: column; gap: 16px; padding: 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface)">
-        <div style="display: flex; flex-direction: column; gap: 6px">
-          <span class="eyebrow">READINESS</span>
-          <h2 id="readiness-headline" aria-live="polite" class="section-title" style="font-size: 24px"></h2>
-        </div>
-        <div style="height: 8px; border-radius: 99px; background: var(--border); overflow: hidden">
-          <span id="readiness-fill" class="time-bar-fill"></span>
-        </div>
-        <ul id="readiness-checks" style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px"></ul>
-        <div style="padding-top: 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px">
-          <span class="eyebrow">TIME BY SECTION</span>
-          <div id="section-bars" style="display: flex; flex-direction: column; gap: 12px"></div>
-        </div>
-        <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted)">Songs come from the church laptop. Lyrics and slides are prepared in the desktop app.</p>
+    <div class="lp-workspace pw-workspace">
+
+      <!-- Left: the Library (song titles, prayer titles and Scripture references only). -->
+      <aside id="library" class="lp-library pw-library" aria-label="Library">
+        <div class="pw-lib-head"><h2 class="pw-lib-title">Library</h2><span id="lib-target" aria-live="polite"></span></div>
+        <div id="lib-search"></div>
+        <div id="lib-tabs" class="pw-tabs" role="tablist" aria-label="Library"></div>
+        <div id="lib-actions"></div>
+        <div id="lib-panel" class="lp-lib-panel pw-lib-panel" role="tabpanel"></div>
+        <p id="lib-status" class="lp-lib-status" aria-live="polite"></p>
       </aside>
+
+      <!-- Right: how ready the plan is, then the LINEUP. -->
+      <div class="lp-builder pw-builder">
+        <button type="button" id="browse-library" class="lp-tool lp-browse">Browse Library</button>
+        <section id="readiness" class="pw-readiness" aria-label="Readiness">
+          <div class="pw-readiness-top">
+            <span class="eyebrow">READINESS</span>
+            <h2 id="readiness-headline" aria-live="polite" class="pw-readiness-headline"></h2>
+          </div>
+          <div class="pw-readiness-bar"><span id="readiness-fill" class="time-bar-fill"></span></div>
+          <ul id="readiness-checks" class="pw-readiness-list"></ul>
+        </section>
+        <section class="pw-lineup" aria-label="Lineup">
+          <div id="lineup-head" class="pw-lineup-head"></div>
+          <div id="add-segment" hidden></div>
+          <div id="segments" class="pw-sections"></div>
+          <p class="pw-foot">Songs come from the church laptop. Lyrics, prayer words and Bible text are shown from the laptop, never kept here.</p>
+        </section>
+      </div>
     </div>
   </main>
 </div>

@@ -41,11 +41,11 @@ export function presentedFrame(frame, introSlideMode) {
 }
 
 /**
- * True when any output is live: the projector, or the Secondary display (the TV and the phones). A slide goes live straight away when this
- * is true. The projector prompt only asks when both are off.
+ * True when any output is live: the projector, the Secondary display (Remote view: the TV and the phones), or Nearby TV Cast (one or more TVs
+ * casting, `tvCasting`). A slide goes live straight away when this is true. The projector prompt only asks when all three are off.
  */
 export function isAnyOutputLive(state) {
-  return state.outputs.projector === true || state.display?.targets?.secondary?.live === true;
+  return state.outputs.projector === true || state.display?.targets?.secondary?.live === true || state.tvCasting === true;
 }
 
 /**
@@ -105,6 +105,8 @@ export function initialLiveState() {
     lowerThird: { live: null, staged: null, paused: false, choice: null },
     // The secondary display. Dual mirrors the projector; independent shows its own frame. Its live switch is separate from the projector's.
     display: { mode: 'dual', targets: { secondary: { live: false, frame: IDLE, staged: IDLE, layout: 'screen-16x9' } } },
+    // True while one or more TVs are casting (Nearby TV Cast). Not saved with the session: casts do not survive a restart.
+    tvCasting: false,
     queue: [],
     queuePlanId: null,
     // The loaded plan's own choice for slot titles on its slides: true or false, or null to follow the projector setting (showSlotTitle).
@@ -480,6 +482,10 @@ function reduce(s, a) {
       return DISPLAY_MODES.includes(a.value) ? { ...s, display: { ...s.display, mode: a.value } } : s;
 
     // The secondary display's own live switch. It does not change the projector.
+    // Nearby TV Cast has one or more TVs casting. Set by the main process only; it is an output of its own, so the projector can stay off.
+    case 'display/cast':
+      return s.tvCasting === (a.value === true) ? s : { ...s, tvCasting: a.value === true };
+
     case 'display/live': {
       const secondary = s.display.targets.secondary;
       return { ...s, display: { ...s.display, targets: { ...s.display.targets, secondary: { ...secondary, live: a.value === true } } } };

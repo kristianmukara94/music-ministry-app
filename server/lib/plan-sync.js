@@ -270,7 +270,9 @@ export function checkItems(items, songIds) {
         if (item.contentType === 'hub_item' && !clean.contentHubId) throw refuse('A Content Hub item must name its entry. Nothing was saved.');
       } else {
         if (!CONTENT_TYPES.includes(item.contentType)) throw refuse('A reading must be a scripture reading, a prayer or an announcement. Nothing was saved.');
-        if (item.kind !== 'reading' || !clean.text) throw refuse('Only a reading with a title can have a reading type. Nothing was saved.');
+        // A prayer is also kept on a spoken part (a rite) such as the Confiteor slot; a scripture reference or an announcement is always a reading.
+        const allowed = item.contentType === 'prayer' ? item.kind === 'reading' || item.kind === 'rite' : item.kind === 'reading';
+        if (!allowed || !clean.text) throw refuse('Only a reading with a title can have a reading type. Nothing was saved.');
       }
       clean.contentType = item.contentType;
     }
@@ -320,7 +322,8 @@ export function checkHubReferences(items, hubItems) {
 }
 
 const labelOf = (item) => item.text ?? item.note ?? '';
-const isWebEntry = (item) => Boolean(item.contentHubId) || item.contentType === 'text_note';
+// A prayer typed by title is a web entry too: a Praise & Worship prayer segment goes to the laptop and comes back with no words at all.
+const isWebEntry = (item) => Boolean(item.contentHubId) || item.contentType === 'text_note' || item.contentType === 'prayer';
 const sameSource = (a, b) => (a.songId ? a.songId === b.songId : Boolean(a.contentHubId) && a.contentHubId === b.contentHubId) && a.group === b.group;
 
 /**
@@ -334,11 +337,13 @@ export function restoreWebFields(items, stored) {
   const pushed = new Set(items.map((item) => item.key));
   const spare = stored.filter((item) => (item.songId || item.contentHubId) && !pushed.has(item.key));
   // The day's readings: the laptop keeps each as a Lectionary row with its own key, so a reading is matched by its slot and name too.
-  const spareReadings = stored.filter((item) => item.kind === 'reading' && item.slot && !pushed.has(item.key));
+  // A typed prayer title is matched the same way, wherever it was kept: the laptop sends it back as the Holy Mass part, with a key of its own.
+  const isTitled = (item) => item.kind === 'reading' || item.contentType === 'prayer';
+  const spareReadings = stored.filter((item) => isTitled(item) && item.slot && !pushed.has(item.key));
   const heldSlots = new Set(items.map((item) => item.slot).filter(Boolean));
   return items.map((item) => {
     let was = byKey.get(item.key);
-    if (!was && item.kind === 'reading' && item.slot && item.text) {
+    if (!was && item.kind !== 'song' && item.slot && item.text) {
       const at = spareReadings.findIndex((s) => s.slot === item.slot && s.text === item.text);
       if (at >= 0) [was] = spareReadings.splice(at, 1);
     }
