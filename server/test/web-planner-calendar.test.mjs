@@ -831,6 +831,25 @@ test('every Print Lineup button prints the same sheet: both editors and the cale
   assert.match(css, /body\.is-printing-setlist \.shell/);
   assert.match(css, /\.pl-row \{[^}]*break-inside: avoid/);
   assert.match(css, /\.pl-section-head \{[^}]*break-after: avoid/);
+  // Two columns under a full-width letterhead; a section never splits across a column or page.
+  assert.match(css, /\.pl-columns \{[^}]*display: grid;[^}]*grid-template-columns: 1fr 1fr;[^}]*gap: 14px 18px;[^}]*align-items: start/);
+  assert.match(css, /\.pl-section \{[^}]*break-inside: avoid/);
+});
+
+test('PRINT LINEUP lays sections out in a two-column grid under the full-width header, for both Holy Mass and Praise & Worship', () => {
+  const { plan } = samplePrintMass();
+  const mass = sheet.sheetHtml(sheet.printLineupFromPlan(plan, LIBRARY, { church: SAMPLE_CHURCH }));
+  const pw = sheet.sheetHtml(sheet.printLineupFromPlan({ ...plan, kind: 'pw', name: 'Sample Plan Title', items: [] }, LIBRARY, { church: SAMPLE_CHURCH }));
+  assert.match(mass, /<\/header>\s*<div class="pl-columns">\s*<section class="pl-section">/);
+  assert.equal((mass.match(/class="pl-columns"/g) ?? []).length, 1, 'one grid holds every part');
+  assert.ok(mass.indexOf('</header>') < mass.indexOf('pl-columns'), 'the header stays above the grid');
+  // An empty Praise & Worship plan still prints its write-in segments, in the same grid; an empty Holy Mass has no sections, so no grid.
+  assert.match(pw, /<\/header>\s*<div class="pl-columns">/);
+  assert.doesNotMatch(sheet.sheetHtml(sheet.printLineupFromPlan({ ...plan, items: [] }, LIBRARY, { church: '' })), /pl-columns/);
+  const segs = lineupModel.lineupFromPlan([]).segs;
+  const items = model.praiseToItems({ segments: model.withEntry({}, segs[0].id, { songId: SONG_ENTRANCE, contentType: 'song' }), notes: {}, extra: [], present: new Set(segs.map((x) => x.id)) }, segs);
+  const praise = sheet.sheetHtml(sheet.printLineupFromPlan({ id: ids(9), kind: 'pw', name: 'Sample Plan Title', date: SUNDAY, items, contentHubItems: [] }, LIBRARY, { church: SAMPLE_CHURCH }));
+  assert.match(praise, /<\/header>\s*<div class="pl-columns">/);
 });
 
 test('printSheet fills the print section, marks the page and puts both back when printing ends', () => {

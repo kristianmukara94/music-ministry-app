@@ -157,14 +157,16 @@ export function sheetHtml(lineup) {
     `${lineup.totals.items} ${lineup.totals.items === 1 ? 'item' : 'items'}`,
     lineup.totals.minutes ? `${lineup.totals.minutes} min total` : '',
   ].filter(Boolean).join(' · ');
+  // The sections sit in a two-column grid under the full-width letterhead, as on the laptop's printed lineup.
   const body = lineup.sections.length
-    ? lineup.sections
+    ? `<div class="pl-columns">${lineup.sections
         .map((section) => `
     <section class="pl-section">
       <div class="pl-section-head"><h2>${esc(section.heading)}</h2>${section.minutes ? `<span class="pl-section-min">${esc(section.minutes)} MIN</span>` : ''}</div>
       <ol class="pl-rows">${section.entries.map(rowHtml).join('')}</ol>
     </section>`)
-        .join('')
+        .join('')}
+    </div>`
     : '<p class="pl-empty">Nothing is planned yet.</p>';
   return `
   <article class="pl-sheet" data-type="${esc(lineup.type)}">
