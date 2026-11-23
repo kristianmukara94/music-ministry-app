@@ -133,7 +133,9 @@ export function useQuickLiveController() {
         }
         // The run on air now is read before the take: it is the one the popup's Return to Main Live puts back.
         const before = useLive.getState().state;
-        dispatch({ type: 'projector/show', frame, source: 'DIRECT_DECK' });
+        // Stage + take, not `projector/show`: only a take records DIRECT_DECK as the projector's source, which the popup needs to find its item.
+        dispatch({ type: 'projector/stage', frame });
+        dispatch({ type: 'projector/take', source: 'DIRECT_DECK' });
         // The song opens the same Quick-Live popup as a prayer's LIVE (src/golive/QuickLivePreview.tsx), over the lineup, which stays as it is.
         openQuickLivePreview(before, { title: hymn.title, frames: songPreviewFrames(hymn) });
         // The band naming the song is staged, not turned on: the operator shows it with the Lower third toggle when ready.

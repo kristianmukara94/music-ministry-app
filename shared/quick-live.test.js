@@ -323,3 +323,25 @@ test('song LIVE: the Library song button opens the popup, not the focus view, an
   assert.match(popup, /data-testid="quick-live-jump-pill"[\s\S]*?style=\{NO_DRAG\}/);
   for (const lang of GOLIVE_LANGS) assert.notEqual(goLiveT(lang, 'quickLiveJump'), 'quickLiveJump', `quickLiveJump in ${lang}`);
 });
+
+// Regression: a Song LIVE from the Praise & Worship Library showed "This item is no longer on the screen." in the popup, because the launch used
+// `projector/show`, which never records DIRECT_DECK as the projector's source, while the popup only trusts a DIRECT_DECK projector.
+test('a song LIVE launched as stage + take binds the popup: counter, next slide, jump pills and stepping all work', () => {
+  const before = pwOnAir();
+  const { state, session } = pressLive(before, SONG);
+  assert.equal(state.projector.source, 'DIRECT_DECK');
+  assert.equal(quickLiveIndex(session, state.projector), 0, 'never falls back to "This item is no longer on the screen."');
+  assert.equal(quickLiveCounter(session, state.projector), '01 / 03');
+  assert.deepEqual(quickLiveNextFrame(session, state.projector), SONG[1]);
+  assert.deepEqual(quickLiveJumpItems(session, state.projector).map((p) => [p.label, p.current]), [['1 · Verse 1', true], ['2 · Verse 2', false], ['3 · Verse 3', false]]);
+  const stepped = run(state, quickLiveStepAction(session, state.projector, 1));
+  assert.equal(quickLiveIndex(session, stepped.projector), 1);
+  assert.equal(quickLiveExit(session, stepped), 'restore');
+});
+
+test('both song LIVE launch paths put the first slide on air with a take, so the projector source is DIRECT_DECK', () => {
+  for (const rel of ['src/praise-worship/useQuickLiveController.ts', 'src/planner/routing.ts']) {
+    const src = read(rel);
+    assert.doesNotMatch(src, /type: 'projector\/show', frame(?:: frame)?, source: 'DIRECT_DECK' \}\);\s*\n\s*(?:\/\/[^\n]*\n\s*)*openQuickLivePreview/, `${rel} must not launch the popup item with projector/show`);
+  }
+});

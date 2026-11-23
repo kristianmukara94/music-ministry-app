@@ -394,6 +394,8 @@ export function goLiveNote(note: Note, slides?: readonly number[] | null): Libra
  */
 export function goLiveFrame(title: string, frame: Frame): void {
   const before = useLive.getState().state;
-  dispatch({ type: 'projector/show', frame, source: 'DIRECT_DECK' });
+  // Stage + take: only a take records DIRECT_DECK as the projector's source, which the popup needs to find its item.
+  dispatch({ type: 'projector/stage', frame });
+  dispatch({ type: 'projector/take', source: 'DIRECT_DECK' });
   openQuickLivePreview(before, { title, frames: [frame] });
 }

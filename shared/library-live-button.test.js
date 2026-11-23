@@ -69,8 +69,8 @@ test('goLiveLibraryItem: a direct show for each kind, never the plan or the queu
   assert.match(body, /if \(note\.display === 'operator'\) return 'operator';/, 'a private note never reaches the projector');
   assert.match(body, /return goLiveNote\(note, source\?\.slides\);/);
   assert.match(body, /takePrayer\(note, 'DIRECT_DECK', 0, slides\);/);
-  assert.match(body, /dispatch\(\{ type: 'projector\/show', frame, source: 'DIRECT_DECK' \}\);/, 'the title card');
-  assert.equal((body.match(/dispatch\(\{ type: 'projector\/take', source: 'DIRECT_DECK' \}\);/g) ?? []).length, 2, 'readings and passages');
+  assert.match(body, /dispatch\(\{ type: 'projector\/stage', frame \}\);\s+dispatch\(\{ type: 'projector\/take', source: 'DIRECT_DECK' \}\);\s+openQuickLivePreview\(before, \{ title, frames: \[frame\] \}\);/, 'the title card is taken, so the popup finds it');
+  assert.equal((body.match(/dispatch\(\{ type: 'projector\/take', source: 'DIRECT_DECK' \}\);/g) ?? []).length, 3, 'readings, passages and the title card');
   assert.doesNotMatch(body, /queue\/cursor|plans\.save/);
 });
 
