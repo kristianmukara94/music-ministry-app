@@ -137,12 +137,14 @@ function Grip({ corner, onDown, onMove, onUp }: {
 
 /**
  * The floating live preview: what the congregation screen shows, with no frame inside the panel. The picture is
- * always live. The header is an overlay across the top: the lock pins it open, and unpinned it shows while the
+ * always live. Blackout is the one exception: the audience screens go black, this window keeps drawing the slide, and a BLACKOUT badge in the
+ * header says so. The header is an overlay across the top: the lock pins it open, and unpinned it shows while the
  * pointer is over the panel. The panel can be dragged by its header and resized from any corner.
  */
 export function PreviewPanel() {
   const projectorOn = useLive((s) => s.state.outputs.projector);
   const paused = useLive((s) => s.state.projector.paused);
+  const blackout = useLive((s) => s.state.projector.live.kind === 'blackout');
   // The live frame's content, as text: the state arrives as new objects on every update, so only a real change of picture may end a staged peek.
   const liveKey = useLive((s) => frameKey(s.state.projector.live));
   const stagePeek = useUi((s) => s.stagePeek);
@@ -235,22 +237,23 @@ export function PreviewPanel() {
         onPointerMove={moveDrag}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        className="flex h-14 shrink-0 cursor-move select-none items-center justify-between gap-3 border-b border-line bg-panel px-3"
+        className="flex h-14 shrink-0 @container cursor-move select-none items-center justify-between gap-3 border-b border-line bg-panel px-3"
       >
         <div className="flex min-w-0 items-center gap-2.5">
           <Eye size={16} className="shrink-0 text-accent" aria-hidden />
-          <div className="flex min-w-0 flex-col">
+          {/* In a narrow panel the title gives its room to the BLACKOUT badge. Screen readers still hear it. */}
+          <div className={`flex min-w-0 flex-col ${!blackout ? '' : songPosition ? '@max-[520px]:sr-only' : '@max-[400px]:sr-only'}`}>
             <h2 className="text-[11px] font-semibold tracking-wider text-fg/70 uppercase">Preview</h2>
             <span className="text-[11px] text-muted">Live preview</span>
           </div>
           {/* While the projector is paused, the audience keeps the frame on air. Edits show here only, until the projector resumes. */}
           {stagePeek && !paused && (
-            <span role="status" className="shrink-0 rounded-md border border-info/50 bg-info/15 px-2 py-1 text-[10px] font-extrabold tracking-wider text-info uppercase">
+            <span role="status" className={`${blackout ? 'min-w-0 truncate' : 'shrink-0'} rounded-md border border-info/50 bg-info/15 px-2 py-1 text-[10px] font-extrabold tracking-wider text-info uppercase`}>
               Staged · not live
             </span>
           )}
           {paused && (
-            <span role="status" className="shrink-0 rounded-md border border-accent bg-accent/15 px-2 py-1 text-[10px] font-extrabold tracking-wider text-accent uppercase">
+            <span role="status" className={`${blackout ? 'min-w-0 truncate' : 'shrink-0'} rounded-md border border-accent bg-accent/15 px-2 py-1 text-[10px] font-extrabold tracking-wider text-accent uppercase`}>
               Projector paused · editing staged
             </span>
           )}
@@ -259,7 +262,7 @@ export function PreviewPanel() {
         <div className="flex shrink-0 items-center gap-2">
           {/* The song and stanza on air, from the same live frame Song Lyrics reads, so the preview and the cue panel always agree. */}
           {songPosition && (
-            <span className="rounded-full border border-line bg-panel-2/80 px-2 py-0.5 font-mono text-[11px] font-bold text-fg/80 tabular-nums" title="Song and stanza on the projector">
+            <span className={`rounded-full border border-line bg-panel-2/80 px-2 py-0.5 font-mono text-[11px] font-bold text-fg/80 tabular-nums ${blackout ? '@max-[400px]:hidden' : ''}`} title="Song and stanza on the projector">
               {songPosition}
             </span>
           )}
@@ -281,6 +284,15 @@ export function PreviewPanel() {
             )}
             {badge.label}
           </span>
+          {blackout && (
+            <span
+              role="status"
+              title="The audience screens are black. This preview still shows the slide."
+              className="inline-flex items-center rounded-full border border-white/70 bg-crimson px-2.5 py-0.5 text-xs font-extrabold tracking-wider text-white uppercase"
+            >
+              Blackout
+            </span>
+          )}
 
           <button
             type="button"
@@ -301,11 +313,12 @@ export function PreviewPanel() {
         </div>
       </header>
 
-      {/* The picture sits under the header and keeps its 16:9 shape, centred. It is the projector itself, live, so it matches the output. */}
+      {/* The picture sits under the header and keeps its 16:9 shape, centred. It is the projector itself, live, so it matches the output,
+          except under Blackout, where it keeps the slide on show for the operator. */}
       {!collapsed && (
         <div className="relative flex min-h-0 flex-1 items-center justify-center [container-type:size]">
           <div className="relative overflow-hidden" style={{ width: 'min(100cqw, calc(100cqh * 16 / 9))', height: 'min(100cqh, calc(100cqw * 9 / 16))' }}>
-            <ProjectorView mirror embedded />
+            <ProjectorView mirror embedded ignoreBlackout />
           </div>
         </div>
       )}

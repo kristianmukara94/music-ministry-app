@@ -1,4 +1,5 @@
 import type { ThemeId } from '../theme/themes';
+import type { LastBackup } from '../../shared/backup-format.js';
 
 export type Language = 'en' | 'tl' | 'ceb';
 
@@ -28,6 +29,8 @@ export interface ConfigState {
     registered_at: string | null;
     /** True once the first-time setup wizard (parish name and logo) has been completed. */
     onboarded: boolean;
+    /** The newest backup the operator made (Quick DB Snapshot or Export Full Backup), or null when none has been made. */
+    last_backup: LastBackup | null;
   };
   databasePath: string;
   defaultDatabasePath: string;
@@ -45,6 +48,12 @@ export interface MigrationProgress {
   current: string;
 }
 
+/** Sizes for the Backup & restore page. Null when that part could not be read (an unplugged network share, say). */
+export interface StorageStats {
+  database: { bytes: number } | null;
+  media: { bytes: number; files: number } | null;
+}
+
 export interface ConfigApi {
   /** Subscribes to migration progress. Returns an unsubscribe function. */
   onMigrationProgress(callback: (progress: MigrationProgress) => void): () => void;
@@ -59,8 +68,14 @@ export interface ConfigApi {
   updateRegistration(registration: Registration): Promise<void>;
   /** Null when the operator cancelled the picker. */
   changeLocation(): Promise<{ changed: boolean; path: string } | null>;
-  /** Null when the operator cancelled the picker. */
+  /** Quick DB Snapshot (apccmma.db only). Null when the operator cancelled the picker. */
   backup(): Promise<{ path: string } | null>;
+  /** The database file's size and the media folder's size and file count, measured in the main process. */
+  storageStats(): Promise<StorageStats>;
+  /** Shows the database file selected in Explorer. */
+  revealDatabase(): Promise<void>;
+  /** Opens the media folder in Explorer. */
+  openMediaFolder(): Promise<void>;
 }
 
 export interface UpdateInfo {

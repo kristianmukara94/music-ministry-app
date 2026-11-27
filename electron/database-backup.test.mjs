@@ -7,7 +7,18 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { backupFileName, checkBackupFile, exportBackup, importBackup } from './database-backup.js';
+import {
+  PRE_RESTORE_KEEP,
+  backupFileName,
+  checkBackupFile,
+  createPreRestoreSnapshot,
+  exportBackup,
+  importBackup,
+  listPreRestoreSnapshots,
+  preRestoreSnapshotName,
+  prunePreRestoreSnapshots,
+  restoreBackupsDirFor,
+} from './database-backup.js';
 
 const SCHEMA = 5;
 const open = (file) => new DatabaseSync(file, { readOnly: true });
@@ -107,8 +118,9 @@ test('a backup onto the live file itself is refused', () => {
   assert.match(result.error, /cannot be restored onto itself/);
 });
 
-test('a valid backup closes the live database first, keeps the old file, and replaces it', () => {
-  const live = appDb(path.join(dir, 'live-ok.db'), 3);
+test('a valid backup closes the live database first, keeps a timestamped safety copy in backups/, and replaces it', () => {
+  const home = fs.mkdtempSync(path.join(dir, 'restore-ok-'));
+  const live = appDb(path.join(home, 'live-ok.db'), 3);
   const oldBytes = bytes(live);
   const source = appDb(path.join(dir, 'restore-me.db'), 4);
   const sourceBytes = bytes(source);
@@ -123,42 +135,97 @@ test('a valid backup closes the live database first, keeps the old file, and rep
       return new DatabaseSync(file);
     },
     closeDatabase: () => events.push('close'),
+    now: new Date(2026, 10, 27, 9, 5, 7),
   });
   assert.deepEqual(events, ['migrate-copy', 'close'], 'the copy is migrated before the live database is closed');
-  assert.deepEqual(result, { ok: true, fallback: `${live}.pre-import-bak` });
+  const safetyCopy = path.join(home, 'backups', 'apccmma-pre-restore-20261127-090507.db');
+  assert.deepEqual(result, { ok: true, safetyCopy });
   assert.deepEqual(bytes(live), sourceBytes, 'the live file is the backup now');
-  assert.deepEqual(bytes(`${live}.pre-import-bak`), oldBytes, 'the old database is kept beside it');
+  assert.deepEqual(bytes(safetyCopy), oldBytes, 'the old database is kept in backups/ next to it');
+  assert.equal(fs.existsSync(`${live}.restoring`), false, 'no temporary file is left beside the live database');
 });
 
-test('when the old database cannot be kept, nothing is replaced and the result says the database was closed', () => {
-  const live = appDb(path.join(dir, 'live-keep.db'), 3);
-  const blocked = `${live}.pre-import-bak`;
-  fs.mkdirSync(blocked);
-  try {
-    const result = importBackup({
-      source: appDb(path.join(dir, 'restore-blocked.db'), 4),
-      activePath: live,
-      schemaVersion: SCHEMA,
-      open,
-      openForMigration: (file) => new DatabaseSync(file),
-      closeDatabase: () => {},
-    });
-    assert.equal(result.ok, false);
-    assert.equal(result.closed, true, 'the database was closed, so the app must restart');
-    assert.match(result.error, /could not be kept/);
-  } finally {
-    fs.rmdirSync(blocked);
-  }
+test('pre-restore safety copies are named by local time, live next to the database, and only the newest five are kept', () => {
+  assert.equal(preRestoreSnapshotName(new Date(2026, 0, 2, 3, 4, 5)), 'apccmma-pre-restore-20260102-030405.db');
+  assert.equal(preRestoreSnapshotName(new Date(2026, 0, 2, 3, 4, 5), 2), 'apccmma-pre-restore-20260102-030405-2.db');
+  assert.equal(restoreBackupsDirFor(path.join('data', 'apccmma.db')), path.join('data', 'backups'));
+  assert.equal(PRE_RESTORE_KEEP, 5);
+
+  const home = fs.mkdtempSync(path.join(dir, 'rotate-'));
+  const live = appDb(path.join(home, 'apccmma.db'), 3);
+  const backups = path.join(home, 'backups');
+  fs.mkdirSync(backups);
+  // Files the automatic backups and the operator keep in the same folder are never touched by the rotation.
+  const others = ['apccmma-backup-2026-11-01.sqlite.bak', 'apccmma-pre-migration-v4-2026-11-01-080000.sqlite.bak', 'notes.txt'];
+  for (const name of others) fs.writeFileSync(path.join(backups, name), name);
+
+  const made = [];
+  for (let day = 1; day <= 7; day += 1) made.push(createPreRestoreSnapshot({ activePath: live, backupsDir: backups, now: new Date(2026, 10, day, 8, 0, 0) }));
+  // Two restores in the same second get distinct names, and the later one counts as newer.
+  const sameSecond = createPreRestoreSnapshot({ activePath: live, backupsDir: backups, now: new Date(2026, 10, 7, 8, 0, 0) });
+  assert.equal(path.basename(sameSecond), 'apccmma-pre-restore-20261107-080000-1.db');
+
+  assert.deepEqual(
+    listPreRestoreSnapshots(backups).map((s) => s.name),
+    [
+      'apccmma-pre-restore-20261107-080000-1.db',
+      'apccmma-pre-restore-20261107-080000.db',
+      'apccmma-pre-restore-20261106-080000.db',
+      'apccmma-pre-restore-20261105-080000.db',
+      'apccmma-pre-restore-20261104-080000.db',
+    ],
+  );
+  for (const name of others) assert.equal(fs.existsSync(path.join(backups, name)), true, `${name} is kept`);
+  assert.deepEqual(bytes(made[6]), bytes(live), 'each safety copy is the whole database');
+  assert.equal(fs.readdirSync(backups).some((name) => name.endsWith('.partial')), false);
+
+  assert.deepEqual(prunePreRestoreSnapshots(backups, 2), [
+    'apccmma-pre-restore-20261106-080000.db',
+    'apccmma-pre-restore-20261105-080000.db',
+    'apccmma-pre-restore-20261104-080000.db',
+  ]);
+  assert.equal(listPreRestoreSnapshots(path.join(home, 'missing')).length, 0);
+});
+
+test('when the safety copy cannot be saved, nothing is replaced and the result says the database was closed', () => {
+  const home = fs.mkdtempSync(path.join(dir, 'restore-blocked-'));
+  const live = appDb(path.join(home, 'live-keep.db'), 3);
+  const before = bytes(live);
+  // A file where the backups folder should be: the folder cannot be made, so no safety copy can be written.
+  fs.writeFileSync(path.join(home, 'backups'), 'in the way');
+  const result = importBackup({
+    source: appDb(path.join(dir, 'restore-blocked.db'), 4),
+    activePath: live,
+    schemaVersion: SCHEMA,
+    open,
+    openForMigration: (file) => new DatabaseSync(file),
+    closeDatabase: () => {},
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.closed, true, 'the database was closed, so the app must restart');
+  assert.match(result.error, /safety copy of the current database could not be saved/);
+  assert.match(result.error, /Nothing was replaced/);
+  assert.deepEqual(bytes(live), before, 'the live database is untouched');
 });
 
 test('the app source checks the same rules: the handlers, the preload and the card are wired', () => {
   const read = (rel) => fs.readFileSync(path.resolve(import.meta.dirname, '..', rel), 'utf8');
   const main = read('electron/main.js');
-  assert.match(main, /ipcMain\.handle\('db:export-backup'/);
   assert.match(main, /ipcMain\.handle\('db:import-backup'/);
+  assert.match(main, /ipcMain\.handle\('db:export-full-backup'/);
+  assert.match(main, /ipcMain\.handle\('db:restore-full-backup'/);
+  assert.match(main, /replaceLiveDatabase\(\{[\s\S]*?backupsDir: restoreBackupsDirFor\(activePath\)/, 'a full restore keeps a pre-restore safety copy');
+  assert.match(main, /backupsDir: restoreBackupsDirFor\(dbStatus\.path\)/, 'a .db restore keeps a pre-restore safety copy');
   assert.match(main, /dialog\.showSaveDialog/);
   assert.match(main, /dialog\.showOpenDialog/);
   assert.match(main, /async function relaunchApp\(\)/, 'the restart goes through relaunchApp');
-  assert.match(read('electron/preload.cjs'), /exportBackup: \(\) => ipcRenderer\.invoke\('db:export-backup'\)/);
+  const preload = read('electron/preload.cjs');
+  assert.match(preload, /exportFullBackup: \(\) => ipcRenderer\.invoke\('db:export-full-backup'\)/);
+  assert.match(preload, /restoreFullBackup: \(\) => ipcRenderer\.invoke\('db:restore-full-backup'\)/);
+  assert.match(preload, /importBackup: \(\) => ipcRenderer\.invoke\('db:import-backup'\)/);
+  const card = read('src/settings/DatabaseSettings.tsx');
+  assert.match(card, /Export Full Backup \(DB \+ Media\)/);
+  assert.match(card, /Restore Full Backup/);
+  assert.match(read('src/settings/Settings.tsx'), /Quick DB Snapshot \(\.db\)/);
   assert.match(read('src/settings/DatabaseSettings.tsx'), /Restoring a database will overwrite all existing lineups, songs, and preferences\. The application will restart automatically to load the new data\. Do you want to continue\?/);
 });

@@ -1396,3 +1396,255 @@ test('a plan the website never gave a look leaves the booth\'s own look alone wh
   assert.equal(localMass(l.db, created.id).name, 'Sample Renamed Plan');
   assert.deepEqual(lookOf(l.db, created.id), BOOTH_LOOK);
 });
+
+// ---- Praise & Worship prayers from the Web Planner: they arrive assigned, and stay ----
+
+const { segmentStatus } = await import('../shared/pw.js');
+const { createPwService } = await import('./pw-sessions.js');
+
+const webModules = async () => ({
+  model: await import('../web/js/plan-model.js'),
+  lineup: await import('../web/js/praise-lineup.js'),
+  prayers: await import('../web/js/prayer-scripture.js'),
+});
+
+/** The laptop's cards for a plan, read the way the planner reads them. */
+function cardsOf(db, uuid) {
+  const { id } = db.prepare('SELECT id FROM pw_sessions WHERE uuid = ?').get(uuid);
+  return createPwService(db).getSession(id).segments;
+}
+const noteOf = (db, id) => db.prepare('SELECT title, body, display, category FROM notes WHERE id = ?').get(id);
+const notesTitled = (db, title) => db.prepare('SELECT COUNT(*) AS n FROM notes WHERE title = ?').get(title).n;
+/** A laptop edit, then a run, so the whole plan is sent back. */
+async function renameAndSync(l, uuid, name, at) {
+  l.db.prepare('UPDATE pw_sessions SET name = ?, updated_at = ? WHERE uuid = ?').run(name, at, uuid);
+  serverNow = new Date(at);
+  await l.engine.runOnce();
+}
+
+test('a prayer the Web Planner assigns to a lineup segment, and one on a new segment, arrive assigned and Ready, and survive the laptop push', async () => {
+  const web = await webModules();
+  const l = laptop();
+  seedHymn(l.db, HYMN_A, 'Sample Song Title');
+  await seedServerSong(HYMN_A, 'Sample Song Title');
+  const created = await serverCreate(laptopToken, { kind: 'pw', name: 'Sample Plan Title', items: [] });
+  await l.engine.runOnce();
+
+  // The web editor: a prayer into the first segment (Insert into segment) and a new segment holding another (Add selected).
+  let segs = web.lineup.lineupFromPlan([]).segs;
+  const built = web.lineup.buildSegment({ name: 'Sample Segment Title', type: 'prayer', group: 'praise', minutes: 4 }, segs);
+  segs = web.lineup.withSegmentAdded(segs, built.seg);
+  let segments = web.model.withEntry({}, 'prayer_authority', web.prayers.prayerEntry({ title: 'Sample Prayer Title' }));
+  segments = web.model.withEntry(segments, built.seg.id, web.prayers.prayerEntry({ title: 'Sample Second Prayer Title' }));
+  segments = web.model.withEntry(segments, 'joyful_song', { songId: HYMN_A, contentType: 'song' });
+  const items = web.model.praiseToItems({ segments, notes: {}, extra: [], present: new Set() }, segs);
+  serverNow = new Date(T2);
+  await serverEdit(laptopToken, created.id, { items });
+  await l.engine.runOnce();
+
+  const check = () => {
+    const cards = cardsOf(l.db, created.id);
+    for (const [key, title] of [['prayer_authority', 'Sample Prayer Title'], [built.seg.id, 'Sample Second Prayer Title']]) {
+      const card = cards.find((c) => c.key === key);
+      assert.ok(card, `${key} is on the laptop`);
+      assert.equal(card.type, 'prayer', `${key} is a prayer card`);
+      assert.equal(segmentStatus(card), 'ready', `${key} is Ready`);
+      assert.equal(card.stale, false);
+      assert.ok(Number.isInteger(card.content.noteId), `${key} has a prayer assigned`);
+      assert.equal(noteOf(l.db, card.content.noteId).title, title);
+      assert.equal(notesTitled(l.db, title), 1, 'one note, however often the plan is read');
+    }
+    assert.equal(cards.find((c) => c.key === built.seg.id).name, 'Sample Segment Title');
+    assert.equal(segmentStatus(cards.find((c) => c.key === 'joyful_song')), 'ready');
+    return cards;
+  };
+  const first = check();
+
+  await renameAndSync(l, created.id, 'Sample Renamed Plan', T3);
+  const row = await serverRow(created.id);
+  assert.equal(row.name, 'Sample Renamed Plan', 'the push went through');
+  const sent = row.body.items.filter((i) => i.contentType === 'prayer');
+  assert.deepEqual(sent.map((i) => [i.key, i.text]), [['prayer_authority', 'Sample Prayer Title'], [built.seg.id, 'Sample Second Prayer Title']]);
+  assert.equal(new Set(row.body.items.map((i) => i.key)).size, row.body.items.length, 'no key twice');
+  // The website's editor still shows both.
+  const reopened = web.lineup.lineupFromPlan(row.body.items);
+  const back = web.model.praiseFromItems(row.body.items, reopened.segs);
+  assert.deepEqual(['prayer_authority', built.seg.id].map((id) => web.model.slotEntries(back.segments[id]).map((e) => e.text)), [['Sample Prayer Title'], ['Sample Second Prayer Title']]);
+
+  // A further web save (a rename there) is pulled: the same cards, the same notes.
+  serverNow = new Date('2026-10-27T13:00:00.000Z');
+  await serverEdit(laptopToken, created.id, { name: 'Sample Web Rename' });
+  await l.engine.runOnce();
+  assert.deepEqual(check().map((c) => [c.key, c.content.noteId ?? null]), first.map((c) => [c.key, c.content.noteId ?? null]));
+});
+
+/** A synced laptop holding a web Praise & Worship plan, and ways to save it on the website or on the laptop and sync, one hour apart. */
+async function prayerPlan(items, setup = () => {}) {
+  const l = laptop();
+  seedHymn(l.db, HYMN_A, 'Sample Song Title');
+  await seedServerSong(HYMN_A, 'Sample Song Title');
+  setup(l.db);
+  const created = await serverCreate(laptopToken, { kind: 'pw', name: 'Sample Plan Title', items });
+  await l.engine.runOnce();
+  let hour = 10;
+  const next = () => `2026-10-27T${(hour += 1)}:00:00.000Z`;
+  // The Web Planner's own save, signed in: what it sends is what is stored.
+  const cookie = await cookieFor('planner');
+  const webSave = async (changed) => {
+    const at = next();
+    serverNow = new Date(at);
+    const row = await serverRow(created.id);
+    const body = { id: created.id, name: `Sample Web ${hour}`, baseUpdatedAt: new Date(row.updated_at).toISOString(), items: changed.map((item, i) => ({ ...item, order: i + 1 })) };
+    const res = await editing().savePlan({ httpMethod: 'POST', headers: { cookie }, body: JSON.stringify(body) });
+    assert.equal(res.statusCode, 200, res.body);
+    await l.engine.runOnce();
+  };
+  const sessionId = () => l.db.prepare('SELECT id FROM pw_sessions WHERE uuid = ?').get(created.id).id;
+  const laptopSave = async (change) => {
+    const at = next();
+    const service = createPwService(l.db);
+    const id = sessionId();
+    service.saveSession(id, { segments: change(service.getSession(id).segments) });
+    l.db.prepare('UPDATE pw_sessions SET updated_at = ? WHERE id = ?').run(at, id);
+    serverNow = new Date(at);
+    await l.engine.runOnce();
+    assert.equal(l.engine.status().counts.failed, 0, JSON.stringify(l.engine.status().failures));
+  };
+  const serverItems = async () => (await serverRow(created.id)).body.items;
+  const card = (key) => cardsOf(l.db, created.id).find((c) => c.key === key);
+  const titleOfCard = (key) => noteOf(l.db, card(key).content.noteId)?.title ?? null;
+  return { l, id: created.id, webSave, laptopSave, items: serverItems, card, titleOfCard };
+}
+const webPrayer = (key, order, text, extra = {}) => ({ key, group: 'opening', order, kind: 'rite', text, contentType: 'prayer', slotId: key.replace(/\.\d+$/, ''), ...extra });
+const seedNote = (db, title, body, extra = {}) =>
+  Number(db.prepare('INSERT INTO notes (title, category, body, display, copy_owner) VALUES (?, ?, ?, ?, ?)')
+    .run(title, extra.category ?? 'Community Prayer', body, extra.display ?? 'full', extra.owner ?? null).lastInsertRowid);
+const withContent = (key, content) => (segments) => segments.map((s) => (s.key === key ? { ...s, content } : s));
+
+test('the parish\'s own note of a prayer\'s title is used, never a Go Live copy, a private note or a Mass intention', async () => {
+  let own;
+  const p = await prayerPlan([webPrayer('prayer_authority', 1, 'Pater Noster (Our Father)')], (db) => {
+    seedNote(db, 'Pater Noster (Our Father)', 'Sample copy words', { owner: 'pw:1:prayer_authority' });
+    seedNote(db, 'Pater Noster (Our Father)', 'Sample booth words', { display: 'operator' });
+    seedNote(db, 'Pater Noster (Our Father)', 'Sample intention', { category: 'Mass Intention' });
+    own = seedNote(db, 'our  father', 'Sample approved words');
+  });
+  assert.equal(p.card('prayer_authority').content.noteId, own, 'found under the prayer\'s other name');
+  assert.equal(p.l.db.prepare('SELECT COUNT(*) AS n FROM notes').get().n, 4, 'no note was made');
+  await p.laptopSave((segments) => segments);
+  assert.equal((await p.items())[0].text, 'Pater Noster (Our Father)', 'sent back under the website\'s title');
+});
+
+for (const approved of [0, 1]) {
+  test(`a prayer with no note gets one with the Rosary wording only when the parish has approved it (approved: ${approved})`, async () => {
+    const p = await prayerPlan([webPrayer('prayer_authority', 1, 'Hail Mary')], (db) => {
+      db.exec('CREATE TABLE rosary_prayers (key TEXT PRIMARY KEY, text_en TEXT, text_tl TEXT, text_ceb TEXT, approved_en INTEGER, approved_tl INTEGER, approved_ceb INTEGER)');
+      db.prepare("INSERT INTO rosary_prayers VALUES ('hail_mary', 'Sample approved wording', '', '', ?, 0, 0)").run(approved);
+    });
+    assert.equal(noteOf(p.l.db, p.card('prayer_authority').content.noteId).body, approved ? 'Sample approved wording' : '');
+    assert.equal(segmentStatus(p.card('prayer_authority')), 'ready');
+  });
+}
+
+test('further prayers on a filled step join its card, and prayers and songs survive laptop pushes without new cards', async () => {
+  const p = await prayerPlan([
+    webPrayer('prayer_authority', 1, 'Sample First Prayer'),
+    webPrayer('prayer_authority.2', 2, 'Sample Second Prayer'),
+    songItem('prayer_authority.3', 3, HYMN_A, { slotId: 'prayer_authority', group: 'opening' }),
+    songItem('worship', 4, HYMN_A, { slotId: 'worship', group: 'praise' }),
+    webPrayer('worship.2', 5, 'Sample Third Prayer', { group: 'praise' }),
+  ]);
+  const check = () => {
+    assert.deepEqual(cardsOf(p.l.db, p.id).map((c) => [c.key, c.type]), [['prayer_authority', 'prayer'], ['worship', 'song']], 'no card of its own for a further item');
+    assert.equal(p.titleOfCard('prayer_authority'), 'Sample First Prayer');
+    assert.deepEqual(p.card('prayer_authority').content.more.map((m) => noteOf(p.l.db, m.noteId).title), ['Sample Second Prayer']);
+    assert.equal(p.card('prayer_authority').content.hymnIds.length, 1);
+    assert.deepEqual(p.card('worship').content.more.map((m) => noteOf(p.l.db, m.noteId).title), ['Sample Third Prayer']);
+    assert.equal(p.card('worship').content.hymnIds.length, 1);
+  };
+  check();
+  await p.laptopSave((segments) => segments);
+  const sent = await p.items();
+  assert.deepEqual(sent.filter((i) => i.contentType === 'prayer').map((i) => i.text), ['Sample First Prayer', 'Sample Second Prayer', 'Sample Third Prayer']);
+  assert.equal(sent.filter((i) => i.songId).length, 2);
+  assert.equal(new Set(sent.map((i) => i.key)).size, sent.length);
+  await p.webSave(sent);
+  check();
+  // The website takes the second prayer and the card's song out: the laptop follows.
+  await p.webSave((await p.items()).filter((i) => i.text !== 'Sample Second Prayer' && !(i.songId && i.key.startsWith('prayer_authority'))));
+  assert.equal(p.card('prayer_authority').content.more, undefined);
+  assert.deepEqual(p.card('prayer_authority').content.hymnIds, []);
+  assert.equal(p.titleOfCard('prayer_authority'), 'Sample First Prayer');
+});
+
+test('the website putting a new prayer first moves the old first prayer down the card', async () => {
+  const p = await prayerPlan([webPrayer('prayer_authority', 1, 'Sample First Prayer')]);
+  const first = p.card('prayer_authority').content.noteId;
+  await p.webSave([webPrayer('prayer_authority.2', 1, 'Sample New Prayer'), webPrayer('prayer_authority', 2, 'Sample First Prayer')]);
+  assert.equal(p.titleOfCard('prayer_authority'), 'Sample New Prayer');
+  assert.deepEqual(p.card('prayer_authority').content.more.map((m) => m.noteId), [first]);
+});
+
+test('a prayer swapped on the laptop for the parish\'s own is kept, and its title never leaves the laptop', async () => {
+  const p = await prayerPlan([webPrayer('prayer_authority', 1, 'Sample Prayer Title')]);
+  const own = seedNote(p.l.db, 'Sample Private Booth Title', 'Sample words');
+  await p.laptopSave(withContent('prayer_authority', { kind: 'prayer', noteId: own }));
+  assert.equal((await p.items())[0].text, 'Sample Prayer Title', 'the website keeps what it had');
+  await p.webSave(await p.items());
+  assert.equal(p.card('prayer_authority').content.noteId, own, 'an unrelated web save does not undo the swap');
+  assert.ok(!JSON.stringify(network.bodies).includes('Sample Private Booth Title'));
+  // The website then chooses another prayer: that is a real change, and it arrives.
+  await p.webSave([webPrayer('prayer_authority', 1, 'Sample New Prayer')]);
+  assert.equal(p.titleOfCard('prayer_authority'), 'Sample New Prayer');
+});
+
+test('a prayer taken off on the laptop stays off; a catalog prayer chosen there reaches the website', async () => {
+  const p = await prayerPlan([webPrayer('prayer_authority', 1, 'Sample Prayer Title')]);
+  await p.laptopSave(withContent('prayer_authority', { kind: 'prayer', noteId: null }));
+  await p.webSave(await p.items());
+  assert.equal(p.card('prayer_authority').content.noteId, null);
+  const glory = seedNote(p.l.db, 'Glory Be', 'Sample words');
+  await p.laptopSave(withContent('prayer_authority', { kind: 'prayer', noteId: glory }));
+  assert.deepEqual((await p.items()).map((i) => [i.text, i.contentType]), [['Glory Be', 'prayer']]);
+  await p.webSave(await p.items());
+  assert.equal(p.card('prayer_authority').content.noteId, glory);
+  // The website empties the step: the prayer it knew leaves the card.
+  await p.webSave([{ key: 'prayer_authority', group: 'opening', order: 1, kind: 'rite' }]);
+  assert.equal(p.card('prayer_authority').content.noteId, null);
+});
+
+test('a plan an earlier version pulled with empty prayer cards is read once more and filled, with no web save', async () => {
+  const p = await prayerPlan([webPrayer('prayer_authority', 1, 'Sample Prayer Title')]);
+  // What an earlier version left behind: the card empty, and nothing remembered.
+  p.l.db.prepare('INSERT INTO transfer_import_guard (active) VALUES (1)').run();
+  p.l.db.prepare(`UPDATE pw_segments SET content_ref = '{"kind":"prayer","noteId":null}'`).run();
+  p.l.db.prepare('DELETE FROM transfer_import_guard').run();
+  p.l.db.prepare("DELETE FROM sync_state WHERE key LIKE 'pwcards:%'").run();
+  p.l.db.prepare('DELETE FROM notes').run();
+  const restart = () => createPlanSync({ store: createPlanSyncStore(p.l.db), cloud: p.l.cloud, setTimer: () => 0, clearTimer: () => {} });
+  await restart().runOnce();
+  assert.equal(p.titleOfCard('prayer_authority'), 'Sample Prayer Title');
+  const calls = network.calls;
+  await restart().runOnce();
+  assert.equal(network.calls, calls + 1, 'only the pull: the plan is not read again');
+});
+
+test('the laptop knows the same prayer titles as the Web Planner\'s catalog', async () => {
+  const { PRAYER_CATALOG } = await import('../web/js/prayer-scripture.js');
+  const { WEB_PRAYERS } = await import('../shared/pw-web-prayers.js');
+  assert.deepEqual(WEB_PRAYERS.map((x) => x.title), PRAYER_CATALOG.map((x) => x.title));
+});
+
+test('a pulled Praise & Worship plan is announced once it is written, so an open lineup can be read again', async () => {
+  const l = laptop();
+  const announced = [];
+  const store = createPlanSyncStore(l.db, {
+    onPraiseChanged: (id) => announced.push([id, createPwService(l.db).getSession(id).segments.map((s) => segmentStatus(s))]),
+  });
+  const engine = createPlanSync({ store, cloud: l.cloud, setTimer: () => 0, clearTimer: () => {} });
+  await serverCreate(laptopToken);
+  const created = await serverCreate(laptopToken, { kind: 'pw', items: [{ key: 'prayer_authority', group: 'opening', order: 1, kind: 'rite', text: 'Sample Prayer Title', contentType: 'prayer' }] });
+  await engine.runOnce();
+  const { id } = l.db.prepare('SELECT id FROM pw_sessions WHERE uuid = ?').get(created.id);
+  assert.deepEqual(announced, [[id, ['ready']]], 'the Holy Mass plan is not announced, and the prayer is already assigned when this one is');
+});

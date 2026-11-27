@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { bridge } from '../live/bridge';
-import { COPYRIGHT_NOTICE, DEVELOPER, EULA_CONFIRMATION, EULA_SECTIONS, EULA_TITLE, SOFTWARE_NAME, type LegalSection } from '../legal/license';
+import { COPYRIGHT_NOTICE, DEVELOPER, EULA_CONFIRMATION, EULA_SECTIONS, EULA_TITLE, SOFTWARE_NAME, tidyRegistration, type LegalSection } from '../legal/license';
 import type { Registration } from '../settings/types';
 import { OnboardingWizard } from '../onboarding/OnboardingWizard';
 
@@ -103,15 +103,16 @@ function EulaModal({ onAccepted }: { onAccepted: () => void }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Whitespace alone does not count as filled in.
-  const filled = registration.church.trim() !== '' && registration.location.trim() !== '';
+  // Saved trimmed, with repeated spaces made one (shared/license-text.js). Whitespace alone does not count as filled in.
+  const tidied = tidyRegistration(registration);
+  const filled = tidied.church !== '' && tidied.location !== '';
   const canAccept = filled && confirmed && !saving;
 
   const accept = async () => {
     setSaving(true);
     setError(null);
     try {
-      await bridge.config.acceptEula({ church: registration.church.trim(), location: registration.location.trim() });
+      await bridge.config.acceptEula(tidied);
       onAccepted();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

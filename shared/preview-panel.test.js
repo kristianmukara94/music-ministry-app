@@ -21,7 +21,7 @@ test('the picture sits under the header, keeps 16:9 and is the projector itself'
   assert.match(panel, /<div className="relative flex min-h-0 flex-1 items-center justify-center \[container-type:size\]">/, 'the picture area takes the space left under the header');
   assert.match(panel, /width: 'min\(100cqw, calc\(100cqh \* 16 \/ 9\)\)'/, 'the picture keeps 16:9 and fits the area');
   assert.match(panel, /height: 'min\(100cqh, calc\(100cqw \* 9 \/ 16\)\)'/);
-  assert.match(panel, /<ProjectorView mirror embedded \/>/, 'the same projector picture, live');
+  assert.match(panel, /<ProjectorView mirror embedded ignoreBlackout \/>/, 'the same projector picture, live');
   assert.match(panel, /className="group fixed z-50 flex flex-col overflow-hidden/, 'the panel is a column, so the header and the picture stack');
 });
 

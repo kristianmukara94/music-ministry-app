@@ -97,6 +97,15 @@ async function songChanged(id: number) {
   setPw((s) => ({ libraryRevision: s.libraryRevision + 1 }));
 }
 liveLyrics.onChanged((id) => void songChanged(id));
+// A prayer saved in Notes & Prayers, or made by Cloud Sync for a Web Planner plan, is read at once, so its card shows its title and slides.
+// Several changes close together (a sync, the vault unlocking) are read once.
+let prayerTimer: number | undefined;
+bridge.notes.onChanged(() => {
+  window.clearTimeout(prayerTimer);
+  prayerTimer = window.setTimeout(() => void refreshPrayers().catch(() => undefined), 100);
+});
+// Cloud Sync wrote a lineup from the website.
+bridge.pw.onChanged((id) => void sessionPulled(id).catch(() => undefined));
 
 /** Loads the hymns these segments use and are not cached yet. */
 async function loadHymns(segments: PwSegment[]) {
@@ -115,10 +124,16 @@ async function loadDay(date: string) {
   }
 }
 
+/** The prayers that can be projected, read again. */
+async function refreshPrayers() {
+  const notes = await bridge.notes.list();
+  setPw({ prayers: notes.filter((n) => n.display !== 'operator') });
+}
+
 /** Libraries that change outside this module: prayers and tags. Called on open and when the view regains focus. */
 export async function refreshLibraries() {
-  const [notes, tags] = await Promise.all([bridge.notes.list(), api.listTags()]);
-  setPw({ prayers: notes.filter((n) => n.display !== 'operator'), tags });
+  const [, tags] = await Promise.all([refreshPrayers(), api.listTags()]);
+  setPw({ tags });
   await refreshPictures();
 }
 
@@ -222,6 +237,20 @@ async function saveNow() {
     setPw({ saveState: 'error', error: errorText(err) });
     void showSession(await api.getSession(session.id));
   }
+}
+
+/**
+ * A lineup Cloud Sync has just written. When it is the one open, it is shown as saved, so the next edit here does not write the old copy back
+ * over it. An edit still waiting to be saved is left to finish.
+ */
+async function sessionPulled(id: number) {
+  await refreshSessions();
+  if (usePw.getState().session?.id !== id || saveTimer !== undefined) return;
+  const serial = editSerial;
+  const [fresh] = await Promise.all([api.getSession(id), refreshPrayers()]);
+  if (serial !== editSerial || usePw.getState().session?.id !== id) return;
+  setPw({ replacing: null });
+  await showSession(fresh);
 }
 
 /** Writes any pending edit now. Used before leaving the session or saving a template. */

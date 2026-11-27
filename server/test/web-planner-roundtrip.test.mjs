@@ -934,3 +934,86 @@ test('Praise & Worship plans carry the look the same way, and a laptop push for 
   assert.equal(body(cleared).results[0].status, 'accepted', cleared.body);
   assert.equal((await getPlan(cookie, id)).plan.appearance.enabled, false);
 });
+
+// ---- Praise & Worship prayers: assigned on the web, in the desktop's database, and still there after it sends the plan back ----
+
+/** The desktop's own database (its own migrations, in memory) with its plan sync store. */
+async function desktop() {
+  const { register } = await import('node:module');
+  const { DatabaseSync } = await import('node:sqlite');
+  register(pathToFileURL(path.join(root, 'electron', 'test-support', 'electron-hook.mjs')));
+  const from = (name) => import(pathToFileURL(path.join(root, 'electron', name)).href);
+  const lyrics = await from('lyrics.js');
+  const mass = await from('mass-plans.js');
+  const notes = await from('notes.js');
+  const pw = await from('pw-sessions.js');
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON');
+  db.transaction = (work) => () => {
+    db.exec('BEGIN');
+    try {
+      const result = work();
+      db.exec('COMMIT');
+      return result;
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  };
+  for (const sqlText of [
+    ...lyrics.LYRICS_MIGRATIONS, ...lyrics.HYMN_DELETE_MIGRATIONS, ...lyrics.HYMN_FILING_MIGRATIONS, ...lyrics.HYMN_FONT_SCALE_MIGRATIONS, ...lyrics.HYMN_DEFAULT_SLIDES_MIGRATIONS,
+    ...mass.MASS_PLAN_MIGRATIONS, ...mass.PLAN_LANGUAGE_MIGRATIONS, ...mass.PLAN_BIBLE_MIGRATIONS, ...mass.PLAN_CUSTOM_MIGRATIONS, ...mass.PLAN_NOTES_MIGRATIONS,
+    ...pw.PW_MIGRATIONS, ...mass.PLAN_COMMUNION_MIGRATIONS, ...mass.MASS_SLOT_MIGRATIONS, ...(await from('transfer.js')).TRANSFER_MIGRATIONS, ...(await from('plan-sync-schema.js')).PLAN_SYNC_MIGRATIONS,
+    ...notes.PRAYER_NOTES_MIGRATIONS, ...notes.PRAYER_NOTES_SPLIT_MIGRATIONS, ...notes.NOTES_SLOT_MIGRATIONS, ...notes.NOTES_COPY_MIGRATIONS, ...(await from('web-hub-notes.js')).WEB_HUB_MIGRATIONS,
+  ]) db.exec(sqlText);
+  db.prepare("INSERT INTO hymns (title, category, language, uuid) VALUES ('Sample Song Title', 'General', 'EN', ?)").run(SONG);
+  return { db, store: laptopStore.createPlanSyncStore(db), service: pw.createPwService(db) };
+}
+
+test('a prayer on a Praise & Worship segment and on a new segment reaches the desktop database assigned and Ready, and survives its push', async () => {
+  const { segmentStatus } = await import(pathToFileURL(path.join(root, 'shared', 'pw.js')).href);
+  const cookie = await cookieFor('planner');
+  const id = randomUUID();
+  assert.equal((await createPlan(cookie, model.newPlanRequest({ name: 'Sample Plan Title', date: DAY, kind: 'pw' }, id))).statusCode, 201);
+  const { plan } = await getPlan(cookie, id);
+  let segs = lineupModel.lineupFromPlan(plan.items).segs;
+  const built = lineupModel.buildSegment({ name: 'Sample Segment Title', type: 'prayer', group: 'praise', minutes: 4 }, segs);
+  segs = lineupModel.withSegmentAdded(segs, built.seg);
+  const second = built.seg.id;
+  let segments = model.withEntry({}, 'prayer_authority', prayerScripture.prayerEntry({ title: 'Sample Prayer Title' }));
+  segments = model.withEntry(segments, second, prayerScripture.prayerEntry({ title: 'Sample Second Prayer Title' }));
+  segments = model.withEntry(segments, 'joyful_song', { songId: SONG, contentType: 'song' });
+  clock = new Date('2026-11-02T12:05:00Z');
+  const saved = await savePlan(cookie, model.savePayload(plan, model.praiseToItems({ segments, notes: {}, extra: [], present: new Set(segs.map((s) => s.id)) }, segs), {}));
+  assert.equal(saved.statusCode, 200, saved.body);
+
+  const local = await desktop();
+  local.store.applyServer((await pull()).plans.find((p) => p.id === id));
+  const session = () => local.service.getSession(local.db.prepare('SELECT id FROM pw_sessions WHERE uuid = ?').get(id).id);
+  const assigned = () => session().segments.filter((s) => s.type === 'prayer' && s.content.noteId != null).map((s) => {
+    assert.equal(segmentStatus(s), 'ready');
+    assert.equal(s.stale, false);
+    return [s.key, local.db.prepare('SELECT title FROM notes WHERE id = ?').get(s.content.noteId).title];
+  });
+  const expected = [['prayer_authority', 'Sample Prayer Title'], [second, 'Sample Second Prayer Title']];
+  assert.deepEqual(assigned(), expected);
+
+  // The desktop sends the whole plan back.
+  const payload = local.store.payloadFor(local.store.planByUuid(id));
+  const stored = (await pull()).plans.find((p) => p.id === id);
+  clock = new Date('2026-11-02T12:10:00Z');
+  const pushed = await sync().pushPlans({ httpMethod: 'POST', headers: { authorization: `Bearer ${laptop}` }, body: JSON.stringify({ plans: [{ ...payload, baseUpdatedAt: stored.updatedAt }] }) });
+  assert.equal(body(pushed).results[0].status, 'accepted', pushed.body);
+  local.store.markSynced(id, body(pushed).results[0].updatedAt, local.store.planByUuid(id).updated_at);
+
+  const after = (await getPlan(cookie, id)).plan;
+  assert.deepEqual(after.items.filter((i) => i.contentType === 'prayer').map((i) => [i.key, i.text]), expected);
+  assert.equal(after.items.find((i) => i.key === second).title, 'Sample Segment Title');
+  const lineup = lineupModel.lineupFromPlan(after.items);
+  const back = model.praiseFromItems(after.items, lineup.segs);
+  for (const [key, title] of expected) assert.deepEqual(model.praiseRow(lineup.segs.find((s) => s.id === key), back, []).entries.map((e) => [e.title, e.badge]), [[title, 'prayer']]);
+  // Pulled again after the push: the same prayers, still one note each.
+  local.store.applyServer((await pull()).plans.find((p) => p.id === id));
+  assert.deepEqual(assigned(), expected);
+  assert.equal(local.db.prepare('SELECT COUNT(*) AS n FROM notes').get().n, 2);
+});

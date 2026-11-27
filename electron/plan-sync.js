@@ -138,11 +138,12 @@ export function createPlanSync({ store, cloud, setTimer = setTimeout, clearTimer
 
   /**
    * Reads each held plan from the website once per run of the app. A plan held by an earlier version, for an item this version can place, is already past the
-   * pull cursor, so without this it would stay held until someone saved it again on the website.
+   * pull cursor, so without this it would stay held until someone saved it again on the website. The same goes for a Praise & Worship plan an earlier
+   * version pulled without assigning its website prayers.
    */
   async function retryHeld(counts) {
     if (heldRetried) return;
-    for (const uuid of store.heldPlans()) {
+    for (const uuid of new Set([...store.heldPlans(), ...(store.unreadPrayerPlans?.() ?? [])])) {
       try {
         const res = await cloud.getPlan(uuid);
         if (res.status !== 'found') continue;

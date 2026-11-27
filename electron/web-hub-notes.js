@@ -4,7 +4,8 @@
 // An entry's id is only unique within its plan (a copied plan keeps its ids), so a note is linked by "<plan uuid>:<entry id>". The link also records a
 // hash of what the website last sent, so a pull that brings nothing new leaves an operator's own edits alone.
 import crypto from 'node:crypto';
-import { ANNOUNCEMENT_CATEGORIES, MASS_FLOW_CATEGORIES, OPERATOR_CATEGORIES, PRAYER_CATEGORIES, cleanNote } from '../shared/notes.js';
+import { ANNOUNCEMENT_CATEGORIES, MASS_FLOW_CATEGORIES, MAX_NOTE_TITLE, OPERATOR_CATEGORIES, PRAYER_CATEGORIES, cleanNote } from '../shared/notes.js';
+import { prayerTitleKey, prayerTitleKeys, webPrayerOf } from '../shared/pw-web-prayers.js';
 import { isSealed } from './db-crypto.js';
 
 export const WEB_HUB_MIGRATIONS = [
@@ -97,5 +98,57 @@ export function createWebHubNotes(db, { onChanged = () => {} } = {}) {
     return result;
   }
 
-  return { ingest, noteIdOf, entryIdOf, projectable };
+  /** The parish's approved wording of a catalog prayer the laptop's Rosary also holds, or ''. Wording not marked approved is never used. */
+  function approvedWords(title) {
+    const key = webPrayerOf(title)?.rosary;
+    if (!key) return '';
+    try {
+      const row = db.prepare('SELECT * FROM rosary_prayers WHERE key = ?').get(key);
+      const language = ['en', 'ceb', 'tl'].find((l) => row?.[`approved_${l}`] === 1 && row[`text_${l}`]?.trim());
+      return language ? row[`text_${language}`] : '';
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * The note a prayer the website named by its title is shown from, on a Praise & Worship card. The parish's own projectable Hub entry of that
+   * title is used when there is one (one with words before an empty one). Otherwise one note is made for the title, the same one for every
+   * plan: it holds the parish's approved Rosary wording when there is one, and no words otherwise, so its slide asks for the approved text
+   * until the operator types it in. Private notes, Go Live copies and Mass intentions are never used. Null when no note can be had; never
+   * throws, so one prayer cannot stop a plan's sync.
+   */
+  function noteForPrayer(title) {
+    try {
+      const clean = String(title ?? '').trim().slice(0, MAX_NOTE_TITLE).trim();
+      if (!clean) return null;
+      const names = prayerTitleKeys(clean);
+      const rank = (row) => [names.indexOf(prayerTitleKey(row.title)), row.body.trim() ? 0 : 1, row.id];
+      const [found] = db
+        .prepare("SELECT id, title, body FROM notes WHERE copy_owner IS NULL AND display IN ('full', 'lower') AND category <> ?")
+        .all(SEALED_CATEGORY)
+        .filter((row) => names.includes(prayerTitleKey(row.title)))
+        .sort((a, b) => {
+          const [x, y] = [rank(a), rank(b)];
+          return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+        });
+      if (found) return Number(found.id);
+      // The note made for this title before, if the operator has since given it another name.
+      const key = `prayer:${names[0]}`;
+      const made = db.prepare('SELECT id FROM notes WHERE web_hub_key = ?').get(key);
+      if (made && projectable(made.id)) return Number(made.id);
+      const note = cleanNote({ title: clean, category: 'Community Prayer', body: approvedWords(clean), display: 'full' });
+      const { lastInsertRowid } = db
+        .prepare('INSERT INTO notes (title, category, body, display, web_hub_key) VALUES (?, ?, ?, ?, ?)')
+        .run(note.title, note.category, note.body, note.display, made ? null : key);
+      const id = Number(lastInsertRowid);
+      onChanged({ id, removed: false });
+      return id;
+    } catch (err) {
+      console.error(`[plan-sync] step=prayer name=${err?.name ?? 'Error'}`);
+      return null;
+    }
+  }
+
+  return { ingest, noteIdOf, entryIdOf, projectable, noteForPrayer };
 }

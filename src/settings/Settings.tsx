@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { DatabaseSettings } from './DatabaseSettings';
+import { LastBackupBadge, StoragePathRow, databaseSizeText, mediaSizeText, useStorageStats } from './BackupStatus';
 import { IntentionPrivacySettings } from './IntentionPrivacySettings';
 import { bridge } from '../live/bridge';
 import { setUi, useUi } from '../state/ui';
@@ -173,6 +174,9 @@ export function Settings() {
   const [moving, setMoving] = useState(false);
   const [progress, setProgress] = useState<MigrationProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Bumped after anything that changes the database or media folder, so the sizes on Backup & restore are measured again.
+  const [storageRefresh, setStorageRefresh] = useState(0);
+  const storage = useStorageStats(active === 'backup' && state !== null, storageRefresh);
 
   // A section another screen asked for (the Lower Third drawer's "Edit team" opens the Parish profile).
   const requested = useUi((s) => s.settingsSection);
@@ -230,6 +234,7 @@ export function Settings() {
       if (result?.changed) {
         window.alert('Database path updated. Please restart APCCMMA to apply changes.');
         await reload();
+        setStorageRefresh((n) => n + 1);
       } else if (result && !result.changed) {
         window.alert('That is already the active database location.');
       }
@@ -247,7 +252,10 @@ export function Settings() {
     setError(null);
     try {
       const result = await api.backup();
-      if (result) window.alert(`Backup saved and verified:\n${result.path}`);
+      if (result) {
+        window.alert(`Quick DB snapshot saved and verified (database only, no media):\n${result.path}`);
+        await reload();
+      }
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -321,16 +329,17 @@ export function Settings() {
         return (
           <div className="flex flex-col gap-6">
             {moving && <MoveProgress progress={progress} />}
+            <LastBackupBadge last={state.config.last_backup} />
             <Card title="Database & media">
-              <div className="flex flex-col gap-2">
-                <span className="eyebrow">Active database</span>
-                <code aria-label="Active database path" className="block break-all rounded-md border border-fg/15 bg-panel-2 px-3 py-2 font-mono text-xs text-fg">
-                  {state.databasePath}
-                </code>
-                <span className="eyebrow mt-2">Media folder</span>
-                <code aria-label="Media folder path" className="block break-all rounded-md border border-fg/15 bg-panel-2 px-3 py-2 font-mono text-xs text-fg">
-                  {state.assetsPath}
-                </code>
+              <div className="flex flex-col gap-4">
+                <StoragePathRow
+                  label="Active database"
+                  path={state.databasePath}
+                  size={databaseSizeText(storage)}
+                  onOpen={api.revealDatabase}
+                  disabled={!state.status.connected}
+                />
+                <StoragePathRow label="Media folder" path={state.assetsPath} size={mediaSizeText(storage)} onOpen={api.openMediaFolder} disabled={!state.status.connected} />
                 <p className="text-xs text-muted">Stays beside the database. Moving the database moves this folder with it.</p>
                 {state.status.fallback && (
                   <p role="alert" className="flex items-start gap-2 text-xs text-danger">
@@ -346,15 +355,17 @@ export function Settings() {
                   {moving ? 'Moving…' : 'Change Database Location'}
                 </button>
                 <button type="button" onClick={backup} disabled={busy || !state.status.connected} className={button}>
-                  <DatabaseBackup size={15} aria-hidden /> Backup Database
+                  <DatabaseBackup size={15} aria-hidden /> Quick DB Snapshot (.db)
                 </button>
               </div>
               <p className="text-xs text-muted">
-                A backup is a verified copy of the whole database. Keep one on a USB drive. Shared network folders work best for
-                occasional use, since only one laptop should write to the database at a time.
+                <strong className="font-semibold text-fg">Quick DB Snapshot</strong> saves a fast, verified copy of <code className="font-mono">apccmma.db</code>{' '}
+                only: songs, lineups, plans and settings, but <strong className="font-semibold text-fg">no media files</strong>. To keep pictures,
+                videos and slides too, use <strong className="font-semibold text-fg">Export Full Backup</strong> below. Shared network folders work best
+                for occasional use, since only one laptop should write to the database at a time.
               </p>
             </Card>
-            <DatabaseSettings />
+            <DatabaseSettings onBackupSaved={() => void reload()} />
             <IntentionPrivacySettings />
           </div>
         );

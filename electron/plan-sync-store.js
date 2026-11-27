@@ -19,15 +19,16 @@ const PART_BY_LABEL = new Map(Object.entries(MASS_PARTS).map(([part, label]) => 
 import { noteSource } from '../shared/notes.js';
 import { normalizeMassLanguage, normalizeMassTime } from '../shared/mass-schedule.js';
 import {
-  MapRefused, massEntries, massBody, mergeEntries, praiseBody, praiseEntries, PRAISE_READING_TYPES, READING_TYPES, WEB_NOTE_PREFIX, WEB_REFERENCE_PREFIX,
+  MapRefused, massEntries, massBody, mergeEntries, praiseBody, praiseEntries, READING_TYPES, WEB_NOTE_PREFIX, WEB_REFERENCE_PREFIX,
 } from './plan-sync-map.js';
 import { createWebHubNotes } from './web-hub-notes.js';
+import { isPrayerItem, praiseCard } from './pw-prayer-sync.js';
+import { prayerTitleKey, webPrayerOf } from '../shared/pw-web-prayers.js';
 import { appearanceToSend, hasAppearanceColumn, pulledAppearance } from './plan-appearance-sync.js';
 
 const GUARD = 'transfer_import_guard';
 const CURSOR = 'plans_cursor';
 const LAPTOP_BLOCKS = ['introductory', 'word', 'eucharist', 'communion', 'concluding'];
-const SEGMENT_TYPE = { song: 'song', reading: 'scripture', rite: 'prayer' };
 const DEFAULT_GROUP_NAMES = Object.fromEntries(DEFAULT_TEMPLATE.groups.map((g) => [g.key, g.name]));
 const MAX_SEGMENT_NAME = 80;
 const DEFAULT_SEGMENT_NAMES = Object.fromEntries(DEFAULT_TEMPLATE.segments.map((s) => [s.key, s.name]));
@@ -35,6 +36,9 @@ const DEFAULT_SEGMENT_CONTENT = Object.fromEntries(DEFAULT_TEMPLATE.segments.map
 export const HOLD_MESSAGE = 'Some items in this plan cannot be shown on this laptop yet, so the plan is not sent.';
 
 const holdKey = (uuid) => `hold:${uuid}`;
+// What the website last held for each card of a Praise & Worship plan (see pw-prayer-sync.js): { read, cards: { <segment key>: memory } }.
+// `read` says this plan has been read from the website by a version that assigns prayers.
+const prayerKey = (uuid) => `pwcards:${uuid}`;
 
 /** True for a real YYYY-MM-DD date. Compared back to the text, the same check the server makes, because 2026-02-31 would roll over to March. */
 const isCalendarDate = (value) => {
@@ -109,7 +113,7 @@ export function praiseRowFrom(item, hymnByUuid) {
   return { id: null };
 }
 
-export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
+export function createPlanSyncStore(db, { onNoteChanged = () => {}, onPraiseChanged = () => {} } = {}) {
   const webHub = createWebHubNotes(db, { onChanged: onNoteChanged });
   const one = (sql, ...args) => db.prepare(sql).get(...args);
   const all = (sql, ...args) => db.prepare(sql).all(...args);
@@ -200,6 +204,52 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
     return uuids.map((r) => planByUuid(r.uuid));
   }
 
+  const cardMemory = (uuid) => parseJson(one('SELECT value FROM sync_state WHERE key = ?', prayerKey(uuid))?.value);
+  const setCardMemory = (uuid, memory) => run('INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)', prayerKey(uuid), JSON.stringify(memory));
+  const clearCardMemory = (uuid) => run('DELETE FROM sync_state WHERE key = ?', prayerKey(uuid));
+  // What the plan being sent now will leave on the website, kept once the website accepts it (markSynced).
+  const sending = new Map();
+
+  /**
+   * The title the website knows a prayer note by, or null for a note of the laptop's own, whose title never leaves it. It is the title the
+   * website sent when the note was assigned, else a title the website sent for this plan or has in its catalog (so Go Live's copy of a
+   * prayer, or the parish's own note of a catalog prayer, goes by it).
+   */
+  function prayerTitles(uuid) {
+    const pairs = Object.values(cardMemory(uuid).cards ?? {}).flatMap((card) => card.prayers ?? []);
+    return (noteId) => {
+      if (noteId === null || noteId === undefined) return null;
+      const assigned = pairs.find(([, id]) => id === noteId);
+      if (assigned) return assigned[0];
+      const note = one('SELECT title FROM notes WHERE id = ?', Number(noteId));
+      if (!note) return null;
+      const seen = pairs.find(([title]) => prayerTitleKey(title) === prayerTitleKey(note.title));
+      return seen?.[0] ?? webPrayerOf(note.title)?.title ?? null;
+    };
+  }
+
+  /** What the website holds for each card once these entries are accepted. */
+  function sentCards(uuid, entries, titleOf) {
+    const before = cardMemory(uuid).cards ?? {};
+    const cards = {};
+    for (const e of entries.filter((x) => x.synced)) {
+      const card = (cards[e.row.key] ??= { prayers: [], songs: [], bareHead: false });
+      if (isPrayerItem(e.item)) {
+        const content = e.row.content ?? {};
+        const noteId = [content.noteId, ...(content.more ?? []).map((m) => m.noteId)].find((id) => id != null && titleOf(id) === e.item.text) ?? null;
+        card.prayers.push([e.item.text, noteId]);
+      } else if (e.row.type === 'prayer' && e.item.kind === 'rite' && e.key === e.row.key) card.bareHead = true;
+      if (e.item.songId) card.songs.push(e.item.songId);
+    }
+    for (const [key, { bareHead, ...card }] of Object.entries(cards)) {
+      // A first prayer sent with no title (the laptop's own, or taken off here) leaves the website's title where it is.
+      const first = before[key]?.prayers?.[0];
+      if (bareHead && first && !card.prayers.some(([title]) => title === first[0])) card.prayers.unshift([first[0], null]);
+      cards[key] = card;
+    }
+    return cards;
+  }
+
   /** The body the server takes for a plan. Throws MapRefused if a plan has something that cannot be sent. */
   function payloadFor(plan) {
     // A missing name has a plain default. A date has none, because a guess would move the plan to the wrong day, so such a plan stays here.
@@ -215,7 +265,10 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
       return { ...head, kind: 'mass', ...(schedule ? { massTime: normalizeMassTime(schedule.massTime), massLanguage: normalizeMassLanguage(schedule.massLanguage) } : {}), ...(look ? { appearance: look } : {}), items };
     }
     const look = appearanceToSend(lookOf('pw_sessions', plan.id), hasLook.pw_sessions);
-    return { ...head, kind: 'pw', ...(look ? { appearance: look } : {}), items: praiseBody(praiseEntries(segmentRows(plan.id), hymnUuidOf)).items };
+    const titleOf = prayerTitles(plan.uuid);
+    const entries = praiseEntries(segmentRows(plan.id), hymnUuidOf, titleOf);
+    sending.set(plan.uuid, sentCards(plan.uuid, entries, titleOf));
+    return { ...head, kind: 'pw', ...(look ? { appearance: look } : {}), items: praiseBody(entries).items };
   }
 
   const cursor = () => one('SELECT value FROM sync_state WHERE key = ?', CURSOR)?.value ?? null;
@@ -231,6 +284,17 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
   const setHold = (uuid, count) => run('INSERT OR REPLACE INTO sync_state (key, value) VALUES (?, ?)', holdKey(uuid), `${count}`);
   const clearHold = (uuid) => run('DELETE FROM sync_state WHERE key = ?', holdKey(uuid));
   const holdCount = () => one("SELECT COUNT(*) AS n FROM sync_state WHERE key LIKE 'hold:%'").n;
+
+  /**
+   * The Praise & Worship plans to read from the website once more: pulled by a version that left a website prayer unassigned (an empty prayer
+   * card, or a further item kept as a card of its own), never read since, and with no laptop edits waiting.
+   */
+  function unreadPrayerPlans() {
+    return all('SELECT id, uuid FROM pw_sessions WHERE uuid IS NOT NULL AND server_updated_at IS NOT NULL AND synced_updated_at = updated_at')
+      .filter(({ id, uuid }) => !cardMemory(uuid).read
+        && segmentRows(id).some((r) => (r.type === 'prayer' && (r.content.noteId ?? null) === null) || r.key.includes('.')))
+      .map((r) => r.uuid);
+  }
 
   /** The held plans it is safe to read from the website again: those with no laptop edits waiting, which a fresh copy would replace. */
   function heldPlans() {
@@ -250,6 +314,8 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
   /** Records that a plan is in step with the server: its server version, and the laptop stamp it was sent or applied with. */
   function markSynced(uuid, serverUpdatedAt, stamp) {
     quiet(() => {
+      if (sending.has(uuid)) setCardMemory(uuid, { ...cardMemory(uuid), cards: sending.get(uuid) });
+      sending.delete(uuid);
       run('UPDATE mass_plans SET server_updated_at = ?, synced_updated_at = ? WHERE uuid = ?', serverUpdatedAt, stamp, uuid);
       run('UPDATE pw_sessions SET server_updated_at = ?, synced_updated_at = ? WHERE uuid = ?', serverUpdatedAt, stamp, uuid);
     });
@@ -270,6 +336,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
       if (plan?.kind === 'mass') run('DELETE FROM mass_plans WHERE id = ?', plan.id);
       if (plan?.kind === 'praise') run('DELETE FROM pw_sessions WHERE id = ?', plan.id);
       clearHold(uuid);
+      clearCardMemory(uuid);
     });
   }
 
@@ -278,10 +345,19 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
    * placed. A plan with any is held until a later server version places them all.
    */
   function applyServer(serverPlan) {
+    sending.delete(serverPlan.id);
     ingestHub(serverPlan);
     const unresolved = quiet(() => (serverPlan.kind === 'mass' ? applyMass(serverPlan) : applyPraise(serverPlan)));
     if (unresolved > 0) setHold(serverPlan.id, unresolved);
     else clearHold(serverPlan.id);
+    // After the commit, so a window that reads the lineup now reads what was written. One still holding the old copy would save over it.
+    if (serverPlan.kind !== 'mass') {
+      try {
+        onPraiseChanged(planByUuid(serverPlan.id).id);
+      } catch (err) {
+        console.error(`[plan-sync] step=announce name=${err?.name ?? 'Error'}`);
+      }
+    }
     return { unresolved };
   }
 
@@ -334,29 +410,25 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
 
   // ---- Praise & Worship plans ----
 
-  /** A praise item matches a kept segment when it is the same kind of thing: a song, a reading, a title, or a prayer. */
-  function praiseItemFits(row, item) {
-    if (item.kind === 'song') return row.content?.kind === 'song' && (!item.songId || hymnByUuid(item.songId) !== null);
-    if (item.kind === 'reading') return row.content?.kind === 'lectionary' || row.content?.kind === 'title';
-    return row.type === 'prayer';
-  }
-
-  /** The segment's content as the server's items describe it. Local content is kept where the server says nothing new. */
-  function contentFor(row, items, planUuid) {
-    const first = items[0];
-    if (first.kind === 'song') {
-      // A segment holds a song once, as it does when songs are added on the laptop.
-      const hymnIds = [...new Set(items.map((i) => (i.songId ? hymnByUuid(i.songId)?.id : null)).filter((id) => id !== null && id !== undefined))];
-      // A segment new to the laptop starts as the lineup's own slot of that key does (Worship takes three songs), so it is the same card as one made here.
-      const template = DEFAULT_SEGMENT_CONTENT[row?.key ?? first.key];
-      const local = row?.content?.kind === 'song' ? row.content : template?.kind === 'song' ? template : {};
-      return { kind: 'song', hymnIds, maxSongs: Math.max(local.maxSongs ?? 1, hymnIds.length, 1), category: local.category ?? null };
-    }
-    // Only a known reading name can be a lectionary slot. Anything else, such as a reference, would be refused when the plan is sent.
-    if (first.kind === 'reading') return PRAISE_READING_TYPES.includes(first.text) ? { kind: 'lectionary', readingType: first.text } : { kind: 'title' };
-    const noteId = first.contentHubId ? webHub.noteIdOf(planUuid, first.contentHubId) : null;
-    if (noteId !== null && webHub.projectable(noteId)) return { ...(row?.content?.kind === 'prayer' ? row.content : {}), kind: 'prayer', noteId };
-    return row?.content ?? { kind: 'prayer', noteId: null };
+  /** The card's type and content from the server's items, merged with what the laptop's card holds, and what to remember of the website's side. */
+  function cardFor(row, items, planUuid, memory) {
+    return praiseCard({
+      row,
+      items,
+      memory,
+      deps: {
+        titleOf: prayerTitles(planUuid),
+        noteFor: webHub.noteForPrayer,
+        hubNoteFor: (entryId) => {
+          const noteId = webHub.noteIdOf(planUuid, entryId);
+          return noteId !== null && webHub.projectable(noteId) ? noteId : null;
+        },
+        noteExists: webHub.projectable,
+        songIdOf: (uuid) => hymnByUuid(uuid)?.id ?? null,
+        songUuidOf: hymnUuidOf,
+        template: DEFAULT_SEGMENT_CONTENT[row.key ?? items[0].key],
+      },
+    });
   }
 
   /** An existing card keeps the laptop's name, except a card of the web's own making (no template name), which follows the web when it is renamed there. */
@@ -377,7 +449,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
     if (named) return named;
     if (first.kind === 'song') return (first.songId && hymnByUuid(first.songId)?.title) || 'Song';
     if (first.kind === 'reading') return first.text || 'Scripture';
-    return first.title || 'Prayer';
+    return first.text || 'Prayer';
   }
 
   /** Adds any group the server's items use that the session does not have yet, with its default name. */
@@ -403,24 +475,30 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
         sp.name, sp.date, JSON.stringify(groupsWith([], sp.items)), sp.id, sp.updatedAt).lastInsertRowid);
     }
     const rows = segmentRows(id);
-    const localEntries = praiseEntries(rows, hymnUuidOf);
+    const localEntries = praiseEntries(rows, hymnUuidOf, prayerTitles(sp.id));
     const byKey = new Map(localEntries.map((e) => [e.key, e]));
     const bySegmentKey = new Map(rows.map((r) => [r.key, r]));
-    // One new segment for each segment key the server's songs name, so the songs of one step arrive as one card.
-    const newSongSegments = new Map();
-    const resolve = (item) => {
-      const kept = byKey.get(item.key);
-      if (kept && praiseItemFits(kept.row, item)) return kept.row;
-      const fresh = praiseRowFrom(item, hymnByUuid);
-      if (!fresh || item.kind !== 'song') return fresh;
-      // A song joins the segment it is for: the card the laptop already has under that key, or one new card for all of that step's songs. The
-      // website gives a step's first song the step's own key and numbers the rest ("worship", "worship.2"), and the laptop numbers them all
-      // ("worship.1"), so the keys alone do not match once either side has changed the songs.
+    // One new segment for each segment key the server's items name, so the songs and prayers of one step arrive as one card.
+    const newSegments = new Map();
+    const firstOf = new Map();
+    for (const item of [...sp.items].sort((a, b) => a.order - b.order)) {
       const segmentKey = praiseSegmentKeyOf(item);
-      const home = bySegmentKey.get(segmentKey);
-      if (home && praiseItemFits(home, item)) return home;
-      if (!newSongSegments.has(segmentKey)) newSongSegments.set(segmentKey, { id: null, key: segmentKey });
-      return newSongSegments.get(segmentKey);
+      if (!firstOf.has(segmentKey)) firstOf.set(segmentKey, item.key);
+    }
+    const resolve = (item) => {
+      const fresh = praiseRowFrom(item, hymnByUuid);
+      if (!fresh) return null;
+      // A step's first item, and any song or prayer on it, belong to the step's card. The website gives a step's first item the step's own key
+      // and numbers the rest ("worship", "worship.2"), and the laptop numbers songs from 1 ("worship.1"), so the step decides, not the key.
+      const segmentKey = praiseSegmentKeyOf(item);
+      if (item.kind === 'song' || isPrayerItem(item) || firstOf.get(segmentKey) === item.key) {
+        const home = bySegmentKey.get(segmentKey) ?? byKey.get(item.key)?.row;
+        if (home) return home;
+        if (!newSegments.has(segmentKey)) newSegments.set(segmentKey, { id: null, key: segmentKey });
+        return newSegments.get(segmentKey);
+      }
+      // Anything else further down a step (a second reading, typed words) has no place on that card, so it keeps a card of its own.
+      return byKey.get(item.key)?.row ?? fresh;
     };
     const { entries, unresolved } = mergeEntries(localEntries, sp.items, resolve);
     // A segment that several server items point at (a segment with several songs) is written once, with all its songs.
@@ -429,21 +507,28 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
       if (!bySegment.has(e.row)) bySegment.set(e.row, { row: e.row, items: [] });
       if (e.synced) bySegment.get(e.row).items.push(e.item);
     }
+    // Worked out before the cards are rewritten, while the memory still says what the website held last time.
+    const before = cardMemory(sp.id).cards ?? {};
+    const cards = {};
     run('DELETE FROM pw_segments WHERE session_id = ?', id);
     let order = 0;
     for (const { row, items } of bySegment.values()) {
       order += 1;
       const owned = Boolean(row.id);
       const kept = items.length === 0;
+      const cardKey = row.key ?? items[0].key;
+      const card = kept ? null : cardFor(row, items, sp.id, before[cardKey] ?? null);
+      if (card) cards[cardKey] = card.memory;
+      else if (before[cardKey]) cards[cardKey] = before[cardKey];
       const values = kept
         ? { key: row.key, group: row.group, name: row.name, type: row.type, minutes: row.minutes, content: row.content,
             leader: row.leader, arrangement: row.arrangement, cues: row.cues, notes: row.notes }
-        : { key: row.key ?? items[0].key,
+        : { key: cardKey,
             group: items[0].group,
             name: owned ? renamedBy(row, items) : nameFor(row, items),
-            type: SEGMENT_TYPE[items[0].kind],
+            type: card.type,
             minutes: items[0].minutes ?? 0,
-            content: contentFor(row, items, sp.id),
+            content: card.content,
             leader: owned ? row.leader : '',
             arrangement: owned ? row.arrangement : '{}',
             cues: owned ? row.cues : '{}',
@@ -457,6 +542,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
         JSON.stringify(values.content), values.arrangement, values.cues, values.notes,
       );
     }
+    setCardMemory(sp.id, { read: true, cards });
     applyLook('pw_sessions', id, sp.appearance);
     run('UPDATE pw_sessions SET server_updated_at = ?, synced_updated_at = ? WHERE id = ?', sp.updatedAt, sp.updatedAt, id);
     return unresolved.length;
@@ -506,6 +592,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
       } finally {
         if (triggerSql) db.exec(triggerSql);
       }
+      run('UPDATE sync_state SET key = ? WHERE key = ?', prayerKey(fresh), prayerKey(uuid));
       if (hasWebHub) run("UPDATE notes SET web_hub_key = NULL, web_hub_hash = NULL WHERE web_hub_key LIKE ? ESCAPE '\\'", `${uuid.replace(/[%_\\]/g, '\\$&')}:%`);
       clearHold(uuid);
     });
@@ -531,7 +618,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {} } = {}) {
 
   return {
     planByUuid, dirtyPlans, payloadFor, cursor, setCursor, tombstones, hasTombstone, clearTombstone,
-    holdOf, clearHold, holdCount, heldPlans, hold: setHold, markSynced, setServerStamp, removeByUuid, applyServer, ingestHub,
+    holdOf, clearHold, holdCount, heldPlans, unreadPrayerPlans, hold: setHold, markSynced, setServerStamp, removeByUuid, applyServer, ingestHub,
     describe, forgetServerStamp, rekey, markAllDirty, resetSyncState,
   };
 }

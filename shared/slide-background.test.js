@@ -65,7 +65,7 @@ test('the Live preview, the Current and Next slides, and the projector all pass 
   assert.match(read('src/output/ProjectorView.tsx'), /const pwBackground = sharedBackground \|\| planBackground \? SEE_THROUGH : ownBackground;/, 'and uses it unless the Media Library background covers every slide, or the plan draws its own');
   assert.match(read('src/output/ProjectorView.tsx'), /footer=\{frame\.footer\} background=\{pwBackground\} edgeToEdge=\{edgeToEdge\} bandOn=\{bandOn\} \/>/, 'the projector passes it to the slide');
   // The operator's Live preview is the projector itself (mirror), so it shows the same background.
-  assert.match(read('src/operator/PreviewPanel.tsx'), /<ProjectorView mirror embedded \/>/);
+  assert.match(read('src/operator/PreviewPanel.tsx'), /<ProjectorView mirror embedded ignoreBlackout \/>/);
 });
 
 test('the video is muted and loops only when Loop is on; off, it holds its last frame; audio is off', () => {

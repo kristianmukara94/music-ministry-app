@@ -187,6 +187,11 @@ contextBridge.exposeInMainWorld('apcc', {
     deleteTemplate: (id) => ipcRenderer.invoke('pw:deleteTemplate', id),
     listTags: () => ipcRenderer.invoke('pw:listTags'),
     setTag: (hymnId, segmentKey, on) => ipcRenderer.invoke('pw:setTag', hymnId, segmentKey, on),
+    onChanged: (callback) => {
+      const handler = (_event, sessionId) => callback(sessionId);
+      ipcRenderer.on('pw:changed', handler);
+      return () => ipcRenderer.removeListener('pw:changed', handler);
+    },
   },
 
   notes: {
@@ -318,6 +323,12 @@ contextBridge.exposeInMainWorld('apcc', {
     openPdf: (job) => ipcRenderer.invoke('lineup:open-pdf', job),
   },
 
+  // The license certificate (electron/license-certificate.js): the system Print dialog, or Save as PDF.
+  certificate: {
+    print: (job) => ipcRenderer.invoke('certificate:print', job),
+    savePdf: (job) => ipcRenderer.invoke('certificate:save-pdf', job),
+  },
+
   library: {
     export: (options) => ipcRenderer.invoke('library:export', options),
     open: () => ipcRenderer.invoke('library:open'),
@@ -417,6 +428,9 @@ contextBridge.exposeInMainWorld('apcc', {
     updateRegistration: (registration) => ipcRenderer.invoke('config:updateRegistration', registration),
     changeLocation: () => ipcRenderer.invoke('config:changeLocation'),
     backup: () => ipcRenderer.invoke('config:backup'),
+    storageStats: () => ipcRenderer.invoke('config:storageStats'),
+    revealDatabase: () => ipcRenderer.invoke('config:revealDatabase'),
+    openMediaFolder: () => ipcRenderer.invoke('config:openMediaFolder'),
     onMigrationProgress: (callback) => {
       const handler = (_event, progress) => callback(progress);
       ipcRenderer.on('config:migrationProgress', handler);
@@ -445,8 +459,14 @@ contextBridge.exposeInMainWorld('apcc', {
   },
 
   database: {
-    exportBackup: () => ipcRenderer.invoke('db:export-backup'),
     importBackup: () => ipcRenderer.invoke('db:import-backup'),
+    exportFullBackup: () => ipcRenderer.invoke('db:export-full-backup'),
+    restoreFullBackup: () => ipcRenderer.invoke('db:restore-full-backup'),
+    onBackupProgress: (callback) => {
+      const handler = (_event, progress) => callback(progress);
+      ipcRenderer.on('db:backup-progress', handler);
+      return () => ipcRenderer.removeListener('db:backup-progress', handler);
+    },
   },
 
   pdf: {

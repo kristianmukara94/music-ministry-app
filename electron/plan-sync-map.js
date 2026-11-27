@@ -116,10 +116,15 @@ export function massEntries(rows, hymnUuidOf, hubEntryOf = () => null) {
   });
 }
 
-/** Praise & Worship segments in display order. `segments` are { key, group, order, type, minutes, contentRef, notes, ... }. */
-export function praiseEntries(segments, hymnUuidOf) {
+/**
+ * Praise & Worship segments in display order. `segments` are { key, group, order, type, minutes, contentRef, notes, ... }.
+ * `prayerTitleOf(noteId)` returns the title a prayer note is known by on the website (a title that came from there, or one in its Prayers
+ * catalog), or null for the laptop's own notes, whose titles stay here.
+ */
+export function praiseEntries(segments, hymnUuidOf, prayerTitleOf = () => null) {
   // A segment's notes are local-only: they are never part of an item, so they never leave the laptop.
-  return [...segments].sort(byOrder).flatMap((seg) => segmentEntries(seg, hymnUuidOf));
+  const used = new Set(segments.map((s) => s.key));
+  return [...segments].sort(byOrder).flatMap((seg) => segmentEntries(seg, hymnUuidOf, prayerTitleOf, used));
 }
 
 const TEMPLATE_KEYS = new Set(DEFAULT_TEMPLATE.segments.map((s) => s.key));
@@ -130,11 +135,42 @@ function named(seg, item) {
   return item && !item.contentHubId && name && !TEMPLATE_KEYS.has(seg.key) ? { ...item, title: name.slice(0, 80) } : item;
 }
 
-function segmentEntries(seg, hymnUuidOf) {
-  return segmentItems(seg, hymnUuidOf).map((e, i) => (i === 0 && e.item ? { ...e, item: named(seg, e.item) } : e));
+function segmentEntries(seg, hymnUuidOf, prayerTitleOf, used) {
+  const own = segmentItems(seg, hymnUuidOf, prayerTitleOf);
+  return [...own, ...furtherEntries(seg, own.length, hymnUuidOf, prayerTitleOf, used)].map((e, i) => (i === 0 && e.item ? { ...e, item: named(seg, e.item) } : e));
 }
 
-function segmentItems(seg, hymnUuidOf) {
+const prayerItem = (group, title) => ({ kind: 'rite', group, text: title.slice(0, MAX_TEXT), contentType: 'prayer' });
+
+/**
+ * What a card holds beyond the items its own type sends: the songs of a card that is not a song card, and the prayers chained after its
+ * first item. Each is numbered after the card's key ("worship.2"), as the website numbers a step's further items. Only a song with a website
+ * id and a prayer the website knows by title are sent.
+ */
+function furtherEntries(seg, taken, hymnUuidOf, prayerTitleOf, used) {
+  const content = parseContent(seg.contentRef);
+  const songs = seg.type === 'song' || !Array.isArray(content.hymnIds) ? [] : content.hymnIds
+    .map((id) => hymnUuidOf(id))
+    .filter(Boolean)
+    .map((songId) => ({ kind: 'song', group: seg.group, songId }));
+  const prayers = (Array.isArray(content.more) ? content.more : [])
+    .filter((m) => m?.kind === 'prayer')
+    .map((m) => prayerTitleOf(m.noteId))
+    .filter(Boolean)
+    .map((title) => prayerItem(seg.group, title));
+  let n = Math.max(taken, 1);
+  return [...songs, ...prayers].map((item) => {
+    let key;
+    do {
+      n += 1;
+      key = itemKey([seg.key, n]);
+    } while (used.has(key));
+    used.add(key);
+    return entry(key, seg, item);
+  });
+}
+
+function segmentItems(seg, hymnUuidOf, prayerTitleOf) {
   const content = parseContent(seg.contentRef);
   const minutes = minutesFor(seg.minutes);
   if (seg.type === 'song') {
@@ -147,8 +183,9 @@ function segmentItems(seg, hymnUuidOf) {
     });
   }
   if (seg.type === 'prayer') {
-    // A prayer's words stay on the laptop. The server gets the slot only.
-    return [entry(itemKey([seg.key]), seg, withMinutes({ kind: 'rite', group: seg.group }, minutes))];
+    // A prayer's words stay on the laptop. The server gets the slot, and the title only when it is one the website knows the prayer by.
+    const title = content.kind === 'prayer' && content.noteId != null ? prayerTitleOf(content.noteId) : null;
+    return [entry(itemKey([seg.key]), seg, withMinutes(title ? prayerItem(seg.group, title) : { kind: 'rite', group: seg.group }, minutes))];
   }
   if (seg.type === 'scripture') {
     if (content.kind === 'lectionary') {

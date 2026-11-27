@@ -17,7 +17,9 @@ import { initialLiveState, liveReducer, OUTPUTS } from '../shared/live.js';
 import { createDisplayEventGate, outputsChanged, sameBounds } from './display-events.js';
 import Database from 'better-sqlite3';
 import { SCHEMA_VERSION, openDatabase, setupAnnouncements } from './announcements.js';
-import { DB_FILTERS, backupFileName, exportBackup, importBackup } from './database-backup.js';
+import { DB_FILTERS, checkBackupFile, checkRestoreSource, importBackup, replaceLiveDatabase, restoreBackupsDirFor } from './database-backup.js';
+import { ARCHIVE_FILTERS, DB_ENTRY, exportFullBackup, fullBackupFileName, openFullBackup } from './full-backup.js';
+import { getAssetRoot } from './assets.js';
 import { databaseCounts } from './db-check.js';
 import { backupsDirFor, incrementalVacuum, listBackups, recoverDatabase, takeDailyBackup } from './db-backup-manager.js';
 import { createHealthReader, createWriteMeter } from './system-health.js';
@@ -76,6 +78,7 @@ import { createAlertExpiry } from './sanctuary-alert.js';
 import { applyImport, checkExportOptions, collectLibrary, decodeTransfer, defaultExportName, encodeTransfer, previewImport, TRANSFER_EXTENSION } from './transfer.js';
 import { isOwnPage, lockDownContents, restrictPermissions } from './web-lockdown.js';
 import { createLineupPrinter, registerLineupPrinting } from './print-lineup.js';
+import { createCertificatePrinter, registerCertificatePrinting } from './license-certificate.js';
 import { checkLaunchTarget, LAUNCH_REFUSED_DETAIL } from './launch-target.js';
 import os from 'node:os';
 
@@ -1082,15 +1085,25 @@ function createOperator() {
   // list may not be updated yet when it arrives, so it only re-reads the hardware and schedules the settle checks, which re-anchor the projector.
   if (process.platform === 'win32') win.hookWindowMessage(WM_DISPLAYCHANGE, () => edid?.topologyChanged('WM_DISPLAYCHANGE'));
   // Closing mid-copy could leave a new database location half-written, so the window stays open until the move ends.
+  // A full backup export or restore is held open the same way: an export would be left unfinished, and a restore half-copied.
   win.on('close', (event) => {
-    if (!settings?.isMoving()) return;
-    event.preventDefault();
-    dialog.showMessageBoxSync(win, {
-      type: 'warning',
-      message: 'The database is still being moved.',
-      detail: 'Please wait for the move to finish before closing APCCMMA. Closing now could leave the new location incomplete.',
-      buttons: ['OK'],
-    });
+    if (settings?.isMoving()) {
+      event.preventDefault();
+      dialog.showMessageBoxSync(win, {
+        type: 'warning',
+        message: 'The database is still being moved.',
+        detail: 'Please wait for the move to finish before closing APCCMMA. Closing now could leave the new location incomplete.',
+        buttons: ['OK'],
+      });
+    } else if (archiveJob) {
+      event.preventDefault();
+      dialog.showMessageBoxSync(win, {
+        type: 'warning',
+        message: archiveJob === 'export' ? 'A full backup is still being saved.' : 'A full backup is still being restored.',
+        detail: 'Please wait for it to finish before closing APCCMMA.',
+        buttons: ['OK'],
+      });
+    }
   });
   win.on('closed', () => {
     windows.operator = null;
@@ -1131,6 +1144,21 @@ registerLineupPrinting({
     defaultDir: () => app.getPath('documents'),
     tempDir: () => app.getPath('temp'),
     openPath: (file) => shell.openPath(file),
+  }),
+});
+
+// ---- License certificate (Settings → About & Licensing): Print and Save as PDF, the same way (electron/license-certificate.js) ----
+
+registerCertificatePrinting({
+  ipcMain,
+  windowOf: (contents) => (contents ? BrowserWindow.fromWebContents(contents) : null),
+  printer: createCertificatePrinter({
+    BrowserWindow,
+    showSaveDialog: (owner, options) => (owner ? dialog.showSaveDialog(owner, options) : dialog.showSaveDialog(options)),
+    writeFile: (file, bytes) => fs.promises.writeFile(file, bytes),
+    defaultDir: () => app.getPath('documents'),
+    // The status (perpetual or pilot) comes from the license this laptop holds, not from the window. Read at print time, after licenseManager exists.
+    licenseExpiry: () => licenseManager.status().expiresAt,
   }),
 });
 
@@ -1684,29 +1712,46 @@ async function relaunchApp() {
   app.exit(0);
 }
 
-ipcMain.handle('db:export-backup', async (event) => {
-  const picked = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
-    title: 'Save a database backup',
-    defaultPath: backupFileName(),
-    filters: DB_FILTERS,
-  });
-  if (picked.canceled || !picked.filePath) return { success: false, cancelled: true };
-  try {
-    const filePath = await exportBackup({
-      target: picked.filePath,
-      backup: (target) => announcements.db.backup(target),
-      schemaVersion: SCHEMA_VERSION,
-      open: openReadonlyDatabase,
-    });
-    return { success: true, filePath };
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
-});
+// The full backup export or restore running now ('export' | 'restore'), or null. One at a time, never during a database move, and the
+// operator window will not close while one runs.
+let archiveJob = null;
 
+/** Why a backup or restore cannot start now, or null. */
+function backupBlocked() {
+  if (settings?.isMoving()) return 'Wait for the database move to finish first.';
+  if (archiveJob === 'export') return 'A full backup is already being saved. Wait for it to finish.';
+  if (archiveJob === 'restore') return 'A full backup is already being restored.';
+  return null;
+}
+
+/** Progress for a full backup export or restore, back to the window that asked. */
+function sendBackupProgress(sender, phase) {
+  return (progress) => {
+    if (!sender.isDestroyed()) sender.send('db:backup-progress', { phase, ...progress });
+  };
+}
+
+/**
+ * Ends a restore whose database swap has run: a restart either way, since the live database is closed by then. `result` is from
+ * replaceLiveDatabase or importBackup.
+ */
+async function finishRestore(result, source) {
+  if (!result.ok) {
+    dialog.showErrorBox('The database could not be restored', result.error);
+    await relaunchApp();
+    return { success: false, error: result.error };
+  }
+  console.log(`Restored ${source}. The previous database was kept as ${result.safetyCopy}.`);
+  await relaunchApp();
+  return { success: true, filePath: source, safetyCopy: result.safetyCopy };
+}
+
+/** Restore DB Snapshot: replaces apccmma.db with a .db file. The media folder is not touched. */
 ipcMain.handle('db:import-backup', async (event) => {
+  const blocked = backupBlocked();
+  if (blocked) return { success: false, error: blocked };
   const picked = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
-    title: 'Choose a database backup to restore',
+    title: 'Choose a database snapshot (.db) to restore',
     properties: ['openFile'],
     filters: DB_FILTERS,
   });
@@ -1719,16 +1764,92 @@ ipcMain.handle('db:import-backup', async (event) => {
     open: openReadonlyDatabase,
     openForMigration: (file) => openDatabase(file),
     closeDatabase: () => closeDatabaseOnce(),
+    backupsDir: restoreBackupsDirFor(dbStatus.path),
   });
-  if (!result.ok) {
-    // The live database was not closed, so the app keeps running. Once it has been closed, only a restart can reopen it.
-    if (!result.closed) return { success: false, error: result.error };
-    dialog.showErrorBox('The database could not be restored', result.error);
-    await relaunchApp();
-    return { success: false, error: result.error };
+  // Refused before the live database was closed: the app keeps running. Once it has been closed, only a restart can reopen it.
+  if (!result.ok && !result.closed) return { success: false, error: result.error };
+  return finishRestore(result, source);
+});
+
+/** Export Full Backup: one .zip with a checked database snapshot and the whole media folder (electron/full-backup.js). */
+ipcMain.handle('db:export-full-backup', async (event) => {
+  const blocked = backupBlocked();
+  if (blocked) return { success: false, error: blocked };
+  const picked = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+    title: 'Save a full backup (database + media)',
+    defaultPath: fullBackupFileName(),
+    filters: ARCHIVE_FILTERS,
+  });
+  if (picked.canceled || !picked.filePath) return { success: false, cancelled: true };
+  if (backupBlocked()) return { success: false, error: backupBlocked() };
+  archiveJob = 'export';
+  try {
+    const result = await exportFullBackup({
+      target: picked.filePath,
+      snapshotDatabase: (file) => announcements.db.backup(file),
+      checkDatabase: (file) => checkBackupFile(file, { schemaVersion: SCHEMA_VERSION, open: openReadonlyDatabase }),
+      assetRoot: getAssetRoot(),
+      appVersion: app.getVersion(),
+      schemaVersion: SCHEMA_VERSION,
+      onProgress: sendBackupProgress(event.sender, 'export'),
+    });
+    settings?.recordBackup('full');
+    return { success: true, filePath: result.path, bytes: result.bytes, mediaFiles: result.mediaFiles };
+  } catch (err) {
+    return { success: false, error: err.message };
+  } finally {
+    archiveJob = null;
   }
-  await relaunchApp();
-  return { success: true, filePath: source };
+});
+
+/**
+ * Restore Full Backup: every check runs, and the media is added, while the live database is still open, so a bad archive changes nothing.
+ * Then the database is swapped (with a pre-restore safety copy) and the app restarts.
+ */
+ipcMain.handle('db:restore-full-backup', async (event) => {
+  const blocked = backupBlocked();
+  if (blocked) return { success: false, error: blocked };
+  const picked = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
+    title: 'Choose a full backup (.zip) to restore',
+    properties: ['openFile'],
+    filters: ARCHIVE_FILTERS,
+  });
+  if (picked.canceled || picked.filePaths.length === 0) return { success: false, cancelled: true };
+  if (backupBlocked()) return { success: false, error: backupBlocked() };
+  const source = picked.filePaths[0];
+  const activePath = dbStatus.path;
+  archiveJob = 'restore';
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'apccmma-full-restore-'));
+  let archive = null;
+  let swapped = null;
+  try {
+    archive = await openFullBackup(source);
+    const dbFile = path.join(work, DB_ENTRY);
+    await archive.extractDatabase(dbFile);
+    const checked = checkRestoreSource({
+      source: dbFile,
+      activePath,
+      schemaVersion: SCHEMA_VERSION,
+      open: openReadonlyDatabase,
+      openForMigration: (file) => openDatabase(file),
+    });
+    if (!checked.ok) return { success: false, error: checked.error };
+    await archive.restoreMedia(getAssetRoot(), sendBackupProgress(event.sender, 'restore'));
+    swapped = replaceLiveDatabase({
+      source: dbFile,
+      activePath,
+      backupsDir: restoreBackupsDirFor(activePath),
+      closeDatabase: () => closeDatabaseOnce(),
+    });
+  } catch (err) {
+    return { success: false, error: err.message };
+  } finally {
+    await archive?.close();
+    fs.rmSync(work, { recursive: true, force: true });
+    // After the swap the app restarts; until then the window stays guarded.
+    if (!swapped) archiveJob = null;
+  }
+  return finishRestore(swapped, source);
 });
 /**
  * The dashboard's System Health card: the LAN address, CPU and memory (the laptop's and the app's), the crash-recovery database's last
@@ -1863,7 +1984,15 @@ app.whenReady().then(() => {
   const planCloud = cloud();
   planSync = createPlanSync({
     // A note brought in from the website is announced like any other, so Notes & Prayers and Go Live read it straight away.
-    store: createPlanSyncStore(announcements.db, { onNoteChanged: (change) => announceNoteChange(change) }),
+    // A Praise & Worship lineup written from the website is read again by every window that has it open.
+    store: createPlanSyncStore(announcements.db, {
+      onNoteChanged: (change) => announceNoteChange(change),
+      onPraiseChanged: (sessionId) => {
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) win.webContents.send('pw:changed', sessionId);
+        }
+      },
+    }),
     cloud: {
       pullPlans: (cursor) => planCloud.pullPlans(cursor),
       createPlan: (plan) => planCloud.createPlan(plan),
@@ -1985,6 +2114,9 @@ app.whenReady().then(() => {
     getStatus: () => dbStatus,
     appVersion: app.getVersion(),
     showOpenDirectory: (win, options) => (win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options)),
+    showItemInFolder: (file) => shell.showItemInFolder(file),
+    openPath: (dir) => shell.openPath(dir),
+    archiveJob: () => archiveJob,
   });
   // Restore before any window loads, so the first render already shows the resumed queue.
   restoreQueue(planService, pwService);

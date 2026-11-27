@@ -8,6 +8,8 @@ import { checkCloudAddress } from './cloud-address.js';
 import { DEFAULT_FAILOVER_MODE, sanitizeFailoverMode } from './watchdog.js';
 import { sanitizeDisplayLocks } from './edid-watchdog.js';
 import { DIOCESE_MAX, LOCATION_MAX, LOGO_SCALE_DEFAULT, sanitizeLogoScale, sanitizeOptionalLine, sanitizeRoster } from '../shared/parish-profile.js';
+import { tidyRegistration } from '../shared/license-text.js';
+import { sanitizeLastBackup } from '../shared/backup-format.js';
 
 // Preferences that must be known before the database opens, so they live in a plain file
 // in userData rather than in the database itself.
@@ -63,6 +65,9 @@ const DEFAULTS = {
   clergy_roster: [],
   // True once the first-time setup wizard is done. Copies registered before the wizard existed count as done (see sanitize).
   onboarded: false,
+  // The newest backup the operator made (Settings → Backup & restore): { at: ISO time, kind: 'snapshot' | 'full' }, or null. Automatic
+  // snapshots and restores are not recorded: the badge is about copies that leave this laptop.
+  last_backup: null,
 };
 
 /** The longest parish name the profile accepts. */
@@ -75,12 +80,11 @@ export const MINISTRY_NAME_MAX_LENGTH = 100;
 export const REGISTRATION_MAX_LENGTH = 120;
 
 /**
- * Checks the registration the operator typed, and returns it trimmed. Throws with a message the form can show,
- * so a blank or oversized name is refused here rather than saved.
+ * Checks the registration the operator typed, and returns it tidied: trimmed, with any run of spaces, tabs or line breaks inside made one space
+ * (shared/license-text.js). Throws with a message the form can show, so a blank or oversized name is refused here rather than saved.
  */
 export function validateRegistration(input) {
-  const church = typeof input?.church === 'string' ? input.church.trim() : '';
-  const location = typeof input?.location === 'string' ? input.location.trim() : '';
+  const { church, location } = tidyRegistration(input);
   if (!church) throw new Error('Enter the church, parish, or ministry name.');
   if (!location) throw new Error('Enter the location or city.');
   if (church.length > REGISTRATION_MAX_LENGTH || location.length > REGISTRATION_MAX_LENGTH) {
@@ -146,6 +150,7 @@ function sanitize(raw) {
     // A copy that accepted the license before the wizard existed is already set up, so an update never puts a new screen in front of
     // an operator minutes before a Mass.
     onboarded: raw.onboarded === true || (raw.onboarded === undefined && raw.eula_accepted === true),
+    last_backup: sanitizeLastBackup(raw.last_backup),
   };
 }
 

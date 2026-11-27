@@ -920,9 +920,9 @@ function CalibrationGrid() {
 /**
  * Congregation screen. With `mirror`, the same view becomes the operator's confidence monitor. The congregation's picture draws the look
  * that is on air, which stays as it was at the pause until the projector resumes. The mirror draws the working look, so the operator sees
- * every change as it is made.
+ * every change as it is made. `ignoreBlackout` (mirror only) keeps the slide drawn while Blackout is up, for the floating Live preview.
  */
-export function ProjectorView(props: { mirror?: boolean; embedded?: boolean }) {
+export function ProjectorView(props: { mirror?: boolean; embedded?: boolean; ignoreBlackout?: boolean }) {
   return (
     <OnAirLook.Provider value={!props.mirror}>
       <ProjectorViewBody {...props} />
@@ -980,7 +980,7 @@ function FramePreviewBody({ shown, counter, background }: { shown: Frame; counte
   );
 }
 
-function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: boolean; embedded?: boolean }) {
+function ProjectorViewBody({ mirror = false, embedded = false, ignoreBlackout = false }: { mirror?: boolean; embedded?: boolean; ignoreBlackout?: boolean }) {
   const projector = useOutput((s) => s.projector);
   const projectorOn = useOutput((s) => s.outputs.projector);
   const tvCasting = useOutput((s) => s.tvCasting === true);
@@ -998,7 +998,7 @@ function ProjectorViewBody({ mirror = false, embedded = false }: { mirror?: bool
   const introSlideMode = useOutput((s) => s.introSlideMode);
   // The same goes for a row the operator has just staged from the planner: the mirror shows it until something else goes live.
   const stagePeek = useUi((s) => s.stagePeek);
-  const picture = presentedFrame(mirrorSource(projector, { mirror, peek: stagePeek }), introSlideMode);
+  const picture = presentedFrame(mirrorSource(projector, { mirror, peek: stagePeek, ignoreBlackout }), introSlideMode);
   const overlap = (OVERLAP_TRANSITIONS as readonly string[]).includes(settings.transitionStyle);
   const { frame, fading, serial, leaving } = useFadedFrame(picture, transitionMs, overlap);
   const textLook = advancedTextLook(settings);

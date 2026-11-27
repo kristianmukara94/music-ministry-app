@@ -107,9 +107,15 @@ export function songRowActions(row, index, hymn) {
  * Which frame the operator's mirror draws. It follows the live output, except while the projector is paused or the operator has just staged a
  * row from the planner (`peek`): then it shows the staged frame, so the operator sees what was loaded. The congregation's screen is not a mirror
  * and always shows the live frame.
+ *
+ * `ignoreBlackout` is for the operator's floating Live preview only: under Blackout it draws the slide held behind the black screen, the one
+ * Blackout off puts back. With nothing held (a lineup's own fade-to-black step) the black frame is the slide, and stays. Without `mirror` the
+ * option does nothing, so an audience screen can never use it.
  */
-export function mirrorSource(projector, { mirror = false, peek = false } = {}) {
-  return mirror && (projector.paused || peek) ? projector.staged : projector.live;
+export function mirrorSource(projector, { mirror = false, peek = false, ignoreBlackout = false } = {}) {
+  if (mirror && (projector.paused || peek)) return projector.staged;
+  const { live } = projector;
+  return mirror && ignoreBlackout && live.kind === 'blackout' ? projector.beforeBlackout ?? live : live;
 }
 
 /**

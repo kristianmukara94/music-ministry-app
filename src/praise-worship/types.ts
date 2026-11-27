@@ -47,4 +47,6 @@ export interface PwApi {
   listTags(): Promise<PwHymnTag[]>;
   /** Returns every tag after the change. */
   setTag(hymnId: number, segmentKey: string, on: boolean): Promise<PwHymnTag[]>;
+  /** Cloud Sync wrote this session from the website. */
+  onChanged(callback: (sessionId: number) => void): () => void;
 }

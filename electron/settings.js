@@ -5,6 +5,8 @@ import path from 'node:path';
 import { DB_FILE_NAME, LANGUAGES, defaultDatabasePath, readConfig, resolveDatabasePath, validateRegistration, writeConfig } from './config.js';
 import { titleBarOverlayFor } from '../shared/title-bar.js';
 import { assetRootFor, getAssetRoot } from './assets.js';
+import { compactTimestamp } from '../shared/backup-format.js';
+import { measureStorage } from './full-backup.js';
 
 const FOLDER_OPTIONS = (title) => ({ title, properties: ['openDirectory', 'createDirectory'] });
 
@@ -63,12 +65,53 @@ async function copyMissing(fromRoot, toRoot, files, onCopied) {
 }
 
 /** Settings logic. The database handle and dialog are injected, so this can be tested without a window. */
-export function createSettingsService({ userData, getDb, getStatus, appVersion, showOpenDirectory }) {
+export function createSettingsService({
+  userData,
+  getDb,
+  getStatus,
+  appVersion,
+  showOpenDirectory,
+  showItemInFolder = () => {},
+  openPath = async () => '',
+  // The full backup export or restore running in main.js, if any ('export' | 'restore' | null). A move waits for it.
+  archiveJob = () => null,
+}) {
   // A move is copying files. While it runs, no other move or backup may start, and quitting is refused.
   let moving = false;
+  const databasePath = () => resolveDatabasePath(userData, readConfig(userData));
+
+  /** Notes a backup the operator made, for the Last Backup badge. A failed note never fails the backup itself. */
+  const recordBackup = (kind) => {
+    try {
+      writeConfig(userData, { last_backup: { at: new Date().toISOString(), kind } });
+    } catch (err) {
+      console.error('Could not record the backup time:', err);
+    }
+  };
 
   return {
     isMoving: () => moving,
+    recordBackup,
+
+    /** The database file's size and the media folder's size and file count, measured off the main thread's critical path. */
+    storageStats() {
+      return measureStorage({ dbPath: databasePath(), assetRoot: getAssetRoot() });
+    },
+
+    /** Shows the database file selected in Explorer. */
+    revealDatabase() {
+      const file = databasePath();
+      if (!fs.existsSync(file)) throw new Error('The database file cannot be found at its saved location.');
+      showItemInFolder(file);
+    },
+
+    /** Opens the media folder in Explorer, creating it if it is not there yet. */
+    async openMediaFolder() {
+      const root = getAssetRoot();
+      fs.mkdirSync(root, { recursive: true });
+      const error = await openPath(root);
+      if (error) throw new Error(error);
+    },
 
     get() {
       const config = readConfig(userData);
@@ -122,6 +165,7 @@ export function createSettingsService({ userData, getDb, getStatus, appVersion, 
      */
     async changeLocation(win, onProgress = () => {}) {
       if (moving) throw new Error('A database move is already in progress.');
+      if (archiveJob()) throw new Error('Wait for the full backup to finish before moving the database.');
       // Claimed before the folder picker opens, so a second request cannot slip in while the picker is up.
       moving = true;
       const picked = await showOpenDirectory(win, FOLDER_OPTIONS('Choose the folder for the APCCMMA database')).catch((err) => {
@@ -177,17 +221,25 @@ export function createSettingsService({ userData, getDb, getStatus, appVersion, 
       }
     },
 
-    /** Copies the live database to a folder with a timestamped name, then verifies the copy. */
+    /**
+     * Quick DB Snapshot: copies the live database (apccmma.db only, no media) to a folder as apccmma-db-snapshot-YYYYMMDD-HHMMSS.db in
+     * local time, then verifies the copy. A copy that fails the check is removed.
+     */
     async backup(win) {
       if (moving) throw new Error('Wait for the database move to finish before making a backup.');
-      const picked = await showOpenDirectory(win, FOLDER_OPTIONS('Choose a folder for the database backup'));
+      const picked = await showOpenDirectory(win, FOLDER_OPTIONS('Choose a folder for the database snapshot'));
       if (picked.canceled || picked.filePaths.length === 0) return null;
 
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const dest = path.join(picked.filePaths[0], `apccmma-backup-${stamp}.db`);
+      const dest = path.join(picked.filePaths[0], `apccmma-db-snapshot-${compactTimestamp()}.db`);
       // SQLite's online backup API copies a consistent snapshot even while the app is writing.
       await getDb().backup(dest);
-      verifyBackup(dest);
+      try {
+        verifyBackup(dest);
+      } catch (err) {
+        fs.rmSync(dest, { force: true });
+        throw err;
+      }
+      recordBackup('snapshot');
       return { path: dest };
     },
   };
@@ -234,6 +286,9 @@ export function setupSettings(deps) {
     ),
   );
   handle('backup', (win) => service.backup(win));
+  handle('storageStats', () => service.storageStats());
+  handle('revealDatabase', () => service.revealDatabase());
+  handle('openMediaFolder', () => service.openMediaFolder());
 
   return service;
 }

@@ -371,6 +371,8 @@ interface ElectronApi {
   library: LibraryApi;
   /** Print Lineup through the desktop app's Print dialog and PDF writer. Absent in the browser preview, which prints the preview frame. */
   lineup?: LineupPrintApi;
+  /** The license certificate through the desktop app's Print dialog and PDF writer. Absent in the browser preview, which prints the preview frame. */
+  certificate?: CertificatePrintApi;
   whiteboard: WhiteboardApi;
   config: ConfigApi;
   /** The parish name and logo. */
@@ -480,8 +482,10 @@ const offlineSystem: SystemApi = {
 
 /** Browser preview: no database to back up or restore. */
 const offlineDatabase: DatabaseApi = {
-  exportBackup: async () => offlineError(),
   importBackup: async () => offlineError(),
+  exportFullBackup: async () => offlineError(),
+  restoreFullBackup: async () => offlineError(),
+  onBackupProgress: () => () => undefined,
 };
 
 /** Browser preview: no database, so the badge reports it as not connected. */
@@ -498,6 +502,7 @@ const offlineConfig: ConfigApi = {
       registered_location: 'Browser preview',
       registered_at: null,
       onboarded: true,
+      last_backup: null,
     },
     databasePath: 'Browser preview (no database)',
     defaultDatabasePath: 'Browser preview (no database)',
@@ -514,6 +519,9 @@ const offlineConfig: ConfigApi = {
   updateRegistration: async () => undefined,
   changeLocation: async () => offlineError(),
   backup: async () => offlineError(),
+  storageStats: async () => ({ database: null, media: null }),
+  revealDatabase: async () => offlineError(),
+  openMediaFolder: async () => offlineError(),
 };
 
 /** Browser preview: nothing is saved, so setup counts as done and the built-in emblem shows. */
@@ -588,6 +596,7 @@ const offlinePw: PwApi = {
   deleteTemplate: async () => offlineError(),
   listTags: async () => [],
   setTag: async () => offlineError(),
+  onChanged: () => () => {},
 };
 
 const offlineNotes: NotesApi = {
@@ -664,11 +673,29 @@ export interface DatabaseBackupResult {
   cancelled?: boolean;
   filePath?: string;
   error?: string;
+  /** Full backup export: the archive's size in bytes and the media files it holds. */
+  bytes?: number;
+  mediaFiles?: number;
+}
+
+/** Sent while a full backup is saved or restored. `done` and `total` count files (the database counts as one on export). */
+export interface BackupProgress {
+  phase: 'export' | 'restore';
+  done: number;
+  total: number;
+  /** The file being worked on, relative to the media folder (empty at the start and end). */
+  current: string;
 }
 
 export interface DatabaseApi {
-  exportBackup(): Promise<DatabaseBackupResult>;
+  /** Restore DB Snapshot: replaces apccmma.db with a .db file, keeping a pre-restore safety copy. Restarts the app. */
   importBackup(): Promise<DatabaseBackupResult>;
+  /** Export Full Backup: a .zip with the database and the whole media folder. */
+  exportFullBackup(): Promise<DatabaseBackupResult>;
+  /** Restore Full Backup: the database from a .zip, plus any media files this laptop lacks. Restarts the app. */
+  restoreFullBackup(): Promise<DatabaseBackupResult>;
+  /** Returns the unsubscribe function. */
+  onBackupProgress(callback: (progress: BackupProgress) => void): () => void;
 }
 
 export interface LibraryExportOptions {
@@ -734,6 +761,13 @@ export interface LineupPrintApi {
   savePdf(job: LineupPrintJob): Promise<{ saved: true; path: string; pages: number } | { saved: false; canceled: true }>;
   /** Writes the PDF to the temp folder and opens it in the system's PDF viewer. */
   openPdf(job: LineupPrintJob): Promise<{ opened: true; path: string; pages: number }>;
+}
+
+export interface CertificatePrintApi {
+  /** Opens the system Print dialog for the certificate. Resolves once the job is sent or the dialog is cancelled. */
+  print(job: import('../../shared/license-certificate.js').CertificateJob): Promise<{ printed: boolean; canceled: boolean; reason: string | null }>;
+  /** Asks where to save, then writes the one-page PDF there. */
+  savePdf(job: import('../../shared/license-certificate.js').CertificateJob): Promise<{ saved: true; path: string } | { saved: false; canceled: true }>;
 }
 
 const offlineLibrary: LibraryApi = {
