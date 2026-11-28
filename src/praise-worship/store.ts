@@ -367,6 +367,8 @@ export function resolvedFor(segment: PwSegment, state: Pick<PwState, 'hymns' | '
   const more = chainOf(segment).map((item) => {
     if (item.kind === 'prayer') return { prayer: prayerFor(item.noteId, state) };
     if (item.kind === 'pictures') return { pictures: item.slideIds.flatMap((id) => (state.pictures?.[id] ? [state.pictures[id]] : [])) };
+    // Typed text carries its own words.
+    if (item.kind === 'text') return {};
     return { reading: readingFor(item.readingType, state) };
   });
   if (c.kind === 'prayer') return { hymns, prayer: c.noteId != null ? prayerFor(c.noteId, state) : null, more };

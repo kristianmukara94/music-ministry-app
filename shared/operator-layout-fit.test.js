@@ -144,7 +144,7 @@ test('Action Center titles stay on one line and every card has the same title an
 
 test('the readiness pill puts the ready count first, then what still needs action', () => {
   const widget = read('src/operator/PreServiceWidget.tsx');
-  assert.match(widget, /\{ready\}\/\{checks\.length\} \{t\('ready\.ready'\)\} · \{checks\.length - ready\}\{' '\}\n\s+\{checks\.length - ready === 1 \? t\('ready\.actionOne'\) : t\('ready\.actionMany'\)\}/);
+  assert.match(widget, /\{ready\}\/\{counted\.length\} \{t\('ready\.ready'\)\} · \{counted\.length - ready\}\{' '\}\n\s+\{counted\.length - ready === 1 \? t\('ready\.actionOne'\) : t\('ready\.actionMany'\)\}/);
   assert.doesNotMatch(widget, /\{t\('ready\.actionNeeded'\)\} · \{ready\}/, 'no longer "Action Needed · 3/4"');
   const strings = read('src/i18n/strings.ts');
   assert.match(strings, /'ready\.actionOne': 'Action',/);

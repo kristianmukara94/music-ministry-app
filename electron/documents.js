@@ -2,9 +2,12 @@ import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import mammoth from 'mammoth';
-import JSZip from 'jszip';
+import { lazyPackage } from './lazy-package.js';
 import { slideParts } from './pptx-html.js';
+
+// Word and PowerPoint readers, loaded at the first import.
+const mammothPackage = lazyPackage('mammoth');
+const jszipPackage = lazyPackage('jszip');
 
 /**
  * Text documents become projector-ready slides. A page holds at most this many body characters, about
@@ -197,7 +200,7 @@ export async function readSlideNotes(zip, slideName) {
 }
 
 async function sectionsFromDocx(filePath) {
-  const { value: html } = await mammoth.convertToHtml({ path: filePath });
+  const { value: html } = await mammothPackage().convertToHtml({ path: filePath });
   return sectionsFromHtml(html);
 }
 
@@ -206,7 +209,7 @@ async function sectionsFromDocx(filePath) {
  * slide N here is slide N of the deck. That is what lets a rendered page be matched to its notes.
  */
 export async function readPptxSlides(filePath) {
-  const zip = await JSZip.loadAsync(await fs.promises.readFile(filePath));
+  const zip = await jszipPackage().loadAsync(await fs.promises.readFile(filePath));
   // The order the presentation lists them in, which differs from the file numbers once slides have been moved.
   const slides = (await slideParts(zip)).map((name) => ({ name }));
   if (slides.length === 0) throw new Error('This PowerPoint file has no slides.');

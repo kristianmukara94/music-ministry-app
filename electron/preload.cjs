@@ -13,6 +13,10 @@ contextBridge.exposeInMainWorld('apcc', {
     return () => ipcRenderer.removeListener('live:state', handler);
   },
   open: (target) => ipcRenderer.invoke('launch:open', target),
+  /** The page's steps of the launch timeline (electron/startup-metrics.js). */
+  startup: {
+    mark: (name, at) => ipcRenderer.send('startup:mark', name, at),
+  },
   /** Runs `callback({ toggle })` when Ctrl+Shift+A is pressed in any window (see electron/hotkeys.js). Returns the unsubscribe. */
   onSanctuaryAlertHotkey: (callback) => {
     const handler = (_event, payload) => callback(payload ?? { toggle: false });

@@ -32,6 +32,7 @@ import { PLAN_APPEARANCE_MIGRATIONS } from './plan-appearance.js';
 import { MEDIA_SCHEME, installMediaProtocol, registerMediaRoute } from './protocol.js';
 import { assetRootFor, migrateAbsolutePaths, relPath, resolveAsset, setActiveAssetRoot } from './assets.js';
 import { ensureIncrementalAutoVacuum, preMigrationBackup } from './db-backup-manager.js';
+import { applyMainDbPragmas } from './db-pragmas.js';
 
 const SEED_FOLDERS = ['CBCP Oratio Imperata', 'Second Collections', 'Parish Bulletins', 'Mass Sponsors'];
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg']);
@@ -190,6 +191,7 @@ export function openDatabase(dbPath, { backupsDir = null } = {}) {
     // Proves the file is a readable database before anything else is registered against it.
     db.prepare('SELECT 1').get();
     db.pragma('foreign_keys = ON');
+    applyMainDbPragmas(db);
 
     const hasTables = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' LIMIT 1").get());
     // A brand-new file takes incremental auto-vacuum from the pragma alone, before its first table exists.

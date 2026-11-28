@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Cpu, Database, ExternalLink, HardDrive, MemoryStick, Play, Wifi, Zap, type LucideIcon } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { CheckCircle2, Copy, Cpu, Database, ExternalLink, HardDrive, MemoryStick, Play, Wifi, Zap, type LucideIcon } from 'lucide-react';
 import { bridge, type SystemHealth } from '../live/bridge';
 import { useLive } from '../live/store';
 import { useT } from '../i18n/strings';
@@ -10,6 +10,8 @@ import { setUi, useUi } from '../state/ui';
 import { runLaunchItem } from './actions';
 import { usePlanList } from './dashboardQueue';
 import { Panel } from './Panel';
+import { useCopy } from './useCopy';
+import { pollWhileVisible } from '../../shared/polling.js';
 
 /** CPU is measured between two readings in the main process, so a few seconds apart gives a steady figure. */
 const POLL_MS = 3000;
@@ -29,11 +31,10 @@ function useSystemHealth() {
           setUnavailable(false);
         })
         .catch(() => alive && setUnavailable(true));
-    void load();
-    const timer = window.setInterval(load, POLL_MS);
+    const stop = pollWhileVisible(load, POLL_MS);
     return () => {
       alive = false;
-      window.clearInterval(timer);
+      stop();
     };
   }, []);
   return { health, unavailable };
@@ -57,24 +58,29 @@ function Meter({ percent }: { percent: number | null }) {
   const color = p >= 90 ? 'bg-danger' : p >= 75 ? 'bg-warn' : 'bg-ok';
   return (
     <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-fg/10" aria-hidden>
-      <div className={`h-full rounded-full ${color} transition-[width] duration-500`} style={{ width: `${Math.min(100, p)}%` }} />
+      {/* Scaled rather than resized, so a moving meter costs no layout. The track's rounded, clipped ends give it its shape. */}
+      <div className={`h-full origin-left ${color} transition-transform duration-500`} style={{ transform: `scaleX(${Math.min(100, p) / 100})` }} />
     </div>
   );
 }
 
-function Metric({ icon: Icon, label, value, sub, percent, tone }: {
+function Metric({ icon: Icon, label, value, sub, percent, tone, badge }: {
   icon: LucideIcon; label: string; value: string; sub?: string; percent?: number | null; tone?: 'ok' | 'warn';
+  /** A small marker after the label, such as the "Copied" confirmation. */
+  badge?: ReactNode;
 }) {
   return (
     <div className="min-w-0 rounded-lg border border-fg/10 bg-fg/[0.03] px-3 py-2">
       <div className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted uppercase">
         <Icon size={12} aria-hidden className="shrink-0" />
         <span className="truncate">{label}</span>
+        {badge}
       </div>
       <div className={`truncate font-mono text-base leading-tight font-bold tabular-nums ${tone === 'warn' ? 'text-warn' : tone === 'ok' ? 'text-ok' : 'text-fg'}`} title={value}>
         {value}
       </div>
-      {sub && <div className="truncate text-[11px] text-faint" title={sub}>{sub}</div>}
+      {/* The secondary figures (the app's CPU share, used / total memory) at body-text contrast, so a dimmed booth monitor still reads them. */}
+      {sub && <div className="truncate text-xs font-medium text-fg/85" title={sub}>{sub}</div>}
       {percent !== undefined && <Meter percent={percent} />}
     </div>
   );
@@ -158,6 +164,7 @@ export function SystemHealthPanel() {
   const t = useT();
   const region = useRegion();
   const { health, unavailable } = useSystemHealth();
+  const { copied, copy } = useCopy();
 
   let metrics;
   if (unavailable && !health) {
@@ -179,7 +186,22 @@ export function SystemHealthPanel() {
     const backup = h?.latestBackup;
     metrics = (
       <div className="grid grid-cols-2 gap-2">
-        <Metric icon={Wifi} label={t('health.ip')} value={h ? h.address ?? t('health.noNetwork') : '…'} tone={h && !h.address ? 'warn' : undefined} />
+        {h?.address ? (
+          // Click to copy: the address a phone or another laptop needs, without reading it off the screen.
+          <button type="button" onClick={() => copy(h.address ?? '')} title={t('health.copyIp')}
+            className="group min-w-0 rounded-lg text-left focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:outline-none [&>div]:transition [&>div]:hover:border-accent/50 [&>div]:hover:bg-fg/[0.06]">
+            <Metric icon={Wifi} label={t('health.ip')} value={h.address}
+              badge={copied === h.address ? (
+                <span role="status" className="ml-auto inline-flex shrink-0 items-center gap-0.5 rounded-full border border-ok/50 bg-ok/15 px-1.5 text-[10px] font-bold tracking-normal text-ok normal-case">
+                  <CheckCircle2 size={10} aria-hidden /> {t('health.copied')}
+                </span>
+              ) : (
+                <Copy size={11} aria-hidden className="ml-auto shrink-0 opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100" />
+              )} />
+          </button>
+        ) : (
+          <Metric icon={Wifi} label={t('health.ip')} value={h ? t('health.noNetwork') : '…'} tone={h ? 'warn' : undefined} />
+        )}
         <Metric icon={Cpu} label={t('health.cpu')} value={h?.cpuPercent != null ? `${h.cpuPercent}%` : '…'}
           sub={h ? `${t('health.app')} ${h.app.cpuPercent}%` : undefined} percent={h?.cpuPercent ?? null} />
         <Metric icon={MemoryStick} label={t('health.ram')} value={h ? `${ramPercent}%` : '…'}

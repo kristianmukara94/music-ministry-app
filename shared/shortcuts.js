@@ -12,8 +12,10 @@ export const ACTION_IDS = [
 /**
  * Combinations the app itself uses. They cannot be assigned to a shortcut. Ctrl+Shift+A (Cmd+Shift+A on a Mac, written Shift+Meta+A)
  * opens the Sanctuary Alert from any window, and Ctrl+Shift+B (Shift+Meta+B) forces the sanctuary failover; see electron/hotkeys.js.
+ * Alt+1 to Alt+4 open the sidebar's main pages (shared/sidebar-nav.js).
  */
-export const RESERVED_COMBOS = ['Ctrl+K', 'Ctrl+Shift+F', 'Ctrl+ArrowUp', 'Ctrl+ArrowDown', 'Ctrl+Shift+A', 'Shift+Meta+A', 'Ctrl+Shift+B', 'Shift+Meta+B'];
+export const RESERVED_COMBOS = ['Ctrl+K', 'Ctrl+Shift+F', 'Ctrl+ArrowUp', 'Ctrl+ArrowDown', 'Ctrl+Shift+A', 'Shift+Meta+A', 'Ctrl+Shift+B', 'Shift+Meta+B',
+  'Alt+1', 'Alt+2', 'Alt+3', 'Alt+4'];
 
 /** Keys that only modify another key. Pressing one alone does not complete a capture. */
 const MODIFIER_ONLY = new Set(['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'CapsLock', 'NumLock', 'ScrollLock', 'Fn', 'Dead', 'Unidentified', 'OS']);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ChevronRight, Image as WelcomeIcon, Megaphone, Monitor, MonitorOff, Pause, Play, Radio, Square, Tag, type LucideIcon } from 'lucide-react';
 import { dispatch, useLive } from '../live/store';
 import { LICENSE_LOCKED_TIP, useProjectionLocked } from '../live/license';
@@ -10,6 +10,7 @@ import { goToMainLive } from '../golive/mainLive';
 import type { ShortcutActionId } from './shortcuts';
 import { TvCastBadge } from './TvCastBadge';
 import { bridge, type RemoteViewStatus } from '../live/bridge';
+import { remoteStatusPoll } from '../system/remoteStatus';
 import { remotePillLabel } from '../../shared/remote-view-ui.js';
 import { liveCommands, stepWelcomeSlide, welcomeSlidePosition } from './actions';
 
@@ -508,29 +509,8 @@ function ProjectorMaster() {
 /** Whether either Remote view viewer is listening on the local WiFi, and how many devices are connected. Read every 3 seconds. */
 function useRemoteSummary() {
   const [status, setStatus] = useState<RemoteViewStatus | null>(null);
-  const read = useCallback(
-    () =>
-      bridge.remoteView
-        .get()
-        .then((next) => setStatus(next))
-        .catch(() => setStatus(null)),
-    [],
-  );
-  useEffect(() => {
-    let alive = true;
-    const poll = () =>
-      bridge.remoteView
-        .get()
-        .then((next) => alive && setStatus(next))
-        .catch(() => alive && setStatus(null));
-    void poll();
-    const timer = window.setInterval(poll, 3000);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
-  }, []);
-  return { ...remotePillLabel(status), refresh: read };
+  useEffect(() => remoteStatusPoll.subscribe(setStatus), []);
+  return { ...remotePillLabel(status), refresh: remoteStatusPoll.refresh };
 }
 
 /**

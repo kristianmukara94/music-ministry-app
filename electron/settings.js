@@ -6,7 +6,6 @@ import { DB_FILE_NAME, LANGUAGES, defaultDatabasePath, readConfig, resolveDataba
 import { titleBarOverlayFor } from '../shared/title-bar.js';
 import { assetRootFor, getAssetRoot } from './assets.js';
 import { compactTimestamp } from '../shared/backup-format.js';
-import { measureStorage } from './full-backup.js';
 
 const FOLDER_OPTIONS = (title) => ({ title, properties: ['openDirectory', 'createDirectory'] });
 
@@ -94,7 +93,9 @@ export function createSettingsService({
     recordBackup,
 
     /** The database file's size and the media folder's size and file count, measured off the main thread's critical path. */
-    storageStats() {
+    async storageStats() {
+      // The backup module is loaded when Settings first asks, not at launch.
+      const { measureStorage } = await import('./full-backup.js');
       return measureStorage({ dbPath: databasePath(), assetRoot: getAssetRoot() });
     },
 

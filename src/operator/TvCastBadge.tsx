@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Cast } from 'lucide-react';
 import { bridge } from '../live/bridge';
+import { pollWhileVisible } from '../../shared/polling.js';
 import { setUi } from '../state/ui';
 import { topBarCastLabel } from '../../shared/tv-cast-view.js';
 
@@ -14,11 +15,10 @@ export function useCastingCount(): number {
         .status()
         .then((s) => alive && setCount(s.casting))
         .catch(() => alive && setCount(0));
-    void read();
-    const timer = window.setInterval(read, 2500);
+    const stop = pollWhileVisible(read, 2500);
     return () => {
       alive = false;
-      window.clearInterval(timer);
+      stop();
     };
   }, []);
   return count;

@@ -125,7 +125,7 @@ test('a card chains a reading after a prayer, refuses an unknown item kind, and 
   segments[i] = { ...segments[i], content: { kind: 'prayer', noteId: prayers[0], more: [{ kind: 'lectionary', readingType: 'Gospel Acclamation', minutes: 0 }] } };
   pw.saveSession(session.id, { segments });
   segments[i] = { ...segments[i], content: { kind: 'prayer', noteId: prayers[0], more: [{ kind: 'song', hymnId: 1, minutes: 0 }] } };
-  assert.throws(() => pw.saveSession(session.id, { segments }), /can only chain prayers, readings and PowerPoint slides/);
+  assert.throws(() => pw.saveSession(session.id, { segments }), /can only chain prayers, readings, typed text and PowerPoint slides/);
 
   const many = Array.from({ length: MAX_CHAIN + 1 }, () => ({ kind: 'prayer', noteId: prayers[1], minutes: 0 }));
   segments[i] = { ...segments[i], content: { kind: 'prayer', noteId: prayers[0], more: many } };

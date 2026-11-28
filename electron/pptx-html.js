@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
-import JSZip from 'jszip';
+import { lazyPackage } from './lazy-package.js';
+
+// Loaded at the first PowerPoint import.
+const jszipPackage = lazyPackage('jszip');
 
 /**
  * A built-in PowerPoint renderer, for computers that have neither PowerPoint (automation) nor LibreOffice. It reads the .pptx
@@ -593,6 +596,7 @@ function hideTaken(){var s=document.createElement('style');s.textContent='.slide
  * Resolves to { html, slideWidth, slideHeight, count }, where `count` is the number of visible slides, in slide order.
  */
 export async function buildDeckHtml(source, { media }) {
+  const JSZip = jszipPackage();
   const zip = source instanceof JSZip ? source : await JSZip.loadAsync(source);
   const pres = await readXml(zip, 'ppt/presentation.xml');
   if (!pres) throw new Error('This is not a PowerPoint (.pptx) file.');

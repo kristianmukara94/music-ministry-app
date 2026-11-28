@@ -1,23 +1,16 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { Suspense, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Calendar, Smartphone } from 'lucide-react';
 import { REMOTE_TAB_ID, RemoteDrawer } from '../remote/RemoteDrawer';
 import { dispatch, useLive } from '../live/store';
 import { useT } from '../i18n/strings';
 import { setUi, useUi } from '../state/ui';
 import { comboOf } from '../../shared/shortcuts.js';
+import { navHotkeyView } from '../../shared/sidebar-nav.js';
 import { toggleFullscreen } from './actions';
 import { runShortcut } from './shortcuts';
-import { SongLyrics } from '../lyrics/SongLyrics';
-import { LectionaryDeck } from '../lectionary/LectionaryDeck';
-import { BibleDeck } from '../bible/BibleDeck';
-import { RosaryDeck } from '../rosary/RosaryDeck';
-import { MediaView } from '../media/MediaView';
-import { NotesPrayersView } from '../notes/NotesPrayersView';
-import { UnifiedDeckView } from '../whiteboard/UnifiedDeckView';
-import { PlannerView } from '../planner/PlannerView';
-import { GoLiveConsole } from '../golive/GoLiveConsole';
+import { BibleDeck, GoLiveConsole, LectionaryDeck, MediaView, NotesPrayersView, PlannerView, prefetchViews, RosaryDeck, Settings, SongLyrics, UnifiedDeckView } from './views';
+import { ViewBoundary, ViewLoading } from '../system/lazyView';
 import { useGoLiveFullscreenSync } from '../golive/fullscreen';
-import { Settings } from '../settings/Settings';
 import { EulaGate } from '../components/EulaModal';
 import { bridge } from '../live/bridge';
 import { useTheme } from '../theme/store';
@@ -43,6 +36,7 @@ import { LicenseBanner } from '../live/LicenseBanner';
 import { startLicenseWatch } from '../live/license';
 import { watchPlanSlotTitle } from '../planner/plan-api';
 import { watchPlanAppearance } from '../planner/planAppearanceStore';
+import { reportInteractive } from '../system/startupMarks';
 
 function useGlobalHotkeys() {
   useEffect(() => {
@@ -81,6 +75,15 @@ function useGlobalHotkeys() {
       if (shortcut) {
         e.preventDefault();
         runShortcut(shortcut);
+        return;
+      }
+      // Alt+1 to Alt+4 open the sidebar's main pages. After the saved shortcuts, so an operator's older binding on one of these keys still
+      // wins. Never behind an open dialog.
+      const page = navHotkeyView(e);
+      if (page) {
+        if (document.querySelector('[aria-modal="true"]')) return;
+        e.preventDefault();
+        setUi({ view: page });
         return;
       }
       // Presentation clickers send PageUp/PageDown. While Praise & Worship or the Holy Mass is on air they step its lineup instead, the same way
@@ -154,6 +157,11 @@ function EdgeTabs() {
 }
 
 export function OperatorApp() {
+  // The launch timeline: the console is up, with the live state in it.
+  useEffect(() => reportInteractive(), []);
+  // The other pages' code is read once the console is up.
+  useEffect(() => prefetchViews(), []);
+  const t = useT();
   // Keeps the projector-prompt choice in step with the projector and the loaded queue or session.
   useEffect(() => watchProjectorPromptChoice(), []);
   // The loaded Holy Mass plan's own choice for slot titles on the projector.
@@ -219,6 +227,9 @@ export function OperatorApp() {
           className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden ${goLiveFullscreen ? 'pt-1' : 'pt-6 pr-16 short:pt-2'}`}
         >
           {view === 'dashboard' && <Dashboard />}
+          {/* One boundary for the pages read on demand. Planner and Praise & Worship share a reset key, as they share a page. */}
+          <ViewBoundary resetKey={view === 'praiseWorship' ? 'planner' : view} message={t('view.failed')} reloadLabel={t('view.reload')}>
+          <Suspense fallback={<ViewLoading />}>
           {/* Announcements and the Whiteboard are one workspace. A link that still asks for the Whiteboard opens it on the Whiteboard's slides. */}
           {(view === 'announcements' || view === 'whiteboard') && <UnifiedDeckView />}
           {view === 'lyrics' && <SongLyrics />}
@@ -231,6 +242,8 @@ export function OperatorApp() {
           {view === 'goLive' && <GoLiveConsole />}
           {view === 'settings' && <Settings />}
           {view === 'notes' && <NotesPrayersView />}
+          </Suspense>
+          </ViewBoundary>
           {!['dashboard', 'announcements', 'lyrics', 'lectionary', 'bible', 'rosary', 'media', 'notes', 'whiteboard', 'planner', 'praiseWorship', 'goLive', 'settings'].includes(view) && <ModulePlaceholder />}
         </main>
       </div>

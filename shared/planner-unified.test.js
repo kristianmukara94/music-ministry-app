@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { plannerT } from './planner-i18n.js';
+import { activeNavKey } from './sidebar-nav.js';
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 
@@ -14,7 +15,8 @@ test('the sidebar has one Planner, with the calendar icon, and no Praise & Worsh
   assert.doesNotMatch(sidebar, /key: 'praiseWorship'/, 'no Praise & Worship module entry');
   assert.match(sidebar, /items: \['goLive', 'lyrics', 'media', 'announcements'\]/);
   // A Praise & Worship plan opens under the 'praiseWorship' view, inside the Planner, which stays marked.
-  assert.match(sidebar, /\(key === 'planner' && view === 'praiseWorship'\)/);
+  assert.match(sidebar, /const activeKey = activeNavKey\(view\);/);
+  assert.equal(activeNavKey('praiseWorship'), 'planner');
   assert.match(read('src/i18n/strings.ts'), /'nav\.planner': 'Planner',/);
 });
 

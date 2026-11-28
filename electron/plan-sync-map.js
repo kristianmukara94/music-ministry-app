@@ -11,7 +11,7 @@
 // every save.
 import crypto from 'node:crypto';
 import { MASS_PARTS, PART_STEP } from '../shared/mass-parts.js';
-import { DEFAULT_TEMPLATE } from '../shared/pw.js';
+import { CHAIN_TEXT_TYPES, DEFAULT_TEMPLATE, MAX_CHAIN_TEXT } from '../shared/pw.js';
 import { slotNumberOf } from '../shared/mass-slots.js';
 import { noteSource } from '../shared/notes.js';
 import { PRAYER_OF_THE_FAITHFUL } from '../shared/daily-readings.js';
@@ -121,10 +121,11 @@ export function massEntries(rows, hymnUuidOf, hubEntryOf = () => null) {
  * `prayerTitleOf(noteId)` returns the title a prayer note is known by on the website (a title that came from there, or one in its Prayers
  * catalog), or null for the laptop's own notes, whose titles stay here.
  */
-export function praiseEntries(segments, hymnUuidOf, prayerTitleOf = () => null) {
+export function praiseEntries(segments, hymnUuidOf, prayerTitleOf = () => null, hubEntryOf = () => null) {
   // A segment's notes are local-only: they are never part of an item, so they never leave the laptop.
   const used = new Set(segments.map((s) => s.key));
-  return [...segments].sort(byOrder).flatMap((seg) => segmentEntries(seg, hymnUuidOf, prayerTitleOf, used));
+  const lookups = { hymnUuidOf, prayerTitleOf, hubEntryOf };
+  return [...segments].sort(byOrder).flatMap((seg) => segmentEntries(seg, lookups, used));
 }
 
 const TEMPLATE_KEYS = new Set(DEFAULT_TEMPLATE.segments.map((s) => s.key));
@@ -135,31 +136,47 @@ function named(seg, item) {
   return item && !item.contentHubId && name && !TEMPLATE_KEYS.has(seg.key) ? { ...item, title: name.slice(0, 80) } : item;
 }
 
-function segmentEntries(seg, hymnUuidOf, prayerTitleOf, used) {
-  const own = segmentItems(seg, hymnUuidOf, prayerTitleOf);
-  return [...own, ...furtherEntries(seg, own.length, hymnUuidOf, prayerTitleOf, used)].map((e, i) => (i === 0 && e.item ? { ...e, item: named(seg, e.item) } : e));
+function segmentEntries(seg, lookups, used) {
+  const own = segmentItems(seg, lookups.hymnUuidOf, lookups.prayerTitleOf);
+  return [...own, ...furtherEntries(seg, own.length, lookups, used)].map((e, i) => (i === 0 && e.item ? { ...e, item: named(seg, e.item) } : e));
 }
 
 const prayerItem = (group, title) => ({ kind: 'rite', group, text: title.slice(0, MAX_TEXT), contentType: 'prayer' });
 
 /**
- * What a card holds beyond the items its own type sends: the songs of a card that is not a song card, and the prayers chained after its
- * first item. Each is numbered after the card's key ("worship.2"), as the website numbers a step's further items. Only a song with a website
- * id and a prayer the website knows by title are sent.
+ * One chained item as the website's item for it, or null for one that stays on the laptop. A prayer goes by the title the website knows it
+ * by, a note brought in from the website's Content Hub as that entry, a reading by its name, and typed words as they were typed. A PowerPoint
+ * deck and the laptop's own prayers stay here.
  */
-function furtherEntries(seg, taken, hymnUuidOf, prayerTitleOf, used) {
+function chainedItem(group, m, { prayerTitleOf, hubEntryOf }) {
+  if (m?.kind === 'prayer') {
+    const title = prayerTitleOf(m.noteId);
+    if (title) return prayerItem(group, title);
+    const contentHubId = hubEntryOf(m.noteId);
+    return contentHubId ? { kind: 'rite', group, contentHubId, contentType: 'hub_item' } : null;
+  }
+  if (m?.kind === 'lectionary') return PRAISE_READING_TYPES.includes(m.readingType) ? { kind: 'reading', group, text: m.readingType } : null;
+  if (m?.kind === 'text' && typeof m.text === 'string' && m.text.trim() && CHAIN_TEXT_TYPES.includes(m.contentType)) {
+    // A Scripture reference and an announcement are readings on the website; a typed note can sit on any step.
+    return { kind: m.contentType === 'text_note' ? 'rite' : 'reading', group, text: m.text.trim().slice(0, MAX_CHAIN_TEXT), contentType: m.contentType };
+  }
+  return null;
+}
+
+/**
+ * What a card holds beyond the items its own type sends: the songs of a card that is not a song card, then the items chained after its first
+ * item, in the card's order. Each is numbered after the card's key ("worship.2"), as the website numbers a step's further items. Only a song
+ * with a website id and the chained items the website can hold (see chainedItem) are sent.
+ */
+function furtherEntries(seg, taken, lookups, used) {
   const content = parseContent(seg.contentRef);
   const songs = seg.type === 'song' || !Array.isArray(content.hymnIds) ? [] : content.hymnIds
-    .map((id) => hymnUuidOf(id))
+    .map((id) => lookups.hymnUuidOf(id))
     .filter(Boolean)
     .map((songId) => ({ kind: 'song', group: seg.group, songId }));
-  const prayers = (Array.isArray(content.more) ? content.more : [])
-    .filter((m) => m?.kind === 'prayer')
-    .map((m) => prayerTitleOf(m.noteId))
-    .filter(Boolean)
-    .map((title) => prayerItem(seg.group, title));
+  const chained = (Array.isArray(content.more) ? content.more : []).map((m) => chainedItem(seg.group, m, lookups)).filter(Boolean);
   let n = Math.max(taken, 1);
-  return [...songs, ...prayers].map((item) => {
+  return [...songs, ...chained].map((item) => {
     let key;
     do {
       n += 1;

@@ -146,7 +146,10 @@ export function pwPrintLineup(session, { title = '', subtitle = '', hymns = {}, 
         const p = prayer(item.noteId);
         if (p) out.push(p);
       } else if (item.kind === 'lectionary') out.push(reading(item.readingType));
-      else if (item.kind === 'pictures') {
+      // Typed words print as typed: a Scripture reference as a reading, a note or an announcement as itself.
+      else if (item.kind === 'text' && typeof item.text === 'string' && item.text.trim()) {
+        out.push({ kind: item.contentType === 'scripture' ? 'reading' : 'other', title: item.text.trim(), key: null });
+      } else if (item.kind === 'pictures') {
         const n = Array.isArray(item.slideIds) ? item.slideIds.length : 0;
         out.push({ kind: 'other', title: String(labels.pictures ?? 'Slides ({n})').replaceAll('{n}', String(n)), key: null });
       }

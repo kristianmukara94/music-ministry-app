@@ -395,12 +395,17 @@ interface ElectronApi {
 
 declare global {
   interface Window {
-    apcc?: ElectronApi;
+    apcc?: ElectronApi & StartupBridge;
   }
 }
 
 export interface LiveBridge extends ElectronApi {
   isElectron: boolean;
+}
+
+/** The preload's launch-timeline channel. Only the desktop app has it. */
+interface StartupBridge {
+  startup?: { mark: (name: 'renderer:first-paint' | 'renderer:interactive', at: number) => void };
 }
 
 export const OUTPUT_ROUTES: Record<OutputKey, string> = {

@@ -183,23 +183,30 @@
   box-shadow: 0 0 25px color-mix(in oklab, var(--color-accent) 8%, transparent);
 }
 
-/* Blackout control: a crimson outline that breathes gently. */
+/* Blackout control: a crimson outline that breathes gently. The glow is drawn once and only its opacity moves, so it never repaints. */
 @keyframes crimson-breathe {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgb(239 68 68 / 0);
+    opacity: 0;
   }
   50% {
-    box-shadow: 0 0 14px 0 rgb(239 68 68 / 0.35);
+    opacity: 1;
   }
 }
 
-.blackout-breathe {
+.blackout-breathe::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow: 0 0 14px 0 rgb(239 68 68 / 0.35);
+  pointer-events: none;
+  opacity: 0;
   animation: crimson-breathe 3.2s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .blackout-breathe {
+  .blackout-breathe::after {
     animation: none;
   }
 }
@@ -360,10 +367,11 @@
 
 /* The LIVE badge breathes while the output is on. The glow eases in and out; reduced motion keeps it still. */
 @keyframes breathe-live {
-  0%, 100% { opacity: 1; box-shadow: 0 0 14px rgba(245, 158, 11, 0.6); }
-  50% { opacity: 0.65; box-shadow: 0 0 4px rgba(245, 158, 11, 0.2); }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
 }
 .live-breathe {
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.6);
   animation: breathe-live 2.4s ease-in-out infinite;
 }
 

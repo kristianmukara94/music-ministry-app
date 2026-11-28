@@ -28,6 +28,15 @@ export const MAX_SONGS = 40;
 /** Items a prayer or scripture card can chain after its first item. Songs chain through `hymnIds` instead. */
 export const MAX_CHAIN = 40;
 
+/** The longest typed text one chained text item holds: the website's limit for an item's text. */
+export const MAX_CHAIN_TEXT = 500;
+
+/**
+ * What a chained typed-text item is, as the website names it: a Scripture reference ("Sample Book 1:1 (WEB)"), an announcement, or a typed
+ * note. Only the words travel: the laptop never looks up a passage for it.
+ */
+export const CHAIN_TEXT_TYPES = ['scripture', 'announcement', 'text_note'];
+
 /** Cards in one lineup. Matches the server's limit, so a full lineup is refused on save, not on screen. */
 export const MAX_SEGMENTS = 40;
 
@@ -250,13 +259,23 @@ export const MAX_PICTURES = 200;
 export function chainAccepts(segment, item) {
   if (!segment.content) return false;
   if (item.kind === 'pictures') return Array.isArray(item.slideIds) && item.slideIds.length > 0 && item.slideIds.length <= MAX_PICTURES;
+  if (item.kind === 'text') return isChainText(item);
   return item.kind === 'prayer' || item.kind === 'lectionary';
 }
+
+/** Whether `item` is a well-formed typed-text chain item: some words, no longer than the limit, of a known type. */
+export function isChainText(item) {
+  return item?.kind === 'text' && typeof item.text === 'string' && item.text.trim() !== '' && item.text.length <= MAX_CHAIN_TEXT
+    && CHAIN_TEXT_TYPES.includes(item.contentType);
+}
+
+const textKey = (text) => String(text ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
 
 function sameItem(a, b) {
   if (a.kind !== b.kind) return false;
   if (a.kind === 'prayer') return a.noteId === b.noteId;
   if (a.kind === 'pictures') return a.slideIds.join(',') === b.slideIds.join(',');
+  if (a.kind === 'text') return a.contentType === b.contentType && textKey(a.text) === textKey(b.text);
   return a.readingType === b.readingType;
 }
 
@@ -499,7 +518,18 @@ function chainItemSlides(segment, item, entry, scale) {
     const titleSlide = segment.cues.titleFirst ? { ...title, subtitle: entry.prayer?.title ?? '' } : null;
     return prayerSlides(segment, entry.prayer ?? null, scale, titleSlide);
   }
+  if (item.kind === 'text') return textSlides(segment, item);
   return readingSlides(segment, entry.reading ?? null, segment.cues.titleFirst);
+}
+
+/**
+ * A typed-text item's slides. A Scripture reference is a title slide that names it (the passage's words are never looked up); a typed note
+ * or an announcement plays its words, a page at a time.
+ */
+function textSlides(segment, item) {
+  const text = String(item.text ?? '').trim();
+  if (item.contentType === 'scripture' || !text) return [{ kind: 'title', label: text || segment.name, subtitle: text ? segment.name : '' }];
+  return pagesOf(text).map((page) => ({ kind: 'prayer', label: segment.name, text: page }));
 }
 
 /**
@@ -686,4 +716,98 @@ export const MAX_CARD_NAME = 120;
  */
 export function cardNameOf(text) {
   return String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_CARD_NAME);
+}
+
+// ---- Split cards ----
+// Laptops up to 1.0.97 put a second Scripture reference or a typed note further down a website step on a card of its own, keyed after the
+// step's item ("worship.2"). That key is not a segment key, so every save of the lineup was refused. Such a card belongs to its step's card.
+
+const SEGMENT_KEY = /^[a-z][a-z0-9_]{0,39}$/;
+const SPLIT_KEY = /^(.+?)((?:\.\d+)+)$/;
+const MAX_CARD_MINUTES = 240;
+const MAX_CARD_NOTES = 2000;
+
+/** The step a split card's key names ("worship" for "worship.2"), or null when the key is not one of a split card. */
+export function splitCardBase(key) {
+  const match = SPLIT_KEY.exec(String(key ?? ''));
+  return match ? match[1] : null;
+}
+
+/**
+ * What a split card holds, as items its step's card chains: its first item (a prayer, a reading, or the words it was named after), then
+ * its own chain. A title card was named after the reference or note the website typed, so its name is that text.
+ */
+function splitItems(card) {
+  const c = card.content ?? {};
+  const minutes = Number(card.minutes) || 0;
+  const words = String(card.name ?? '').trim().slice(0, MAX_CHAIN_TEXT);
+  const head = [];
+  if (c.kind === 'prayer' && c.noteId != null) head.push({ kind: 'prayer', noteId: c.noteId, minutes });
+  else if (c.kind === 'lectionary') head.push({ kind: 'lectionary', readingType: c.readingType, minutes });
+  else if (c.kind !== 'song' && words) head.push({ kind: 'text', text: words, contentType: card.type === 'scripture' ? 'scripture' : 'text_note', minutes });
+  return [...head, ...(c.more ?? [])];
+}
+
+/** `card` with `extra`'s songs and items added after its own, as the step's further items. Repeats are dropped; the limits hold. */
+function foldInto(card, extra) {
+  const c = card.content;
+  const hymnIds = [...songsOf(card)];
+  for (const id of songsOf(extra)) if (!hymnIds.includes(id) && hymnIds.length < MAX_SONGS) hymnIds.push(id);
+  let next = { ...card, content: { ...c, hymnIds, ...(c.kind === 'song' ? { maxSongs: Math.max(c.maxSongs ?? 1, hymnIds.length, 1) } : {}) } };
+  for (const item of splitItems(extra)) {
+    const patch = chainAssignment(next, item);
+    if (patch) next = { ...next, ...patch };
+  }
+  const minutes = Math.min(MAX_CARD_MINUTES, (Number(card.minutes) || 0) + (Number(extra.minutes) || 0));
+  const notes = [card.notes, extra.notes].map((n) => String(n ?? '').trim()).filter(Boolean).join('\n').slice(0, MAX_CARD_NOTES);
+  const arrangement = { ...(extra.arrangement ?? {}), ...(card.arrangement ?? {}) };
+  return { ...next, minutes, notes, arrangement };
+}
+
+/**
+ * The lineup with every split card folded back onto its step's card, so it can be saved. A split card whose step has no card here keeps a
+ * card of its own under a key that can be saved ("worship_2"). Returns the segments as they were (same array) when none is split.
+ */
+export function mergeSplitCards(segments) {
+  if (!Array.isArray(segments) || !segments.some((s) => splitCardBase(s?.key) !== null)) return segments;
+  const used = new Set(segments.map((s) => s.key).filter((key) => SEGMENT_KEY.test(key)));
+  const out = [];
+  const at = new Map();
+  for (const segment of segments) {
+    const base = splitCardBase(segment.key);
+    if (base === null) {
+      at.set(segment.key, out.length);
+      out.push(segment);
+      continue;
+    }
+    if (at.has(base)) {
+      const index = at.get(base);
+      out[index] = foldInto(out[index], segment);
+      continue;
+    }
+    // No card of its step before it. The step's card later in the lineup takes it, or it keeps a card of its own.
+    const later = segments.find((s) => s.key === base);
+    if (later) {
+      out.push({ ...segment, foldInto: base });
+      continue;
+    }
+    const stem = base.toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/^[^a-z]+/, '').slice(0, 30) || 'seg';
+    let n = 2;
+    while (used.has(`${stem}_${n}`)) n += 1;
+    const key = `${stem}_${n}`;
+    used.add(key);
+    at.set(key, out.length);
+    out.push({ ...segment, key });
+  }
+  // Split cards that came before their step's card join it now, in the order they were in.
+  const pending = out.filter((s) => s.foldInto);
+  const merged = out.filter((s) => !s.foldInto).map((card) => {
+    let next = card;
+    for (const split of pending.filter((p) => p.foldInto === card.key)) {
+      const { foldInto: _base, ...rest } = split;
+      next = foldInto(next, rest);
+    }
+    return next;
+  });
+  return merged;
 }

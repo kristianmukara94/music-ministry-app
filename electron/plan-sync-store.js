@@ -8,7 +8,7 @@
 // A plan is held only when a server item has a value the laptop cannot map at all (today: a song the laptop does not have). A held plan
 // is not sent, because a send would drop the item. Every held item is counted. A reading's words never hold a plan.
 import crypto from 'node:crypto';
-import { DEFAULT_TEMPLATE } from '../shared/pw.js';
+import { DEFAULT_TEMPLATE, splitCardBase } from '../shared/pw.js';
 import { slotIdOfNumber } from '../shared/mass-slots.js';
 import { MASS_PARTS, MASS_STEP_PARTS } from '../shared/mass-parts.js';
 import { parseWebReference, sourceIdOf } from '../shared/bible-web-ref.js';
@@ -266,7 +266,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {}, onPraiseChan
     }
     const look = appearanceToSend(lookOf('pw_sessions', plan.id), hasLook.pw_sessions);
     const titleOf = prayerTitles(plan.uuid);
-    const entries = praiseEntries(segmentRows(plan.id), hymnUuidOf, titleOf);
+    const entries = praiseEntries(segmentRows(plan.id), hymnUuidOf, titleOf, (noteId) => webHub.entryIdOf(plan.uuid, noteId));
     sending.set(plan.uuid, sentCards(plan.uuid, entries, titleOf));
     return { ...head, kind: 'pw', ...(look ? { appearance: look } : {}), items: praiseBody(entries).items };
   }
@@ -287,12 +287,18 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {}, onPraiseChan
 
   /**
    * The Praise & Worship plans to read from the website once more: pulled by a version that left a website prayer unassigned (an empty prayer
-   * card, or a further item kept as a card of its own), never read since, and with no laptop edits waiting.
+   * card, or a further item kept as a card of its own), never read since, and with no laptop edits waiting. A plan that still has a card of its
+   * own for a further item ("worship.2", which no save accepted) is read once more by this version, which puts the item on its step's card.
    */
   function unreadPrayerPlans() {
     return all('SELECT id, uuid FROM pw_sessions WHERE uuid IS NOT NULL AND server_updated_at IS NOT NULL AND synced_updated_at = updated_at')
-      .filter(({ id, uuid }) => !cardMemory(uuid).read
-        && segmentRows(id).some((r) => (r.type === 'prayer' && (r.content.noteId ?? null) === null) || r.key.includes('.')))
+      .filter(({ id, uuid }) => {
+        const memory = cardMemory(uuid);
+        const rows = segmentRows(id);
+        const split = rows.some((r) => splitCardBase(r.key) !== null);
+        if (!memory.read) return split || rows.some((r) => r.type === 'prayer' && (r.content.noteId ?? null) === null);
+        return split && memory.splitRead !== true;
+      })
       .map((r) => r.uuid);
   }
 
@@ -424,6 +430,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {}, onPraiseChan
           return noteId !== null && webHub.projectable(noteId) ? noteId : null;
         },
         noteExists: webHub.projectable,
+        hubEntryOf: (noteId) => webHub.entryIdOf(planUuid, noteId),
         songIdOf: (uuid) => hymnByUuid(uuid)?.id ?? null,
         songUuidOf: hymnUuidOf,
         template: DEFAULT_SEGMENT_CONTENT[row.key ?? items[0].key],
@@ -475,7 +482,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {}, onPraiseChan
         sp.name, sp.date, JSON.stringify(groupsWith([], sp.items)), sp.id, sp.updatedAt).lastInsertRowid);
     }
     const rows = segmentRows(id);
-    const localEntries = praiseEntries(rows, hymnUuidOf, prayerTitles(sp.id));
+    const localEntries = praiseEntries(rows, hymnUuidOf, prayerTitles(sp.id), (noteId) => webHub.entryIdOf(sp.id, noteId));
     const byKey = new Map(localEntries.map((e) => [e.key, e]));
     const bySegmentKey = new Map(rows.map((r) => [r.key, r]));
     // One new segment for each segment key the server's items name, so the songs and prayers of one step arrive as one card.
@@ -488,17 +495,16 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {}, onPraiseChan
     const resolve = (item) => {
       const fresh = praiseRowFrom(item, hymnByUuid);
       if (!fresh) return null;
-      // A step's first item, and any song or prayer on it, belong to the step's card. The website gives a step's first item the step's own key
-      // and numbers the rest ("worship", "worship.2"), and the laptop numbers songs from 1 ("worship.1"), so the step decides, not the key.
+      // Everything on a step belongs to the step's card: its first item, its songs and prayers, and any further reading, typed words or Content
+      // Hub entry, which the card chains (pw-prayer-sync.js). The website gives a step's first item the step's own key and numbers the rest
+      // ("worship", "worship.2"), and the laptop numbers songs from 1 ("worship.1"), so the step decides, not the key. A card of an older pull
+      // made for one further item ("worship.2") is not reused: the item goes on its step's card and the old card goes.
       const segmentKey = praiseSegmentKeyOf(item);
-      if (item.kind === 'song' || isPrayerItem(item) || firstOf.get(segmentKey) === item.key) {
-        const home = bySegmentKey.get(segmentKey) ?? byKey.get(item.key)?.row;
-        if (home) return home;
-        if (!newSegments.has(segmentKey)) newSegments.set(segmentKey, { id: null, key: segmentKey });
-        return newSegments.get(segmentKey);
-      }
-      // Anything else further down a step (a second reading, typed words) has no place on that card, so it keeps a card of its own.
-      return byKey.get(item.key)?.row ?? fresh;
+      const own = firstOf.get(segmentKey) === item.key ? byKey.get(item.key)?.row : null;
+      const home = bySegmentKey.get(segmentKey) ?? (own && !splitCardBase(own.key) ? own : null);
+      if (home) return home;
+      if (!newSegments.has(segmentKey)) newSegments.set(segmentKey, { id: null, key: segmentKey });
+      return newSegments.get(segmentKey);
     };
     const { entries, unresolved } = mergeEntries(localEntries, sp.items, resolve);
     // A segment that several server items point at (a segment with several songs) is written once, with all its songs.
@@ -542,7 +548,7 @@ export function createPlanSyncStore(db, { onNoteChanged = () => {}, onPraiseChan
         JSON.stringify(values.content), values.arrangement, values.cues, values.notes,
       );
     }
-    setCardMemory(sp.id, { read: true, cards });
+    setCardMemory(sp.id, { read: true, splitRead: true, cards });
     applyLook('pw_sessions', id, sp.appearance);
     run('UPDATE pw_sessions SET server_updated_at = ?, synced_updated_at = ? WHERE id = ?', sp.updatedAt, sp.updatedAt, id);
     return unresolved.length;

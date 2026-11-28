@@ -1,8 +1,11 @@
 import type { PwSegment } from './pw.js';
 
-/** What a dragged Library item carries. `id` is a hymn id, a note id, or for scripture `'title'` or a reading type. */
+/**
+ * What a dragged Library item carries. `id` is a hymn id, a note id, or for scripture `'title'` or a reading type. Typed words (`'text'`)
+ * carry what they are in `id` ('scripture', 'announcement' or 'text_note') and the words in `title`.
+ */
 export interface LibraryDrag {
-  type: 'song' | 'prayer' | 'scripture';
+  type: 'song' | 'prayer' | 'scripture' | 'text';
   id: number | string;
   title: string;
 }

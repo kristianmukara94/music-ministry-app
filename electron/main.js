@@ -1,6 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen, session, shell } from 'electron';
 // First of the app's own modules: in the packaged app it refuses debugging flags before anything else is loaded (see anti-tamper.js).
 import { SECURE_WEB_PREFERENCES, setupAntiTamper } from './anti-tamper.js';
+// The launch timeline (see startup-metrics.js). It only takes timestamps.
+import { metricsMode, REPORT_FILE, RENDERER_MILESTONES, startupMetrics } from './startup-metrics.js';
 import { createCloudDevice } from './cloud-device.js';
 import { createLicenseManager, PROJECTION_OUTPUTS } from './license-manager.js';
 import { createSongSync, SONG_ROWS_SQL } from './song-sync.js';
@@ -18,7 +20,6 @@ import { createDisplayEventGate, outputsChanged, sameBounds } from './display-ev
 import Database from 'better-sqlite3';
 import { SCHEMA_VERSION, openDatabase, setupAnnouncements } from './announcements.js';
 import { DB_FILTERS, checkBackupFile, checkRestoreSource, importBackup, replaceLiveDatabase, restoreBackupsDirFor } from './database-backup.js';
-import { ARCHIVE_FILTERS, DB_ENTRY, exportFullBackup, fullBackupFileName, openFullBackup } from './full-backup.js';
 import { getAssetRoot } from './assets.js';
 import { databaseCounts } from './db-check.js';
 import { backupsDirFor, incrementalVacuum, listBackups, recoverDatabase, takeDailyBackup } from './db-backup-manager.js';
@@ -75,12 +76,15 @@ import { createFailoverSurface, FAILOVER_PAINTED_CHANNEL } from './windows.js';
 import { createEdidWatchdog, loadDisplayMatrix, WM_DISPLAYCHANGE } from './edid-watchdog.js';
 import { enforceHardwareLock } from './hardware-id.js';
 import { createAlertExpiry } from './sanctuary-alert.js';
+import { createStartupQueue, once, showWhenPainted } from './startup-tasks.js';
 import { applyImport, checkExportOptions, collectLibrary, decodeTransfer, defaultExportName, encodeTransfer, previewImport, TRANSFER_EXTENSION } from './transfer.js';
 import { isOwnPage, lockDownContents, restrictPermissions } from './web-lockdown.js';
 import { createLineupPrinter, registerLineupPrinting } from './print-lineup.js';
 import { createCertificatePrinter, registerCertificatePrinting } from './license-certificate.js';
 import { checkLaunchTarget, LAUNCH_REFUSED_DETAIL } from './launch-target.js';
 import os from 'node:os';
+
+startupMetrics.mark('main:core-requires');
 
 // Sanctuary hardware lock, before anything else runs: the packaged app's userData must be on the PC it was activated on. A copied folder
 // shows "Unapproved Sanctuary Hardware" and exits with code 1 before the database is opened (see hardware-id.js).
@@ -1061,14 +1065,18 @@ function openConfiguredDatabase() {
   }
 }
 
-function createOperator() {
+function createOperator({ onShown } = {}) {
+  const caption = titleBarOverlayFor(readConfig(app.getPath('userData')).theme);
   const win = new BrowserWindow({
     width: 1600,
     height: 960,
     // The smallest size the operator layout still shows every control at. Below this the bars scroll or wrap.
     minWidth: 1024,
     minHeight: 680,
-    backgroundColor: '#100306',
+    // Hidden until the page can be painted, so no blank frame is ever on screen (see showWhenPainted).
+    show: false,
+    // The saved theme's canvas, the colour of the top bar, in case the window has to be shown before the page has drawn.
+    backgroundColor: caption.color,
     title: 'APCCMMA — Control',
     icon: APP_ICON,
     // No native white title bar. The app's own top bar is the drag area, and Windows draws its
@@ -1076,11 +1084,14 @@ function createOperator() {
     // The colours are the saved theme's canvas and foreground, so the buttons match the top bar. Changing the theme
     // updates them (see electron/settings.js).
     titleBarStyle: 'hidden',
-    titleBarOverlay: titleBarOverlayFor(readConfig(app.getPath('userData')).theme),
+    titleBarOverlay: caption,
     webPreferences,
   });
   setupAntiTamper(win, !app.isPackaged);
   windows.operator = win;
+  startupMetrics.mark('window:created');
+  win.once('ready-to-show', () => startupMetrics.mark('window:ready-to-show'));
+  showWhenPainted(win, { onShown });
   // Windows' own display-change message: a graphics driver restart sends it even when Electron reports no screen change. Electron's display
   // list may not be updated yet when it arrives, so it only re-reads the hardware and schedules the settle checks, which re-anchor the projector.
   if (process.platform === 'win32') win.hookWindowMessage(WM_DISPLAYCHANGE, () => edid?.topologyChanged('WM_DISPLAYCHANGE'));
@@ -1113,6 +1124,32 @@ function createOperator() {
 }
 
 ipcMain.handle('live:get', () => state);
+
+// The operator page's own steps of the launch timeline. Other windows load the same bundle, and their marks are not the console's.
+ipcMain.on('startup:mark', (event, name, at) => {
+  if (event.sender !== windows.operator?.webContents || !RENDERER_MILESTONES.includes(name)) return;
+  startupMetrics.mark(name, at);
+  if (name === 'renderer:interactive') restoreSecondaryWindows();
+});
+
+/** Set once the app is ready: opens the output windows saved as on, after the console can be worked. */
+let restoreSecondaryWindows = () => {};
+const SECONDARY_WINDOWS_FALLBACK_MS = 3000;
+
+/** With APCCMMA_STARTUP_METRICS set, writes the finished timeline to userData, and quits when a benchmark asked for that. */
+function reportStartupWhenAsked() {
+  const mode = metricsMode();
+  if (mode === 'off') return;
+  startupMetrics.whenComplete((report) => {
+    try {
+      fs.writeFileSync(path.join(app.getPath('userData'), REPORT_FILE), `${JSON.stringify(report, null, 2)}\n`);
+    } catch (err) {
+      console.error('[startup] could not write the timeline:', err.message);
+    }
+    console.info(`[startup] ${report.marks.map((m) => `${m.name} ${m.ms}ms`).join(' | ')}`);
+    if (mode === 'exit') app.quit();
+  });
+}
 
 /** Saves the lower third's look. A new window target moves the open window, or opens one on that display. */
 ipcMain.handle('lowerThird:save', (_event, patch) => {
@@ -1716,6 +1753,9 @@ async function relaunchApp() {
 // operator window will not close while one runs.
 let archiveJob = null;
 
+/** The full backup archive code, loaded at the first export or restore: no launch needs it. */
+const loadFullBackup = () => import('./full-backup.js');
+
 /** Why a backup or restore cannot start now, or null. */
 function backupBlocked() {
   if (settings?.isMoving()) return 'Wait for the database move to finish first.';
@@ -1775,6 +1815,7 @@ ipcMain.handle('db:import-backup', async (event) => {
 ipcMain.handle('db:export-full-backup', async (event) => {
   const blocked = backupBlocked();
   if (blocked) return { success: false, error: blocked };
+  const { ARCHIVE_FILTERS, exportFullBackup, fullBackupFileName } = await loadFullBackup();
   const picked = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
     title: 'Save a full backup (database + media)',
     defaultPath: fullBackupFileName(),
@@ -1809,6 +1850,7 @@ ipcMain.handle('db:export-full-backup', async (event) => {
 ipcMain.handle('db:restore-full-backup', async (event) => {
   const blocked = backupBlocked();
   if (blocked) return { success: false, error: blocked };
+  const { ARCHIVE_FILTERS, DB_ENTRY, openFullBackup } = await loadFullBackup();
   const picked = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), {
     title: 'Choose a full backup (.zip) to restore',
     properties: ['openFile'],
@@ -1905,6 +1947,7 @@ ipcMain.handle('launch:open', async (event, target) => {
 
 
 app.whenReady().then(() => {
+  startupMetrics.mark('app:whenReady');
   console.info(`[license] ${licenseManager.reevaluate().state}`);
   startLicenseHeartbeat();
   // No page gets the camera, the microphone, location and the like: nothing in the app uses them. The mirror has a session of its own.
@@ -1941,10 +1984,13 @@ app.whenReady().then(() => {
   state = liveReducer(state, { type: 'settings/welcome', value: readConfig(app.getPath('userData')).welcome });
   state = liveReducer(state, { type: 'lowerStyle/set', value: readConfig(app.getPath('userData')).lower_third });
   announcements = openConfiguredDatabase();
+  startupMetrics.mark('db:open');
   // Where the app opened its database, and what it holds: a restored file that shows zero songs here is not the one the app reads.
   console.log('[DB Path]:', dbStatus.path, dbStatus.fallback ? '(fallback: the configured database would not open)' : '');
   console.log('[DB Counts]:', databaseCounts(announcements.db));
-  void takeStartupSnapshot();
+  // Work nobody is waiting for starts after the console is on screen, a little apart, so none of it competes with the first paint.
+  const background = createStartupQueue();
+  app.on('before-quit', () => background.cancel());
   // A first pass a minute after start, then every 15 minutes.
   const maintenanceStart = setTimeout(runDatabaseMaintenance, 60 * 1000);
   const maintenanceTimer = setInterval(runDatabaseMaintenance, 15 * 60 * 1000);
@@ -1970,15 +2016,20 @@ app.whenReady().then(() => {
       console.error(`[lyrics] step=purge name=${err?.name ?? 'Error'}`);
     }
   };
-  purgeRecycled();
-  const purgeTimer = setInterval(purgeRecycled, 24 * 60 * 60 * 1000);
+  let purgeTimer = null;
+  background.add('recycled-songs', 100, () => {
+    purgeRecycled();
+    purgeTimer = setInterval(purgeRecycled, 24 * 60 * 60 * 1000);
+  });
   app.on('before-quit', () => clearInterval(purgeTimer));
-  songSync.start();
-  app.on('before-quit', () => songSync.stop());
   // The theme the laptop starts in (Automatic may have moved to a new season while it was off), and anything left unsent last time.
-  themeSync.themeChanged(currentPaintedTheme());
-  themeSync.resume();
+  background.add('theme-sync', 150, () => {
+    themeSync.themeChanged(currentPaintedTheme());
+    themeSync.resume();
+  });
   app.on('before-quit', () => themeSync.stop());
+  background.add('song-sync', 200, () => songSync.start());
+  app.on('before-quit', () => songSync.stop());
   // Plans sync in both directions in the background, after the database is open. There is no button for it.
   // One cloud client for the plan sync, so the server clock offset it measures is kept between runs.
   const planCloud = cloud();
@@ -2005,7 +2056,7 @@ app.whenReady().then(() => {
     autoSync: autoSyncOn(),
     onRun: (run) => syncActivity.record(planRunEntry(run)),
   });
-  planSync.start();
+  background.add('plan-sync', 300, () => planSync.start());
   app.on('before-quit', () => planSync.stop());
   registerLyricsImport(announcements.convertPdf);
   setupLectionary(announcements.db);
@@ -2064,12 +2115,18 @@ app.whenReady().then(() => {
     isExpired: () => licenseManager.isExpired(),
     churchLogoFile: () => churchProfile.logoPath(),
   });
-  void lowerThirdServer.start().then((ok) => {
-    lowerThirdServerUp = ok;
-  });
+  // The two servers feed live outputs, so they are first in line: at once when the window is on screen.
+  const startLowerThirdServer = once(() =>
+    lowerThirdServer.start().then((ok) => {
+      lowerThirdServerUp = ok;
+    }),
+  );
   // Remote view starts only when the operator turned it on last time.
-  void syncRemoteView();
-  if (state.lowerStyle.target != null) placeLowerThirdWindow();
+  const startRemoteView = once(() => syncRemoteView());
+  background.add('lower-third-server', 0, startLowerThirdServer);
+  background.add('remote-view', 0, startRemoteView);
+  background.add('daily-snapshot', 600, takeStartupSnapshot);
+  void background.done.then((completed) => completed && startupMetrics.mark('background:services-ready'));
   // Unplugging the chosen display closes the window at once, instead of letting the system drag it onto the main screen, and plugging it
   // back in opens it again.
   // Plugging in or out is acted on at once; display-metrics-changed bursts (a wireless display beside an HDMI one sends many while nothing
@@ -2123,9 +2180,27 @@ app.whenReady().then(() => {
   startSessionRecovery();
   const recovered = recoverSession(planService, pwService);
   setupUpdater({ userData: app.getPath('userData') });
-  createOperator();
-  windows.operator?.webContents.once('did-finish-load', () => reportDatabaseRecovery(windows.operator));
+  // The lower third's own screen opens once the console can be worked, not beside it while both pages are still loading. A recovered
+  // session is left alone: reconcileWindows below opens exactly the outputs it had on.
+  restoreSecondaryWindows = once(() => {
+    if (!recovered && state.lowerStyle.target != null) placeLowerThirdWindow();
+  });
+  let secondaryFallback = null;
+  app.on('before-quit', () => clearTimeout(secondaryFallback));
+  createOperator({
+    onShown: () => {
+      background.start();
+      // In case the page never reports that it is interactive.
+      secondaryFallback = setTimeout(restoreSecondaryWindows, SECONDARY_WINDOWS_FALLBACK_MS);
+    },
+  });
+  reportStartupWhenAsked();
+  // The notice belongs to a window the operator can see.
+  windows.operator?.once('show', () => reportDatabaseRecovery(windows.operator));
   if (recovered) {
+    // A service is under way: its outputs and the phones' pages come back now, without waiting for the console to paint.
+    void startLowerThirdServer();
+    void startRemoteView();
     // Opens the outputs the session had on (the projector on its display), and sends the restored state to the phones.
     reconcileWindows();
     broadcast();

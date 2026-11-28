@@ -2,8 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { BrowserWindow } from 'electron';
-import JSZip from 'jszip';
+import { lazyPackage } from './lazy-package.js';
 import { buildDeckHtml } from './pptx-html.js';
+
+const jszipPackage = lazyPackage('jszip');
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -16,7 +18,7 @@ async function renderDeck(source, workDir, convertPdf, beforePrint) {
   if (path.extname(source).toLowerCase() !== '.pptx') {
     throw new Error('Older .ppt files can only be shown with Microsoft PowerPoint or LibreOffice. Save the file as .pptx and import it again.');
   }
-  const zip = await JSZip.loadAsync(await fs.promises.readFile(source));
+  const zip = await jszipPackage().loadAsync(await fs.promises.readFile(source));
   const mediaDir = path.join(workDir, 'media');
   await fs.promises.mkdir(mediaDir, { recursive: true });
   let n = 0;

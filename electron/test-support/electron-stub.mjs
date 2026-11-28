@@ -12,3 +12,8 @@ export const protocol = { registerSchemesAsPrivileged: nothing, handle: nothing 
 export const nativeImage = { createFromPath: nothing };
 export const session = { defaultSession: {} };
 export const nativeTheme = { on: nothing };
+export const Notification = class {
+  static isSupported() {
+    return false;
+  }
+};

@@ -1,11 +1,13 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import mammoth from 'mammoth';
+import { lazyPackage } from './lazy-package.js';
 import { cleanLyricText, splitSongSheet } from '../shared/lyrics-import.js';
 import { BATCH_FILE_TYPES, linesFromDocxHtml, linesFromText, MAX_BATCH_FILE_BYTES } from '../shared/song-batch.js';
 
 const FILE_TYPES = ['pdf', 'docx', 'txt'];
+// Loaded at the first Word file.
+const mammothPackage = lazyPackage('mammoth');
 
 /** Word's HTML from mammoth, as plain lines: each paragraph ends a line, an empty paragraph is a blank line, <br> breaks a line. */
 function textFromDocxHtml(html) {
@@ -36,7 +38,7 @@ export async function readLyricsFile(filePath, { convertPdf }) {
     raw = cleanLyricText(pages.map((page) => page.text).join('\n\n'));
     if (!raw) throw new Error(`${fileName} has no text to read. If it is a scan or a photo, type or paste the lyrics instead.`);
   } else if (ext === 'docx') {
-    const { value } = await mammoth.convertToHtml({ path: filePath });
+    const { value } = await mammothPackage().convertToHtml({ path: filePath });
     raw = cleanLyricText(textFromDocxHtml(value));
   } else if (ext === 'txt') {
     raw = cleanLyricText((await fs.promises.readFile(filePath, 'utf8')).replace(/^﻿/, ''));
@@ -92,7 +94,7 @@ export async function readBatchFile(filePath) {
   if (ext === 'docx') {
     try {
       // Empty paragraphs are kept: they are the blank lines between verses and songs.
-      const { value } = await mammoth.convertToHtml({ path: filePath }, { ignoreEmptyParagraphs: false });
+      const { value } = await mammothPackage().convertToHtml({ path: filePath }, { ignoreEmptyParagraphs: false });
       lines = linesFromDocxHtml(value);
     } catch (err) {
       throw new Error(`${fileName} could not be read as a Word document. It may be damaged, or be an older .doc file saved with a .docx name. Open it in Word and save it again as .docx. (${err.message})`);

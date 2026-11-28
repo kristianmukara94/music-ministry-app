@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Tag, X } from 'lucide-react';
-import { fitsSegment, GOSPEL_ACCLAMATION, holdsItem, songAssignment, songsOf, type PwSegment } from '../../shared/pw.js';
+import { fitsSegment, GOSPEL_ACCLAMATION, holdsItem, MAX_CHAIN_TEXT, songAssignment, songsOf, type PwSegment } from '../../shared/pw.js';
 import { attachMany, describeAttach, type LibraryDrag } from '../../shared/pw-attach.js';
 import { CategorySelectGroup } from '../lyrics/CategorySelectGroup';
 import { useSongFilter } from '../lyrics/useSongFilter';
@@ -216,7 +216,7 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
       { id: 'title', label: t('titleSlide'), sub: t('titleCardSub') },
       { id: GOSPEL_ACCLAMATION, label: GOSPEL_ACCLAMATION, sub: t('fromLectionary') },
     ];
-    return options
+    const scriptureRows = options
       .filter((o) => !q || o.label.toLowerCase().includes(q))
       .map((o): Row => ({
         key: `scripture-${o.id}`,
@@ -227,8 +227,25 @@ export function Library({ quick, focused = false }: { quick: QuickLive; focused?
         insert: () => attach({ type: 'scripture', id: o.id, title: o.label }),
         added: o.id === 'title' ? segment?.content.kind === 'title' : Boolean(segment && holdsItem(segment, { kind: 'lectionary', readingType: o.id, minutes: 0 })),
       }));
+    // What is typed in the search box can go on the card as words: a Scripture reference (a title slide naming it) or a typed note. Either
+    // chains after what the card holds, so a card that already has a song, prayer or reading keeps it and gains this one.
+    const words = query.trim().slice(0, MAX_CHAIN_TEXT);
+    const typed: Row[] = !words
+      ? []
+      : (['scripture', 'text_note'] as const).map((contentType): Row => {
+          const drag: LibraryDrag = { type: 'text', id: contentType, title: words };
+          return {
+            key: `text-${contentType}`,
+            title: t(contentType === 'scripture' ? 'typedReference' : 'typedNote', { text: words }),
+            sub: t(contentType === 'scripture' ? 'typedReferenceSub' : 'typedNoteSub'),
+            drag,
+            insert: () => attach(drag),
+            added: Boolean(segment && holdsItem(segment, { kind: 'text', text: words, contentType, minutes: 0 })),
+          };
+        });
+    return [...scriptureRows, ...typed];
     // `t` changes identity every render, so it is left out; the language switch re-renders the rows anyway.
-  }, [tab, songs, prayers, tags, segment, selected, q, replacingHere, replacing, session.liturgicalDate]);
+  }, [tab, songs, prayers, tags, segment, selected, q, query, replacingHere, replacing, session.liturgicalDate]);
 
   const active = rows.find((r) => r.key === activeKey) ?? null;
   // The tab shows items of another kind than the card's function: offer to switch the card, so its icon, status and slides follow.

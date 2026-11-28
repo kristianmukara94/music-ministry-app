@@ -1,10 +1,10 @@
 import { app, BrowserWindow, ipcMain, Notification } from 'electron';
 import { execFile } from 'node:child_process';
-// Default import, then destructure: electron-updater defines autoUpdater as a getter, which ESM named imports cannot see.
-import electronUpdater from 'electron-updater';
 import { readConfig, UPDATE_CHANNELS, writeConfig } from './config.js';
+import { lazyPackage } from './lazy-package.js';
 
-const { autoUpdater } = electronUpdater;
+// Loaded at the first check, not at launch: electron-updater is one of the largest things the main process can load.
+const loadElectronUpdater = lazyPackage('electron-updater');
 
 // The repository releases are published to. Must match build.publish in package.json.
 const REPO = 'kristianmukara94/music-ministry-app';
@@ -93,12 +93,23 @@ async function getReleaseHistory() {
 
 /**
  * Wires the updater into the main process: lifecycle events, the launch check, notifications,
- * and the IPC handlers the Settings page calls.
+ * and the IPC handlers the Settings page calls. electron-updater itself is loaded when a check or a download first needs it.
+ * The options after `userData` are for the tests.
  */
-export function setupUpdater({ userData }) {
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.allowPrerelease = readConfig(userData).update_channel === 'beta';
+export function setupUpdater({ userData, ipc = ipcMain, electronApp = app, load = loadElectronUpdater, schedule = setTimeout }) {
+  let loaded = null;
+  /** The updater, set up on the first call. */
+  const updater = () => {
+    if (loaded) return loaded;
+    // electron-updater defines autoUpdater as a getter, which makes the platform's updater on first read.
+    const { autoUpdater } = load();
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.allowPrerelease = readConfig(userData).update_channel === 'beta';
+    listen(autoUpdater);
+    loaded = autoUpdater;
+    return loaded;
+  };
 
   let lastEvent = null;
   let lastCheckedAt = null;
@@ -125,108 +136,113 @@ export function setupUpdater({ userData }) {
     if (Notification.isSupported()) new Notification({ title, body }).show();
   }
 
-  autoUpdater.on('checking-for-update', () => {
-    if (userInitiated) publish('UPDATE_CHECKING');
-  });
+  function listen(autoUpdater) {
+    autoUpdater.on('checking-for-update', () => {
+      if (userInitiated) publish('UPDATE_CHECKING');
+    });
 
-  autoUpdater.on('update-available', (info) => {
-    lastCheckedAt = Date.now();
-    if (userInitiated) {
+    autoUpdater.on('update-available', (info) => {
+      lastCheckedAt = Date.now();
+      if (userInitiated) {
+        publish('UPDATE_AVAILABLE', updateInfo(info));
+        return;
+      }
+      // A launch check stays quiet for a version the operator skipped, and until a "remind me later" period ends.
+      const config = readConfig(userData);
+      if (config.skipped_version === info.version) return;
+      if (config.remind_after && Date.now() < config.remind_after) return;
       publish('UPDATE_AVAILABLE', updateInfo(info));
-      return;
-    }
-    // A launch check stays quiet for a version the operator skipped, and until a "remind me later" period ends.
-    const config = readConfig(userData);
-    if (config.skipped_version === info.version) return;
-    if (config.remind_after && Date.now() < config.remind_after) return;
-    publish('UPDATE_AVAILABLE', updateInfo(info));
-    notify('APCCMMA update available', `Version ${info.version} can be downloaded from Settings → Updates.`);
-  });
+      notify('APCCMMA update available', `Version ${info.version} can be downloaded from Settings → Updates.`);
+    });
 
-  autoUpdater.on('update-not-available', (info) => {
-    lastCheckedAt = Date.now();
-    if (userInitiated) publish('UPDATE_NOT_AVAILABLE', { version: info.version });
-  });
+    autoUpdater.on('update-not-available', (info) => {
+      lastCheckedAt = Date.now();
+      if (userInitiated) publish('UPDATE_NOT_AVAILABLE', { version: info.version });
+    });
 
-  autoUpdater.on('download-progress', (progress) =>
-    publish('UPDATE_PROGRESS', {
-      percent: progress.percent,
-      transferred: progress.transferred,
-      total: progress.total,
-      bytesPerSecond: progress.bytesPerSecond,
-    }),
-  );
+    autoUpdater.on('download-progress', (progress) =>
+      publish('UPDATE_PROGRESS', {
+        percent: progress.percent,
+        transferred: progress.transferred,
+        total: progress.total,
+        bytesPerSecond: progress.bytesPerSecond,
+      }),
+    );
 
-  autoUpdater.on('update-downloaded', (info) => {
-    publish('UPDATE_DOWNLOADED', updateInfo(info));
-    notify('APCCMMA update ready', `Version ${info.version} is downloaded. Restart from Settings → Updates to finish installing.`);
-  });
+    autoUpdater.on('update-downloaded', (info) => {
+      publish('UPDATE_DOWNLOADED', updateInfo(info));
+      notify('APCCMMA update ready', `Version ${info.version} is downloaded. Restart from Settings → Updates to finish installing.`);
+    });
 
-  autoUpdater.on('error', (err) => {
-    if (userInitiated) publishError(err);
-    else console.warn('[updater] background check failed:', err?.message ?? err);
-  });
+    autoUpdater.on('error', (err) => {
+      if (userInitiated) publishError(err);
+      else console.warn('[updater] background check failed:', err?.message ?? err);
+    });
+  }
 
   async function check() {
     userInitiated = true;
     try {
-      await autoUpdater.checkForUpdates();
+      await updater().checkForUpdates();
     } catch (err) {
       publishError(err);
     }
   }
 
-  ipcMain.handle('CHECK_FOR_UPDATES', () => {
+  ipc.handle('CHECK_FOR_UPDATES', () => {
     // A development run has no installed release to compare against, so a check says so instead of waiting forever.
-    if (!app.isPackaged) return publishError(new Error('Updates can only be checked in the installed app.'));
+    if (!electronApp.isPackaged) return publishError(new Error('Updates can only be checked in the installed app.'));
     return check();
   });
 
   // The operator's choice to download anyway is passed as `force`, which skips the metered-connection pause once.
-  ipcMain.handle('START_UPDATE_DOWNLOAD', async (_event, options) => {
+  ipc.handle('START_UPDATE_DOWNLOAD', async (_event, options) => {
     userInitiated = true;
     try {
       if (!options?.force && readConfig(userData).pause_on_metered && (await isMeteredConnection())) {
         publish('UPDATE_PAUSED', { reason: 'metered' });
         return;
       }
-      await autoUpdater.downloadUpdate();
+      await updater().downloadUpdate();
     } catch (err) {
       publishError(err);
     }
   });
 
-  ipcMain.handle('RESTART_AND_INSTALL_UPDATE', () => autoUpdater.quitAndInstall());
+  ipc.handle('RESTART_AND_INSTALL_UPDATE', () => updater().quitAndInstall());
 
-  ipcMain.handle('UPDATES_GET_STATE', () => ({ last: lastEvent, lastCheckedAt, settings: settings() }));
+  ipc.handle('UPDATES_GET_STATE', () => ({ last: lastEvent, lastCheckedAt, settings: settings() }));
 
-  ipcMain.handle('updater:set-channel', (_event, channel) => {
+  ipc.handle('updater:set-channel', (_event, channel) => {
     if (!UPDATE_CHANNELS.includes(channel)) throw new Error('The channel must be stable or beta.');
     writeConfig(userData, { update_channel: channel });
-    // Beta includes pre-releases. Stable ignores them.
-    autoUpdater.allowPrerelease = channel === 'beta';
+    // Beta includes pre-releases. Stable ignores them. An updater not loaded yet reads the saved channel when it is.
+    if (loaded) loaded.allowPrerelease = channel === 'beta';
   });
 
-  ipcMain.handle('updater:skip-version', (_event, version) => {
+  ipc.handle('updater:skip-version', (_event, version) => {
     if (typeof version !== 'string' || !/^\d+\.\d+\.\d+/.test(version.trim())) throw new Error('Skipping needs a version number.');
     writeConfig(userData, { skipped_version: version.trim() });
   });
 
-  ipcMain.handle('updater:remind-later', () => {
+  ipc.handle('updater:remind-later', () => {
     writeConfig(userData, { remind_after: Date.now() + REMIND_LATER_MS });
   });
 
-  ipcMain.handle('updater:set-pause-on-metered', (_event, enabled) => {
+  ipc.handle('updater:set-pause-on-metered', (_event, enabled) => {
     writeConfig(userData, { pause_on_metered: enabled === true });
   });
 
-  ipcMain.handle('updater:get-history', () => getReleaseHistory());
+  ipc.handle('updater:get-history', () => getReleaseHistory());
 
   // One check shortly after launch, so a new release is noticed without opening Settings. Packaged builds only.
-  if (app.isPackaged) {
-    setTimeout(() => {
+  if (electronApp.isPackaged) {
+    schedule(() => {
       userInitiated = false;
-      autoUpdater.checkForUpdates().catch((err) => console.warn('[updater] launch check failed:', err.message));
+      // A failed load is only logged, as a failed check is: no update check may take the app down.
+      Promise.resolve()
+        .then(() => updater().checkForUpdates())
+        .catch((err) => console.warn('[updater] launch check failed:', err.message));
     }, LAUNCH_CHECK_DELAY_MS);
   }
 }

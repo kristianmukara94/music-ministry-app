@@ -3,12 +3,12 @@
 // the card is an empty prayer card. Nothing is refused for its card's type. The only refusals are a repeat, a card at the limit, and an
 // item that is not a song, prayer or reading. A refused attach changes nothing.
 
-import { chainAssignment, chainOf, holdsItem, MAX_SONGS, songsOf } from './pw.js';
+import { CHAIN_TEXT_TYPES, chainAssignment, chainOf, holdsItem, MAX_CHAIN_TEXT, MAX_SONGS, songsOf } from './pw.js';
 
 // A dragged Library item is { type, id, title }: its tab, its id (a hymn id, a note id, or for scripture 'title' or a reading type)
-// and its title. It travels as JSON in a drag, so everything is read as untrusted.
+// and its title. Typed words are { type: 'text', id: <what they are: 'scripture', 'announcement' or 'text_note'>, title: <the words> }. It travels as JSON in a drag, so everything is read as untrusted.
 
-const noun = { song: 'song', prayer: 'prayer', scripture: 'reading' };
+const noun = { song: 'song', prayer: 'prayer', scripture: 'reading', text: 'text item' };
 
 const asId = (value) => (Number.isInteger(Number(value)) && value !== '' && value !== null ? Number(value) : null);
 
@@ -57,6 +57,19 @@ function attachScripture(segment, id) {
 }
 
 /**
+ * Typed words chain after the card's last item, whatever the card holds: a second Scripture reference or a note on a filled card stays on
+ * that card, as a second song or prayer does.
+ */
+function attachText(segment, contentType, words) {
+  const text = String(words ?? '').trim();
+  if (!CHAIN_TEXT_TYPES.includes(contentType) || !text || text.length > MAX_CHAIN_TEXT) return { refused: 'type' };
+  const item = { kind: 'text', text, contentType, minutes: 0 };
+  if (holdsItem(segment, item)) return { refused: 'present' };
+  const patch = chainAssignment(segment, item);
+  return patch ? { patch, mode: 'chained' } : { refused: 'full' };
+}
+
+/**
  * Attaches the item `drag` ({ type, id, title }) to `segment`. Returns `{ patch, mode }`, where `patch` is the segment fields to
  * apply and `mode` is 'added' (it took the card's first place, or joined its songs) or 'chained'. Or returns `{ refused }`:
  * 'type' (not a song, prayer or reading), 'present' (the card already has it) or 'full' (the card is at its limit).
@@ -69,6 +82,8 @@ export function attachItem(segment, drag) {
       return attachPrayer(segment, asId(drag.id));
     case 'scripture':
       return attachScripture(segment, drag.id);
+    case 'text':
+      return attachText(segment, drag.id, drag.title);
     default:
       return { refused: 'type' };
   }
@@ -94,7 +109,7 @@ export function attachMany(segment, drags) {
   return { segment: next, ...counts };
 }
 
-const DRAG_TYPES = ['song', 'prayer', 'scripture'];
+const DRAG_TYPES = ['song', 'prayer', 'scripture', 'text'];
 
 /** The most items one drag may carry. A drag payload is untrusted, so what it claims is bounded. */
 const MAX_DRAG_ITEMS = 200;

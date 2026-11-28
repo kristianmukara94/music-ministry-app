@@ -1,3 +1,7 @@
+import { Suspense } from 'react';
+// First, for every window: the modules that listen from the moment they are imported.
+import './system/everyWindow';
+import { lazyView } from './system/lazyView';
 import { OperatorApp } from './operator/OperatorApp';
 import { LowerThirdView } from './output/LowerThirdView';
 import { ProjectorView } from './output/ProjectorView';
@@ -5,7 +9,6 @@ import { CastStageView } from './output/CastStageView';
 import { MirrorWindow } from './output/MirrorWindow';
 import { PdfConverter } from './announcements/PdfConverter';
 import { VideoThumbnailer } from './media/VideoThumbnailer';
-import { EditorWindow } from './golive/EditorWindow';
 import { FailoverOverlay } from './output/FailoverOverlay';
 
 // Each Electron window loads the same bundle; the hash picks its role.
@@ -15,8 +18,17 @@ const route = window.location.hash.replace(/^#\/?/, '') || (window.location.path
 // The slide editor window: `#/editor/<slide id>`.
 const editorSlide = /^editor\/(\d+)$/.exec(route);
 
+// The editor is a window of its own, opened on demand. The output windows stay in the first file: they must be up the moment they open.
+const EditorWindow = lazyView(() => import('./golive/EditorWindow').then((m) => m.EditorWindow));
+
 export function App() {
-  if (editorSlide) return <EditorWindow slideId={Number(editorSlide[1])} />;
+  if (editorSlide) {
+    return (
+      <Suspense fallback={null}>
+        <EditorWindow slideId={Number(editorSlide[1])} />
+      </Suspense>
+    );
+  }
   switch (route) {
     case 'projector':
       return <ProjectorView />;

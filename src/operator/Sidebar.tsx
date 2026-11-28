@@ -3,8 +3,9 @@ import {
   Activity, ArrowDownUp, BookOpen, BookOpenText, CalendarDays, Flower2, Film, FolderOpen, Languages, LayoutGrid, Maximize,
   Menu, Music, NotebookPen, Presentation, Radio, Search, Settings, type LucideIcon,
 } from 'lucide-react';
-import { useLive } from '../live/store';
-import { useLicense } from '../live/license';
+import { dispatch, useLive } from '../live/store';
+import { LICENSE_LOCKED_TIP, useLicense, useProjectionLocked } from '../live/license';
+import { activeNavKey, lineupCount, navHotkeyCombo, outputPills, type OutputPill, type OutputPillKey } from '../../shared/sidebar-nav.js';
 import { LANGS, useT, type StringKey } from '../i18n/strings';
 import { exportSettings, importSettings, setUi, useUi, type ViewKey } from '../state/ui';
 import { toggleFullscreen } from './actions';
@@ -32,10 +33,11 @@ export const NAV: { key: ViewKey; icon: LucideIcon; label: StringKey; short?: St
 ];
 
 /**
- * Sidebar sections, in the order the operator works through them. Each module appears once. The Dashboard is the brand
- * at the top, and Settings is the gear in the icon row above it.
+ * Sidebar sections, in the order the operator works through them. Each module appears once. The Service Console (home) leads, without a
+ * section label; Settings is the gear in the icon row above it.
  */
-const NAV_GROUPS: { key: StringKey; items: ViewKey[] }[] = [
+const NAV_GROUPS: { key: StringKey | null; items: ViewKey[] }[] = [
+  { key: null, items: ['dashboard'] },
   { key: 'nav.group.liturgy', items: ['lectionary', 'bible', 'rosary', 'notes'] },
   { key: 'nav.group.worship', items: ['goLive', 'lyrics', 'media', 'announcements'] },
   { key: 'nav.group.management', items: ['planner'] },
@@ -55,18 +57,28 @@ function SectionLabel({ children }: { children: ReactNode }) {
 }
 
 /**
- * One output as a read-only chip: a dot and its name, green and pulsing while live. The three share one line (the top bar already carries
- * the projector's pill), so the footer spends one row instead of four. Not a control, so a stray click mid-service changes nothing.
+ * One output as a quick toggle: a dot and its name, green and pulsing while live, amber while paused. The three share one line, so the
+ * footer spends one row. A click does what the top bar and the Service Console cards do (see outputPills).
  */
-function OutputChip({ label, on, stateLabel, collapsed }: { label: string; on: boolean; stateLabel: string; collapsed: boolean }) {
+function OutputChip({ label, pill, stateLabel, tip, collapsed, onClick }: {
+  label: string; pill: OutputPill; stateLabel: string; tip: string; collapsed: boolean; onClick: () => void;
+}) {
+  const tone = pill.paused
+    ? { pill: 'border-warn/50 bg-warn/10 text-warn hover:bg-warn/20', dot: 'bg-warn shadow-[0_0_8px_var(--color-warn)]' }
+    : pill.on
+      ? { pill: 'border-ok/50 bg-ok/10 text-ok hover:bg-ok/20', dot: 'animate-pulse bg-ok shadow-[0_0_8px_var(--color-ok)]' }
+      : { pill: 'border-fg/15 text-muted hover:border-fg/30 hover:bg-fg/[0.06] hover:text-fg', dot: 'bg-fg/40' };
+  const name = `${label}: ${stateLabel}`;
   return (
-    <li
-      title={`${label}: ${stateLabel}`}
-      aria-label={`${label}: ${stateLabel}`}
-      className={`flex min-w-0 items-center gap-1.5 text-xs font-semibold ${on ? 'text-ok' : 'text-muted'}`}
-    >
-      <span className={`size-2 shrink-0 rounded-full ${on ? 'animate-pulse bg-ok shadow-[0_0_8px_var(--color-ok)]' : 'bg-fg/40'}`} aria-hidden />
-      {!collapsed && <span className="truncate">{label}</span>}
+    <li className="flex min-w-0">
+      <button type="button" onClick={onClick} disabled={pill.disabled} aria-pressed={pill.on} aria-label={name}
+        title={`${name}. ${tip}`} data-testid={`output-pill-${pill.key}`}
+        className={`flex min-w-0 items-center gap-1 rounded-full border text-xs font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+          collapsed ? 'size-5 justify-center' : 'px-1.5 py-0.5'
+        } ${tone.pill}`}>
+        <span className={`size-2 shrink-0 rounded-full ${tone.dot}`} aria-hidden />
+        {!collapsed && <span className="truncate">{label}</span>}
+      </button>
     </li>
   );
 }
@@ -86,6 +98,8 @@ function QuickRow({ icon: Icon, label, collapsed, onClick, children }: {
 }
 
 const KBD = 'rounded-md border border-fg/15 bg-fg/[0.04] px-2 py-0.5 font-mono text-[11px] text-fg/75';
+/** The same keycap inside a navigation row: no vertical padding, so a row with a hint is no taller than one without. */
+const NAV_KBD = 'shrink-0 rounded-md border px-1.5 font-mono text-[11px] leading-[17px] font-medium';
 
 /** EN, TL, CEB as a radio group. Shared by the Language row and the compact quick-action bar. */
 function LangSwitch() {
@@ -119,50 +133,61 @@ export function Sidebar() {
   const t = useT();
   const churchName = useChurchName();
   const ministryName = useMinistryName();
-  const { view, collapsed } = useUi();
+  const { view, collapsed, shortcuts } = useUi();
   const outputs = useLive((s) => s.state.outputs);
+  // Only the pause flag: the projector's state changes on every slide step, and the sidebar need not redraw with it.
+  const projectorPaused = useLive((s) => s.state.projector.paused);
+  const lowerThird = useLive((s) => s.state.lowerThird);
+  const queued = useLive((s) => lineupCount(s.state));
   const license = useLicense((s) => s.status);
-  const lowerThirdLive = useLive((s) => s.state.lowerThird.live);
+  const locked = useProjectionLocked();
   const [ioOpen, setIoOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const outputRows = [
-    { label: t('side.projector'), on: outputs.projector },
-    { label: t('side.lowerThird'), on: lowerThirdLive !== null },
-    { label: t('side.preview'), on: outputs.preview },
-  ];
+  const pills = outputPills({ outputs, projector: { paused: projectorPaused }, lowerThird }, locked);
+  const pillLabel: Record<OutputPillKey, string> = { projector: t('side.projector'), lowerThird: t('side.lowerThird'), preview: t('side.preview') };
+  const pillTip = (pill: OutputPill) => {
+    if (pill.disabled) return LICENSE_LOCKED_TIP;
+    if (pill.key === 'preview') return t(pill.on ? 'side.tipMirrorOpen' : 'side.tipMirrorClosed');
+    if (!pill.ready) return t('top.tipOpenLowerThird');
+    return t(pill.on ? 'side.clickOff' : 'side.clickOn');
+  };
+  const runPill = ({ intent }: OutputPill) =>
+    intent.type === 'dispatch' ? dispatch(intent.action) : setUi({ view: 'media', pendingFocus: { kind: 'lowerThird' } });
 
-  const iconButton = 'grid size-9 place-items-center rounded-lg text-fg/70 transition hover:bg-fg/10 hover:text-fg';
+  const activeKey = activeNavKey(view);
+  const iconButton = 'grid size-9 place-items-center rounded-lg transition focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none';
+  const iconIdle = 'text-fg/70 hover:bg-fg/10 hover:text-fg';
 
   return (
     // No outer scrolling: the header and footer are fixed, and only the navigation column scrolls on short screens.
-    // The warm glow in the top corner is the only warm tone on the sidebar; the rest is slate.
+    // A flat canvas, with no ambient glow, so the crest and the wordmark render crisply.
     <aside
-      style={{ background: 'radial-gradient(120% 34% at 0% 0%, color-mix(in oklab, var(--color-accent) 28%, transparent), color-mix(in oklab, var(--color-accent) 7%, transparent) 55%, transparent 80%), var(--color-canvas)' }}
-      className={`flex h-full min-h-0 shrink-0 flex-col justify-between overflow-hidden border-r border-fg/[0.08] px-2 pt-2 pb-2 transition-[width] select-none ${collapsed ? 'w-[76px]' : 'w-[288px]'}`}
+      className={`flex h-full min-h-0 shrink-0 flex-col justify-between overflow-hidden border-r border-fg/[0.08] bg-canvas px-2 pt-2 pb-2 transition-[width] select-none ${collapsed ? 'w-[76px]' : 'w-[288px]'}`}
     >
       {/* Icon row: the menu button collapses the sidebar, the folder opens the library, the gear opens Settings. */}
       <div className={`flex shrink-0 gap-1 ${collapsed ? 'flex-col items-center' : 'items-center px-1'}`}>
-        <button type="button" onClick={() => setUi({ collapsed: !collapsed })} className={iconButton} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+        <button type="button" onClick={() => setUi({ collapsed: !collapsed })} className={`${iconButton} ${iconIdle}`} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
           <Menu size={20} strokeWidth={1.7} />
         </button>
-        <button type="button" onClick={() => setLibraryOpen(true)} className={iconButton} aria-label="Library" title="Library">
+        <button type="button" onClick={() => setLibraryOpen(true)} className={`${iconButton} ${iconIdle}`} aria-label="Library" title="Library">
           <FolderOpen size={20} strokeWidth={1.7} />
         </button>
-        <button type="button" onClick={() => setUi({ view: 'settings' })} className={`${iconButton} ${view === 'settings' ? 'bg-fg/10 text-accent' : ''}`}
+        <button type="button" onClick={() => setUi({ view: 'settings' })} className={`${iconButton} ${view === 'settings' ? 'bg-accent text-on-accent' : iconIdle}`}
           aria-label={t('nav.settings')} title={t('nav.settings')} aria-current={view === 'settings' ? 'page' : undefined}>
           <Settings size={20} strokeWidth={1.7} />
         </button>
       </div>
 
       {/* Brand: the crest and the app name, in gold. Clicking it returns to the dashboard. */}
-      <button type="button" onClick={() => setUi({ view: 'dashboard' })} title={t('nav.dashboard')} aria-current={view === 'dashboard' ? 'page' : undefined}
-        className={`mt-2 mb-1 flex shrink-0 items-center rounded-xl px-1 py-1 text-left transition hover:bg-fg/[0.04] short:mt-1 short:mb-0 short:py-0.5 ${collapsed ? 'justify-center' : 'gap-2.5'}`}>
+      {/* It is a shortcut home, not the current-page marker: that is the Service Console item below. */}
+      <button type="button" onClick={() => setUi({ view: 'dashboard' })} title={t('nav.dashboard')}
+        className={`mt-2 mb-1 flex shrink-0 items-center rounded-xl px-1 py-1 text-left transition hover:bg-fg/[0.04] focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none focus-visible:ring-inset short:mt-1 short:mb-0 short:py-0.5 ${collapsed ? 'justify-center' : 'gap-2.5'}`}>
         <ChurchEmblem alt={churchName || 'APCCMMA'} className="h-14 w-14 short:h-11 short:w-11" />
         {!collapsed && (
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-[34px] leading-none font-extrabold short:text-[30px] tracking-tight text-accent [text-shadow:0_0_18px_color-mix(in_oklab,var(--color-accent)_30%,transparent)]">APCCMMA</span>
+            <span className="truncate text-[34px] leading-none font-extrabold short:text-[30px] tracking-tight text-accent">APCCMMA</span>
             {/* The parish name from the profile, above the ministry line. Long names wrap to two lines rather than being cut off. */}
             {churchName && (
               <span title={churchName} className="mt-1 line-clamp-2 text-[10px] leading-tight font-bold tracking-wide text-fg/90 uppercase">
@@ -179,36 +204,58 @@ export function Sidebar() {
       {/* The navigation is the only part that scrolls, so it fits any screen height without clipping. */}
       <nav aria-label="Modules" className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
         {NAV_GROUPS.map((group) => (
-          <div key={group.key} className="flex flex-col">
-            {collapsed ? (
+          <div key={group.key ?? 'home'} className="flex flex-col">
+            {group.key === null ? null : collapsed ? (
               <div className="mx-2 my-2 h-px bg-fg/10" aria-hidden />
             ) : (
               <SectionLabel>{t(group.key)}</SectionLabel>
             )}
             {group.items.map((key) => {
               const { icon: Icon, label, short } = NAV.find((n) => n.key === key)!;
-              const active = view === key || (key === 'announcements' && view === 'whiteboard') || (key === 'planner' && view === 'praiseWorship');
+              // One current item at most: activeNavKey folds the Whiteboard into Announcements and Praise & Worship into the Planner.
+              const active = activeKey === key;
+              const combo = navHotkeyCombo(key);
+              // An operator's own older shortcut on the same key wins, so the hint is not offered for it.
+              const hint = combo && !shortcuts.some((s) => s.key === combo) ? combo : null;
+              const count = key === 'goLive' ? queued : 0;
+              const countLabel = `${count} ${t('side.lineupItems')}`;
               // Modules not yet built stay visible but cannot be opened, so an operator mid-service cannot land on a placeholder.
               const soon = NOT_YET_BUILT.includes(key);
+              const name = soon ? `${t(label)} · ${t('nav.comingSoon')}` : t(label);
               // Go Live carries a pulse while the congregation can see something.
               const onAir = key === 'goLive' && (outputs.projector || outputs.preview);
               return (
-                <button key={key} type="button" onClick={() => setUi({ view: key })} title={soon ? `${t(label)} · ${t('nav.comingSoon')}` : t(label)}
-                  disabled={soon} aria-current={active ? 'page' : undefined}
-                  className={`flex w-full items-center gap-2.5 rounded-lg border-l-[3px] py-1.5 text-[15px] leading-tight transition-colors duration-150 short:py-1 ${
+                <button key={key} type="button" onClick={() => setUi({ view: key })}
+                  title={[name, hint && `(${hint})`, count > 0 && `· ${countLabel}`].filter(Boolean).join(' ')}
+                  disabled={soon} aria-current={active ? 'page' : undefined} aria-keyshortcuts={hint ?? undefined}
+                  className={`relative flex w-full items-center gap-2.5 rounded-lg border-l-[3px] py-1.5 text-[15px] leading-tight transition-colors duration-150 short:py-1 focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none ${
+                    active ? 'focus-visible:ring-fg' : 'focus-visible:ring-accent/70'
+                  } ${
                     collapsed ? 'justify-center px-0' : 'px-3'
                   } my-px ${
                     soon
                       ? 'cursor-not-allowed border-transparent font-medium text-faint opacity-50'
                       : active
-                        ? 'border-accent bg-gradient-to-r from-accent/20 to-accent/5 font-semibold text-accent'
+                        ? 'border-accent bg-accent font-semibold text-on-accent shadow-sm'
                         : 'border-transparent font-medium text-fg/85 hover:bg-fg/[0.06] hover:text-fg'
                   }`}>
                   <Icon size={20} strokeWidth={1.6} aria-hidden className="shrink-0" />
                   {/* A long label (Announcements & Whiteboard) wraps onto a second compact line rather than ending in an ellipsis mid-word. */}
                   {!collapsed && !short && <span data-testid="nav-label" className="line-clamp-2 flex-1 text-left [overflow-wrap:anywhere]">{t(label)}</span>}
                   {!collapsed && short && <span data-testid="nav-label" className="line-clamp-2 flex-1 text-left [overflow-wrap:anywhere]"><span className="hidden xl:inline">{t(label)}</span><span className="xl:hidden">{t(short)}</span></span>}
-                  {!collapsed && onAir && <Activity size={18} aria-hidden className="shrink-0 animate-pulse text-ok" />}
+                  {!collapsed && onAir && <Activity size={18} aria-hidden className={`shrink-0 animate-pulse ${active ? 'text-on-accent' : 'text-ok'}`} />}
+                  {/* The loaded lineup's item count. On the collapsed sidebar it sits on the icon's corner. */}
+                  {count > 0 && (
+                    <span aria-label={countLabel} data-testid="lineup-count"
+                      className={`shrink-0 rounded-full text-center font-mono text-[11px] leading-[17px] font-bold tabular-nums ${
+                        collapsed ? 'absolute top-0 right-1 min-w-[17px] px-1' : 'min-w-[22px] px-1.5'
+                      } ${active ? 'bg-on-accent text-accent' : collapsed ? 'bg-surface-2 text-fg' : 'bg-fg/15 text-fg'}`}>
+                      {count}
+                    </span>
+                  )}
+                  {!collapsed && hint && (
+                    <kbd aria-hidden className={`${NAV_KBD} ${active ? 'border-on-accent/40 text-on-accent' : 'border-fg/15 bg-fg/[0.04] text-fg/75'}`}>{hint}</kbd>
+                  )}
                   {/* Coming-soon items are muted: plain small text, no pill, so they never compete with working tools. */}
                   {!collapsed && soon && <span className="text-[10px] font-medium tracking-wide text-faint uppercase">{t('nav.comingSoon')}</span>}
                 </button>
@@ -265,10 +312,11 @@ export function Sidebar() {
 
         <ul
           aria-label={t('side.outputs')}
-          className={`mt-1.5 flex gap-x-3 gap-y-1 short:mt-1 ${collapsed ? 'flex-col items-center' : 'flex-wrap items-center justify-center px-3'}`}
+          className={`mt-1.5 flex gap-x-3 gap-y-1 short:mt-1 ${collapsed ? 'justify-center gap-x-0!' : 'flex-wrap items-center justify-center'}`}
         >
-          {outputRows.map((row) => (
-            <OutputChip key={row.label} label={row.label} on={row.on} stateLabel={row.on ? 'LIVE' : 'OFF'} collapsed={collapsed} />
+          {pills.map((pill) => (
+            <OutputChip key={pill.key} pill={pill} label={pillLabel[pill.key]} collapsed={collapsed} tip={pillTip(pill)}
+              stateLabel={t(pill.paused ? 'status.paused' : pill.on ? 'status.live' : 'status.off')} onClick={() => runPill(pill)} />
           ))}
         </ul>
 

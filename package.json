@@ -15,6 +15,7 @@
     "build": "tsc --noEmit && vite build && node tools/build-native.mjs && npm run build:electron && electron-builder --win",
     "release": "tsc --noEmit && vite build && node tools/build-native.mjs && npm run build:electron && electron-builder --publish always",
     "start": "electron .",
+    "bench:startup": "node scripts/startup-benchmark.mjs",
     "test": "node --test \"electron/*.test.mjs\" \"shared/*.test.js\"",
     "postinstall": "electron-builder install-app-deps && node tools/build-native.mjs --optional",
     "rebuild:native": "electron-builder install-app-deps && node tools/build-native.mjs",
@@ -45,7 +46,20 @@
       "dist-electron/**/*",
       "build/icon.ico",
       "build/icon.png",
-      "package.json"
+      "package.json",
+      "!node_modules/{react,react-dom,scheduler,zustand,lucide-react,pdfjs-dist,qrcode-generator,ws}/**/*",
+      "!node_modules/{@fontsource,@fontsource-variable,@neondatabase}/**/*",
+      "!node_modules/better-sqlite3/{deps,src}/**/*",
+      "!node_modules/better-sqlite3/build/deps/**/*",
+      "!node_modules/better-sqlite3/build/Release/obj/**/*",
+      "!node_modules/better-sqlite3/build/Release/test_extension.*",
+      "!node_modules/better-sqlite3/build/Release/*.{exp,iobj,ipdb,lib,pdb}",
+      "!node_modules/**/*.map"
+    ],
+    "electronLanguages": [
+      "en-US",
+      "en-GB",
+      "fil"
     ],
     "asar": true,
     "asarUnpack": [

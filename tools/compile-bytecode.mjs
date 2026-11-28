@@ -40,6 +40,9 @@ async function convert(dir, outdir) {
     target: 'node20',
     bundle: false,
     logLevel: 'error',
+    // The app's on-demand `import()` becomes a `require()`: compiled bytecode cannot run import(), and the require is rewritten and
+    // checked below like any other.
+    supported: { 'dynamic-import': false },
     // CommonJS has no import.meta. The placeholder is swapped for an expression below, since esbuild's `define` accepts only names and JSON.
     define: { 'import.meta.url': META_URL },
   });

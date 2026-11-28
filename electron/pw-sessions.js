@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { DEFAULT_CUES, DEFAULT_TEMPLATE, MAX_CHAIN, MAX_PICTURES, MAX_SONGS, PW_TYPES, segmentFromTemplate } from '../shared/pw.js';
+import { CHAIN_TEXT_TYPES, DEFAULT_CUES, DEFAULT_TEMPLATE, MAX_CHAIN, MAX_CHAIN_TEXT, MAX_PICTURES, MAX_SONGS, PW_TYPES, mergeSplitCards, segmentFromTemplate } from '../shared/pw.js';
 import { recordTombstone } from './plan-sync-schema.js';
 import { copyName } from './plan-appearance.js';
 
@@ -113,7 +113,13 @@ function cleanChain(input) {
       if (ids.length === 0 || ids.length > MAX_PICTURES || !ids.every(Number.isInteger)) throw new Error(`A PowerPoint deck holds 1 to ${MAX_PICTURES} slides.`);
       return { kind: 'pictures', slideIds: ids, minutes };
     }
-    throw new Error('A card can only chain prayers, readings and PowerPoint slides.');
+    if (item?.kind === 'text') {
+      const text = cleanText(item.text, MAX_CHAIN_TEXT, 'Typed text');
+      if (!text) throw new Error('Typed text on a card needs some words.');
+      if (!CHAIN_TEXT_TYPES.includes(item.contentType)) throw new Error('Typed text must be a Scripture reference, an announcement or a note.');
+      return { kind: 'text', text, contentType: item.contentType, minutes };
+    }
+    throw new Error('A card can only chain prayers, readings, typed text and PowerPoint slides.');
   });
 }
 
@@ -361,14 +367,15 @@ export function createPwService(db) {
     /** Segments carry `stale: true` when a song or prayer they point at was deleted after the session was saved. */
     getSession(id) {
       const session = requireSession(id);
-      const segments = q.segments.all(id).map((row) => {
-        const content = { hymnIds: [], ...parseJson(row.content, {}) };
-        const segment = {
-          ...row,
-          content,
-          arrangement: parseJson(row.arrangement, {}),
-          cues: { ...DEFAULT_CUES, ...parseJson(row.cues, {}) },
-        };
+      const rows = q.segments.all(id).map((row) => ({
+        ...row,
+        content: { hymnIds: [], ...parseJson(row.content, {}) },
+        arrangement: parseJson(row.arrangement, {}),
+        cues: { ...DEFAULT_CUES, ...parseJson(row.cues, {}) },
+      }));
+      // A split card ("worship.2") from an older pull shows on its step's card, as the next save writes it.
+      const segments = mergeSplitCards(rows).map((segment) => {
+        const { content } = segment;
         // A segment with a deleted song shows it as deleted, not as missing, so the planner can undo the delete.
         const deleted = (content.hymnIds ?? []).some((id) => q.deletedHymn.get(id));
         return { ...segment, deleted, stale: !contentExists(content) };
@@ -384,7 +391,8 @@ export function createPwService(db) {
       const liturgicalDate = input.liturgicalDate === undefined ? current.liturgicalDate : String(input.liturgicalDate);
       if (!DATE.test(liturgicalDate)) throw new Error('Date must be in the form YYYY-MM-DD.');
       const groups = input.groups === undefined ? current.groups : cleanGroups(input.groups);
-      const segments = cleanSegments(input.segments, groups.map((g) => g.key));
+      // A lineup pulled by an older version can hold a split card ("worship.2"): it is folded back onto its step's card, so the save goes through.
+      const segments = cleanSegments(mergeSplitCards(Array.isArray(input.segments) ? input.segments : []), groups.map((g) => g.key));
       segments.forEach(requireContent);
       db.transaction(() => {
         q.updateSession.run(name, liturgicalDate, JSON.stringify(groups), id);

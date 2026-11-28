@@ -1648,3 +1648,152 @@ test('a pulled Praise & Worship plan is announced once it is written, so an open
   const { id } = l.db.prepare('SELECT id FROM pw_sessions WHERE uuid = ?').get(created.id);
   assert.deepEqual(announced, [[id, ['ready']]], 'the Holy Mass plan is not announced, and the prayer is already assigned when this one is');
 });
+
+// ---- Further Scripture references and typed notes on a filled Praise & Worship step: one card, and the lineup saves ----
+
+const { attachItem } = await import('../shared/pw-attach.js');
+
+/** The website editor's items for a lineup whose steps hold `entries` ({ <step id>: [entry, ...] }), as the Web Planner saves them. */
+async function webStepItems(entries) {
+  const web = await webModules();
+  const { segs } = web.lineup.lineupFromPlan([]);
+  let segments = {};
+  for (const [id, list] of Object.entries(entries)) for (const entry of list) segments = web.model.withEntry(segments, id, entry);
+  return { web, segs, items: web.model.praiseToItems({ segments, notes: {}, extra: [], present: new Set() }, segs) };
+}
+const REF_1 = 'Sample Book 1:1 (WEB)';
+const REF_2 = 'Sample Book 2:2 (WEB)';
+const NOTE_1 = 'Sample Typed Note';
+const { DEFAULT_TEMPLATE: PW_TEMPLATE } = await import('../shared/pw.js');
+const STEP_KEYS = PW_TEMPLATE.segments.map((s) => s.key);
+/** One card for each step of the lineup, and none of its own for a further item. */
+const oneCardPerStep = (cards) => assert.deepEqual(cards.map((c) => c.key), STEP_KEYS, 'no card of its own for a further item');
+const textsOf = (card) => (card.content.more ?? []).filter((m) => m.kind === 'text').map((m) => [m.contentType, m.text]);
+/** The plan as the website editor reads it back: a step's entries, by their song id or words. */
+function webEntries(web, items) {
+  const { segs } = web.lineup.lineupFromPlan(items);
+  const back = web.model.praiseFromItems(items, segs);
+  return (id) => web.model.slotEntries(back.segments[id]).map((e) => e.songId ?? e.text);
+}
+
+test("a second Scripture reference on a filled step arrives on that step's card, the lineup saves, and both references round-trip once", async () => {
+  const { web, items } = await webStepItems({
+    bible_enthronement: [{ text: REF_1, contentType: 'scripture' }, { text: REF_2, contentType: 'scripture' }],
+    worship: [{ songId: HYMN_A, contentType: 'song' }, { text: REF_1, contentType: 'scripture' }],
+  });
+  const p = await prayerPlan([]);
+  await p.webSave(items);
+  const check = () => {
+    oneCardPerStep(cardsOf(p.l.db, p.id));
+    assert.equal(p.card('bible_enthronement').name, 'Bible Enthronement');
+    assert.deepEqual(textsOf(p.card('bible_enthronement')), [['scripture', REF_2]], 'the first reference is the card itself, the second chains');
+    assert.deepEqual(textsOf(p.card('worship')), [['scripture', REF_1]]);
+    assert.equal(p.card('worship').content.hymnIds.length, 1, 'the song stays');
+  };
+  check();
+  // The lineup saves as the planner sends it back: no refusal, and the push goes through.
+  await p.laptopSave((segments) => segments);
+  const sent = await p.items();
+  assert.equal(new Set(sent.map((i) => i.key)).size, sent.length, 'no key twice');
+  const step = webEntries(web, sent);
+  assert.deepEqual(step('bible_enthronement'), [REF_1, REF_2], 'each reference once, in order');
+  assert.deepEqual(step('worship'), [HYMN_A, REF_1]);
+  // A web save of what the website now holds changes nothing on the laptop.
+  await p.webSave(sent);
+  check();
+  // The website takes the second reference out: it leaves the card.
+  await p.webSave((await p.items()).filter((i) => i.text !== REF_2));
+  assert.deepEqual(textsOf(p.card('bible_enthronement')), []);
+});
+
+test('a typed note on a step that already holds a song, a prayer or a Scripture reference joins that card and the lineup saves', async () => {
+  const { web, items } = await webStepItems({
+    prayer_authority: [{ text: 'Sample Prayer Title', contentType: 'prayer' }, { text: NOTE_1 }],
+    worship: [{ songId: HYMN_A, contentType: 'song' }, { text: NOTE_1 }],
+    bible_enthronement: [{ text: REF_1, contentType: 'scripture' }, { text: NOTE_1 }],
+  });
+  const p = await prayerPlan([]);
+  await p.webSave(items);
+  oneCardPerStep(cardsOf(p.l.db, p.id));
+  for (const key of ['prayer_authority', 'worship', 'bible_enthronement']) assert.deepEqual(textsOf(p.card(key)), [['text_note', NOTE_1]], key);
+  assert.equal(p.titleOfCard('prayer_authority'), 'Sample Prayer Title', "the prayer stays the card's first item");
+  assert.equal(segmentStatus(p.card('prayer_authority')), 'ready');
+
+  await p.laptopSave((segments) => segments);
+  const sent = await p.items();
+  const step = webEntries(web, sent);
+  assert.deepEqual(step('prayer_authority'), ['Sample Prayer Title', NOTE_1]);
+  assert.deepEqual(step('worship'), [HYMN_A, NOTE_1]);
+  assert.deepEqual(step('bible_enthronement'), [REF_1, NOTE_1]);
+  assert.ok(sent.filter((i) => i.text === NOTE_1).every((i) => i.contentType === 'text_note'));
+  // Read back by the website and saved there again: the laptop's cards do not change.
+  await p.webSave(sent);
+  for (const key of ['prayer_authority', 'worship', 'bible_enthronement']) assert.deepEqual(textsOf(p.card(key)), [['text_note', NOTE_1]], key);
+});
+
+test('a Scripture reference and a typed note added on the laptop to a filled card chain onto it, save, and reach the website', async () => {
+  const { web, items } = await webStepItems({ worship: [{ songId: HYMN_A, contentType: 'song' }, { text: REF_1, contentType: 'scripture' }] });
+  const p = await prayerPlan([]);
+  await p.webSave(items);
+  await p.laptopSave((segments) => segments.map((s) => {
+    if (s.key !== 'worship') return s;
+    let next = s;
+    for (const drag of [{ type: 'text', id: 'scripture', title: REF_2 }, { type: 'text', id: 'text_note', title: NOTE_1 }, { type: 'scripture', id: 'Gospel Acclamation', title: '' }]) {
+      const result = attachItem(next, drag);
+      assert.equal(result.mode, 'chained', `${drag.type} ${drag.id} chains`);
+      next = { ...next, ...result.patch };
+    }
+    // The same reference again is refused, not added twice.
+    assert.equal(attachItem(next, { type: 'text', id: 'scripture', title: ` ${REF_2} ` }).refused, 'present');
+    return next;
+  }));
+  oneCardPerStep(cardsOf(p.l.db, p.id));
+  assert.deepEqual(textsOf(p.card('worship')), [['scripture', REF_1], ['scripture', REF_2], ['text_note', NOTE_1]]);
+  assert.deepEqual(webEntries(web, await p.items())('worship'), [HYMN_A, REF_1, REF_2, NOTE_1, 'Gospel Acclamation']);
+  // Removing and reordering items inside the card saves too.
+  await p.laptopSave((segments) => segments.map((s) => (s.key === 'worship' ? { ...s, content: { ...s.content, more: [s.content.more[2], s.content.more[0]] } } : s)));
+  assert.deepEqual(textsOf(p.card('worship')), [['text_note', NOTE_1], ['scripture', REF_1]]);
+  assert.deepEqual(webEntries(web, await p.items())('worship'), [HYMN_A, NOTE_1, REF_1]);
+});
+
+test("a split card an earlier version made for a further item is folded back onto its step's card so the lineup saves, and a clean plan is re-read once", async () => {
+  const { items } = await webStepItems({ worship: [{ songId: HYMN_A, contentType: 'song' }, { text: REF_1, contentType: 'scripture' }, { text: NOTE_1 }] });
+  const p = await prayerPlan([]);
+  await p.webSave(items);
+  const { id: sessionId } = p.l.db.prepare('SELECT id FROM pw_sessions WHERE uuid = ?').get(p.id);
+  const keysInDb = () => p.l.db.prepare('SELECT segment_key AS key FROM pw_segments WHERE session_id = ? ORDER BY display_order').all(sessionId).map((r) => r.key);
+  // As an earlier version left it: the worship card holds only its song, and each further item has a card of its own keyed after it.
+  const breakIt = () => {
+    p.l.db.prepare('INSERT INTO transfer_import_guard (active) VALUES (1)').run();
+    const worship = p.l.db.prepare("SELECT content_ref FROM pw_segments WHERE session_id = ? AND segment_key = 'worship'").get(sessionId);
+    const content = JSON.parse(worship.content_ref);
+    delete content.more;
+    p.l.db.prepare("UPDATE pw_segments SET content_ref = ? WHERE session_id = ? AND segment_key = 'worship'").run(JSON.stringify(content), sessionId);
+    const insert = p.l.db.prepare(`INSERT INTO pw_segments (session_id, display_order, segment_key, group_key, name, type, minutes, content_ref)
+      VALUES (?, ?, ?, 'praise', ?, ?, 0, ?)`);
+    insert.run(sessionId, 50, 'worship.2', REF_1, 'scripture', '{"kind":"title"}');
+    insert.run(sessionId, 51, 'worship.3', NOTE_1, 'prayer', '{"kind":"prayer","noteId":null}');
+    p.l.db.prepare('DELETE FROM transfer_import_guard').run();
+  };
+  breakIt();
+  assert.deepEqual(keysInDb(), [...STEP_KEYS, 'worship.2', 'worship.3']);
+  // The planner shows one card, and its save goes through.
+  oneCardPerStep(cardsOf(p.l.db, p.id));
+  assert.deepEqual(textsOf(p.card('worship')), [['scripture', REF_1], ['text_note', NOTE_1]]);
+  await p.laptopSave((segments) => segments);
+  assert.deepEqual(keysInDb(), STEP_KEYS, 'the split cards are gone from the database');
+  const sent = await p.items();
+  assert.equal(sent.filter((i) => i.text === REF_1).length, 1, 'the reference is sent once');
+  assert.equal(sent.filter((i) => i.text === NOTE_1).length, 1, 'the note is sent once');
+
+  // With no edits waiting, a plan an earlier version split is read from the website once more, which puts every item on its card.
+  breakIt();
+  p.l.db.prepare("UPDATE sync_state SET value = json_remove(value, '$.splitRead') WHERE key LIKE 'pwcards:%'").run();
+  const restart = () => createPlanSync({ store: createPlanSyncStore(p.l.db), cloud: p.l.cloud, setTimer: () => 0, clearTimer: () => {} });
+  await restart().runOnce();
+  assert.deepEqual(keysInDb(), STEP_KEYS);
+  assert.deepEqual(textsOf(p.card('worship')), [['scripture', REF_1], ['text_note', NOTE_1]]);
+  const calls = network.calls;
+  await restart().runOnce();
+  assert.equal(network.calls, calls + 1, 'only the pull: the plan is not read again');
+});

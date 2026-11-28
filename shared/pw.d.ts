@@ -11,8 +11,18 @@ export type PwChainItem =
   | { kind: 'prayer'; noteId: number; minutes: number }
   | { kind: 'lectionary'; readingType: string; minutes: number }
   /** A PowerPoint deck from the Whiteboard: its pictures' Announcements slide ids, in order. */
-  | { kind: 'pictures'; slideIds: number[]; minutes: number };
+  | { kind: 'pictures'; slideIds: number[]; minutes: number }
+  /** Typed words from the website (or typed here): a Scripture reference, an announcement or a note. Only the words are kept. */
+  | { kind: 'text'; text: string; contentType: PwChainTextType; minutes: number };
+export type PwChainTextType = 'scripture' | 'announcement' | 'text_note';
 export const MAX_PICTURES: number;
+export const MAX_CHAIN_TEXT: number;
+export const CHAIN_TEXT_TYPES: readonly PwChainTextType[];
+export function isChainText(item: unknown): boolean;
+/** The step a split card's key names ("worship" for "worship.2"), or null. */
+export function splitCardBase(key: unknown): string | null;
+/** The lineup with every split card ("worship.2") folded back onto its step's card. The same array when none is split. */
+export function mergeSplitCards<T extends PwSegment>(segments: T[]): T[];
 
 /**
  * A card's content. Its first item is the kind: a song card has none, a prayer card has a note (or none yet), a title card is the title
@@ -190,7 +200,7 @@ export function prayerPages(text: string): string[];
 /** `band` is the lower third on screen, if any: the lyric and prayer pages leave room for it. */
 export interface PwSlideOrigin {
   item: 'head' | 'songs' | 'card' | number;
-  source: 'prayer' | 'reading' | 'title' | 'song' | 'pictures';
+  source: 'prayer' | 'reading' | 'title' | 'song' | 'pictures' | 'text';
   title: boolean;
   page: number | null;
 }

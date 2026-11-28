@@ -314,6 +314,7 @@ export function LineupRail() {
   const chainItemLabel = (item: PwChainItem) => {
     if (item.kind === 'prayer') return names.prayer(item.noteId) ?? '…';
     if (item.kind === 'pictures') return t('chainPictures', { title: pictures[item.slideIds[0]]?.title ?? 'PowerPoint', n: item.slideIds.length });
+    if (item.kind === 'text') return item.text;
     return item.readingType;
   };
 
@@ -385,7 +386,7 @@ export function LineupRail() {
                   ...chain.map((item, n) => ({
                     key: `${item.kind}-${n}`,
                     group: 'chain' as const,
-                    icon: item.kind === 'prayer' ? <FileText size={14} aria-hidden /> : item.kind === 'pictures' ? <Presentation size={14} aria-hidden /> : <BookOpen size={14} aria-hidden />,
+                    icon: item.kind === 'prayer' || (item.kind === 'text' && item.contentType !== 'scripture') ? <FileText size={14} aria-hidden /> : item.kind === 'pictures' ? <Presentation size={14} aria-hidden /> : <BookOpen size={14} aria-hidden />,
                     label: chainItemLabel(item),
                     minutes: item.minutes,
                   })),
